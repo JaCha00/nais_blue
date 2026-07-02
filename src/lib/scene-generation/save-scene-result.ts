@@ -1,5 +1,6 @@
 import { writeFile } from '@tauri-apps/plugin-fs'
 import { createThumbnail } from '@/lib/image-utils'
+import { encodeNais2Sidecar, type Nais2Params } from '@/lib/nais2-png-meta'
 import { resolveSceneOutputPath } from '@/lib/scene-output-path'
 import { type GenerationParams } from '@/services/novelai-api'
 import { useCharacterStore } from '@/stores/character-store'
@@ -10,6 +11,8 @@ import { useSettingsStore } from '@/stores/settings-store'
 export interface SaveSceneResultContext {
     activePresetId: string
     savePath: string
+    rotationCharacterId?: string
+    rotationCharacterFolderName?: string
 }
 
 interface SaveSceneResultOptions {
@@ -21,6 +24,34 @@ const toDataUrl = (imageData: string, mimeType: string): string =>
 
 const toBase64 = (imageData: string): string =>
     imageData.replace(/^data:image\/[^;]+;base64,/, '')
+
+const toSidecarPath = (imagePath: string): string =>
+    imagePath.replace(/\.[^./\\]+$/, '.nais2.json')
+
+const toNais2Params = (params: GenerationParams): Nais2Params => {
+    const generationState = useGenerationStore.getState()
+    const promptParts = params.promptParts ?? {
+        base: generationState.basePrompt,
+        additional: generationState.additionalPrompt,
+        detail: generationState.detailPrompt,
+        negative: generationState.negativePrompt,
+        inpainting: generationState.inpaintingPrompt,
+    }
+
+    return {
+        qualityToggle: params.qualityToggle ?? generationState.qualityToggle,
+        ucPreset: params.ucPreset ?? generationState.ucPreset,
+        promptParts: {
+            // Prefer metadata frozen into GenerationParams; fall back to the
+            // scene generation store path that produced older params.
+            base: promptParts.base ?? '',
+            additional: promptParts.additional ?? '',
+            detail: promptParts.detail ?? '',
+            negative: promptParts.negative ?? '',
+            inpainting: promptParts.inpainting ?? '',
+        },
+    }
+}
 
 async function createSceneThumbnail(dataUrl: string): Promise<string> {
     try {
@@ -49,8 +80,8 @@ export async function saveSceneResult(
     if (!canSave()) return false
 
     const currentPreset = useSceneStore.getState().presets.find(p => p.id === ctx.activePresetId)
-    const { imageFormat, useAbsolutePath } = useSettingsStore.getState()
-    const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
+    const { useAbsolutePath } = useSettingsStore.getState()
+    const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fileName = `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExt}`
     const dataUrl = toDataUrl(imageData, mimeType)
     const base64Data = toBase64(imageData)
@@ -65,12 +96,23 @@ export async function saveSceneResult(
         presetName: currentPreset?.name || 'Default',
         sceneName: scene.name,
         fileName,
+        rotationCharacterId: ctx.rotationCharacterId,
+        rotationCharacterFolderName: ctx.rotationCharacterFolderName,
     })
+    const writeGeneratedFile = async (path: string, data: Uint8Array): Promise<void> => {
+        if (outputPath.baseDir !== undefined) {
+            await writeFile(path, data, { baseDir: outputPath.baseDir })
+        } else {
+            await writeFile(path, data)
+        }
+    }
     fullPath = outputPath.fullPath
-    if (outputPath.baseDir) {
-        await writeFile(outputPath.writePath, binaryData, { baseDir: outputPath.baseDir })
-    } else {
-        await writeFile(outputPath.writePath, binaryData)
+
+    await writeGeneratedFile(outputPath.writePath, binaryData)
+    if (fileExt === 'webp') {
+        // WebP cannot store the PNG tEXt chunk from nais2-png-meta.ts, so keep
+        // the same NAIS2 UI metadata beside the image for later import paths.
+        await writeGeneratedFile(toSidecarPath(outputPath.writePath), encodeNais2Sidecar(toNais2Params(params)))
     }
 
     const thumbnailData = await createSceneThumbnail(dataUrl)

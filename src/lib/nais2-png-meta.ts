@@ -26,6 +26,8 @@ export interface Nais2Params {
 
 const NAIS2_KEYWORD = 'nais2-params'
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10]
+const WEBP_RIFF_SIGNATURE = [82, 73, 70, 70] // "RIFF"
+const WEBP_FORMAT_SIGNATURE = [87, 69, 66, 80] // "WEBP"
 
 // CRC32 (IEEE polynomial) — same table PNG spec uses.
 const CRC_TABLE = (() => {
@@ -66,6 +68,17 @@ function isPng(bytes: Uint8Array): boolean {
     return true
 }
 
+function isWebP(bytes: Uint8Array): boolean {
+    if (bytes.length < 12) return false
+    for (let i = 0; i < 4; i++) if (bytes[i] !== WEBP_RIFF_SIGNATURE[i]) return false
+    for (let i = 0; i < 4; i++) if (bytes[i + 8] !== WEBP_FORMAT_SIGNATURE[i]) return false
+    return true
+}
+
+function withNais2Version(params: Nais2Params): Nais2Params {
+    return { version: 1, ...params }
+}
+
 function buildTextChunk(keyword: string, value: string): Uint8Array {
     // tEXt data = keyword (Latin-1) + \0 + value (Latin-1).
     // We wrap value in base64 so non-ASCII JSON stays Latin-1 safe.
@@ -94,6 +107,9 @@ function buildTextChunk(keyword: string, value: string): Uint8Array {
  */
 export function embedNais2Params(pngBase64: string, params: Nais2Params): string {
     const bytes = base64ToBytes(pngBase64)
+    // PNG tEXt chunks do not exist in WebP. WebP metadata is persisted by
+    // callers as a sibling .nais2.json sidecar instead of mutating the image.
+    if (isWebP(bytes)) return pngBase64
     if (!isPng(bytes)) return pngBase64
 
     // Find end of IHDR to know where to splice. IHDR always follows the 8-byte
@@ -105,7 +121,7 @@ export function embedNais2Params(pngBase64: string, params: Nais2Params): string
     // re-save), strip it before inserting the new one.
     const stripped = stripNais2Chunk(bytes)
 
-    const value = bytesToBase64(new TextEncoder().encode(JSON.stringify({ version: 1, ...params })))
+    const value = bytesToBase64(new TextEncoder().encode(JSON.stringify(withNais2Version(params))))
     const newChunk = buildTextChunk(NAIS2_KEYWORD, value)
 
     const out = new Uint8Array(stripped.length + newChunk.length)
@@ -113,6 +129,15 @@ export function embedNais2Params(pngBase64: string, params: Nais2Params): string
     out.set(newChunk, ihdrEnd)
     out.set(stripped.subarray(ihdrEnd), ihdrEnd + newChunk.length)
     return bytesToBase64(out)
+}
+
+/**
+ * Encode NAIS2 params for a WebP sidecar stored next to the image file.
+ * The sidecar mirrors the PNG tEXt payload so importers can restore NAIS2 UI
+ * state even when the image format cannot carry our PNG-only metadata chunk.
+ */
+export function encodeNais2Sidecar(params: Nais2Params): Uint8Array {
+    return new TextEncoder().encode(JSON.stringify(withNais2Version(params), null, 2))
 }
 
 /**

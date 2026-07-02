@@ -1,0 +1,3445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NovelAI Prompt Editor</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+:root {
+    --bg-color: #080808;
+    --text-color: #f1f1f1;
+    --panel-bg: #1e1e1e;
+    --input-bg: #2d2d2d;
+    --border-color: #555;
+    --button-bg: #5a5a5a;
+    --button-hover-bg: #707070;
+    --highlight-color: #3583d1;
+    --tag-bg: #3a3d41;
+    --tag-hover-bg: #4a4d51;
+    --tag-selected-border: #3583d1; 
+    --button-fixed-height: 25px;
+    --base-font-size: 14px;
+    --gap-small: 5px;
+    --gap-medium: 8px;
+    scrollbar-color: var(--button-bg) var(--panel-bg);
+    scrollbar-width: thin;
+}
+body {
+    font-family: 'Malgun Gothic', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: var(--gap-medium);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box;
+    font-size: var(--base-font-size);
+    user-select: none; 
+}
+.main-content {
+    display: flex;
+    flex-direction: row;
+    gap: var(--gap-medium);
+    flex-grow: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+.left-column, .right-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+.panel {
+    background-color: var(--panel-bg);
+    border: none;
+    border-radius: 4px;
+    padding: var(--gap-medium);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    position: relative;
+}
+.tab-navigation {
+    display: flex;
+    align-items: center; 
+    position: relative;
+    z-index: 1;
+    margin-bottom: 0;
+}
+.tab-button {
+	height: 33px; 
+	line-height: 35px; 
+	padding: 0 15px; 
+	cursor: pointer;
+	background-color: #1a1a1a;
+	color: var(--text-color);
+	border: none;
+	border-radius: 4px 4px 0 0;
+	margin-right: 2px; 
+	font-size: var(--base-font-size);
+	opacity: 0.5;
+	white-space: nowrap;
+}
+.left-column .tab-button,
+.right-column .tab-button {
+	min-width: 60px;
+	max-width: 200px;
+	overflow: hidden; 
+	box-sizing: border-box;
+	justify-content: flex-start;
+}
+.left-column .tab-button .tab-button-text,
+.right-column .tab-button .tab-button-text {
+	width: 100%; 
+	display: block; 
+	white-space: nowrap; 
+	overflow: hidden; 
+	text-overflow: ellipsis; 
+}
+.tab-button:hover { opacity: 1; background-color: #444444; }
+.tab-content-wrapper { flex-grow: 1; min-height: 0; position: relative; display: flex; }
+.tab-pane.panel { display: none; flex-grow: 1; border-radius: 0 8px 8px 8px; }
+.tab-pane.panel.active { display: flex; }
+.prompt-editors-container {
+    display: flex;
+    flex-direction: column; 
+    gap: var(--gap-medium); 
+    flex-grow: 1;
+    overflow-y: auto;
+}
+.prompt-editor {
+	display: flex;
+	flex-wrap: wrap;
+	align-content: flex-start;
+	cursor: text;
+	overflow-y: auto;
+	padding: 0;
+	background-color: transparent; 
+	min-height: 26px;
+	position: relative;
+	outline: none;
+}
+body.monospace-tags .tag,
+body.monospace-tags .tag-editor-input {
+	font-family: Consolas, Monaco, 'Courier New', monospace;
+	font-size: var(--base-font-size); 
+}
+.tag {
+    background-color: transparent;
+    padding: 4px 8px;
+    cursor: pointer;
+    white-space: pre;
+    user-select: none;
+}
+.tag:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2); 
+}
+.tag.selected {
+	background-color: var(--tag-selected-border);
+}
+.tag.duplicate-tag {
+	border-bottom: 1px solid #e53935;
+	padding-bottom: 3px;
+	cursor: pointer;
+}
+.tag.selected.draggable {
+	cursor: grab;
+}
+.prompt-editor:focus-within .tag.last-selected {
+	position: relative; 
+	box-shadow: inset 0 0 0 2px #ffffff; 
+	z-index: 10; 
+}
+.prompt-editor:focus-within .tag.last-selected:hover {
+	box-shadow: inset 0 0 0 2px #ffffff, inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.tag.ghost { 
+	opacity: 0.5;
+	cursor: grabbing; 
+}
+.tag.placeholder {
+	padding: 0;
+	margin: 0;
+	border: 0;
+	width: 0;
+	font-size: 0;
+}
+.tag::after {
+	content: ',';
+}
+.tag-editor-input { 
+	font: inherit;
+	padding: 4px 8px;
+	border: 0;
+	background-color: #282c32;
+	color: var(--text-color);
+	box-sizing: border-box;
+	position: absolute; 
+	z-index: 500;     
+	box-shadow: inset 0 0 0 2px var(--highlight-color); 
+}
+.tag-editor-input:focus { outline: none; }
+#autocomplete-container {
+	position: fixed; 
+	z-index: 600; 
+	background-color: #1d1d1d;
+	box-shadow: inset 0 0 0 1px #333;
+	display: none;
+	min-width: 180px;
+	max-width: 400px; 
+}
+.autocomplete-separator {
+    height: 1px;
+    background-color: #333; 
+}
+.autocomplete-item {
+	padding: 2px 8px;
+	color: var(--text-color); 
+	cursor: pointer;
+	white-space: nowrap;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	font-size: var(--base-font-size);
+}
+.autocomplete-item:hover, .autocomplete-item.active {
+    background-color: #333;
+}
+.autocomplete-item .tag-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.autocomplete-item .tag-count {
+    font-size: calc(var(--base-font-size) - 2px);
+    color: #aaa;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+.autocomplete-item .tag-count:hover {
+    text-decoration: underline;
+    cursor: pointer; 
+}
+.autocomplete-item .tag-name.tag-category-0 { color: #03adff; } 
+.autocomplete-item .tag-name.tag-category-1 { color: #ff8a8b; } 
+.autocomplete-item .tag-name.tag-category-3 { color: #c797ff; } 
+.autocomplete-item .tag-name.tag-category-4 { color: #35c64a; } 
+.autocomplete-item .tag-name.tag-category-5 { color: #ead084; } 
+.drop-indicator {
+	position: absolute;
+	display: none; 
+	width: 2px;
+	height: 26px;
+	background-color: var(--highlight-color); 
+	z-index: 1000;
+	pointer-events: none; 
+}
+.panel-toolbar {
+	display: flex;
+	gap: var(--gap-small); 
+	margin-bottom: var(--gap-medium); 
+}
+.prompt-window {
+		display: flex;
+		flex-direction: column;
+		border-radius: 4px; 
+		background-color: #282c32; 
+		position: relative; 
+	}
+.prompt-window:focus-within {
+	outline: 2px solid var(--highlight-color);
+	outline-offset: -2px; 
+}
+.prompt-window.drag-over {
+	outline: 2px dashed var(--highlight-color); 
+	outline-offset: -2px; 
+}
+.prompt-window .drag-action-overlay {
+	position: absolute;
+	top: 0; left: 0; right: 0; bottom: 0;
+	display: none; 
+	justify-content: space-around;
+	align-items: center;
+	pointer-events: none;
+	z-index: 201;
+}
+.prompt-window.drag-over .drag-action-overlay {
+	display: flex; 
+}
+.prompt-window .drag-action-overlay > span {
+	flex: 1;
+	height: 100%;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	color: var(--highlight-color);
+	text-shadow: 1px 1px 2px black, 0 0 5px black;
+	font-size: 16px;
+	font-weight: bold;
+	position: relative;
+}
+.prompt-window .drag-action-overlay > span.highlighted {
+	color: white;
+}
+.prompt-window .drag-action-overlay > span.highlighted::before {
+	content: '';
+	position: absolute;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background-color: var(--highlight-color);
+	opacity: 0.4;
+	z-index: -1;
+}
+.prompt-title-bar {
+	display: flex;
+	justify-content: flex-start;
+	align-items: center;
+	padding: 0;
+	background-color: transparent; 
+	flex-shrink: 0; 
+	border-top-left-radius: 4px;  
+	border-top-right-radius: 4px;
+}
+.prompt-title {
+	flex: 0 1 auto; 
+	min-width: 60px; 
+	max-width: calc(100% - 150px); 
+	cursor: text;
+	padding: 4px 8px 4px 0; 
+	outline: none;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: #aaa;
+} 
+.prompt-window:focus-within .prompt-title {
+	color: var(--text-color); 
+}
+.prompt-title:focus {
+    background-color: transparent;
+}
+.prompt-controls {
+	display: flex;
+	flex-shrink: 0;
+	opacity: 0; 
+	pointer-events: none; 
+	margin-left: auto; 
+}
+.prompt-title-bar > .toggle-include-btn {
+	opacity: 1; 
+	pointer-events: auto; 
+	background: none;
+	border: none;
+	color: #aaa;
+	cursor: pointer;
+	width: 26px;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+.prompt-window:focus-within .prompt-title-bar > .toggle-include-btn {
+	color: var(--text-color);
+}
+.prompt-title-bar > .toggle-include-btn:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.prompt-window:hover .prompt-controls,
+.prompt-window:focus-within .prompt-controls {
+	opacity: 1;
+	pointer-events: auto;
+}
+.prompt-controls button {
+	background: none;
+	border: none;
+	color: #aaa;
+	cursor: pointer;
+	width: 26px;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.prompt-window:focus-within .prompt-controls button {
+	color: var(--text-color); 
+}
+.prompt-controls button.copied {
+	background-color: #35c64a; 
+	color: var(--text-color) !important; 
+}
+.copy-all-btn.copied {
+	background-color: #35c64a; 
+	color: var(--text-color) !important; 
+	box-shadow: none; 
+}
+.prompt-controls button:hover {
+    box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.prompt-controls button > i,
+.prompt-title-bar > .toggle-include-btn > i {
+	pointer-events: none;
+}
+.prompt-window.excluded {
+	background-color: rgba(40, 44, 50, 0.4);
+	box-shadow: none; 
+}
+.prompt-window:not(.excluded) .toggle-include-btn i::before {
+	content: "\f00c"; 
+	font-weight: 900;
+	color: #009be6; 
+}
+.prompt-window.excluded .toggle-include-btn i::before {
+	content: ''; 
+	display: block;
+	width: 3px;      
+	height: 3px;     
+	background-color: currentColor; 
+	border-radius: 50%; 
+}
+.prompt-controls .copy-prompt-btn {
+	font-size: 12px; 
+}
+.copy-to-other-column-btn {
+	font-size: 12px; 
+}
+.move-up-btn {
+	font-size: 12px; 
+}
+.move-down-btn {
+	font-size: 12px; 
+}
+delete-editor-btn {
+	border-top-right-radius: 4px;
+	font-size: 12px;
+}
+.top-right-menu-container { position: fixed; top: var(--gap-medium); right: var(--gap-medium); z-index: 1500; }
+#main-menu-btn {
+	padding: 0 var(--gap-medium); height: var(--button-fixed-height);
+	background-color: #444; 
+	color: var(--text-color);
+	border: none; 
+	border-radius: 4px; cursor: pointer;
+	font-size: var(--base-font-size); display: inline-flex;
+	align-items: center; justify-content: center;
+}
+#main-menu-btn:hover { box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2); }
+.menu-dropdown {
+	display: none; position: absolute; top: calc(100% + var(--gap-small));
+	right: 0; background-color: var(--input-bg); 
+	border: 1px solid #444; 
+	border-radius: 4px;
+	box-shadow: 0 3px 7px rgba(0,0,0,0.25); min-width: 180px; padding: var(--gap-small) 0;
+}
+.menu-dropdown button, .menu-dropdown .menu-item-label {
+    display: block; width: 100%; padding: 8px 12px; text-align: left;
+    background-color: transparent; color: var(--text-color); border: none;
+    cursor: pointer; font-size: var(--base-font-size); box-sizing: border-box;
+}
+.menu-dropdown button:hover, .menu-dropdown .menu-item-label:hover { background-color: var(--tag-hover-bg); }
+#import-tags-input-menu { display: none; }
+.menu-dropdown .menu-section-header {
+    padding: 8px 12px;
+    font-weight: bold;
+    color: var(--highlight-color);
+    background-color: var(--input-bg);
+    cursor: default;
+}
+.menu-dropdown .menu-item-label.sub-item {
+    font-size: calc(var(--base-font-size) - 1px);
+    padding: 3px 12px 3px 8px;
+    display: flex;
+    align-items: center;
+    cursor: default;
+}
+ .menu-dropdown .menu-item-label.sub-item input[type="checkbox"] {
+    margin-right: 8px;
+    vertical-align: middle;
+    cursor: pointer;
+}
+.menu-dropdown .menu-item-label.sub-item input[type="number"] {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 2px 4px;
+    margin-left: 5px;
+    width: 50px;
+}
+.menu-dropdown .menu-item-label.sub-item .checkbox-label-text {
+    cursor: pointer;
+    flex-grow: 1;
+}
+.menu-dropdown input[type="checkbox"]:checked {
+    accent-color: var(--highlight-color);
+}
+body ::-webkit-scrollbar { width: 10px; height: 10px; }
+body ::-webkit-scrollbar-track { background: var(--input-bg); border-radius: 5px; }
+body ::-webkit-scrollbar-thumb { background-color: var(--button-bg); border-radius: 5px; border: 2px solid var(--input-bg); }
+body ::-webkit-scrollbar-thumb:hover { background-color: var(--button-hover-bg); }
+body ::-webkit-scrollbar-corner { background: var(--input-bg); }
+.add-editor-btn,
+.weight-button-group > button,
+.copy-all-btn {
+	height: 28px; 
+	padding: 0 8px; 
+	background-color: #444; 
+	border: none; 
+	color: var(--text-color);
+	border-radius: 4px;
+	cursor: pointer;
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box; 
+}
+.add-editor-btn {
+	width: 28px; 
+	font-size: 12px; 
+}
+.add-editor-btn:hover,
+.weight-button-group > button:hover,
+.copy-all-btn:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.weight-btn, .remove-weight-btn {
+	width: 28px; 
+	font-size: 12px;
+	padding: 0; 
+}
+.weight-button-group > button:first-child {
+	border-top-left-radius: 4px;
+	border-bottom-left-radius: 4px;
+	margin-left: 0; 
+}
+.weight-button-group > button:last-child {
+	border-top-right-radius: 4px;
+	border-bottom-right-radius: 4px;
+}
+.add-editor-btn:active,
+.weight-button-group > button:active,
+.copy-all-btn:active,
+.toolbar-button-group > button:active,
+.prompt-controls button:active,
+#main-menu-btn:active,
+.menu-dropdown button:active,
+.add-left-tab-btn:active,
+.add-right-tab-btn:active, 
+.tab-selector-item-controls button:active,
+.tab-button:active, 
+.sort-display-btn:active, 
+.sort-options-btn:active, 
+.sort-dropdown-menu button:active 
+{
+	background-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5) 0%, rgba(255, 255, 255, 0.1) 100%);
+}
+.panel-toolbar {
+	display: flex;
+	gap: var(--gap-small);
+	margin-bottom: var(--gap-medium); 
+	align-items: flex-start; 
+	justify-content: space-between; 
+}
+.toolbar-left-group {
+	display: flex;
+	align-items: center;
+	gap: var(--gap-small);
+	flex-wrap: wrap; 
+}
+.toolbar-right-group {
+	display: flex;
+	gap: var(--gap-small);
+	align-items: center;
+}
+.weight-button-group {
+	display: flex; 
+}
+.toolbar-button-group {
+	display: flex;
+}
+.toolbar-button-group > button {
+	height: 28px;
+	width: 28px;
+	padding: 0;
+	background-color: #444;
+	border: none;
+	color: var(--text-color);
+	cursor: pointer;
+	flex-shrink: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	border-radius: 0;
+	font-size: 12px;
+}
+.toolbar-button-group > button:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+	position: relative;
+	z-index: 2;
+}
+.toolbar-button-group > button:first-child {
+	border-top-left-radius: 4px;
+	border-bottom-left-radius: 4px;
+}
+.toolbar-button-group > button:last-child {
+	border-top-right-radius: 4px;
+	border-bottom-right-radius: 4px;
+}
+.weight-button-group > button {
+	border-radius: 0; 
+}
+.weight-button-group > button:hover {
+	position: relative; 
+	z-index: 2;
+}
+.copy-all-btn {
+	min-width: 70px;    
+}
+.tab-item-tag-count {
+	color: #aaa; 
+	margin-left: 6px; 
+}	
+#left-tab-selector,
+#right-tab-selector {
+	display: none; 
+	flex-grow: 1;
+	border-radius: 0 8px 8px 8px; 
+}
+#left-tab-selector .panel-toolbar,
+#right-tab-selector .panel-toolbar {
+	justify-content: flex-start; 
+}
+.add-left-tab-btn,
+.add-right-tab-btn { 
+	height: 28px;
+	width: 28px; 
+	padding: 0;  
+	background-color: #444;
+	border: none;
+	color: var(--text-color);
+	border-radius: 4px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 14px; 
+}
+.add-left-tab-btn:hover,
+.add-right-tab-btn:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.tab-selector-list {
+	display: flex;
+	flex-direction: column;
+	overflow-y: auto;
+	flex-grow: 1;
+}
+.tab-selector-item {
+	padding: 0 0 0 12px; 
+	background-color: transparent; 
+	border-radius: 0; 
+	cursor: pointer;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	border: none;
+	border-bottom: 1px solid var(--input-bg);
+	min-height: 34px; 
+}
+.tab-selector-item:hover {
+	background-color: var(--input-bg);
+}
+.tab-selector-item.active-in-column {
+    box-shadow: inset 2px 0 0 0 var(--highlight-color); 
+}
+.tab-selector-item-name {
+	flex-grow: 1;
+	min-width: 0;
+	white-space: nowrap; 
+	overflow: hidden;
+	text-overflow: ellipsis; 
+	margin-right: 8px; 
+}
+.tab-selector-item-controls {
+	display: flex;     
+	flex-shrink: 0;  
+}
+.tab-selector-item-controls button {
+	background: none; border: none; color: #aaa;
+	cursor: pointer; 
+	visibility: hidden;
+	width: 34px;        
+	height: 34px;       
+	display: flex;      
+	align-items: center;    
+	justify-content: center;
+	font-size: 12px;    
+}
+.tab-selector-item:hover .tab-selector-item-controls button {
+	visibility: visible;
+}
+.tab-selector-item-controls button:hover {
+	background-color: rgba(255,255,255,0.1);
+	color: var(--text-color);
+}
+.tab-list-btn {
+	min-width: 40px !important; 
+	max-width: 40px !important; 
+	padding: 0 !important; 
+	border-radius: 8px 0 0 0 !important; 
+}
+.main-tab-btn {
+	border-radius: 0 !important; 
+}
+.dict-toggle-btn {
+	border-radius: 0 8px 0 0 !important; 
+}
+.tab-navigation .tab-button {
+	background-color: #1a1a1a;
+	opacity: 0.5;
+}
+.tab-navigation .tab-button:hover {
+	background-color: #444444;
+	opacity: 1;
+}
+.left-column:not(.selector-active):not(.dictionary-active) .main-tab-btn,
+.right-column:not(.selector-active):not(.dictionary-active) .main-tab-btn,
+.left-column.selector-active .tab-list-btn,
+.right-column.selector-active .tab-list-btn,
+.left-column.dictionary-active .dict-toggle-btn,
+.right-column.dictionary-active .dict-toggle-btn {
+	background-color: var(--panel-bg);
+	opacity: 1;
+}
+.left-column.selector-active .tab-button:not(.tab-list-btn):hover,
+.right-column.selector-active .tab-button:not(.tab-list-btn):hover,
+.left-column.dictionary-active .tab-button:not(.dict-toggle-btn):hover,
+.right-column.dictionary-active .tab-button:not(.dict-toggle-btn):hover {
+	background-color: #444444;
+	opacity: 1;
+}
+.tag .tag-modifier-red    { color: #ff8a8b; } 
+.tag .tag-modifier-blue   { color: #82b1ff; } 
+.tag .tag-modifier-green  { color: #00e200; } 
+.tag .tag-modifier-yellow { color: #ffe38f; } 
+.sort-controls {
+	display: flex; 
+	position: relative; 
+}
+.sort-display-btn,
+.sort-options-btn {
+	height: 28px;
+	padding: 0 8px;
+	background-color: #444;
+	border: none;
+	color: var(--text-color);
+	cursor: pointer;
+	font-size: 13px;
+}
+.sort-display-btn:hover,
+.sort-options-btn:hover {
+	box-shadow: inset 0 0 0 15px rgba(255, 255, 255, 0.2);
+}
+.sort-display-btn {
+	border-top-left-radius: 4px;
+	border-bottom-left-radius: 4px;
+	min-width: 75px; 
+}
+.sort-options-btn {
+	border-top-right-radius: 4px;
+	border-bottom-right-radius: 4px;
+	border-left: 1px solid var(--border-color); 
+	padding: 0 6px;
+}
+.sort-dropdown-menu {
+	display: none; 
+	position: absolute;
+	top: 100%; 
+	left: 0;
+	background-color: var(--input-bg); 
+	border: 1px solid #444; 
+	border-radius: 4px;
+	box-shadow: 0 3px 7px rgba(0,0,0,0.25);
+	min-width: 100%; 
+	z-index: 1100;
+	padding: var(--gap-small) 0;
+	box-sizing: border-box; 
+}
+.sort-dropdown-menu button {
+	display: block;
+	width: 100%;
+	padding: 5px 10px; 
+	text-align: left;
+	background: none;
+	border: none;
+	color: var(--text-color);
+	cursor: pointer;
+	font-size: 13px; 
+}
+.sort-dropdown-menu button:hover {
+	background-color: var(--tag-hover-bg);
+}
+.tab-search-container {
+	flex-grow: 1; 
+	margin-left: var(--gap-small); 
+}
+.tab-search-input {
+	width: 100%; 
+	height: 28px;
+	padding: 0 8px;
+	background-color: var(--input-bg);
+	border: 1px solid #444; 
+	border-radius: 4px;
+	color: var(--text-color);
+	font-size: 13px;
+	box-sizing: border-box;
+}
+.tab-search-input:focus {
+	outline: none;
+	border-color: var(--highlight-color);
+	box-shadow: 0 0 0 1px var(--highlight-color);
+}
+.tab-search-input::placeholder {
+	color: #888;
+}
+#tag-dictionary-panel {
+	flex-grow: 1; 
+	min-height: 0;
+	overflow-y: hidden; 
+	display: flex; 
+	flex-direction: column;
+	border-radius: 0 8px 8px 8px;
+}
+.dict-category-container {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--gap-small);
+	padding-bottom: var(--gap-medium);
+	margin-bottom: var(--gap-medium);
+	flex-shrink: 0; 
+}
+.dict-category-btn {
+	padding: 4px 10px;
+	background-color: #444; 
+	border: 1px solid transparent;
+	color: var(--text-color);
+	border-radius: 4px;
+	cursor: pointer;
+}
+.dict-category-btn:hover {
+	background-color: var(--button-hover-bg);
+}
+.dict-category-btn.active {
+	background-color: var(--highlight-color);
+	border-color: var(--highlight-color);
+}
+.dict-tag-list-container {
+	overflow-y: auto; 
+	flex-grow: 1;
+}
+.dict-tag-item {
+	padding: 5px 8px;
+	cursor: pointer;
+	border-radius: 3px;
+}
+.dict-tag-item:hover {
+	background-color: var(--input-bg); 
+}
+.dict-tag-item .tag-en {
+	color: var(--text-color);
+}
+.dict-tag-item .tag-ko {
+	color: #aaa;
+	margin-left: 8px;
+}
+.left-column.dictionary-active .tab-button:not(.dict-toggle-btn),
+.right-column.dictionary-active .tab-button:not(.dict-toggle-btn) {
+	opacity: 0.5;
+	background-color: #1a1a1a;
+}
+.left-column.dictionary-active .dict-toggle-btn,
+.right-column.dictionary-active .dict-toggle-btn {
+	opacity: 1;
+	background-color: var(--panel-bg);
+}
+#import-dict-input-menu {
+	display: none;
+}
+    </style>
+</head>
+<body>
+    <div class="top-right-menu-container">
+        <button id="main-menu-btn">메뉴</button>
+        <div id="main-menu-dropdown" class="menu-dropdown">
+            <button id="export-btn-menu">내보내기</button>
+            <label for="import-tags-input-menu" class="menu-item-label">불러오기</label>
+            <input type="file" id="import-tags-input-menu" accept=".json,.txt">
+			<label for="import-dict-input-menu" class="menu-item-label">태그 사전 불러오기</label>
+			<input type="file" id="import-dict-input-menu" accept=".json">
+            <button id="how-to-use-btn-menu">사용법</button>
+			<button id="toggle-font-btn-menu">고정폭 폰트 사용</button>
+            <div class="menu-section-header">태그 자동완성 필터</div>
+            <div id="tag-filter-options-menu">
+                <label class="menu-item-label sub-item">
+                    <input type="checkbox" data-category="0" checked>
+                    <span class="checkbox-label-text">General</span>
+                </label>
+                <label class="menu-item-label sub-item">
+                    <input type="checkbox" data-category="1" checked>
+                    <span class="checkbox-label-text">Artist</span>
+                </label>
+                <label class="menu-item-label sub-item">
+                    <input type="checkbox" data-category="3" checked>
+                    <span class="checkbox-label-text">Copyright</span>
+                </label>
+                <label class="menu-item-label sub-item">
+                    <input type="checkbox" data-category="4" checked>
+                    <span class="checkbox-label-text">Character</span>
+                </label>
+                <label class="menu-item-label sub-item">
+                    <input type="checkbox" data-category="5" checked>
+                    <span class="checkbox-label-text">Meta</span>
+                </label>
+                <label class="menu-item-label sub-item">
+                    게시물 수 ≥ <input type="number" id="min-post-count-filter-input" value="10" min="0">
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="main-content">
+		<div id="tag-dictionary-panel" class="panel" style="display: none;">
+		<div id="dict-top-categories" class="dict-category-container"></div>
+		<div id="dict-sub-categories" class="dict-category-container"></div>
+		<div id="dict-tag-list" class="dict-tag-list-container"></div>
+		</div>
+		<div class="left-column">
+			<div class="tab-navigation">
+				<button class="tab-button tab-list-btn" title="탭 목록"><i class="fa-solid fa-list"></i></button>
+				<button class="tab-button main-tab-btn" data-tab-target="#left-tab-1-content"><span class="tab-button-text">프롬프트 탭 1</span></button>
+				<button class="tab-button dict-toggle-btn">태그 사전</button>
+			</div>
+			<div class="tab-content-wrapper">
+				<div id="left-tab-selector" class="panel">
+					<div class="panel-toolbar">
+						<button class="add-left-tab-btn" title="새 탭 추가"><i class="fa-solid fa-file-circle-plus"></i></button>
+						<div class="sort-controls">
+							<button class="sort-display-btn" id="left-sort-display-btn">이름▲</button>
+							<button class="sort-options-btn" id="left-sort-options-btn"><i class="fa-solid fa-caret-down"></i></button>
+							<div class="sort-dropdown-menu" id="left-sort-dropdown">
+								<button data-sort-by="name">이름</button>
+								<button data-sort-by="tagCount">태그 수</button>
+							</div>
+						</div>
+						<div class="tab-search-container">
+							<input type="text" id="left-tab-search-input" class="tab-search-input" placeholder="탭 이름 검색..." spellcheck="false">
+						</div>
+					</div>
+					<div class="tab-selector-list">
+					</div>
+				</div>
+            </div>
+        </div>
+        <div class="right-column">
+            <div class="tab-navigation">
+				<button class="tab-button tab-list-btn" title="탭 목록"><i class="fa-solid fa-list"></i></button>
+				<button class="tab-button main-tab-btn" data-tab-target="#pane-tab-2"><span class="tab-button-text">프롬프트 탭 2</span></button>
+				<button class="tab-button dict-toggle-btn">태그 사전</button>
+            </div>
+            <div class="tab-content-wrapper">
+				<div id="right-tab-selector" class="panel">
+					<div class="panel-toolbar">
+						<button class="add-right-tab-btn" title="새 탭 추가"><i class="fa-solid fa-file-circle-plus"></i></button>
+						<div class="sort-controls">
+							<button class="sort-display-btn" id="right-sort-display-btn">이름▲</button>
+							<button class="sort-options-btn" id="right-sort-options-btn"><i class="fa-solid fa-caret-down"></i></button>
+							<div class="sort-dropdown-menu" id="right-sort-dropdown">
+								<button data-sort-by="name">이름</button>
+								<button data-sort-by="tagCount">태그 수</button>
+							</div>
+						</div>
+						<div class="tab-search-container">
+							<input type="text" id="right-tab-search-input" class="tab-search-input" placeholder="탭 이름 검색..." spellcheck="false">
+						</div>
+					</div>
+					<div class="tab-selector-list">
+					</div>
+				</div>
+            </div>
+        </div>
+    </div>
+	<div id="autocomplete-container"></div>
+    <script>
+	let globalDraggedInfo = null; 
+	let tagDictionary = {}; 
+	let activeDictionaryColumn = null; 
+	let minPostCountForAutocomplete = 10;
+	const dragImageHelper = document.createElement('div');
+	dragImageHelper.style.position = 'absolute';
+	dragImageHelper.style.top = '-9999px'; 
+	dragImageHelper.style.backgroundColor = 'transparent';
+	dragImageHelper.style.color = 'var(--text-color)';
+	dragImageHelper.style.padding = '4px 8px'; 
+	dragImageHelper.style.font = 'inherit';
+	document.body.appendChild(dragImageHelper);
+    let activeTagCategories = {
+        0: true, 
+        1: true, 
+        3: true, 
+        4: true, 
+        5: true, 
+    };
+	const AUTOCOMPLETE_API_LIMIT = 100; 
+	const MAX_SUGGESTIONS_TO_DISPLAY = 20; 
+    class HistoryManager {
+        constructor(editor) {
+            this.editor = editor;
+            this.undoStack = [];
+            this.redoStack = [];
+			this.limit = 100;
+        }
+        execute(command) {
+            command.execute();
+			if (this.undoStack.length === this.limit) {
+				this.undoStack.shift(); 
+			}
+            this.undoStack.push(command);
+            this.redoStack = []; 
+            this.editor.updateDraggableState(); 
+			this.editor.checkDuplicates();
+            updateAllSelectors(); 
+			requestSave();
+        }
+        undo() {
+            if (this.undoStack.length === 0) return;
+            const command = this.undoStack.pop();
+            command.undo();
+            this.redoStack.push(command);
+            this.editor.updateDraggableState();
+			this.editor.checkDuplicates();
+            updateAllSelectors(); 
+			requestSave();
+        }
+        redo() {
+            if (this.redoStack.length === 0) return;
+            const command = this.redoStack.pop();
+            command.execute();
+            this.undoStack.push(command);
+            this.editor.updateDraggableState();
+			this.editor.checkDuplicates();
+            updateAllSelectors(); 
+			requestSave();
+        }
+    }
+    class Command {
+        constructor(editor) { this.editor = editor; }
+        execute() {}
+        undo() {}
+    }
+    class CreateTagsCommand extends Command {
+        constructor(editor, tags, insertBefore, selectAfter = true) {
+            super(editor);
+            this.tags = Array.isArray(tags) ? tags : [tags]; 
+            this.insertBefore = insertBefore;
+            this.selectAfter = selectAfter;
+        }
+	execute() {
+		this.tags.forEach(tag => this.editor.container.insertBefore(tag, this.insertBefore));
+		if (this.selectAfter && this.tags.length > 0) {
+			this.editor.clearSelection();
+			this.tags.forEach(tag => {
+				tag.classList.add('selected');
+				this.editor.selectedTags.add(tag);
+			});
+			const firstTag = this.tags[0];
+			const lastTag = this.tags[this.tags.length - 1];
+			this.editor.selectionAnchor = firstTag;
+			this.editor.lastSelectedTag = lastTag;
+			lastTag.classList.add('last-selected');
+			lastTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			this.editor.updateDraggableState();
+            this.editor.container.focus(); 
+		}
+	}
+        undo() {
+            const prevSibling = this.tags[0].previousElementSibling;
+            this.tags.forEach(tag => tag.remove());
+            this.editor.clearSelection();
+            if (prevSibling && prevSibling.classList.contains('tag')) {
+                 this.editor.selectTag(prevSibling, false, false);
+            } else {
+                 this.editor.container.focus();
+            }
+        }
+    }
+    class DeleteTagsCommand extends Command {
+        constructor(editor, tagsToDelete, key) {
+            super(editor);
+            this.key = key; 
+            this.originalSelection = Array.from(editor.selectedTags);
+            this.originalLastSelected = editor.lastSelectedTag;
+            this.originalAnchor = editor.selectionAnchor;
+            this.deletedInfo = tagsToDelete.map(tag => ({
+                tag: tag,
+                nextSibling: tag.nextElementSibling
+            }));
+            const allTags = Array.from(this.editor.container.querySelectorAll('.tag'));
+            const firstDeletedIndex = allTags.indexOf(this.deletedInfo[0].tag);
+            if (this.key === 'Backspace') {
+                this.tagToSelectAfter = (firstDeletedIndex > 0) ? allTags[firstDeletedIndex - 1] : null;
+            } else { 
+                const lastDeletedTag = this.deletedInfo[this.deletedInfo.length - 1].tag;
+                this.tagToSelectAfter = lastDeletedTag.nextElementSibling;
+            }
+        }
+        execute() {
+            this.editor.clearSelection();
+            this.deletedInfo.forEach(info => info.tag.remove());
+            if (this.tagToSelectAfter && this.tagToSelectAfter.classList.contains('tag')) {
+                this.editor.selectTag(this.tagToSelectAfter, false, false);
+            } else {
+                const remainingTags = Array.from(this.editor.container.querySelectorAll('.tag'));
+                if (remainingTags.length > 0) {
+                    const selectCandidate = (this.key === 'Delete') ? remainingTags[remainingTags.length - 1] : remainingTags[0];
+                    this.editor.selectTag(selectCandidate, false, false);
+                } else {
+                    this.editor.container.focus();
+                }
+            }
+        }
+        undo() {
+            this.editor.clearSelection();
+            this.deletedInfo.slice().reverse().forEach(info => {
+                this.editor.container.insertBefore(info.tag, info.nextSibling);
+            });
+            this.originalSelection.forEach(tag => {
+                this.editor.selectedTags.add(tag);
+                tag.classList.add('selected');
+            });
+            this.editor.lastSelectedTag = this.originalLastSelected;
+            this.editor.selectionAnchor = this.originalAnchor;
+            if (this.editor.lastSelectedTag) {
+                this.editor.lastSelectedTag.classList.add('last-selected');
+                this.editor.lastSelectedTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+    }
+    class EditTagCommand extends Command {
+        constructor(editor, tag, oldText, newText) {
+            super(editor);
+            this.tag = tag;
+            this.oldText = oldText;
+            this.newText = newText;
+        }
+        execute() {
+            updateTag(this.tag, this.newText); 
+            this.editor.selectTag(this.tag, false, false);
+        }
+        undo() {
+            updateTag(this.tag, this.oldText);
+            this.editor.selectTag(this.tag, false, false);
+        }
+    }
+    class MoveTagsCommand extends Command {
+        constructor(editor, movedTags, originalNextSibling, newNextSibling) {
+            super(editor);
+            this.movedTags = movedTags;
+            this.originalNextSibling = originalNextSibling;
+            this.newNextSibling = newNextSibling;
+        }
+        execute() {
+            const fragment = document.createDocumentFragment();
+            this.movedTags.forEach(tag => fragment.appendChild(tag));
+            this.editor.container.insertBefore(fragment, this.newNextSibling);
+            this.movedTags.forEach(tag => this.editor.selectedTags.add(tag));
+        }
+        undo() {
+            const fragment = document.createDocumentFragment();
+            this.movedTags.forEach(tag => fragment.appendChild(tag));
+            this.editor.container.insertBefore(fragment, this.originalNextSibling);
+            this.movedTags.forEach(tag => this.editor.selectedTags.add(tag));
+        }
+    }
+    class BulkEditTagsCommand extends Command {
+        constructor(editor, changes) {
+            super(editor);
+            this.changes = changes; 
+        }
+        execute() {
+            this.changes.forEach(change => {
+                updateTag(change.tag, change.newText); 
+            });
+            this.editor.container.focus();
+        }
+        undo() {
+            this.changes.forEach(change => {
+                updateTag(change.tag, change.oldText);
+            });
+            this.editor.container.focus();
+        }
+    }
+		class ReplaceTagsCommand extends Command {
+        constructor(editor, oldTags, newTags) {
+            super(editor);
+            this.oldTags = oldTags;
+            this.newTags = newTags;
+        }
+        execute() {
+            this.oldTags.forEach(tag => tag.remove());
+            const fragment = document.createDocumentFragment();
+            this.newTags.forEach(tag => fragment.appendChild(tag));
+            this.editor.container.appendChild(fragment);
+            this.editor.clearSelection();
+            this.newTags.forEach(tag => {
+                this.editor.selectedTags.add(tag);
+                tag.classList.add('selected');
+            });
+            if (this.newTags.length > 0) {
+                const lastTag = this.newTags[this.newTags.length - 1];
+                this.editor.lastSelectedTag = lastTag;
+                this.editor.selectionAnchor = this.newTags[0];
+                lastTag.classList.add('last-selected');
+                lastTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+				this.editor.container.focus();
+            }
+        }
+        undo() {
+            this.newTags.forEach(tag => tag.remove());
+            const fragment = document.createDocumentFragment();
+            this.oldTags.forEach(tag => fragment.appendChild(tag));
+            this.editor.container.appendChild(fragment);
+            this.editor.clearSelection();
+        }
+    }
+    class MoveCrossEditorCommand extends Command {
+        constructor(sourceEditor, targetEditor, movedTags, originalNextSibling) {
+            super(targetEditor); 
+            this.sourceEditor = sourceEditor;
+            this.movedTags = movedTags; 
+            this.clonedTags = movedTags.map(tag => tag.cloneNode(true)); 
+            this.originalNextSibling = originalNextSibling; 
+        }
+        execute() {
+            this.movedTags.forEach(tag => tag.remove());
+			this.sourceEditor.clearSelection();
+			this.sourceEditor.checkDuplicates();
+            const fragment = document.createDocumentFragment();
+            this.clonedTags.forEach(tag => fragment.appendChild(tag));
+            this.editor.container.appendChild(fragment);
+            this.editor.clearSelection();
+            this.clonedTags.forEach(tag => {
+                this.editor.selectedTags.add(tag);
+                tag.classList.add('selected');
+            });
+            if (this.clonedTags.length > 0) {
+                const lastTag = this.clonedTags[this.clonedTags.length - 1];
+                this.editor.lastSelectedTag = lastTag;
+                this.editor.selectionAnchor = this.clonedTags[0];
+                lastTag.classList.add('last-selected');
+                lastTag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+				this.editor.checkDuplicates();
+            }
+			this.editor.container.focus();
+			updateAllSelectors();
+			requestSave();
+        }
+        undo() {
+            this.clonedTags.forEach(tag => tag.remove());
+			this.editor.clearSelection();
+			this.editor.checkDuplicates();
+            const fragment = document.createDocumentFragment();
+            this.movedTags.forEach(tag => fragment.appendChild(tag));
+            this.sourceEditor.container.insertBefore(fragment, this.originalNextSibling);
+			this.sourceEditor.clearSelection();
+			this.movedTags.forEach(tag => {
+				this.sourceEditor.selectedTags.add(tag);
+                tag.classList.add('selected');
+            });
+			if(this.movedTags.length > 0) {
+				this.sourceEditor.lastSelectedTag = this.movedTags[this.movedTags.length - 1];
+				this.sourceEditor.selectionAnchor = this.movedTags[0];
+				this.sourceEditor.lastSelectedTag.classList.add('last-selected');
+			}
+			this.sourceEditor.checkDuplicates();
+			updateAllSelectors();
+			requestSave();
+        }
+    }
+	function highlightTagText(text) {
+		if (!text) return '';
+		const escapeHTML = (str) => {
+			const p = document.createElement("p");
+			p.textContent = str;
+			return p.innerHTML;
+		};
+		const regex = /(-?\d+(?:\.\d+)?::)|(::)|([{}[\]])|(artist:|target#|source#|mutual#|rating:|text:)/gi;
+		return escapeHTML(text).replace(regex, (match) => {
+			const lowerMatch = match.toLowerCase();
+			if (match === '{' || match === '}') {
+				return `<span class="tag-modifier-red">${match}</span>`;
+			}
+			if (match === '[' || match === ']') {
+				return `<span class="tag-modifier-blue">${match}</span>`;
+			}
+			if (['artist:', 'target#', 'source#', 'mutual#', 'rating:', 'text:'].includes(lowerMatch)) {
+				return `<span class="tag-modifier-yellow">${match}</span>`;
+			}
+			if (match === '::') {
+				 return `<span class="tag-modifier-green">${match}</span>`;
+			}
+			if (lowerMatch.endsWith('::')) {
+				const weight = parseFloat(match);
+				if (weight < 1.0) {
+					return `<span class="tag-modifier-blue">${match}</span>`;
+				} else if (weight > 1.0) {
+					return `<span class="tag-modifier-red">${match}</span>`;
+				} else { 
+					return `<span class="tag-modifier-green">${match}</span>`;
+				}
+			}
+			return match; 
+		});
+	}
+	function parseTagWeight(tagText) {
+		let match = tagText.match(/^(-?\d+(?:\.\d+)?)::(.*?)(::)?$/);
+		if (match) {
+			return {
+				weight: parseFloat(match[1]),
+				coreTag: match[2].trim(),
+				hasTrailingColons: !!match[3],
+				isPlainTag: false 
+			};
+		}
+		match = tagText.match(/^(.*?)::$/);
+		if (match) {
+			return {
+				weight: 1.0,
+				coreTag: match[1].trim(),
+				hasTrailingColons: true,
+				isPlainTag: false 
+			};
+		}
+		return {
+			weight: 1.0,
+			coreTag: tagText.trim(),
+			hasTrailingColons: false,
+			isPlainTag: true 
+		};
+	}
+	function updateTag(tagElement, rawText) {
+		tagElement.innerHTML = highlightTagText(rawText);
+		tagElement.dataset.rawText = rawText;
+	}
+    class PromptEditor {
+        constructor(element) {
+			this.history = new HistoryManager(this);
+            this.container = element;
+            this.selectedTags = new Set();
+            this.lastSelectedTag = null;
+			this.selectionAnchor = null;
+            this.container.addEventListener('click', this.handleClick.bind(this));
+			this.container.addEventListener('dblclick', (e) => {
+				const tag = e.target.closest('.tag');
+				if (tag) {
+					e.preventDefault(); 
+					this.editTag(tag);
+				}
+			});
+            this.container.addEventListener('keydown', this.handleKeyDown.bind(this));
+            this.container.addEventListener('paste', this.handlePaste.bind(this));
+            this.container.addEventListener('copy', this.handleCopy.bind(this));
+            this.container.addEventListener('cut', this.handleCut.bind(this));
+		const promptWindow = this.container.closest('.prompt-window');
+		if (promptWindow) {
+			promptWindow.addEventListener('dragenter', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const isExternalDrag = Array.from(e.dataTransfer.types).some(type => type !== 'text/plain');
+				if (isExternalDrag && globalDraggedInfo) {
+					if (globalDraggedInfo.sourceEditor && globalDraggedInfo.draggedTags) {
+						globalDraggedInfo.draggedTags.forEach(tag => {
+							if (tag.parentNode) tag.classList.remove('ghost');
+						});
+					}
+					globalDraggedInfo = null;
+				}
+				if (!globalDraggedInfo || globalDraggedInfo.sourceEditor !== this) {
+					promptWindow.classList.add('drag-over');
+				}
+			});
+			promptWindow.addEventListener('dragleave', (e) => {
+				if (promptWindow.contains(e.relatedTarget)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				promptWindow.classList.remove('drag-over');
+				promptWindow.querySelector('.drag-action-overlay').innerHTML = '';
+				this.indicator.style.display = 'none';
+			});
+			promptWindow.addEventListener('dragover', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const overlay = promptWindow.querySelector('.drag-action-overlay');
+				const rect = promptWindow.getBoundingClientRect();
+				const dropX = e.clientX;
+				if (globalDraggedInfo && globalDraggedInfo.sourceEditor !== this) {
+					overlay.innerHTML = `<span>이동</span><span>추가</span><span>교체</span>`;
+					const oneThirdWidth = rect.width / 3;
+					const leftBoundary = rect.left + oneThirdWidth;
+					const rightBoundary = rect.left + 2 * oneThirdWidth;
+					overlay.querySelectorAll('span').forEach(span => span.classList.remove('highlighted'));
+					if (dropX < leftBoundary) {
+						overlay.children[0].classList.add('highlighted');
+					} else if (dropX >= rightBoundary) {
+						overlay.children[2].classList.add('highlighted');
+					} else {
+						overlay.children[1].classList.add('highlighted');
+					}
+				} 
+				else if (!globalDraggedInfo) {
+					overlay.innerHTML = `<span>추가</span><span>교체</span>`;
+					const midpoint = rect.left + rect.width / 2;
+					overlay.querySelectorAll('span').forEach(span => span.classList.remove('highlighted'));
+					if (dropX < midpoint) {
+						overlay.children[0].classList.add('highlighted');
+					} else {
+						overlay.children[1].classList.add('highlighted');
+					}
+				} 
+				else {
+					overlay.innerHTML = '';
+				}
+				if (globalDraggedInfo && globalDraggedInfo.sourceEditor === this && !globalDraggedInfo.isConsecutive) {
+					e.dataTransfer.dropEffect = 'none';
+					this.indicator.style.display = 'none';
+					return;
+				}
+				if (globalDraggedInfo && globalDraggedInfo.sourceEditor === this && globalDraggedInfo.isSelectAll) {
+					e.dataTransfer.dropEffect = 'none';
+				} else {
+					e.dataTransfer.dropEffect = 'copy';
+				}
+				if (globalDraggedInfo && globalDraggedInfo.sourceEditor === this && !globalDraggedInfo.isSelectAll) {
+					if (e.target.classList.contains('ghost')) {
+						this.indicator.style.display = 'none';
+						e.dataTransfer.dropEffect = 'none';
+						return;
+					}
+					const afterElement = this.getDragAfterElement(e.clientX, e.clientY);
+					const containerRect = this.container.getBoundingClientRect();
+					let indicatorX, indicatorY;
+					if (afterElement) {
+						const rect = afterElement.getBoundingClientRect();
+						indicatorX = rect.left - containerRect.left;
+						indicatorY = rect.top - containerRect.top;
+					} else {
+						const allTags = this.container.querySelectorAll('.tag:not(.ghost)');
+						const lastTag = allTags[allTags.length - 1];
+						if (lastTag) {
+							const lastTagRect = lastTag.getBoundingClientRect();
+							indicatorX = lastTagRect.right - containerRect.left;
+							indicatorY = lastTagRect.top - containerRect.top;
+						} else {
+							indicatorX = 5; indicatorY = 5;
+						}
+					}
+					this.indicator.style.left = `${indicatorX - (this.indicator.offsetWidth / 2)}px`;
+					this.indicator.style.top = `${indicatorY}px`;
+					this.indicator.style.display = 'block';
+				}
+			});
+			promptWindow.addEventListener('drop', (e) => {
+				this.setActive();
+				e.preventDefault();
+				e.stopPropagation();
+				promptWindow.classList.remove('drag-over');
+				promptWindow.querySelector('.drag-action-overlay').innerHTML = '';
+				this.indicator.style.display = 'none';
+				if (globalDraggedInfo) {
+					const sourceEditor = globalDraggedInfo.sourceEditor;
+					const targetEditor = this;
+					const draggedTags = globalDraggedInfo.draggedTags;
+if (sourceEditor === targetEditor) {
+    if (!globalDraggedInfo.isSelectAll) {
+        const afterElement = targetEditor.getDragAfterElement(e.clientX, e.clientY);
+        const command = new MoveTagsCommand(
+            targetEditor,
+            draggedTags,
+            sourceEditor.originalDragInfo.nextSibling,
+            afterElement
+        );
+        targetEditor.history.execute(command);
+    }
+}
+else if (sourceEditor !== targetEditor) {
+    globalDraggedInfo.draggedTags.forEach(tag => tag.classList.remove('ghost'));
+    const targetWindow = targetEditor.container.closest('.prompt-window');
+    const rect = targetWindow.getBoundingClientRect();
+    const dropX = e.clientX;
+    const oneThirdWidth = rect.width / 3;
+    const leftBoundary = rect.left + oneThirdWidth;
+    const rightBoundary = rect.left + 2 * oneThirdWidth;
+    const rawTagTexts = draggedTags.map(tag => tag.dataset.rawText || tag.textContent);
+    if (dropX < leftBoundary) {
+        const command = new MoveCrossEditorCommand(
+            sourceEditor,
+            targetEditor,
+            draggedTags, 
+            sourceEditor.originalDragInfo.nextSibling 
+        );
+        targetEditor.history.execute(command);
+    }
+    else if (dropX >= rightBoundary) {
+        const newTags = rawTagTexts.map(rawText => {
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            updateTag(tag, rawText);
+            tag.draggable = true;
+            return tag;
+        });
+        const oldTags = Array.from(targetEditor.container.querySelectorAll('.tag'));
+        const command = new ReplaceTagsCommand(targetEditor, oldTags, newTags);
+        targetEditor.history.execute(command);
+    }
+    else {
+        const newTags = rawTagTexts.map(rawText => {
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            updateTag(tag, rawText);
+            tag.draggable = true;
+            return tag;
+        });
+        const insertBeforeElement = (targetEditor.lastSelectedTag) ? targetEditor.lastSelectedTag.nextElementSibling : null;
+        const command = new CreateTagsCommand(targetEditor, newTags, insertBeforeElement);
+        targetEditor.history.execute(command);
+    }
+}
+				}
+				else {
+					this.handleDrop(e);
+				}
+			});
+		}
+			this.textMeasurer = document.createElement('span');
+			this.textMeasurer.style.position = 'absolute';
+			this.textMeasurer.style.visibility = 'hidden'; 
+			this.textMeasurer.style.height = 'auto';
+			this.textMeasurer.style.width = 'auto';
+			this.textMeasurer.style.whiteSpace = 'pre'; 
+			this.textMeasurer.style.padding = '4px 8px';   
+			this.textMeasurer.style.font = 'inherit';
+			document.body.appendChild(this.textMeasurer);
+			this.indicator = document.createElement('div');
+			this.indicator.className = 'drop-indicator';
+			this.container.appendChild(this.indicator);
+			this.container.addEventListener('dragstart', e => {
+				const targetTag = e.target.closest('.tag');
+				if (!targetTag || !this.selectedTags.has(targetTag)) {
+					e.preventDefault();
+					return;
+				}
+				const sortedSelected = Array.from(this.container.querySelectorAll('.tag.selected'));
+				const isConsecutive = this.areTagsConsecutive(sortedSelected);
+				const textToDrag = this.getSelectedTagsText();
+				e.dataTransfer.setData('text/plain', textToDrag);
+				e.dataTransfer.effectAllowed = 'copyMove';
+				const allTagsInContainer = this.container.querySelectorAll('.tag');
+				const isSelectAll = this.selectedTags.size > 0 && this.selectedTags.size === allTagsInContainer.length;
+				globalDraggedInfo = { 
+					sourceEditor: this, 
+					draggedTags: sortedSelected, 
+					isSelectAll: isSelectAll,
+					isConsecutive: isConsecutive
+				};
+				this.originalDragInfo = {
+					nextSibling: sortedSelected[sortedSelected.length - 1].nextElementSibling
+				};
+				dragImageHelper.textContent = `${sortedSelected.length}개 태그`;
+				e.dataTransfer.setDragImage(dragImageHelper, e.offsetX, e.offsetY);
+				setTimeout(() => {
+					sortedSelected.forEach(tag => tag.classList.add('ghost')); 
+				}, 0);
+			});
+		this.container.addEventListener('dragend', e => {
+			this.indicator.style.display = 'none';
+			if (globalDraggedInfo && globalDraggedInfo.sourceEditor === this && globalDraggedInfo.draggedTags) {
+				globalDraggedInfo.draggedTags.forEach(tag => {
+					if(tag.parentNode) {
+						tag.classList.remove('ghost');
+					}
+				});
+			}
+            globalDraggedInfo = null;
+		});
+			this.checkDuplicates();
+			this.container.promptEditorInstance = this; 
+        }
+		getPureTagName(tagElement) {
+			if (!tagElement || !tagElement.textContent) return '';
+			const strippingRegex = /(-?\d+(?:\.\d+)?::|::|artist:|target#|source#|mutual#|rating:|text:|[\[\]{}])/g;
+			return tagElement.textContent.replace(strippingRegex, '').trim();
+		}
+		checkDuplicates() {
+			const allTags = Array.from(this.container.querySelectorAll('.tag'));
+			allTags.forEach(tag => tag.classList.remove('duplicate-tag'));
+			const tagMap = new Map();
+			allTags.forEach(tag => {
+				const pureName = this.getPureTagName(tag);
+				if (pureName) { 
+					if (!tagMap.has(pureName)) {
+						tagMap.set(pureName, []); 
+					}
+					tagMap.get(pureName).push(tag); 
+				}
+			});
+			for (const tagGroup of tagMap.values()) {
+				if (tagGroup.length > 1) {
+					tagGroup.forEach(tag => tag.classList.add('duplicate-tag'));
+				}
+			}
+		}
+		setActive() {
+			const myTabPane = this.container.closest('.tab-pane');
+			if (!myTabPane) return;
+			if (myTabPane.activeEditorInstance && myTabPane.activeEditorInstance !== this) {
+				myTabPane.activeEditorInstance.clearSelection();
+			}
+			myTabPane.activeEditorInstance = this;
+		}
+	getDragAfterElement(x, y) {
+		const draggableElements = [...this.container.querySelectorAll('.tag:not(.ghost)')];
+		const tagsOnSameLine = draggableElements.filter(child => {
+			const box = child.getBoundingClientRect();
+			return y >= box.top && y <= box.bottom;
+		});
+		let elementToInsertBefore = tagsOnSameLine.reduce((closest, child) => {
+			const box = child.getBoundingClientRect();
+			const offset = x - box.left - box.width / 2;
+			if (offset < 0 && offset > closest.offset) {
+				return { offset: offset, element: child };
+			} else {
+				return closest;
+			}
+		}, { offset: Number.NEGATIVE_INFINITY }).element;
+		if (!elementToInsertBefore && tagsOnSameLine.length > 0) {
+			const lastTagOnLine = tagsOnSameLine[tagsOnSameLine.length - 1];
+			let nextEl = lastTagOnLine.nextElementSibling;
+			while (nextEl && nextEl.classList.contains('ghost')) {
+				nextEl = nextEl.nextElementSibling;
+			}
+			return nextEl;
+		}
+		return elementToInsertBefore;
+	}
+		updateDraggableState() {
+			const allTagsInContainer = Array.from(this.container.querySelectorAll('.tag'));
+			const sortedSelected = allTagsInContainer.filter(tag => this.selectedTags.has(tag));
+			const isDraggable = sortedSelected.length > 0 && allTagsInContainer.length > 1;
+			allTagsInContainer.forEach(tag => {
+				if (isDraggable && this.selectedTags.has(tag)) {
+					tag.classList.add('draggable');
+				} else {
+					tag.classList.remove('draggable');
+				}
+			});
+		}
+		areTagsConsecutive(sortedSelectedTags) {
+			if (sortedSelectedTags.length <= 1) {
+				return true; 
+			}
+			for (let i = 0; i < sortedSelectedTags.length - 1; i++) {
+				if (sortedSelectedTags[i].nextElementSibling !== sortedSelectedTags[i+1]) {
+					return false;
+				}
+			}
+			return true;
+		}
+		handleClick(e) {
+			this.setActive();
+			const tag = e.target.closest('.tag'); 
+			if (tag) { 
+				this.selectTag(tag, e.ctrlKey, e.shiftKey);
+			} else {
+				this.container.focus();
+			}
+		}
+		handleKeyDown(e) {
+			this.setActive();
+			if (e.target.classList.contains('tag-editor-input')) return;
+			const isTypingKey = e.key.length === 1 && !e.ctrlKey && !e.metaKey;
+			if (this.selectedTags.size === 0 && isTypingKey) {
+				e.preventDefault();
+				const newTag = document.createElement('span');
+				newTag.className = 'tag';
+				newTag.textContent = '';
+				newTag.draggable = true;
+				this.container.appendChild(newTag);
+				this.editTag(newTag, e.key);
+				return;
+			}
+			if (isTypingKey && this.lastSelectedTag) {
+				e.preventDefault();
+				const selectedTag = this.lastSelectedTag;
+				const newTag = document.createElement('span');
+				newTag.className = 'tag';
+				newTag.draggable = true;
+				newTag.textContent = ''; 
+				this.container.insertBefore(newTag, selectedTag.nextElementSibling);
+				this.clearSelection();
+				this.editTag(newTag, e.key);
+				return;
+			}
+			if (e.key === 'Enter' && e.ctrlKey && this.lastSelectedTag) {
+				e.preventDefault();
+				const strippingRegex = /(-?\d+(?:\.\d+)?::|::|artist:|target#|source#|mutual#|rating:|text:|[\[\]{}])/g;
+				const fullTagText = this.lastSelectedTag.textContent;
+				const pureTag = fullTagText.replace(strippingRegex, '').trim();
+				if (pureTag) {
+					const tagNameForUrl = pureTag.replace(/ /g, '_');
+					const url = `https://danbooru.donmai.us/wiki_pages/${tagNameForUrl}`;
+					window.open(url, '_blank');
+				}
+				return;
+			}
+			if (e.key === 'Enter' && this.lastSelectedTag) {
+				e.preventDefault();
+				this.editTag(this.lastSelectedTag);
+				return;
+			}
+			if (e.ctrlKey && ['+', '=', '-', '[', ']', '0'].includes(e.key)) {
+				e.preventDefault();
+				const selectedTags = Array.from(this.selectedTags);
+				if (selectedTags.length === 0) return;
+				const changesForCommand = [];
+				if (e.key === '0') {
+					const formattingOnlyRegex = /(-?\d+(?:\.\d+)?::|::|[\[\]{}])/g;
+					selectedTags.forEach(tag => {
+						const oldText = tag.textContent;
+						const newText = oldText.replace(formattingOnlyRegex, '').trim();
+						if (oldText !== newText) {
+							changesForCommand.push({ tag, oldText, newText });
+						}
+					});
+				} else {
+					let changeAmount = 0;
+					switch (e.key) {
+						case '+':
+						case '=':      changeAmount = 1.0; break;
+						case '-':      changeAmount = -1.0; break;
+						case ']':      changeAmount = 0.1; break;
+						case '[':      changeAmount = -0.1; break;
+					}
+					selectedTags.forEach(tag => {
+						const oldText = tag.dataset.rawText || tag.textContent;
+						const { weight: currentWeight, coreTag, hasTrailingColons, isPlainTag } = parseTagWeight(oldText);
+						const newWeight = parseFloat((currentWeight + changeAmount).toFixed(2));
+						const weightString = (newWeight % 1 === 0) ? newWeight.toString() : newWeight.toFixed(1);
+						let newText;
+						if (hasTrailingColons || isPlainTag) {
+							newText = `${weightString}::${coreTag}::`;
+						} else {
+							newText = `${weightString}::${coreTag}`;
+						}
+						if (oldText !== newText) {
+							changesForCommand.push({ tag, oldText, newText });
+						}
+					});
+				}
+				if (changesForCommand.length > 0) {
+					const command = new BulkEditTagsCommand(this, changesForCommand);
+					this.history.execute(command);
+				}
+				return;
+			}
+			if (!e.ctrlKey && ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+				e.preventDefault();
+				this.navigateTags(e.key, e.shiftKey);
+			} 
+			else if (e.ctrlKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+				e.preventDefault();
+				const currentWindow = this.container.closest('.prompt-window');
+				if (!currentWindow) return;
+				const targetWindow = e.key === 'ArrowUp' ? currentWindow.previousElementSibling : currentWindow.nextElementSibling;
+				if (targetWindow && targetWindow.classList.contains('prompt-window')) {
+					const targetEditor = targetWindow.querySelector('.prompt-editor');
+					if (targetEditor) targetEditor.focus();
+				}
+			}
+			else if (e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+				e.preventDefault();
+				const currentColumn = this.container.closest('.left-column, .right-column');
+				if (!currentColumn) return;
+				let targetColumn = null;
+				if (e.key === 'ArrowRight' && currentColumn.classList.contains('left-column')) {
+					targetColumn = document.querySelector('.right-column');
+				} else if (e.key === 'ArrowLeft' && currentColumn.classList.contains('right-column')) {
+					targetColumn = document.querySelector('.left-column');
+				}
+				if (targetColumn) {
+					const activePane = targetColumn.querySelector('.tab-pane.active');
+					if (activePane) {
+						const firstEditor = activePane.querySelector('.prompt-editor');
+						if (firstEditor) firstEditor.focus();
+					}
+				}
+			}
+			else if (e.key.toLowerCase() === 'a' && e.ctrlKey) {
+				e.preventDefault();
+				const tags = Array.from(this.container.querySelectorAll('.tag'));
+				if (tags.length === 0) return;
+				this.clearSelection();
+				tags.forEach(tag => {
+					tag.classList.add('selected');
+					this.selectedTags.add(tag);
+				});
+				this.selectionAnchor = tags[0];
+				this.lastSelectedTag = tags[tags.length - 1];
+				if (this.lastSelectedTag) {
+					this.lastSelectedTag.classList.add('last-selected');
+				}
+				this.updateDraggableState();
+			}
+			else if (e.key === 'Escape') {
+				this.clearSelection();
+				this.container.focus();
+			}
+			else if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedTags.size > 0) {
+				e.preventDefault();
+                const tagsToDelete = Array.from(this.container.querySelectorAll('.tag.selected'));
+                const command = new DeleteTagsCommand(this, tagsToDelete, e.key); 
+                this.history.execute(command);
+			}
+			else if (e.key.toLowerCase() === 'z' && e.ctrlKey && !e.shiftKey) {
+				e.preventDefault();
+				this.history.undo();
+			}
+			else if (e.key.toLowerCase() === 'z' && e.ctrlKey && e.shiftKey) {
+				e.preventDefault();
+				this.history.redo();
+			}
+		}
+		navigateTags(key, isShiftPressed) {
+			const tags = Array.from(this.container.querySelectorAll('.tag'));
+			if (tags.length === 0) return;
+			let currentIndex = this.lastSelectedTag ? tags.indexOf(this.lastSelectedTag) : -1;
+			let nextIndex = -1;
+			if (key === 'ArrowRight') {
+				nextIndex = currentIndex > -1 ? Math.min(currentIndex + 1, tags.length - 1) : 0;
+			} else if (key === 'ArrowLeft') {
+				nextIndex = currentIndex > -1 ? Math.max(currentIndex - 1, 0) : tags.length - 1;
+			} else if (key === 'Home') {
+				nextIndex = 0;
+			} else if (key === 'End') {
+				nextIndex = tags.length - 1;
+			} else if (key === 'ArrowUp' || key === 'ArrowDown') {
+				if (currentIndex === -1) {
+					nextIndex = (key === 'ArrowUp') ? tags.length - 1 : 0;
+				} else {
+					const currentTag = tags[currentIndex];
+					const currentRect = currentTag.getBoundingClientRect();
+					let bestCandidate = null;
+					let minVerticalDist = Infinity;
+					let candidatesOnClosestRow = [];
+					tags.forEach(tag => {
+						if (tag === currentTag) return;
+						const rect = tag.getBoundingClientRect();
+						let isPotential = false;
+						if (key === 'ArrowUp' && rect.bottom <= currentRect.top + 1) isPotential = true; 
+						if (key === 'ArrowDown' && rect.top >= currentRect.bottom - 1) isPotential = true; 
+						if (isPotential) {
+							const verticalDist = Math.abs(rect.top - currentRect.top);
+							if (verticalDist < minVerticalDist) {
+								minVerticalDist = verticalDist;
+								candidatesOnClosestRow = [tag]; 
+							} else if (Math.abs(verticalDist - minVerticalDist) < 5) { 
+								candidatesOnClosestRow.push(tag); 
+							}
+						}
+					});
+					if (candidatesOnClosestRow.length > 0) {
+						let minHorizontalDist = Infinity;
+						candidatesOnClosestRow.forEach(candidate => {
+							const candidateRect = candidate.getBoundingClientRect();
+							const horizontalDist = Math.abs(candidateRect.right - currentRect.right);
+							if (horizontalDist < minHorizontalDist) {
+								minHorizontalDist = horizontalDist;
+								bestCandidate = candidate;
+							}
+						});
+					}
+					if (bestCandidate) {
+						nextIndex = tags.indexOf(bestCandidate);
+					}
+				}
+			}
+			if (nextIndex !== -1 && nextIndex !== currentIndex) {
+				this.selectTag(tags[nextIndex], isShiftPressed, isShiftPressed);
+			} else if (nextIndex !== -1 && !isShiftPressed) {
+				this.selectTag(tags[nextIndex], false, false);
+			}
+		}
+		selectTag(tag, isCtrlPressed, isShiftPressed) {
+			if (this.lastSelectedTag) {
+				this.lastSelectedTag.classList.remove('last-selected');
+			}
+			const allTags = Array.from(this.container.querySelectorAll('.tag'));
+			if (isShiftPressed && this.selectionAnchor) {
+				this.clearSelection(); 
+				const start = allTags.indexOf(this.selectionAnchor);
+				const end = allTags.indexOf(tag);
+				const range = [start, end].sort((a, b) => a - b);
+				for (let i = range[0]; i <= range[1]; i++) {
+					this.selectedTags.add(allTags[i]);
+					allTags[i].classList.add('selected');
+				}
+				this.lastSelectedTag = tag;
+			} else if (isCtrlPressed) {
+				this.selectionAnchor = tag;
+				this.lastSelectedTag = tag;
+				if (this.selectedTags.has(tag)) {
+					this.selectedTags.delete(tag);
+					tag.classList.remove('selected');
+				} else {
+					this.selectedTags.add(tag);
+					tag.classList.add('selected');
+				}
+			} else {
+				this.clearSelection();
+				this.selectedTags.add(tag);
+				tag.classList.add('selected');
+				this.lastSelectedTag = tag;
+				this.selectionAnchor = tag;
+			}
+			if (this.lastSelectedTag) {
+				this.lastSelectedTag.classList.add('last-selected');
+			}
+			this.container.focus();
+			tag.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			this.updateDraggableState();
+		}
+        clearSelection() {
+		if (this.lastSelectedTag) this.lastSelectedTag.classList.remove('last-selected');
+            this.selectedTags.forEach(tag => tag.classList.remove('selected'));
+            this.selectedTags.clear();
+            this.lastSelectedTag = null;
+			this.updateDraggableState();
+        }
+		editTag(tag, initialInputText = null) {
+			let lastKnownFullInput = '';
+			let lastKnownCoreQuery = '';
+			const strippingRegex = /(-?\d+(?:\.\d+)?::|::|artist:|target#|source#|rating:|text:|[\[\]{}])/g;
+			const originalTagText = tag.dataset.rawText || tag.textContent;
+			const editorInput = document.createElement('input');
+			editorInput.type = 'text';
+			editorInput.className = 'tag-editor-input';
+			editorInput.placeholder = '^ㅅ^';
+			editorInput.value = (initialInputText !== null) ? initialInputText : originalTagText;
+			editorInput.autocomplete = "off";
+			const autocompleteContainer = document.getElementById('autocomplete-container');
+			let debounceTimer;
+			let apiAbortController = null;
+			const fetchAndShowSuggestions = async (query) => {
+				const searchQuery = query.trim();
+				if (searchQuery.length < 1) {
+					this.hideSuggestions();
+					return;
+				}
+				if (apiAbortController) {
+					apiAbortController.abort();
+				}
+				apiAbortController = new AbortController();
+				const signal = apiAbortController.signal;
+				try {
+					const params = new URLSearchParams({
+						'search[query]': searchQuery.replace(/ /g, '_'),
+						'search[type]': 'tag_query',
+						'limit': AUTOCOMPLETE_API_LIMIT.toString()
+					});
+					const response = await fetch(`https://danbooru.donmai.us/autocomplete.json?${params.toString()}`, { signal });
+					if (signal.aborted) return;
+					if (!response.ok) throw new Error('API Error');
+					const data = await response.json();
+					const filtered = data.filter(item => {
+						if (typeof item.post_count !== 'number' || item.post_count < minPostCountForAutocomplete) {
+							return false;
+						}
+						return activeTagCategories[item.category] !== false;
+					}).map(item => ({
+						name: item.value.replace(/_/g, ' '),
+						post_count: item.post_count,
+						category: item.category,
+						type: item.type,
+						antecedent: item.antecedent_name ? item.antecedent_name.replace(/_/g, ' ') : null
+					}));
+					const queryLower = searchQuery.toLowerCase();
+					filtered.sort((a, b) => {
+						const nameA = a.name.toLowerCase();
+						const nameB = b.name.toLowerCase();
+						const exactMatchA = nameA === queryLower;
+						const exactMatchB = nameB === queryLower;
+						if (exactMatchA && !exactMatchB) return -1;
+						if (!exactMatchA && exactMatchB) return 1;
+						const startsWithA = nameA.startsWith(queryLower);
+						const startsWithB = nameB.startsWith(queryLower);
+						if (startsWithA && !startsWithB) return -1;
+						if (!startsWithA && startsWithB) return 1;
+						const countA = a.post_count !== undefined ? a.post_count : -1;
+						const countB = b.post_count !== undefined ? b.post_count : -1;
+						if (countA > countB) return -1;
+						if (countA < countB) return 1;
+						return nameA.localeCompare(nameB);
+					});
+					const suggestionsToShow = filtered.slice(0, MAX_SUGGESTIONS_TO_DISPLAY);
+					if (suggestionsToShow.length > 0) {
+						this.showSuggestions(suggestionsToShow, editorInput, query);
+					} else {
+						this.hideSuggestions();
+					}
+				} catch (error) {
+					if (error.name !== 'AbortError') {
+						console.error('Autocomplete fetch error:', error);
+						this.hideSuggestions();
+					}
+				}
+			};
+			editorInput.addEventListener('input', () => {
+				updateInputWidth();
+				lastKnownFullInput = editorInput.value;
+				lastKnownCoreQuery = lastKnownFullInput.replace(strippingRegex, '').trim();
+				clearTimeout(debounceTimer);
+				debounceTimer = setTimeout(() => {
+					fetchAndShowSuggestions(lastKnownCoreQuery);
+				}, 100);
+			});
+			editorInput.addEventListener('keydown', (e) => {
+				const isAutocompleteVisible = autocompleteContainer.style.display === 'block' && autocompleteContainer.childElementCount > 0;
+				if (isAutocompleteVisible && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+					e.preventDefault();
+					this.navigateSuggestions(e.key);
+				} else if (isAutocompleteVisible && e.key === 'Tab') {
+					const activeSuggestion = autocompleteContainer.querySelector('.autocomplete-item.active');
+					if (activeSuggestion) {
+						e.preventDefault(); 
+						const suggestionText = activeSuggestion.dataset.tagName;
+						let newText;
+						if (lastKnownCoreQuery) {
+							newText = lastKnownFullInput.replace(lastKnownCoreQuery, suggestionText);
+						} else {
+							newText = suggestionText;
+						}
+						editorInput.focus(); 
+						editorInput.select(); 
+						document.execCommand('insertText', false, newText); 
+						this.hideSuggestions();
+						editorInput.dispatchEvent(new Event('input', { bubbles: true }));
+					}
+				} else if (isAutocompleteVisible && e.key === 'Enter') {
+					const activeSuggestion = autocompleteContainer.querySelector('.autocomplete-item.active');
+					if (activeSuggestion) {
+						e.preventDefault();
+						if (e.ctrlKey) {
+							const tagNameForUrl = activeSuggestion.dataset.tagName.replace(/ /g, '_');
+							window.open(`https://danbooru.donmai.us/wiki_pages/${tagNameForUrl}`, '_blank');
+						} else {
+							editorInput.value = activeSuggestion.dataset.tagName;
+							finishEditing(true); 
+						}
+					}
+				} else if (e.key === 'Escape') {
+					 this.hideSuggestions();
+				}
+			});
+			const isCreatingNewTag = (initialInputText !== null);
+			if (isCreatingNewTag) {
+				tag.classList.add('placeholder');
+			}
+			tag.style.visibility = 'hidden';
+			const updateInputWidth = () => {
+				this.textMeasurer.style.font = window.getComputedStyle(editorInput).font;
+				this.textMeasurer.textContent = editorInput.value || editorInput.placeholder;
+				let newWidth = this.textMeasurer.offsetWidth + 3;
+				const containerWidth = this.container.clientWidth;
+				const originalLeft = tag.offsetLeft;
+				if (originalLeft + newWidth > containerWidth) {
+					const newLeft = Math.max(0, containerWidth - newWidth);
+					editorInput.style.left = `${newLeft}px`;
+				} else {
+					editorInput.style.left = `${originalLeft}px`;
+				}
+				editorInput.style.width = `${newWidth}px`;
+			};
+			editorInput.style.top = `${tag.offsetTop}px`;
+			editorInput.style.left = `${tag.offsetLeft}px`;
+			this.container.appendChild(editorInput);
+			updateInputWidth();
+			editorInput.focus();
+			const initialCoreQuery = editorInput.value.replace(strippingRegex, '').trim();
+			if (initialCoreQuery) {
+				fetchAndShowSuggestions(initialCoreQuery);
+			}
+			if (initialInputText) {
+			   editorInput.selectionStart = editorInput.selectionEnd = editorInput.value.length;
+			} else {
+				const fullText = editorInput.value;
+				const coreText = fullText.replace(strippingRegex, '').trim();
+				if (coreText) {
+					const startIndex = fullText.indexOf(coreText);
+					const endIndex = startIndex + coreText.length;
+					if (startIndex > -1) {
+						editorInput.setSelectionRange(endIndex, endIndex);
+					} else {
+						editorInput.select();
+					}
+				} else {
+					editorInput.select();
+				}
+			}
+			let hasFinished = false;
+			const finishEditing = (suggestionSelected = false) => {
+				if (hasFinished) return;
+				hasFinished = true;
+				if(apiAbortController) apiAbortController.abort();
+				clearTimeout(debounceTimer);
+				this.hideSuggestions();
+				let newText;
+				const userInput = editorInput.value.trim();
+				if (suggestionSelected && lastKnownCoreQuery) {
+					newText = lastKnownFullInput.replace(lastKnownCoreQuery, userInput);
+				} else {
+					newText = userInput;
+				}
+				editorInput.remove();
+				if (newText) {
+					tag.style.visibility = 'visible';
+					if (isCreatingNewTag) {
+						tag.classList.remove('placeholder');
+						const command = new CreateTagsCommand(this, tag, tag.nextElementSibling, false);
+						command.newText = newText;
+						command.execute = function() {
+							this.tag = this.tags[0];
+							updateTag(this.tag, this.newText);
+							this.editor.container.insertBefore(this.tag, this.insertBefore);
+							this.editor.selectTag(this.tag, false, false);
+						}
+						this.history.execute(command);
+					} else if (newText !== originalTagText) {
+						const command = new EditTagCommand(this, tag, originalTagText, newText);
+						this.history.execute(command);
+					} else {
+						this.selectTag(tag, false, false);
+					}
+					if (newText.endsWith(',') && !suggestionSelected) {
+						 const newTag = document.createElement('span');
+						 newTag.className = 'tag';
+						 newTag.textContent = '';
+						 newTag.draggable = true;
+						 this.container.insertBefore(newTag, tag.nextElementSibling);
+						 this.editTag(newTag, ''); 
+					}
+				} else {
+					const tagToSelect = tag.previousElementSibling;
+					tag.remove();
+					if (tagToSelect && tagToSelect.classList.contains('tag')) {
+						this.selectTag(tagToSelect, false, false);
+					} else {
+						this.container.focus(); 
+					}
+				}
+				this.checkDuplicates();
+			};
+			editorInput.addEventListener('blur', () => setTimeout(() => {
+				if (document.activeElement !== editorInput) {
+					finishEditing();
+				}
+			}, 10));
+			editorInput.addEventListener('suggestionSelect', () => {
+				finishEditing(true);
+			});
+			editorInput.addEventListener('keydown', e => {
+				if (e.key === ',') {
+					e.preventDefault();
+					editorInput.value = editorInput.value.replace(/,$/, '');
+					finishEditing();
+				} 
+				else if (e.key === 'Enter') {
+					if (autocompleteContainer.querySelector('.autocomplete-item.active')) {
+						return; 
+					}
+					e.preventDefault();
+					finishEditing();
+				} 
+				else if (e.key === 'Escape') {
+					e.preventDefault();
+					editorInput.value = originalTagText;
+					finishEditing();
+				}
+			});
+		}
+	showSuggestions(suggestions, inputElement, query) {
+		const autocompleteContainer = document.getElementById('autocomplete-container');
+		autocompleteContainer.innerHTML = '';
+		if (suggestions.length === 0) {
+			this.hideSuggestions();
+			return;
+		}
+const queryLower = query.toLowerCase();
+let separatorInserted = false; 
+suggestions.forEach(tag => {
+    if (!separatorInserted && !tag.name.toLowerCase().startsWith(queryLower)) {
+        if (autocompleteContainer.childElementCount > 0) {
+            const separator = document.createElement('div');
+            separator.className = 'autocomplete-separator';
+            autocompleteContainer.appendChild(separator);
+            separatorInserted = true; 
+        }
+    }
+    const item = document.createElement('div');
+    item.className = 'autocomplete-item';
+    item.dataset.tagName = tag.name;
+    let displayName = tag.name;
+    if (tag.type === 'tag-alias' && tag.antecedent) {
+        displayName = `${tag.antecedent} → ${tag.name}`;
+    }
+    const postCountDisplay = this.formatPostCount(tag.post_count);
+    const countClass = (postCountDisplay.includes('K') || postCountDisplay.includes('M')) 
+        ? 'tag-count high-count' 
+        : 'tag-count';
+    item.innerHTML = `<span class="tag-name tag-category-${tag.category}">${displayName}</span> <span class="${countClass}">${postCountDisplay}</span>`;
+	item.addEventListener('mousedown', (e) => {
+		e.preventDefault();
+		if (e.target.closest('.tag-count')) {
+			const tagNameForUrl = tag.name.replace(/ /g, '_');
+			window.open(`https://danbooru.donmai.us/wiki_pages/${tagNameForUrl}`, '_blank');
+		} else {
+			inputElement.value = tag.name;
+			inputElement.dispatchEvent(new CustomEvent('suggestionSelect'));
+		}
+	});
+    autocompleteContainer.appendChild(item);
+});
+	const items = autocompleteContainer.querySelectorAll('.autocomplete-item');
+	if (items.length > 0) {
+		items[0].classList.add('active');
+	}
+    const inputRect = inputElement.getBoundingClientRect();
+    autocompleteContainer.style.left = `${inputRect.left}px`;
+    autocompleteContainer.style.top = `${inputRect.bottom}px`;
+    autocompleteContainer.style.minWidth = `${Math.max(180, inputRect.width)}px`; 
+    autocompleteContainer.style.display = 'block';
+	const dropdownRect = autocompleteContainer.getBoundingClientRect();
+	if (dropdownRect.right > window.innerWidth - 10) {
+		autocompleteContainer.style.left = `${inputRect.left - (dropdownRect.right - (window.innerWidth - 10))}px`;
+	}
+	if (dropdownRect.bottom > window.innerHeight - 10) {
+		autocompleteContainer.style.top = `${inputRect.top - dropdownRect.height - 2}px`;
+	}
+}
+hideSuggestions() {
+    const autocompleteContainer = document.getElementById('autocomplete-container');
+    autocompleteContainer.style.display = 'none';
+    autocompleteContainer.innerHTML = '';
+}
+navigateSuggestions(key) {
+    const container = document.getElementById('autocomplete-container');
+    if (container.style.display === 'none') return;
+    const items = Array.from(container.querySelectorAll('.autocomplete-item'));
+    if (items.length === 0) return;
+    let activeIndex = items.findIndex(s => s.classList.contains('active'));
+    if (activeIndex !== -1) {
+        items[activeIndex].classList.remove('active');
+    }
+    if (key === 'ArrowDown') {
+        activeIndex = (activeIndex + 1) % items.length;
+    } else if (key === 'ArrowUp') {
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+    }
+    items[activeIndex].classList.add('active');
+    items[activeIndex].scrollIntoView({ block: 'nearest' });
+}
+formatPostCount(count) {
+    if (count === undefined || count === null || count < 0) return 'N/A';
+    if (count >= 1000000) return (count / 1000000).toFixed(1) + 'M'; 
+    if (count >= 1000) return Math.floor(count / 1000) + 'K'; 
+    return count.toString();
+}
+        getSelectedTagsText() {
+            const sortedSelected = Array.from(this.container.querySelectorAll('.tag.selected'));
+            return sortedSelected.map(t => t.textContent).join(', ');
+        }
+		handlePaste(e) {
+			if (e.target.classList.contains('tag-editor-input')) {
+				return;
+			}
+			e.preventDefault();
+			const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+			const tagTexts = text.split(/[,\n]+/).map(t => t.trim()).filter(Boolean); 
+			if (tagTexts.length === 0) return;
+			const newTags = tagTexts.map(tagText => {
+				const tag = document.createElement('span');
+				tag.className = 'tag';
+				updateTag(tag, tagText);
+				tag.draggable = true;
+				return tag;
+			});
+			const insertBeforeElement = (this.lastSelectedTag) ? this.lastSelectedTag.nextElementSibling : null;
+			const command = new CreateTagsCommand(this, newTags, insertBeforeElement);
+			this.history.execute(command);
+		}
+        handleCopy(e) {
+            if (this.selectedTags.size > 0) {
+                e.preventDefault();
+                const textToCopy = this.getSelectedTagsText();
+                e.clipboardData.setData('text/plain', textToCopy);
+            }
+        }
+        handleCut(e) {
+            if (this.selectedTags.size > 0) {
+                e.preventDefault();
+                const textToCopy = this.getSelectedTagsText();
+                e.clipboardData.setData('text/plain', textToCopy);
+                const tagsToDelete = Array.from(this.container.querySelectorAll('.tag.selected'));
+                const command = new DeleteTagsCommand(this, tagsToDelete);
+                this.history.execute(command);
+            }
+        }
+		handleDrop(e) {
+			e.preventDefault(); 
+			const droppedText = e.dataTransfer.getData('text/plain');
+			if (!droppedText) return;
+			let tagTexts = [];
+			try {
+				const url = new URL(droppedText);
+				if (url.hostname === 'danbooru.donmai.us') {
+					if (url.pathname.startsWith('/wiki_pages/')) {
+						const tagName = decodeURIComponent(url.pathname.substring('/wiki_pages/'.length)).replace(/_/g, ' ');
+						if (tagName) tagTexts.push(tagName);
+					} else if (url.pathname === '/posts' && url.searchParams.has('tags')) {
+						const tagsQuery = url.searchParams.get('tags');
+						const parsedTags = tagsQuery.split(/[ +]/)
+												   .map(tag => decodeURIComponent(tag).replace(/_/g, ' '))
+												   .filter(Boolean);
+						tagTexts.push(...parsedTags);
+					}
+				}
+			} catch (error) {
+			}
+			if (tagTexts.length === 0) {
+				tagTexts = droppedText.split(/[,\n]+/).map(t => t.trim()).filter(Boolean);
+			}
+			if (tagTexts.length === 0) return;
+			const promptWindow = this.container.closest('.prompt-window');
+			if (!promptWindow) return; 
+			const rect = promptWindow.getBoundingClientRect();
+			const midpoint = rect.left + rect.width / 2;
+			const newTags = tagTexts.map(tagText => {
+				const tag = document.createElement('span');
+				tag.className = 'tag';
+				updateTag(tag, tagText);
+				tag.draggable = true;
+				return tag;
+			});
+			if (e.clientX < midpoint) {
+				const insertBeforeElement = (this.lastSelectedTag) ? this.lastSelectedTag.nextElementSibling : null;
+				const command = new CreateTagsCommand(this, newTags, insertBeforeElement);
+				this.history.execute(command);
+			} else {
+				const oldTags = Array.from(this.container.querySelectorAll('.tag'));
+				const command = new ReplaceTagsCommand(this, oldTags, newTags);
+				this.history.execute(command);
+			}
+		}
+    }
+ function setupTabPane(paneElement) {
+    const editorsContainer = paneElement.querySelector('.prompt-editors-container');
+    if (!editorsContainer) return;
+    editorsContainer.addEventListener('click', (e) => {
+		if (e.target.classList.contains('prompt-title-bar')) {
+			const editor = e.target.parentElement.querySelector('.prompt-editor');
+			if (editor) {
+				editor.focus();
+			}
+			return; 
+		}
+        const promptTitle = e.target.closest('.prompt-title');
+        if (promptTitle && !promptTitle.dataset.listenerAttached) { 
+            promptTitle.dataset.listenerAttached = 'true'; 
+            promptTitle.addEventListener('paste', (event) => {
+                event.preventDefault();
+                const text = (event.clipboardData || window.clipboardData).getData('text/plain');
+                document.execCommand('insertText', false, text);
+            });
+            promptTitle.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    const promptWindow = promptTitle.closest('.prompt-window');
+                    if (promptWindow) {
+                        const editor = promptWindow.querySelector('.prompt-editor');
+                        if (editor) editor.focus();
+                    }
+                }
+            });
+            promptTitle.addEventListener('input', () => {
+                requestSave();
+            });
+        }
+        const promptWindow = e.target.closest('.prompt-window');
+        if (!promptWindow) return;
+		if (e.target.classList.contains('copy-prompt-btn')) {
+			const btn = e.target;
+			if (btn._copyTimeoutId) {
+				clearTimeout(btn._copyTimeoutId);
+				btn.classList.remove('copied');
+				btn.innerHTML = '<i class="fa-regular fa-clone"></i>';
+			}
+			const editor = promptWindow.querySelector('.prompt-editor');
+			const tags = editor.querySelectorAll('.tag');
+			const textToCopy = Array.from(tags).map(t => t.textContent).join(', ');
+			if (textToCopy) {
+				navigator.clipboard.writeText(textToCopy).then(() => {
+					btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+					btn.classList.add('copied');
+					btn._copyTimeoutId = setTimeout(() => {
+						btn.innerHTML = '<i class="fa-regular fa-clone"></i>';
+						btn.classList.remove('copied');
+						btn._copyTimeoutId = null; 
+					}, 1500);
+				});
+			}
+			return; 
+		}
+		else if (e.target.classList.contains('copy-to-other-column-btn')) {
+			const sourceWindow = promptWindow;
+			const sourceColumn = sourceWindow.closest('.left-column, .right-column');
+			if (!sourceColumn) return;
+			const isLeft = sourceColumn.classList.contains('left-column');
+			const targetColumnSelector = isLeft ? '.right-column' : '.left-column';
+			const targetColumn = document.querySelector(targetColumnSelector);
+			const targetActivePane = targetColumn.querySelector('.tab-pane.active');
+			if (!targetActivePane) {
+				alert('복사할 활성화된 탭이 반대편에 없습니다.');
+				return;
+			}
+			const targetContainer = targetActivePane.querySelector('.prompt-editors-container');
+			const clonedWindow = sourceWindow.cloneNode(true);
+			clonedWindow.querySelectorAll('.tag.selected').forEach(tag => tag.classList.remove('selected', 'last-selected'));
+			const clonedCopyBtn = clonedWindow.querySelector('.copy-to-other-column-btn');
+			clonedCopyBtn.innerHTML = isLeft
+				? '<i class="fa-solid fa-arrow-left"></i>'
+				: '<i class="fa-solid fa-arrow-right"></i>';
+			clonedCopyBtn.title = '반대편으로 복사';
+			targetContainer.appendChild(clonedWindow);
+			new PromptEditor(clonedWindow.querySelector('.prompt-editor'));
+			clonedWindow.scrollIntoView({ behavior: 'smooth', block: 'end' });
+			return;
+		}
+        else if (e.target.classList.contains('toggle-include-btn')) {
+            promptWindow.classList.toggle('excluded');
+            requestSave(); 
+        }
+        if (e.target.classList.contains('move-up-btn')) {
+            const prevWindow = promptWindow.previousElementSibling;
+            if (prevWindow) {
+                editorsContainer.insertBefore(promptWindow, prevWindow);
+				requestSave();
+            }
+        }
+        else if (e.target.classList.contains('move-down-btn')) {
+            const nextWindow = promptWindow.nextElementSibling;
+            if (nextWindow) {
+                editorsContainer.insertBefore(nextWindow, promptWindow);
+				requestSave();
+            }
+        }
+        else if (e.target.classList.contains('delete-editor-btn')) {
+            if (confirm('이 프롬프트 창을 삭제하시겠습니까?')) {
+                promptWindow.remove();
+				requestSave();
+            }
+        }
+    });
+	paneElement.addEventListener('click', (e) => {
+		const button = e.target.closest('button');
+		if (!button) return;
+		const editor = paneElement.activeEditorInstance;
+		const checkActiveEditor = () => {
+			if (!editor) {
+				alert('먼저 프롬프트 창을 클릭하여 활성화해주세요.');
+				return false;
+			}
+			return true;
+		};
+		const checkSelectedTags = () => {
+			if (!checkActiveEditor()) return false;
+			if (editor.selectedTags.size === 0) {
+				alert('먼저 태그를 선택해주세요.');
+				return false;
+			}
+			return true;
+		};
+		if (button.classList.contains('undo-btn')) {
+			if (checkActiveEditor()) editor.history.undo();
+			return;
+		}
+		if (button.classList.contains('redo-btn')) {
+			if (checkActiveEditor()) editor.history.redo();
+			return;
+		}
+		if (button.classList.contains('edit-tag-btn')) {
+			if (checkActiveEditor() && editor.lastSelectedTag) {
+				editor.editTag(editor.lastSelectedTag);
+			} else {
+				alert('편집할 태그를 선택해주세요.');
+			}
+			return;
+		}
+		if (button.classList.contains('delete-tags-btn')) {
+			if (!checkSelectedTags()) return;
+			const tagsToDelete = Array.from(editor.selectedTags);
+			const command = new DeleteTagsCommand(editor, tagsToDelete, 'Delete');
+			editor.history.execute(command);
+			return;
+		}
+		if (button.classList.contains('copy-tags-btn')) {
+			if (!checkSelectedTags()) return;
+			const textToCopy = editor.getSelectedTagsText();
+			navigator.clipboard.writeText(textToCopy).catch(err => alert('복사 실패!'));
+			return;
+		}
+		if (button.classList.contains('cut-tags-btn')) {
+			if (!checkSelectedTags()) return;
+			const textToCopy = editor.getSelectedTagsText();
+			navigator.clipboard.writeText(textToCopy).then(() => {
+				const tagsToDelete = Array.from(editor.selectedTags);
+				const command = new DeleteTagsCommand(editor, tagsToDelete, 'Delete');
+				editor.history.execute(command);
+			}).catch(err => alert('잘라내기 실패!'));
+			return;
+		}
+		if (button.classList.contains('paste-tags-btn')) {
+			if (!checkActiveEditor()) return;
+			navigator.clipboard.readText().then(text => {
+				if (text) {
+					const tagTexts = text.split(/,+/).map(t => t.trim()).filter(Boolean);
+					if (tagTexts.length === 0) return;
+					const newTags = tagTexts.map(tagText => {
+						const tag = document.createElement('span');
+						tag.className = 'tag';
+						updateTag(tag, tagText);
+						tag.draggable = true;
+						return tag;
+					});
+					const insertBefore = editor.lastSelectedTag ? editor.lastSelectedTag.nextElementSibling : null;
+					const command = new CreateTagsCommand(editor, newTags, insertBefore);
+					editor.history.execute(command);
+				}
+			}).catch(err => {
+				console.error('붙여넣기 실패:', err);
+				alert('클립보드 읽기 권한이 없거나, 붙여넣을 텍스트가 없습니다.');
+			});
+			return;
+		}
+		if (button.classList.contains('open-wiki-btn')) {
+			if (checkActiveEditor() && editor.lastSelectedTag) {
+				const strippingRegex = /(-?\d+(?:\.\d+)?::|::|artist:|target#|source#|mutual#|rating:|text:|[\[\]{}])/g;
+				const fullTagText = editor.lastSelectedTag.textContent;
+				const pureTag = fullTagText.replace(strippingRegex, '').trim();
+				if (pureTag) {
+					const tagNameForUrl = pureTag.replace(/ /g, '_');
+					const url = `https://danbooru.donmai.us/wiki_pages/${tagNameForUrl}`;
+					window.open(url, '_blank');
+				}
+			} else {
+				alert('위키를 열 태그를 선택해주세요.');
+			}
+			return; 
+		}
+		const weightBtn = button.closest('.weight-btn');
+		if (weightBtn) {
+			if (!checkSelectedTags()) return;
+			const changeAmount = parseFloat(weightBtn.dataset.change);
+			const changesForCommand = [];
+			Array.from(editor.selectedTags).forEach(tag => {
+				const oldText = tag.dataset.rawText || tag.textContent;
+				const { weight: currentWeight, coreTag, hasTrailingColons, isPlainTag } = parseTagWeight(oldText);
+				const newWeight = parseFloat((currentWeight + changeAmount).toFixed(2));
+				const weightString = (newWeight % 1 === 0) ? newWeight.toString() : newWeight.toFixed(1);
+				let newText;
+				if (hasTrailingColons || isPlainTag) {
+					newText = `${weightString}::${coreTag}::`;
+				} else {
+					newText = `${weightString}::${coreTag}`;
+				}
+				if (oldText !== newText) {
+					changesForCommand.push({ tag, oldText, newText });
+				}
+			});
+			if (changesForCommand.length > 0) {
+				const command = new BulkEditTagsCommand(editor, changesForCommand);
+				editor.history.execute(command);
+			}
+		}
+		const removeBtn = button.closest('.remove-weight-btn');
+		if (removeBtn) {
+			if (!checkSelectedTags()) return;
+			const changesForCommand = [];
+			const formattingOnlyRegex = /(-?\d+(?:\.\d+)?::|::|[\[\]{}])/g;
+			Array.from(editor.selectedTags).forEach(tag => {
+				const oldText = tag.textContent;
+				const newText = oldText.replace(formattingOnlyRegex, '').trim();
+				if (oldText !== newText) {
+					changesForCommand.push({ tag, oldText, newText });
+				}
+			});
+			if (changesForCommand.length > 0) {
+				const command = new BulkEditTagsCommand(editor, changesForCommand);
+				editor.history.execute(command);
+			}
+		}
+	});
+    const addEditorBtn = paneElement.querySelector('.add-editor-btn');
+    if (addEditorBtn) {
+        addEditorBtn.addEventListener('click', () => {
+            const newWindow = document.createElement('div');
+            newWindow.className = 'prompt-window';
+            const editorCount = editorsContainer.querySelectorAll('.prompt-window').length + 1;
+            const parentColumn = paneElement.closest('.left-column, .right-column');
+            const isLeftColumn = parentColumn.classList.contains('left-column');
+			const copyDirectionBtnHTML = isLeftColumn
+				? `<button class="copy-to-other-column-btn" title="반대편으로 복사"><i class="fa-solid fa-arrow-right"></i></button>`
+				: `<button class="copy-to-other-column-btn" title="반대편으로 복사"><i class="fa-solid fa-arrow-left"></i></button>`;
+            newWindow.innerHTML = `
+                <div class="prompt-title-bar">
+					<button class="toggle-include-btn" title="전체복사 포함/제외"><i class="fa-solid"></i></button>
+					<div class="prompt-title" contenteditable="true" spellcheck="false">새 프롬프트 ${editorCount}</div>
+					<div class="prompt-controls">
+						<button class="copy-prompt-btn" title="복사"><i class="fa-regular fa-clone"></i></button>
+						${copyDirectionBtnHTML}
+                        <button class="move-up-btn" title="위로 이동"><i class="fa-solid fa-arrow-up"></i></button>
+                        <button class="move-down-btn" title="아래로 이동"><i class="fa-solid fa-arrow-down"></i></button>
+                        <button class="delete-editor-btn" title="삭제"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+				<div class="drag-action-overlay"></div>
+                <div class="prompt-editor" tabindex="0"></div>
+            `;
+            editorsContainer.appendChild(newWindow);
+            const newEditorEl = newWindow.querySelector('.prompt-editor');
+            new PromptEditor(newEditorEl); 
+            newEditorEl.focus();
+			requestSave();
+        });
+    }
+	const copyAllBtn = paneElement.querySelector('.copy-all-btn');
+	if (copyAllBtn) { 
+		copyAllBtn.addEventListener('click', () => {
+			if (copyAllBtn._copyTimeoutId) {
+				clearTimeout(copyAllBtn._copyTimeoutId);
+			}
+			const allPromptsText = [];
+			const promptEditors = paneElement.querySelectorAll('.prompt-window:not(.excluded) .prompt-editor');
+			promptEditors.forEach(editor => {
+				const tags = editor.querySelectorAll('.tag');
+				const tagTexts = Array.from(tags).map(t => t.textContent);
+				if (tagTexts.length > 0) {
+					allPromptsText.push(tagTexts.join(', '));
+				}
+			});
+			const final_text = allPromptsText.reduce((fullString, currentPrompt) => {
+				if (fullString === '') {
+					return currentPrompt;
+				}
+				if (fullString.trim().endsWith(',')) {
+					return fullString.trim() + ' ' + currentPrompt;
+				} else {
+					return fullString + ', ' + currentPrompt;
+				}
+			}, '');
+			if (final_text) {
+				navigator.clipboard.writeText(final_text).then(() => {
+					copyAllBtn.textContent = '복사됨!';
+					copyAllBtn.classList.add('copied'); 
+					copyAllBtn._copyTimeoutId = setTimeout(() => {
+						copyAllBtn.textContent = '전체복사'; 
+						copyAllBtn.classList.remove('copied'); 
+						copyAllBtn._copyTimeoutId = null; 
+					}, 1500);
+				}).catch(err => {
+					console.error('복사 실패:', err);
+					alert('클립보드 복사에 실패했습니다.');
+				});
+			} else {
+				alert('복사할 프롬프트가 없습니다.');
+			}
+		});
+	}
+}
+	document.addEventListener('DOMContentLoaded', () => {
+    const toggleFontBtn = document.getElementById('toggle-font-btn-menu');
+    let isMonospaceFont = localStorage.getItem('fontPreference') === 'monospace';
+    function updateFontToggleUI() {
+        if (isMonospaceFont) {
+            document.body.classList.add('monospace-tags');
+            toggleFontBtn.textContent = '기본 폰트 사용';
+        } else {
+            document.body.classList.remove('monospace-tags');
+            toggleFontBtn.textContent = '고정폭 폰트 사용';
+        }
+    }
+    updateFontToggleUI();
+    toggleFontBtn.addEventListener('click', () => {
+        isMonospaceFont = !isMonospaceFont; 
+        updateFontToggleUI(); 
+        localStorage.setItem('fontPreference', isMonospaceFont ? 'monospace' : 'default'); 
+    });
+document.addEventListener('dragover', function(e) {
+    e.preventDefault(); 
+    e.dataTransfer.dropEffect = 'none'; 
+});
+document.addEventListener('drop', function(e) {
+    e.preventDefault();
+});
+        if (!loadState()) {
+            addNewTab('프롬프트 탭 1');
+            addNewTab('프롬프트 탭 2');
+            activeLeftTabId = globalTabs[0].id;
+            activeRightTabId = globalTabs[1].id;
+        }
+		const leftColumn = document.querySelector('.left-column');
+		const rightColumn = document.querySelector('.right-column');
+		switchToTab(leftColumn, activeLeftTabId);
+		switchToTab(rightColumn, activeRightTabId);
+		initializeColumnTabs(leftColumn);
+		initializeColumnTabs(rightColumn);
+        const mainMenuBtn = document.getElementById('main-menu-btn');
+        const mainMenuDropdown = document.getElementById('main-menu-dropdown');
+        if (mainMenuBtn && mainMenuDropdown) {
+            mainMenuBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                mainMenuDropdown.style.display = mainMenuDropdown.style.display === 'block' ? 'none' : 'block';
+            });
+            document.addEventListener('click', (event) => {
+                if (mainMenuDropdown.style.display === 'block' && !mainMenuBtn.contains(event.target) && !mainMenuDropdown.contains(event.target)) {
+                    mainMenuDropdown.style.display = 'none';
+                }
+            });
+            const tagFilterOptionsContainer = document.getElementById('tag-filter-options-menu');
+            if (tagFilterOptionsContainer) {
+                tagFilterOptionsContainer.querySelectorAll('input[type="checkbox"][data-category]').forEach(checkbox => {
+                    const categoryId = parseInt(checkbox.dataset.category, 10);
+                    checkbox.addEventListener('change', () => {
+                        activeTagCategories[categoryId] = checkbox.checked;
+						requestSave();
+                    });
+                    const labelText = checkbox.nextElementSibling;
+                    if (labelText) {
+                        labelText.addEventListener('click', () => { 
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change'));
+                        });
+                    }
+                });
+                const minPostCountInput = document.getElementById('min-post-count-filter-input');
+                if (minPostCountInput) {
+                    minPostCountInput.addEventListener('input', () => {
+                        const newVal = parseInt(minPostCountInput.value, 10);
+                        if (!isNaN(newVal) && newVal >= 0) {
+                            minPostCountForAutocomplete = newVal;
+                        } else if (minPostCountInput.value === "") {
+                             minPostCountForAutocomplete = 0; 
+                        }
+						requestSave();
+                    });
+                     minPostCountInput.addEventListener('change', () => { 
+                        if (isNaN(parseInt(minPostCountInput.value, 10)) || parseInt(minPostCountInput.value, 10) < 0) {
+                           minPostCountInput.value = minPostCountForAutocomplete; 
+                        }
+                     });
+                }
+            }
+        }
+        const exportBtn = document.getElementById('export-btn-menu');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', () => {
+                try {
+                    const state = getCurrentStateObject();
+                    const jsonString = JSON.stringify(state, null, 2); 
+                    const blob = new Blob([jsonString], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    const timestamp = new Date().toISOString().slice(0, 10); 
+                    a.download = `prompt-editor-export-${timestamp}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(a.href);
+                    mainMenuDropdown.style.display = 'none';
+                } catch (error) {
+                    alert('내보내기에 실패했습니다.');
+                    console.error('Export failed:', error);
+                }
+            });
+        }
+        const importInput = document.getElementById('import-tags-input-menu');
+		const importDictInput = document.getElementById('import-dict-input-menu');
+		if (importDictInput) {
+			importDictInput.addEventListener('change', (event) => {
+				const file = event.target.files[0];
+				if (!file) return;
+				const reader = new FileReader();
+				reader.onload = (e) => {
+					try {
+						const content = e.target.result;
+						tagDictionary = JSON.parse(content);
+						alert('태그 사전을 성공적으로 불러왔습니다.');
+						initializeTagDictionaryUI(); 
+					} catch (error) {
+						alert('잘못된 JSON 파일 형식입니다.');
+						console.error('Dictionary import failed:', error);
+					} finally {
+						importDictInput.value = '';
+						mainMenuDropdown.style.display = 'none';
+					}
+				};
+				reader.readAsText(file);
+			});
+		}
+        if (importInput) {
+            importInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                if (!confirm('현재 모든 작업 내용이 사라집니다. 파일을 불러오시겠습니까?')) {
+                    importInput.value = ''; 
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const content = e.target.result;
+                        JSON.parse(content); 
+                        localStorage.setItem('novelaiPromptEditorState', content);
+                        alert('불러오기 완료! 페이지를 새로고침합니다.');
+                        location.reload();
+                    } catch (error) {
+                        alert('잘못된 파일 형식입니다. 내보내기 기능으로 생성된 .json 파일만 사용할 수 있습니다.');
+                        console.error('Import failed:', error);
+                    } finally {
+                        importInput.value = ''; 
+                        mainMenuDropdown.style.display = 'none';
+                    }
+                };
+                reader.onerror = () => {
+                    alert('파일을 읽는 중 오류가 발생했습니다.');
+                    importInput.value = '';
+                };
+                reader.readAsText(file);
+            });
+        }
+        document.addEventListener('blur', (e) => {
+            if (e.target.matches('.prompt-title')) {
+                window.getSelection().removeAllRanges();
+            }
+        }, true); 
+		document.querySelectorAll('.tab-content-wrapper').forEach(wrapper => {
+			wrapper.addEventListener('mousedown', (e) => {
+				const target = e.target;
+				if (target.closest('.prompt-title') || target.closest('.tag') || target.closest('.tab-search-input')) {
+					return; 
+				}
+				e.preventDefault();
+			});
+		});
+		const howToUseBtn = document.getElementById('how-to-use-btn-menu');
+		if (howToUseBtn) {
+			howToUseBtn.addEventListener('click', () => {
+				alert('만든 고양이 : 회색냥이\n^ㅅ^');
+				mainMenuDropdown.style.display = 'none';
+			});
+		}
+    });
+	let saveTimeout;
+	function requestSave() {
+		clearTimeout(saveTimeout);
+		saveTimeout = setTimeout(saveState, 1000); 
+	}
+	function getCurrentStateObject() {
+		const state = {
+			globalTabs: globalTabs,
+			tabPanes: {},
+			activeLeftTabId: activeLeftTabId,
+			activeRightTabId: activeRightTabId,
+			nextTabId: nextTabId,
+			leftSortState: leftSortState,
+			rightSortState: rightSortState,
+			filterSettings: {
+				activeCategories: activeTagCategories,
+				minPostCount: minPostCountForAutocomplete
+			}
+		};
+		for (const tabId in tabPanes) {
+			const pane = tabPanes[tabId];
+			state.tabPanes[tabId] = {
+				promptWindows: Array.from(pane.querySelectorAll('.prompt-window')).map(pw => ({
+					title: pw.querySelector('.prompt-title').textContent,
+					tags: Array.from(pw.querySelectorAll('.prompt-editor .tag')).map(tag => tag.dataset.rawText || tag.textContent)
+				}))
+			};
+		}
+		return state;
+	}
+	function saveState() { 
+		try {
+			const state = getCurrentStateObject(); 
+			localStorage.setItem('novelaiPromptEditorState', JSON.stringify(state));
+			console.log("상태가 자동 저장되었습니다.");
+		} catch (error) {
+			console.error("상태 저장 실패:", error);
+		}
+	}
+	function saveState() {
+		try {
+			const state = {
+				globalTabs: globalTabs,
+				tabPanes: {},
+				activeLeftTabId: activeLeftTabId,
+				activeRightTabId: activeRightTabId,
+				nextTabId: nextTabId,
+				leftSortState: leftSortState,
+				rightSortState: rightSortState,
+				filterSettings: {
+					activeCategories: activeTagCategories,
+					minPostCount: minPostCountForAutocomplete
+				}
+			};
+			for (const tabId in tabPanes) {
+				const pane = tabPanes[tabId];
+				state.tabPanes[tabId] = {
+					promptWindows: Array.from(pane.querySelectorAll('.prompt-window')).map(pw => ({
+						title: pw.querySelector('.prompt-title').textContent,
+						tags: Array.from(pw.querySelectorAll('.prompt-editor .tag')).map(tag => tag.dataset.rawText || tag.textContent),
+                        isExcluded: pw.classList.contains('excluded') 
+					}))
+				};
+			}
+			localStorage.setItem('novelaiPromptEditorState', JSON.stringify(state));
+			console.log("상태가 자동 저장되었습니다.");
+		} catch (error) {
+			console.error("상태 저장 실패:", error);
+		}
+	}
+	function loadState() {
+		const savedStateJSON = localStorage.getItem('novelaiPromptEditorState');
+		if (!savedStateJSON) return false;
+		try {
+			const state = JSON.parse(savedStateJSON);
+			globalTabs = state.globalTabs || [];
+			nextTabId = state.nextTabId || 1;
+			activeLeftTabId = state.activeLeftTabId;
+			activeRightTabId = state.activeRightTabId;
+			leftSortState = state.leftSortState || { by: 'name', order: 'asc' };
+			rightSortState = state.rightSortState || { by: 'name', order: 'asc' };
+			if(state.filterSettings) {
+				activeTagCategories = state.filterSettings.activeCategories;
+				minPostCountForAutocomplete = state.filterSettings.minPostCount;
+				document.querySelectorAll('#tag-filter-options-menu input[type="checkbox"]').forEach(cb => {
+					cb.checked = activeTagCategories[cb.dataset.category] === true;
+				});
+				document.getElementById('min-post-count-filter-input').value = minPostCountForAutocomplete;
+			}
+			for (const tabId in state.tabPanes) {
+				const tabData = state.tabPanes[tabId];
+				const tabInfo = globalTabs.find(t => t.id === tabId);
+				const newPane = createNewTabPane(tabId, tabInfo ? tabInfo.name : '이름없는 탭');
+				const editorsContainer = newPane.querySelector('.prompt-editors-container');
+				editorsContainer.innerHTML = ''; 
+				tabData.promptWindows.forEach(pwData => {
+					const newWindow = document.createElement('div');
+					newWindow.className = 'prompt-window';
+					newWindow.innerHTML = `
+						<div class="prompt-title-bar">
+							<button class="toggle-include-btn" title="전체복사 포함/제외"><i class="fa-solid"></i></button>
+							<div class="prompt-title" contenteditable="true" spellcheck="false">${pwData.title}</div>
+							<div class="prompt-controls">
+								<button class="copy-prompt-btn" title="복사"><i class="fa-regular fa-clone"></i></button>
+								<button class="copy-to-other-column-btn" title="반대편으로 복사"><i class="fa-solid fa-arrow-right"></i></button>
+								<button class="move-up-btn" title="위로 이동"><i class="fa-solid fa-arrow-up"></i></button>
+								<button class="move-down-btn" title="아래로 이동"><i class="fa-solid fa-arrow-down"></i></button>
+								<button class="delete-editor-btn" title="삭제"><i class="fa-solid fa-xmark"></i></button>
+							</div>
+						</div>
+						<div class="drag-action-overlay"></div>
+						<div class="prompt-editor" tabindex="0"></div>`;
+					const editor = newWindow.querySelector('.prompt-editor');
+					pwData.tags.forEach(tagText => {
+						const tag = document.createElement('span');
+						tag.className = 'tag';
+						updateTag(tag, tagText);
+						tag.draggable = true;
+						editor.appendChild(tag);
+					});
+                    if (pwData.isExcluded) {
+                        newWindow.classList.add('excluded');
+                    }
+					editorsContainer.appendChild(newWindow);
+				});
+				newPane.querySelectorAll('.prompt-editor').forEach(editorEl => {
+					new PromptEditor(editorEl).checkDuplicates();
+				});
+				tabPanes[tabId] = newPane;
+			}
+			console.log("이전 상태를 불러왔습니다.");
+			return true;
+		} catch (error) {
+			console.error("상태 불러오기 실패:", error);
+			localStorage.removeItem('novelaiPromptEditorState'); 
+			return false;
+		}
+	}
+	let globalTabs = [];
+	let activeLeftTabId = null;
+	let activeRightTabId = null;
+	let nextTabId = 1;
+	let tabPanes = {};
+	let leftSortState = { by: 'name', order: 'asc' };
+	let rightSortState = { by: 'name', order: 'asc' };
+	function createNewTabPane(tabId, tabName) {
+		const newPane = document.createElement('div');
+		newPane.id = `pane-${tabId}`;
+		newPane.className = 'tab-pane panel';
+		newPane.style.display = 'none'; 
+		const initialPromptTitle = '새 프롬프트 1';
+		newPane.innerHTML = `
+			<div class="panel-toolbar">
+				<div class="toolbar-left-group">
+					<button class="add-editor-btn" title="프롬프트 창 추가"><i class="fa-solid fa-plus"></i></button>
+					<div class="toolbar-button-group">
+						<button class="undo-btn" title="실행 취소&#10;Ctrl+Z"><i class="fa-solid fa-rotate-left"></i></button>
+						<button class="redo-btn" title="다시 실행&#10;Ctrl+Shift+Z"><i class="fa-solid fa-rotate-right"></i></button>
+					</div>
+					<div class="toolbar-button-group">
+						<button class="edit-tag-btn" title="선택 태그 편집&#10;Enter"><i class="fa-solid fa-pencil"></i></button>
+						<button class="cut-tags-btn" title="잘라내기&#10;Ctrl+X"><i class="fa-solid fa-scissors"></i></button>
+						<button class="copy-tags-btn" title="복사&#10;Ctrl+C"><i class="fa-solid fa-copy"></i></button>
+						<button class="paste-tags-btn" title="붙여넣기&#10;Ctrl+V"><i class="fa-solid fa-paste"></i></button>
+						<button class="delete-tags-btn" title="삭제&#10;Delete"><i class="fa-solid fa-trash-can"></i></button>
+					</div>
+					<div class="weight-button-group">
+						<button class="weight-btn" data-change="0.1" title="가중치 +0.1&#10;Ctrl+]"><i class="fa-solid fa-chevron-up"></i></button>
+						<button class="weight-btn" data-change="-0.1" title="가중치 -0.1&#10;Ctrl+["><i class="fa-solid fa-chevron-down"></i></button>
+						<button class="weight-btn" data-change="1" title="가중치 +1.0&#10;Ctrl+="><i class="fa-solid fa-angles-up"></i></button>
+						<button class="weight-btn" data-change="-1" title="가중치 -1.0&#10;Ctrl+-"><i class="fa-solid fa-angles-down"></i></button>
+						<button class="remove-weight-btn" title="가중치 제거&#10;Ctrl+0"><i class="fa-solid fa-eraser"></i></button>
+					</div>
+				<div class="toolbar-button-group">
+					<button class="open-wiki-btn" title="위키 열기&#10;Ctrl+Enter"><i class="fa-solid fa-question"></i></button>
+				</div>
+				</div>
+				<div class="toolbar-right-group">
+					<button class="copy-all-btn">전체복사</button>
+				</div>
+			</div>
+			<div class="prompt-editors-container">
+				<div class="prompt-window">
+					<div class="prompt-title-bar">
+						<button class="toggle-include-btn" title="전체복사 포함/제외"><i class="fa-solid"></i></button>
+						<div class="prompt-title" contenteditable="true" spellcheck="false">${initialPromptTitle}</div>
+						<div class="prompt-controls">
+							<button class="copy-prompt-btn" title="복사"><i class="fa-regular fa-clone"></i></button>
+							<button class="copy-to-other-column-btn" title="반대편으로 복사"><i class="fa-solid fa-arrow-right"></i></button>
+							<button class="move-up-btn" title="위로 이동"><i class="fa-solid fa-arrow-up"></i></button>
+							<button class="move-down-btn" title="아래로 이동"><i class="fa-solid fa-arrow-down"></i></button>
+							<button class="delete-editor-btn" title="삭제"><i class="fa-solid fa-xmark"></i></button>
+						</div>
+					</div>
+					<div class="drag-action-overlay"></div>
+					<div class="prompt-editor" tabindex="0"></div>
+				</div>
+			</div>
+		`;
+		setupTabPane(newPane);
+		new PromptEditor(newPane.querySelector('.prompt-editor'));
+		return newPane;
+	}
+	function addNewTab(name, activateInColumn = null) {
+		const newTabId = `tab-${nextTabId++}`;
+		const newTabName = name || `프롬프트 탭 ${nextTabId - 1}`;
+		globalTabs.push({ id: newTabId, name: newTabName });
+		tabPanes[newTabId] = createNewTabPane(newTabId, newTabName);
+		updateAllSelectors();
+		if (activateInColumn) {
+			switchToTab(activateInColumn, newTabId);
+		}
+	}
+	function renderSelector(columnElement) {
+		const selectorList = columnElement.querySelector('.tab-selector-list');
+		selectorList.innerHTML = '';
+		const isLeft = columnElement.classList.contains('left-column');
+		const sortState = isLeft ? leftSortState : rightSortState;
+		const thisColumnActiveTabId = isLeft ? activeLeftTabId : activeRightTabId;
+		const otherColumnActiveTabId = isLeft ? activeRightTabId : activeLeftTabId;
+		const searchInput = isLeft ? document.getElementById('left-tab-search-input') : document.getElementById('right-tab-search-input');
+		const searchTerm = searchInput.value.trim().toLowerCase();
+		let filteredTabs = globalTabs.filter(tab => {
+			return tab.name.toLowerCase().includes(searchTerm);
+		});
+		let tabsToSort = filteredTabs.map(tab => {
+			const pane = tabPanes[tab.id];
+			return {
+				...tab, 
+				tagCount: pane ? pane.querySelectorAll('.tag').length : 0
+			};
+		});
+		tabsToSort.sort((a, b) => {
+			let comparison = 0;
+			if (sortState.by === 'name') {
+				comparison = a.name.localeCompare(b.name, 'ko-KR');
+			} else { 
+				comparison = a.tagCount - b.tagCount;
+			}
+			return sortState.order === 'asc' ? comparison : -comparison;
+		});
+		tabsToSort.forEach(tabInfo => {
+			const item = document.createElement('div');
+			item.className = 'tab-selector-item';
+			item.dataset.tabId = tabInfo.id;
+			if (tabInfo.id === thisColumnActiveTabId) {
+                item.classList.add('active-in-column');
+            }
+			const namePart = `<span class="tab-item-name-text">${tabInfo.name}</span>`;
+			const countPart = `<span class="tab-item-tag-count">[${tabInfo.tagCount}]</span>`;
+			let statusPart = '';
+			if (tabInfo.id === otherColumnActiveTabId) {
+				statusPart = ` <span class="tab-item-status-text">(사용 중)</span>`;
+				item.style.color = '#777';
+			}
+			item.innerHTML = `
+				<span class="tab-selector-item-name">
+					${namePart} ${countPart}${statusPart}
+				</span>
+				<div class="tab-selector-item-controls">
+					<button class="rename-tab-btn" title="이름 바꾸기"><i class="fa-solid fa-pencil"></i></button>
+					<button class="duplicate-tab-btn" title="복제"><i class="fa-solid fa-clone"></i></button>
+					<button class="delete-tab-btn" title="삭제"><i class="fa-solid fa-xmark"></i></button>
+				</div>
+			`;
+			selectorList.appendChild(item);
+		});
+	}
+	function updateAllSelectors() {
+		renderSelector(document.querySelector('.left-column'));
+		renderSelector(document.querySelector('.right-column'));
+	}
+	function switchToTab(columnElement, tabId) {
+		const isLeft = columnElement.classList.contains('left-column');
+		const otherColumnActiveTabId = isLeft ? activeRightTabId : activeLeftTabId;
+		if (tabId === otherColumnActiveTabId) {
+			return;
+		}
+		if (isLeft) {
+			activeLeftTabId = tabId;
+		} else {
+			activeRightTabId = tabId;
+		}
+		const contentWrapper = columnElement.querySelector('.tab-content-wrapper');
+		Array.from(contentWrapper.querySelectorAll('.tab-pane')).forEach(p => {
+			p.classList.remove('active');
+			p.style.display = 'none';
+		});
+		const targetPane = tabPanes[tabId];
+		const mainTabButton = columnElement.querySelector('.main-tab-btn');
+		const tabInfo = globalTabs.find(t => t.id === tabId);
+		if (targetPane && tabInfo) {
+			if (!contentWrapper.contains(targetPane)) {
+				contentWrapper.appendChild(targetPane);
+			}
+			targetPane.classList.add('active');
+			targetPane.style.display = 'flex';
+			mainTabButton.querySelector('.tab-button-text').textContent = tabInfo.name;
+			mainTabButton.dataset.tabTarget = `#pane-${tabId}`;
+			const copyBtns = targetPane.querySelectorAll('.copy-to-other-column-btn');
+			copyBtns.forEach(btn => {
+				btn.innerHTML = isLeft ? '<i class="fa-solid fa-arrow-right"></i>' : '<i class="fa-solid fa-arrow-left"></i>';
+				btn.title = '반대편으로 복사';
+			});
+		}
+		columnElement.classList.remove('selector-active', 'dictionary-active');
+		columnElement.querySelector('.panel').style.display = 'none'; 
+		const activePane = columnElement.querySelector('.tab-pane.active');
+		if (activePane) activePane.style.display = 'flex';
+		updateAllSelectors();
+	}
+	function initializeColumnTabs(columnElement) {
+		const isLeft = columnElement.classList.contains('left-column');
+		const tabListBtn = columnElement.querySelector('.tab-list-btn');
+		const mainTabButton = columnElement.querySelector('.main-tab-btn');
+		const dictToggleBtn = columnElement.querySelector('.dict-toggle-btn');
+		const selectorPanel = columnElement.querySelector('.panel');
+		const contentWrapper = columnElement.querySelector('.tab-content-wrapper');
+		const closeActiveDictionary = () => {
+			if (!activeDictionaryColumn) return; 
+			const previouslyActiveColumn = activeDictionaryColumn;
+			const dictPanel = document.getElementById('tag-dictionary-panel');
+			previouslyActiveColumn.classList.remove('dictionary-active');
+			document.body.appendChild(dictPanel);
+			dictPanel.style.display = 'none';
+			const activePane = previouslyActiveColumn.querySelector('.tab-pane.active');
+			if (activePane) {
+				activePane.style.display = 'flex';
+			}
+			activeDictionaryColumn = null;
+		};
+		const showView = (viewName) => {
+			const dictPanel = document.getElementById('tag-dictionary-panel');
+			if (viewName === 'dictionary') {
+				if (activeDictionaryColumn && activeDictionaryColumn !== columnElement) {
+					closeActiveDictionary();
+				}
+			} else {
+				if (columnElement.classList.contains('dictionary-active')) {
+					closeActiveDictionary();
+				}
+			}
+			columnElement.classList.remove('selector-active', 'dictionary-active');
+			selectorPanel.style.display = 'none';
+			columnElement.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+			switch(viewName) {
+				case 'selector':
+					renderSelector(columnElement);
+					selectorPanel.style.display = 'flex';
+					columnElement.classList.add('selector-active');
+					break;
+				case 'dictionary':
+					contentWrapper.appendChild(dictPanel);
+					dictPanel.style.display = 'flex';
+					columnElement.classList.add('dictionary-active');
+					activeDictionaryColumn = columnElement;
+					break;
+				case 'prompt':
+				default:
+					const activePane = columnElement.querySelector('.tab-pane.active');
+					if (activePane) activePane.style.display = 'flex';
+					break;
+			}
+		};
+		tabListBtn.addEventListener('click', () => showView('selector'));
+		mainTabButton.addEventListener('click', () => showView('prompt'));
+		dictToggleBtn.addEventListener('click', () => showView('dictionary'));
+		const selectorList = columnElement.querySelector('.tab-selector-list');
+		const addTabBtn = columnElement.querySelector('.add-left-tab-btn, .add-right-tab-btn');
+		const sortDisplayBtn = columnElement.querySelector('.sort-display-btn');
+		const sortOptionsBtn = columnElement.querySelector('.sort-options-btn');
+		const sortDropdown = columnElement.querySelector('.sort-dropdown-menu');
+		function updateSortDisplay() {
+			const sortState = isLeft ? leftSortState : rightSortState;
+			const sortByName = sortState.by === 'name' ? '이름' : '태그 수';
+			const sortOrderArrow = sortState.order === 'asc' ? '▲' : '▼';
+			sortDisplayBtn.textContent = `${sortByName}${sortOrderArrow}`;
+		}
+		sortDisplayBtn.addEventListener('click', () => {
+			const sortState = isLeft ? leftSortState : rightSortState;
+			sortState.order = sortState.order === 'asc' ? 'desc' : 'asc';
+			updateSortDisplay();
+			renderSelector(columnElement);
+			requestSave();
+		});
+		sortOptionsBtn.addEventListener('click', (e) => {
+			e.stopPropagation();
+			sortDropdown.style.display = sortDropdown.style.display === 'block' ? 'none' : 'block';
+		});
+		document.addEventListener('click', (e) => {
+			if (!sortOptionsBtn.contains(e.target) && !sortDropdown.contains(e.target)) {
+				sortDropdown.style.display = 'none';
+			}
+		});
+		sortDropdown.addEventListener('click', (e) => {
+			if (e.target.tagName === 'BUTTON') {
+				const sortBy = e.target.dataset.sortBy;
+				const sortState = isLeft ? leftSortState : rightSortState;
+				sortState.by = sortBy;
+				sortState.order = 'asc';
+				updateSortDisplay();
+				renderSelector(columnElement);
+				sortDropdown.style.display = 'none';
+				requestSave();
+			}
+		});
+		updateSortDisplay();
+		const searchInput = isLeft ? document.getElementById('left-tab-search-input') : document.getElementById('right-tab-search-input');
+		searchInput.addEventListener('input', () => renderSelector(columnElement));
+		searchInput.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				searchInput.value = '';
+				renderSelector(columnElement);
+			}
+		});
+		addTabBtn.addEventListener('click', () => {
+			addNewTab(null, columnElement);
+			requestSave();
+		});
+		selectorList.addEventListener('click', (e) => {
+			const item = e.target.closest('.tab-selector-item');
+			if (!item) return;
+			const tabId = item.dataset.tabId;
+			const tabInfo = globalTabs.find(t => t.id === tabId);
+			if (e.target.closest('.rename-tab-btn')) {
+				const newName = prompt('새 탭 이름을 입력하세요:', tabInfo.name);
+				if (newName && newName.trim() !== '') {
+					tabInfo.name = newName.trim();
+					if (activeLeftTabId === tabId) {
+						document.querySelector('.left-column .tab-button-text').textContent = newName;
+					}
+					if (activeRightTabId === tabId) {
+						document.querySelector('.right-column .tab-button-text').textContent = newName;
+					}
+					updateAllSelectors();
+					requestSave();
+				}
+			} else if (e.target.closest('.duplicate-tab-btn')) {
+				const sourcePane = tabPanes[tabId];
+				if (!sourcePane) return;
+				let baseName = `${tabInfo.name} - 복사본`;
+				let newTabName = baseName;
+				let counter = 2;
+				while (globalTabs.some(t => t.name === newTabName)) {
+					newTabName = `${baseName} (${counter++})`;
+				}
+				const newTabId = `tab-${nextTabId++}`;
+				const newPane = sourcePane.cloneNode(true);
+				newPane.id = `pane-${newTabId}`;
+				setupTabPane(newPane); 
+				newPane.querySelectorAll('.prompt-editor').forEach(editorEl => {
+					new PromptEditor(editorEl);
+				});
+				globalTabs.push({ id: newTabId, name: newTabName });
+				tabPanes[newTabId] = newPane;
+				updateAllSelectors();
+				requestSave();
+			} else if (e.target.closest('.delete-tab-btn')) {
+				if (globalTabs.length <= 1) {
+					alert('마지막 탭은 삭제할 수 없습니다.');
+					return;
+				}
+				if (confirm(`'${tabInfo.name}' 탭을 삭제하시겠습니까?`)) {
+					globalTabs = globalTabs.filter(t => t.id !== tabId);
+					if (tabPanes[tabId]) {
+						tabPanes[tabId].remove();
+						delete tabPanes[tabId];
+					}
+					const leftColumnEl = document.querySelector('.left-column');
+					const rightColumnEl = document.querySelector('.right-column');
+					if (activeLeftTabId === tabId) {
+						const fallbackTab = globalTabs.find(t => t.id !== activeRightTabId) || globalTabs[0];
+						switchToTab(leftColumnEl, fallbackTab.id);
+					}
+					if (activeRightTabId === tabId) {
+						const fallbackTab = globalTabs.find(t => t.id !== activeLeftTabId) || globalTabs[0];
+						switchToTab(rightColumnEl, fallbackTab.id);
+					}
+					updateAllSelectors();
+					requestSave(); 
+				}
+			} else {
+				switchToTab(columnElement, tabId);
+				requestSave(); 
+			}
+		});
+	}
+function initializeTagDictionaryUI() {
+    const topCategoriesContainer = document.getElementById('dict-top-categories');
+    if (!topCategoriesContainer) return;
+    topCategoriesContainer.innerHTML = '';
+    document.getElementById('dict-sub-categories').innerHTML = '';
+    document.getElementById('dict-tag-list').innerHTML = '';
+    const topCategories = Object.keys(tagDictionary);
+    topCategories.forEach(catName => {
+        const btn = document.createElement('button');
+        btn.className = 'dict-category-btn';
+        btn.textContent = catName;
+        btn.addEventListener('click', () => {
+            topCategoriesContainer.querySelector('.active')?.classList.remove('active');
+            btn.classList.add('active');
+            renderSubCategories(catName);
+            renderTagList(catName, null); 
+        });
+        topCategoriesContainer.appendChild(btn);
+    });
+}
+function renderSubCategories(topCategory) {
+    const subCategoriesContainer = document.getElementById('dict-sub-categories');
+    subCategoriesContainer.innerHTML = '';
+    const subCategories = Object.keys(tagDictionary[topCategory]);
+    subCategories.forEach(subCatName => {
+        const btn = document.createElement('button');
+        btn.className = 'dict-category-btn';
+        btn.textContent = subCatName;
+        btn.addEventListener('click', () => {
+            subCategoriesContainer.querySelector('.active')?.classList.remove('active');
+            btn.classList.add('active');
+            renderTagList(topCategory, subCatName); 
+        });
+        subCategoriesContainer.appendChild(btn);
+    });
+}
+function renderTagList(topCategory, subCategory) {
+    const tagListContainer = document.getElementById('dict-tag-list');
+    tagListContainer.innerHTML = '';
+    let tagsToShow = {};
+    if (subCategory) {
+        tagsToShow = tagDictionary[topCategory][subCategory];
+    } else {
+        Object.values(tagDictionary[topCategory]).forEach(subCatTags => {
+            Object.assign(tagsToShow, subCatTags);
+        });
+    }
+    const sortedTags = Object.entries(tagsToShow).sort((a, b) => a[0].localeCompare(b[0]));
+    sortedTags.forEach(([tag, translation]) => {
+        const item = document.createElement('div');
+        item.className = 'dict-tag-item';
+        item.draggable = true; 
+        item.dataset.tagName = tag; 
+        item.innerHTML = `<span class="tag-en">${tag}</span><span class="tag-ko">${translation}</span>`;
+        item.addEventListener('click', (e) => {
+            if (e.ctrlKey) {
+                navigator.clipboard.writeText(item.dataset.tagName).then(() => {
+                    item.style.backgroundColor = 'var(--highlight-color)';
+                    setTimeout(() => { item.style.backgroundColor = ''; }, 200);
+                });
+                return; 
+            }
+            if (!activeDictionaryColumn) return;
+            const isLeft = activeDictionaryColumn.classList.contains('left-column');
+            const targetColumnSelector = isLeft ? '.right-column' : '.left-column';
+            const targetColumn = document.querySelector(targetColumnSelector);
+            if (!targetColumn) return;
+            const focusedWindow = targetColumn.querySelector('.prompt-window:focus-within');
+            if (!focusedWindow) {
+                alert('태그를 추가할 프롬프트 창을 선택해주세요.');
+                return;
+            }
+            const targetEditor = focusedWindow.querySelector('.prompt-editor').promptEditorInstance;
+            if (!targetEditor) {
+                console.error("해당 프롬프트 창의 에디터 인스턴스를 찾을 수 없습니다.");
+                return;
+            }
+            const newTag = document.createElement('span');
+            newTag.className = 'tag';
+            updateTag(newTag, item.dataset.tagName); 
+            newTag.draggable = true;
+            const insertBeforeElement = (targetEditor.lastSelectedTag) 
+                ? targetEditor.lastSelectedTag.nextElementSibling 
+                : null;
+            const command = new CreateTagsCommand(targetEditor, newTag, insertBeforeElement);
+            targetEditor.history.execute(command);
+        });
+        item.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', item.dataset.tagName);
+            e.dataTransfer.effectAllowed = 'copy';
+        });
+        tagListContainer.appendChild(item);
+    });
+}
+    </script>
+</body>
+</html>

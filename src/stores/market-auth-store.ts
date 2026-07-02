@@ -21,6 +21,8 @@ interface MarketAuthState {
 
 let cancelResolver: (() => void) | null = null
 let deepLinkUnlisten: (() => void) | null = null
+let initialized = false
+let authUnsubscribe: (() => void) | null = null
 
 async function loadProfile(userId: string): Promise<Profile | null> {
     try {
@@ -76,24 +78,38 @@ export const useMarketAuthStore = create<MarketAuthState>((set) => ({
     signingIn: false,
 
     init: async () => {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user) {
-            set({ user: { id: session.user.id, email: session.user.email }, loading: false })
-            loadProfile(session.user.id).then(profile => set({ profile }))
-        } else {
-            set({ user: null, profile: null, loading: false })
-        }
+        if (initialized) return
+        initialized = true
 
-        // CRITICAL: onAuthStateChange callback must NOT be async — Supabase
-        // awaits all subscribers, causing deadlocks with async DB queries.
-        supabase.auth.onAuthStateChange((_event, session) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession()
             if (session?.user) {
-                set({ user: { id: session.user.id, email: session.user.email } })
+                set({ user: { id: session.user.id, email: session.user.email }, loading: false })
                 loadProfile(session.user.id).then(profile => set({ profile }))
             } else {
-                set({ user: null, profile: null })
+                set({ user: null, profile: null, loading: false })
             }
-        })
+
+            // CRITICAL: onAuthStateChange callback must NOT be async — Supabase
+            // awaits all subscribers, causing deadlocks with async DB queries.
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+                if (session?.user) {
+                    set({ user: { id: session.user.id, email: session.user.email } })
+                    loadProfile(session.user.id).then(profile => set({ profile }))
+                } else {
+                    set({ user: null, profile: null })
+                }
+            })
+            authUnsubscribe = () => subscription.unsubscribe()
+        } catch (error) {
+            initialized = false
+            if (authUnsubscribe) {
+                authUnsubscribe()
+                authUnsubscribe = null
+            }
+            set({ loading: false })
+            throw error
+        }
     },
 
     signInWithDiscord: async () => {

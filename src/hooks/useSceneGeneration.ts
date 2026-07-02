@@ -5,13 +5,14 @@ import { useSceneStore, type SceneCard } from '@/stores/scene-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAuthStore, type ApiSlot } from '@/stores/auth-store'
-import { generateImage, generateImageStream } from '@/services/novelai-api'
+import { generateImage, generateImageStream, NovelAIHttpError } from '@/services/novelai-api'
 import { useCharacterStore } from '@/stores/character-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
 import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
+import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 
-let activeSceneWorkerCount = 0
+const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
 let releasedImageDataSessionId: number | null = null
 
@@ -23,6 +24,15 @@ interface SceneWorkerContext {
     savePath: string
     streamingView: boolean
     t: Translate
+    rotationCharacterId?: string
+    rotationCharacterFolderName?: string
+}
+
+type SceneProcessStatus = 'success' | 'retryable' | 'fatal' | 'cancelled'
+
+interface SceneProcessResult {
+    status: SceneProcessStatus
+    reason?: string
 }
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -36,73 +46,134 @@ function shouldStopForSession(sessionId: number): boolean {
     return !isSessionAlive(sessionId)
 }
 
+function incrementActiveSceneWorkerCount(sessionId: number): void {
+    activeSceneWorkerCounts.set(sessionId, (activeSceneWorkerCounts.get(sessionId) ?? 0) + 1)
+}
+
+function decrementActiveSceneWorkerCount(sessionId: number): void {
+    const nextCount = (activeSceneWorkerCounts.get(sessionId) ?? 0) - 1
+    if (nextCount > 0) {
+        activeSceneWorkerCounts.set(sessionId, nextCount)
+    } else {
+        activeSceneWorkerCounts.delete(sessionId)
+    }
+}
+
+function hasActiveSceneWorkers(): boolean {
+    return activeSceneWorkerCounts.size > 0
+}
+
 function releaseImageDataOnce(sessionId: number): void {
     if (releasedImageDataSessionId === sessionId) return
     releasedImageDataSessionId = sessionId
     useCharacterStore.getState().releaseImageData()
 }
 
-async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCard, ctx: SceneWorkerContext): Promise<boolean> {
-    if (!isSessionAlive(ctx.sessionId)) return false
+function isRetryableReason(reason: string): boolean {
+    const normalized = reason.toLowerCase()
+    return normalized.includes('429')
+        || normalized.includes('too many requests')
+        || normalized.includes('rate limit')
+        || /api (?:error|오류)[^\d]*(5\d\d)/i.test(reason)
+        || /\((5\d\d)\)/.test(reason)
+}
+
+function classifyProcessError(error: unknown): SceneProcessResult {
+    if (error instanceof NovelAIHttpError) {
+        return {
+            status: error.retryable ? 'retryable' : 'fatal',
+            reason: error.message,
+        }
+    }
+
+    const reason = error instanceof Error ? error.message : String(error)
+    const normalized = reason.toLowerCase()
+    if (normalized.includes('abort') || reason.includes('요청이 취소')) {
+        return { status: 'cancelled', reason }
+    }
+
+    return {
+        status: isRetryableReason(reason) ? 'retryable' : 'fatal',
+        reason,
+    }
+}
+
+function reportSceneFailure(slot: ApiSlot, result: SceneProcessResult, ctx: SceneWorkerContext): void {
+    const reason = result.reason || 'Generation failed'
+    console.error(`[Scene Worker slot ${slot}] generation ${result.status}:`, reason)
+
+    if (result.status === 'fatal') {
+        toast({ title: ctx.t('common.error', '오류'), description: reason, variant: 'destructive' })
+    }
+}
+
+async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCard, ctx: SceneWorkerContext): Promise<SceneProcessResult> {
+    if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
     useSceneStore.getState().setStreamingData(scene.id, null, 0)
 
-    const { params, finalPrompt, mimeType } = await buildSceneGenerationParams(scene)
-    if (!isSessionAlive(ctx.sessionId)) return false
+    try {
+        const { params, finalPrompt, mimeType } = await buildSceneGenerationParams(scene)
+        if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
-    // Streaming renders a single shared preview, so startWorkers limits the
-    // session to one worker whenever this flag is true.
-    const canUseStreaming = ctx.streamingView
-    const streamMimeType = params.imageFormat === 'webp' ? 'image/webp' : 'image/png'
-    const result = canUseStreaming
-        ? await generateImageStream(token, params, (progress, image) => {
-            if (!isSessionAlive(ctx.sessionId)) return
-            if (image) {
-                useSceneStore.getState().setStreamingData(scene.id, `data:${streamMimeType};base64,${image}`, progress / 100)
-            } else {
-                useSceneStore.getState().setStreamingData(scene.id, null, progress / 100)
-            }
+        // Streaming renders a single shared preview, so startWorkers limits the
+        // session to one worker whenever this flag is true.
+        const canUseStreaming = ctx.streamingView
+        const streamMimeType = params.imageFormat === 'webp' ? 'image/webp' : 'image/png'
+        const result = canUseStreaming
+            ? await generateImageStream(token, params, (progress, image) => {
+                if (!isSessionAlive(ctx.sessionId)) return
+                if (image) {
+                    useSceneStore.getState().setStreamingData(scene.id, `data:${streamMimeType};base64,${image}`, progress / 100)
+                } else {
+                    useSceneStore.getState().setStreamingData(scene.id, null, progress / 100)
+                }
+            })
+            : await generateImage(token, params)
+
+        if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
+
+        if (!result.success || !result.imageData) {
+            const failure = classifyProcessError(result.error || 'Generation failed')
+            reportSceneFailure(slot, failure, ctx)
+            return failure
+        }
+
+        if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
+
+        const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
+            canSave: () => isSessionAlive(ctx.sessionId),
         })
-        : await generateImage(token, params)
+        if (!saved || !isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
-    if (!isSessionAlive(ctx.sessionId)) return false
+        useAuthStore.getState().refreshAnlas(slot)
 
-    if (!result.success || !result.imageData) {
-        console.error(`[Scene Worker slot ${slot}] generation failed:`, result.error)
-        toast({ title: ctx.t('common.error', '오류'), description: result.error || 'Generation failed', variant: 'destructive' })
-        return false
+        const currentState = useSceneStore.getState()
+        currentState.setGenerationProgress(currentState.completedCount + 1, currentState.totalQueuedCount)
+        return { status: 'success' }
+    } catch (error) {
+        const failure = classifyProcessError(error)
+        reportSceneFailure(slot, failure, ctx)
+        return failure
     }
-
-    if (!isSessionAlive(ctx.sessionId)) return false
-
-    const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
-        canSave: () => isSessionAlive(ctx.sessionId),
-    })
-    if (!saved || !isSessionAlive(ctx.sessionId)) return false
-
-    useAuthStore.getState().refreshAnlas(slot)
-
-    const currentState = useSceneStore.getState()
-    currentState.setGenerationProgress(currentState.completedCount + 1, currentState.totalQueuedCount)
-    return true
 }
 
 function finalizeWorkers(ctx: SceneWorkerContext): void {
-    if (activeSceneWorkerCount !== 0) return
+    if ((activeSceneWorkerCounts.get(ctx.sessionId) ?? 0) !== 0) return
 
     const sceneStore = useSceneStore.getState()
     const sessionMatches = sceneStore.generationSessionId === ctx.sessionId
     const wasCancelling = sceneStore.isCancelling
-    const queueRemaining = sceneStore.getQueuedScenes(ctx.activePresetId).length
-
-    sceneStore.setStreamingData(null, null, 0)
-    useGenerationStore.getState().setGeneratingMode(null)
-    releaseImageDataOnce(ctx.sessionId)
 
     if (!sessionMatches && !wasCancelling) {
         return
     }
 
+    const queueRemaining = sceneStore.getQueuedScenes(ctx.activePresetId).length
+
+    sceneStore.setStreamingData(null, null, 0)
+    useGenerationStore.getState().setGeneratingMode(null)
+    releaseImageDataOnce(ctx.sessionId)
     sceneStore.setIsGenerating(false)
 
     if (queueRemaining === 0) {
@@ -118,7 +189,7 @@ function finalizeWorkers(ctx: SceneWorkerContext): void {
 }
 
 async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext): Promise<void> {
-    activeSceneWorkerCount++
+    incrementActiveSceneWorkerCount(ctx.sessionId)
     try {
         while (true) {
             if (shouldStopForSession(ctx.sessionId)) return
@@ -127,26 +198,23 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
             const scene = useSceneStore.getState().decrementFirstQueuedScene(ctx.activePresetId)
             if (!scene) return
 
-            let shouldRetryScene = true
-            while (shouldRetryScene) {
-                shouldRetryScene = false
-                try {
-                    await processSceneWithSlot(slot, token, scene, ctx)
-                } catch (error) {
-                    const errorMessage = String(error)
-                    console.error(`[Scene Worker slot ${slot}] process error:`, error)
-                    useSceneStore.getState().setStreamingData(null, null, 0)
+            const result = await processSceneWithSlot(slot, token, scene, ctx)
+            if (result.status === 'cancelled') return
 
-                    if (errorMessage.includes('429') || errorMessage.toLowerCase().includes('too many requests')) {
-                        await sleep(3000)
-                        shouldRetryScene = isSessionAlive(ctx.sessionId) && useAuthStore.getState().isSlotActive(slot)
-                        continue
-                    }
+            if (result.status === 'retryable' || result.status === 'fatal') {
+                useSceneStore.getState().setStreamingData(null, null, 0)
 
-                    toast({ title: ctx.t('common.error', '오류'), description: errorMessage, variant: 'destructive' })
-                    useSceneStore.getState().setIsGenerating(false)
-                    return
+                if (isSessionAlive(ctx.sessionId)) {
+                    useSceneStore.getState().incrementQueue(ctx.activePresetId, scene.id)
                 }
+
+                if (result.status === 'retryable' && isSessionAlive(ctx.sessionId) && useAuthStore.getState().isSlotActive(slot)) {
+                    await sleep(3000)
+                    continue
+                }
+
+                useSceneStore.getState().setIsGenerating(false)
+                return
             }
 
             useSceneStore.getState().setStreamingData(null, null, 0)
@@ -161,7 +229,7 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
             }
         }
     } finally {
-        activeSceneWorkerCount--
+        decrementActiveSceneWorkerCount(ctx.sessionId)
         finalizeWorkers(ctx)
     }
 }
@@ -231,12 +299,19 @@ export function useSceneGeneration() {
                 useGenerationStore.getState().setGeneratingMode('scene')
             }
 
+            const rotation = useRotationStore.getState()
+            const rotationCharacterId = rotation.active && rotation.snapshot
+                ? rotation.characterIds[rotation.currentIndex]
+                : undefined
+
             const ctx: SceneWorkerContext = {
                 activePresetId,
                 sessionId: generationSessionId,
                 savePath,
                 streamingView,
                 t,
+                rotationCharacterId,
+                rotationCharacterFolderName: getRotationCharacterFolderName(rotationCharacterId, rotation.currentIndex) ?? undefined,
             }
 
             const workerTokens = streamingView ? tokens.slice(0, 1) : tokens
@@ -272,7 +347,7 @@ export function useSceneGeneration() {
     ])
 
     useEffect(() => {
-        if (!isGenerating && activeSceneWorkerCount === 0) {
+        if (!isGenerating && !hasActiveSceneWorkers()) {
             runningSceneSlots.clear()
         }
     }, [isGenerating])

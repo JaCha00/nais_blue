@@ -1,0 +1,78 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "NAIS2",
+  "version": "2.7.2",
+  "identifier": "com.sunakgo.nais2",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:9090",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "NAIS2 - NovelAI Image Studio",
+        "width": 1600,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**", "$HOME/**", "$PICTURE/**", "$DESKTOP/**", "$DOWNLOAD/**", "$DOCUMENT/**", "$APPDATA/**", "$LOCALAPPDATA/**", "C:/**", "D:/**", "E:/**", "F:/**", "G:/**", "H:/**"]
+      }
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/sunanakgo/NAIS2/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM0NDgxN0Q3MTUyMjQxOTYKUldTV1FTSVYxeGRJeEZpdWFOMlU0K2MvK3QvZHJnbVBtYUY5R1hXVHFsUHRpWFRmU1ZsZW53b0oK"
+    },
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["nais2"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "msi",
+      "dmg",
+      "app"
+    ],
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "entitlements": null,
+      "exceptionDomain": null
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    }
+  }
+}

@@ -17,7 +17,7 @@ import {
     ContextMenuTrigger,
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
-import { Command } from '@tauri-apps/plugin-shell'
+import { openPath } from '@tauri-apps/plugin-opener'
 import { save } from '@tauri-apps/plugin-dialog'
 import { pictureDir, join } from '@tauri-apps/api/path'
 import { writeFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
@@ -267,8 +267,7 @@ export default function MainMode() {
                 await mkdir(folderPath, { recursive: true })
             }
 
-            // Use explorer to enter the directory
-            await Command.create('explorer', [folderPath]).execute()
+            await openPath(folderPath)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

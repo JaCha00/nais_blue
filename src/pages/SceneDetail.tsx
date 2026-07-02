@@ -25,15 +25,50 @@ import { cn } from '@/lib/utils'
 import { useSceneStore, SceneImage } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
-import { Command } from '@tauri-apps/plugin-shell'
+import { openPath } from '@tauri-apps/plugin-opener'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { pictureDir, join } from '@tauri-apps/api/path'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { exists, readFile, remove } from '@tauri-apps/plugin-fs'
+import { exists, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from '@/components/ui/use-toast'
+import { sanitizePathComponent } from '@/lib/scene-output-path'
+
+const getParentDirectoryPath = (path: string): string | null => {
+    if (!path || path.startsWith('data:')) return null
+    const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+    return lastSlash > 0 ? path.slice(0, lastSlash) : null
+}
+
+const getLatestSceneImageParentPath = (images: SceneImage[]): string | null => {
+    const latestImage = [...images]
+        .filter(image => image.url && !image.url.startsWith('data:'))
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))[0]
+
+    return latestImage ? getParentDirectoryPath(latestImage.url) : null
+}
+
+async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: string): Promise<string | null> {
+    const directPath = await join(presetPath, safeSceneName)
+    if (await exists(directPath)) return directPath
+
+    if (!(await exists(presetPath))) return null
+
+    try {
+        const characterFolders = await readDir(presetPath)
+        for (const entry of characterFolders) {
+            if (!entry.isDirectory) continue
+            const rotationScenePath = await join(presetPath, entry.name, safeSceneName)
+            if (await exists(rotationScenePath)) return rotationScenePath
+        }
+    } catch (error) {
+        console.warn('Failed to scan rotation scene folders:', error)
+    }
+
+    return null
+}
 
 export default function SceneDetail() {
     const { id: sceneId } = useParams()
@@ -245,54 +280,34 @@ export default function SceneDetail() {
         try {
             if (!scene) return
 
-            // Get preset name for folder structure
-            const currentPreset = useSceneStore.getState().presets.find(p => p.id === activePresetId)
-            const safePresetName = (currentPreset?.name || 'Default').replace(/[<>:"/\\|?*]/g, '_').trim()
-            // Sanitize scene name for folder name - MUST match useSceneGeneration.ts logic
-            const safeSceneName = scene.name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled_Scene'
-
-            const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            let folderPath: string
-
-            if (useAbsolutePath && savePath) {
-                // Absolute path: savePath/NAIS_Scene/<PresetName>/<SceneName>
-                folderPath = await join(savePath, 'NAIS_Scene', safePresetName, safeSceneName)
-
-                if (!(await exists(folderPath))) {
-                    // Try parent folder (preset folder)
-                    const presetPath = await join(savePath, 'NAIS_Scene', safePresetName)
-                    if (await exists(presetPath)) {
-                        await Command.create('explorer', [presetPath]).execute()
-                    } else {
-                        // Try NAIS_Scene folder
-                        const naisPath = await join(savePath, 'NAIS_Scene')
-                        if (await exists(naisPath)) {
-                            await Command.create('explorer', [naisPath]).execute()
-                        }
-                    }
-                    return
-                }
-            } else {
-                // Relative path: Pictures/NAIS_Scene/<PresetName>/<SceneName>
-                const picDir = await pictureDir()
-                folderPath = await join(picDir, 'NAIS_Scene', safePresetName, safeSceneName)
-
-                if (!(await exists(folderPath))) {
-                    const presetPath = await join(picDir, 'NAIS_Scene', safePresetName)
-                    if (await exists(presetPath)) {
-                        await Command.create('explorer', [presetPath]).execute()
-                    } else {
-                        const parentPath = await join(picDir, 'NAIS_Scene')
-                        if (await exists(parentPath)) {
-                            await Command.create('explorer', [parentPath]).execute()
-                        }
-                    }
-                    return
-                }
+            const latestImageParent = getLatestSceneImageParentPath(scene.images)
+            if (latestImageParent && await exists(latestImageParent)) {
+                await openPath(latestImageParent)
+                return
             }
 
-            // Open folder in explorer
-            await Command.create('explorer', [folderPath]).execute()
+            const currentPreset = useSceneStore.getState().presets.find(p => p.id === activePresetId)
+            const safePresetName = sanitizePathComponent(currentPreset?.name || 'Default', 'Default')
+            const safeSceneName = sanitizePathComponent(scene.name || 'Untitled_Scene', 'Untitled_Scene')
+            const { savePath, useAbsolutePath } = useSettingsStore.getState()
+            const basePath = useAbsolutePath && savePath ? savePath : await pictureDir()
+            const sceneRootPath = await join(basePath, 'NAIS_Scene')
+            const presetPath = await join(sceneRootPath, safePresetName)
+            const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
+
+            if (folderPath) {
+                await openPath(folderPath)
+                return
+            }
+
+            if (await exists(presetPath)) {
+                await openPath(presetPath)
+                return
+            }
+
+            if (await exists(sceneRootPath)) {
+                await openPath(sceneRootPath)
+            }
         } catch (error) {
             console.error("Failed to open folder:", error)
         }

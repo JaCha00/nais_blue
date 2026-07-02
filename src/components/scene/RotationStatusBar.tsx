@@ -29,6 +29,7 @@ export function RotationStatusBar() {
     const repeats = useRotationStore(state => state.repeats)
     const resume = useRotationStore(state => state.resume)
     const stop = useRotationStore(state => state.stop)
+    const cancel = useRotationStore(state => state.cancel)
     const endRest = useRotationStore(state => state.endRest)
     const resumeSavedSession = useRotationStore(state => state.resumeSavedSession)
     const discardSavedSession = useRotationStore(state => state.discardSavedSession)
@@ -59,6 +60,32 @@ export function RotationStatusBar() {
         } else {
             toast({ title: '로테이션 재개', variant: 'success' })
         }
+    }
+
+    const handleStopKeepingSnapshot = () => {
+        stop({ reason: 'status bar stop', keepSnapshot: true })
+        toast({
+            title: '로테이션 중단',
+            description: '현재 위치를 저장했습니다. 나중에 이어서 생성할 수 있습니다.',
+        })
+    }
+
+    const handleCancelRotation = () => {
+        cancel('status bar cancel')
+        toast({
+            title: '로테이션 완전 취소',
+            description: '저장된 세션과 진행 상태를 삭제했습니다.',
+            variant: 'destructive',
+        })
+    }
+
+    const handleDiscardSavedSession = () => {
+        discardSavedSession()
+        toast({
+            title: '저장된 세션 완전 취소',
+            description: '이어가기 상태를 삭제했습니다.',
+            variant: 'destructive',
+        })
     }
 
     return (
@@ -116,8 +143,9 @@ export function RotationStatusBar() {
                             <Play className="mr-1 h-3.5 w-3.5" />
                             이어서 시작
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={discardSavedSession} title="저장된 세션 삭제">
+                        <Button size="sm" variant="ghost" onClick={handleDiscardSavedSession} title="저장된 세션 완전 취소">
                             <X className="h-4 w-4" />
+                            완전 취소
                         </Button>
                     </>
                 ) : (
@@ -134,9 +162,13 @@ export function RotationStatusBar() {
                                 재개
                             </Button>
                         )}
-                        <Button size="sm" variant="destructive" onClick={() => stop('status bar stop')}>
+                        <Button size="sm" variant="outline" onClick={handleStopKeepingSnapshot}>
                             <StopIcon className="mr-1 h-3.5 w-3.5" />
-                            중단
+                            중단하고 나중에 이어서
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={handleCancelRotation}>
+                            <X className="mr-1 h-3.5 w-3.5" />
+                            완전 취소
                         </Button>
                     </>
                 )}

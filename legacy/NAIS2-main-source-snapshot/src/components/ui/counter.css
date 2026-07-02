@@ -1,0 +1,90 @@
+.counter-container {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: hsl(var(--muted) / 0.5);
+    border-radius: 0.5rem;
+    padding: 0.25rem;
+}
+
+.counter-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.375rem;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.counter-button:hover:not(:disabled) {
+    background: hsl(var(--accent));
+}
+
+.counter-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.counter-display {
+    display: flex;
+    overflow: hidden;
+    line-height: 1;
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    font-variant-numeric: tabular-nums;
+    min-width: 1.5rem;
+    justify-content: center;
+}
+
+.counter-digit {
+    position: relative;
+    width: 1ch;
+}
+
+.counter-number {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.counter-input {
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--primary));
+    border-radius: 0.375rem;
+    color: hsl(var(--foreground));
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    outline: none;
+    padding: 0 0.25rem;
+    min-width: 2ch;
+}
+
+.counter-input::-webkit-outer-spin-button,
+.counter-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.counter-input[type=number] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.counter-display {
+    cursor: pointer;
+}
+
+.counter-display:hover {
+    opacity: 0.8;
+}

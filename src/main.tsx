@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import './styles/globals.css'
 import './i18n'
-import { cleanupLargeData, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, exportAllData } from './lib/indexed-db'
+import { BACKUP_STORE_KEYS, cleanupLargeData, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, exportAllData } from './lib/indexed-db'
 import { useCharacterStore } from './stores/character-store'
 import { createFullAutoBackup } from './lib/auto-backup'
 import { startStoreSnapshotScheduler } from './lib/store-snapshots'
@@ -12,6 +12,11 @@ import { startStoreSnapshotScheduler } from './lib/store-snapshots'
 const AUTO_BACKUP_KEY = 'nais2-auto-backup'
 const AUTO_BACKUP_INTERVAL = 24 * 60 * 60 * 1000 // 24시간
 const MAX_AUTO_BACKUPS = 3
+const LEGACY_STORE_KEY_RENAMES: [string, string][] = [
+    ['nais-library-storage', 'nais2-library'],
+    ['tools-storage', 'nais2-tools'],
+    ['nais-update', 'nais2-update'],
+]
 
 const setSplashStage = (message: string) => {
     const subtitle = document.querySelector<HTMLElement>('#splash-screen .splash-subtitle')
@@ -257,11 +262,7 @@ async function startApp() {
         // This handles stores that were already using IndexedDB but had their names changed
         try {
             setSplashStage('Migrating IndexedDB keys')
-            await migrateIndexedDBKeys([
-                ['nais-library-storage', 'nais2-library'],  // Library items (was already IndexedDB)
-                ['tools-storage', 'nais2-tools'],           // Tools settings
-                ['nais-update', 'nais2-update'],            // Update state
-            ])
+            await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
             console.log('[Startup] IndexedDB key migration complete')
         } catch (err) {
             console.error('[Startup] IndexedDB key migration failed:', err)
@@ -269,11 +270,7 @@ async function startApp() {
 
         try {
             setSplashStage('Migrating legacy local data')
-            await migrateRenamedLocalStorageKeys([
-                ['nais-library-storage', 'nais2-library'],
-                ['tools-storage', 'nais2-tools'],
-                ['nais-update', 'nais2-update'],
-            ])
+            await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
             console.log('[Startup] Legacy localStorage key migration complete')
         } catch (err) {
             console.error('[Startup] Legacy localStorage key migration failed:', err)
@@ -283,23 +280,7 @@ async function startApp() {
         // Missing entries here will cause data loss on app restart/update!
         try {
             setSplashStage('Migrating local data')
-            await migrateFromLocalStorage([
-                'nais2-generation',        // Main mode prompts & settings (CRITICAL!)
-                'nais2-character-store',   // Character/Vibe images
-                'nais2-character-prompts', // Character prompt presets (CRITICAL - 100+ presets)
-                'nais2-presets',           // Generation presets
-                'nais2-settings',          // App settings
-                'nais2-auth',              // Auth tokens
-                'nais2-scenes',            // Scene mode data (CRITICAL)
-                'nais2-shortcuts',         // Keyboard shortcuts
-                'nais2-theme',             // Theme settings
-                'nais2-wildcards',         // Wildcard/Fragment data
-                'nais2-prompt-library',    // Prompt Editor tabs/windows from the A-side feature
-                'nais2-layout',            // Layout preferences
-                'nais2-library',           // Library items
-                'nais2-tools',             // Tools settings (brush size, etc.)
-                'nais2-update',            // Update state
-            ])
+            await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
             console.log('[Startup] LocalStorage migration complete')
         } catch (err) {
             console.error('[Startup] LocalStorage migration failed:', err)

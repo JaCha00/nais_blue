@@ -12,7 +12,6 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
-    "fs:default",
     "fs:allow-exists",
     "fs:allow-mkdir",
     "fs:allow-read",
@@ -22,10 +21,6 @@
     "fs:allow-rename",
     "fs:allow-picture-read-recursive",
     "fs:allow-picture-write-recursive",
-    "fs:allow-desktop-read-recursive",
-    "fs:allow-desktop-write-recursive",
-    "fs:allow-download-read-recursive",
-    "fs:allow-download-write-recursive",
     {
       "identifier": "fs:scope",
       "allow": [
@@ -33,13 +28,10 @@
           "path": "$PICTURE/**"
         },
         {
-          "path": "$DESKTOP/**"
+          "path": "$APPDATA/**"
         },
         {
-          "path": "$DOWNLOAD/**"
-        },
-        {
-          "path": "**"
+          "path": "$LOCALAPPDATA/**"
         }
       ]
     },
@@ -57,47 +49,6 @@
     },
     "store:default",
     "dialog:default",
-    "shell:default",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "name": "python",
-          "cmd": "python",
-          "args": true
-        },
-        {
-          "name": "python",
-          "cmd": "python",
-          "args": true
-        }
-      ]
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "name": "explorer",
-          "cmd": "explorer",
-          "args": true
-        },
-        {
-          "name": "python",
-          "cmd": "python",
-          "args": true
-        },
-        {
-          "name": "tagger-server",
-          "cmd": "tagger-server",
-          "args": true
-        },
-        {
-          "name": "tagger-server-abs",
-          "cmd": ".*tagger-server(\\.exe)?$",
-          "args": true
-        }
-      ]
-    },
     "opener:default",
     "updater:default",
     "process:allow-restart",

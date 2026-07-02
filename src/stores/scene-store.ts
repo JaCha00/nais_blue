@@ -385,11 +385,21 @@ export const useSceneStore = create<SceneState>()(
             },
 
             incrementQueue: (presetId, sceneId, count = 1) => {
-                const preset = get().presets.find(p => p.id === presetId)
-                const scene = preset?.scenes.find(s => s.id === sceneId)
-                if (scene) {
-                    get().setQueueCount(presetId, sceneId, scene.queueCount + count)
-                }
+                const safeCount = Math.max(0, count)
+                if (safeCount === 0) return
+
+                set(state => ({
+                    presets: state.presets.map(p =>
+                        p.id === presetId
+                            ? {
+                                ...p,
+                                scenes: p.scenes.map(s =>
+                                    s.id === sceneId ? { ...s, queueCount: s.queueCount + safeCount } : s
+                                ),
+                            }
+                            : p
+                    ),
+                }))
             },
 
             decrementQueue: (presetId, sceneId) => {

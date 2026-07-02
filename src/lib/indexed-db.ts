@@ -158,6 +158,10 @@ const pendingWriteTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const pendingWriteValues = new Map<string, string>()
 const lastWriteTime = new Map<string, number>()
 const indexedDBWriteListeners = new Set<(key: string) => void>()
+const inFlightWrites = new Set<Promise<void>>()
+let tauriCloseFlushInstalled = false
+let tauriCloseFlushInProgress = false
+let tauriCloseFlushCompleted = false
 
 export function registerIndexedDBWriteListener(listener: (key: string) => void): () => void {
     indexedDBWriteListeners.add(listener)
@@ -223,6 +227,14 @@ async function rawSetItem(name: string, value: string): Promise<void> {
     }
 }
 
+function trackedRawSetItem(name: string, value: string): Promise<void> {
+    const writePromise = rawSetItem(name, value)
+    inFlightWrites.add(writePromise)
+    return writePromise.finally(() => {
+        inFlightWrites.delete(writePromise)
+    })
+}
+
 /** Flush a single pending write immediately */
 async function flushKey(name: string): Promise<void> {
     const timer = pendingWriteTimers.get(name)
@@ -234,31 +246,68 @@ async function flushKey(name: string): Promise<void> {
     if (value !== undefined) {
         pendingWriteValues.delete(name)
         lastWriteTime.set(name, Date.now())
-        await rawSetItem(name, value)
+        await trackedRawSetItem(name, value)
     }
 }
 
 /** Flush ALL pending writes (called on app close) */
 export async function flushAllPendingWrites(): Promise<void> {
-    const keys = [...pendingWriteTimers.keys()]
+    const keys = new Set([...pendingWriteTimers.keys(), ...pendingWriteValues.keys()])
     for (const key of keys) {
         await flushKey(key)
+    }
+    if (inFlightWrites.size > 0) {
+        await Promise.allSettled([...inFlightWrites])
+    }
+}
+
+function requestBestEffortFlush(reason: string): void {
+    void flushAllPendingWrites().catch((error) => {
+        console.warn(`[IndexedDB] ${reason} flush failed:`, error)
+    })
+}
+
+async function installTauriCloseFlushHandler(): Promise<void> {
+    if (tauriCloseFlushInstalled) return
+    tauriCloseFlushInstalled = true
+
+    try {
+        const [{ isTauri }, { getCurrentWindow }] = await Promise.all([
+            import('@tauri-apps/api/core'),
+            import('@tauri-apps/api/window'),
+        ])
+        if (!isTauri()) return
+
+        const appWindow = getCurrentWindow()
+        await appWindow.onCloseRequested(async (event) => {
+            if (tauriCloseFlushCompleted) return
+
+            event.preventDefault()
+            if (tauriCloseFlushInProgress) return
+
+            tauriCloseFlushInProgress = true
+            try {
+                await flushAllPendingWrites()
+            } catch (error) {
+                console.warn('[IndexedDB] Tauri close flush failed:', error)
+            } finally {
+                tauriCloseFlushCompleted = true
+                tauriCloseFlushInProgress = false
+                await appWindow.close().catch((error) => {
+                    console.warn('[IndexedDB] Failed to close after flush:', error)
+                })
+            }
+        })
+    } catch (error) {
+        console.warn('[IndexedDB] Failed to install Tauri close flush handler:', error)
     }
 }
 
 // Flush pending writes on app close
 if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
-        for (const [name, timer] of pendingWriteTimers.entries()) {
-            clearTimeout(timer)
-            const val = pendingWriteValues.get(name)
-            if (val !== undefined) {
-                rawSetItem(name, val).catch(() => {})
-            }
-        }
-        pendingWriteTimers.clear()
-        pendingWriteValues.clear()
-    })
+    window.addEventListener('pagehide', () => requestBestEffortFlush('pagehide'))
+    window.addEventListener('beforeunload', () => requestBestEffortFlush('beforeunload'))
+    void installTauriCloseFlushHandler()
 }
 
 export const indexedDBStorage: StateStorage = {
@@ -344,7 +393,7 @@ export const indexedDBStorage: StateStorage = {
             const val = pendingWriteValues.get(name)!
             pendingWriteValues.delete(name)
             lastWriteTime.set(name, Date.now())
-            await rawSetItem(name, val)
+            await trackedRawSetItem(name, val)
             return
         }
 
@@ -357,7 +406,7 @@ export const indexedDBStorage: StateStorage = {
                 pendingWriteValues.delete(name)
                 lastWriteTime.set(name, Date.now())
                 try {
-                    await rawSetItem(name, val)
+                    await trackedRawSetItem(name, val)
                 } catch (err) {
                     console.error(`[IndexedDB] Debounced write failed for ${name}:`, err)
                 }

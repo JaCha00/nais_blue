@@ -43,7 +43,7 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
     const latestCharStore = useCharacterStore.getState()
     const characterImages = latestCharStore.characterImages.filter(img => img.enabled !== false && img.base64)
     const vibeImages = latestCharStore.vibeImages.filter(img => img.enabled !== false && img.base64)
-    const { characters: characterPrompts } = useCharacterPromptStore.getState()
+    const { characters: characterPrompts, positionEnabled } = useCharacterPromptStore.getState()
     const rotation = useRotationStore.getState()
     const excludedPinnedIds = rotation.active && scene.excludePinned
         ? new Set(rotation.pinnedCharacterIds)
@@ -122,6 +122,7 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
             vibeStrength: vibeImagesWithData.map(img => img.strength),
             preEncodedVibes: vibeImagesWithData.map(img => img.encodedVibe || null),
             characterPrompts: processedCharacterPrompts,
+            characterPositionEnabled: positionEnabled,
             imageFormat,
         },
     }

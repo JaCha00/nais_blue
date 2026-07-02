@@ -8,6 +8,7 @@ export default [
             'dist/**',
             'node_modules/**',
             'NAIS2-main/**',
+            'legacy/**',
             'src-tauri/**',
             'stylelab-frontend-sources-*/**',
         ],

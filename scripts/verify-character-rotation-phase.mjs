@@ -18,6 +18,7 @@ const buildSceneParams = read('src/lib/scene-generation/build-scene-params.ts')
 const saveSceneResult = read('src/lib/scene-generation/save-scene-result.ts')
 const sceneOutputPath = read('src/lib/scene-output-path.ts')
 const sceneStore = read('src/stores/scene-store.ts')
+const sceneDetail = read('src/pages/SceneDetail.tsx')
 const sceneMode = read('src/pages/SceneMode.tsx')
 const promptPanel = read('src/components/layout/PromptPanel.tsx')
 const rotationDialog = read('src/components/scene/CharacterRotationDialog.tsx')
@@ -80,6 +81,11 @@ check('scene generation confirms worker spawn through store action', includesAll
   'onWorkerConfirmed()',
   'workerLoop(activeToken.slot',
 ]))
+check('scene generation freezes rotation character into worker context', includesAll(sceneGeneration, [
+  'rotationCharacterId?: string',
+  'rotationCharacterFolderName?: string',
+  'getRotationCharacterFolderName(rotationCharacterId, rotation.currentIndex)',
+]))
 check('scene generation no longer mutates awaitingWorker directly', !sceneGeneration.includes("useRotationStore.setState({ awaitingWorker: false })"))
 
 check('scene params exclude pinned prompts per scene', includesAll(buildSceneParams, [
@@ -96,11 +102,20 @@ check('scene output path helper owns normal and rotation directories', includesA
   'safeCharacterName ? [safeCharacterName] : []',
   'BaseDirectory.Picture',
 ]))
+check('scene output path uses explicit rotation request fields', includesAll(sceneOutputPath, [
+  'rotationCharacterId?: string',
+  'rotationCharacterFolderName?: string',
+  'request.rotationCharacterFolderName',
+]) && !sceneOutputPath.includes("useRotationStore"))
 check('scene result saving delegates disk path construction', includesAll(saveSceneResult, [
   "import { resolveSceneOutputPath } from '@/lib/scene-output-path'",
   'resolveSceneOutputPath({',
-  'writeFile(outputPath.writePath',
+  'writeGeneratedFile(outputPath.writePath',
   'fullPath = outputPath.fullPath',
+]))
+check('scene result saving passes frozen rotation folder fields', includesAll(saveSceneResult, [
+  'rotationCharacterId: ctx.rotationCharacterId',
+  'rotationCharacterFolderName: ctx.rotationCharacterFolderName',
 ]))
 
 check('scene store schema includes excludePinned', includesAll(sceneStore, [
@@ -118,6 +133,12 @@ check('scene rename does not scan rotation character subfolders this phase', exc
   'readDir(presetFolderPath)',
   'oldNestedPath',
   'newNestedPath',
+]))
+check('scene detail opens latest image parent or rotation scene folder', includesAll(sceneDetail, [
+  'getLatestSceneImageParentPath',
+  'findSceneFolderUnderPreset',
+  'readDir(presetPath)',
+  'openPath(latestImageParent)',
 ]))
 
 check('scene mode exposes rotation dialog and status bar', includesAll(sceneMode, [
@@ -150,8 +171,14 @@ check('rotation status bar renders resting state and skip action', includesAll(r
 ]))
 check('prompt panel stops rotation through rotation store', includesAll(promptPanel, [
   'rotationActive',
-  "useRotationStore.getState().stop('prompt panel stop')",
-  '로테이션 중단',
+  "useRotationStore.getState().stop({ reason: 'prompt panel stop', keepSnapshot: true })",
+  '중단하고 나중에 이어서',
+]))
+check('rotation UI distinguishes stop/resume from full cancel', includesAll(rotationDialog + rotationStatusBar, [
+  '중단하고 나중에 이어서',
+  '완전 취소',
+  'keepSnapshot: true',
+  '로테이션 완전 취소',
 ]))
 check('rotation store participates in full backup registry', includesAll(indexedDb, [
   "'nais2-character-rotation'",

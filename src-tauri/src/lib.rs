@@ -42,12 +42,6 @@ async fn verify_token(token: String) -> VerifyTokenResult {
         trimmed_token
     };
 
-    println!(
-        "[VerifyToken] Checking token (length: {})",
-        clean_token.len()
-    );
-    println!("[VerifyToken] Token start: {:.5}...", clean_token);
-
     let result = client
         .get("https://api.novelai.net/user/subscription")
         .header("Authorization", format!("Bearer {}", clean_token))

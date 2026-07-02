@@ -33,8 +33,29 @@ const API_ENDPOINTS = {
     IMAGE_GENERATE_STREAM: 'https://image.novelai.net/ai/generate-image-stream',
 }
 
+const IMAGE_PREPROCESS_CONCURRENCY = 2
+const STREAM_MAX_MESSAGE_BYTES = 50_000_000
+
+export class NovelAIHttpError extends Error {
+    readonly status: number
+    readonly responseBody: string
+    readonly retryable: boolean
+
+    constructor(status: number, responseBody: string) {
+        super(`API Error: ${status} ${responseBody}`)
+        this.name = 'NovelAIHttpError'
+        this.status = status
+        this.responseBody = responseBody
+        this.retryable = status === 429 || (status >= 500 && status < 600)
+    }
+}
+
 function isAbortError(error: unknown): boolean {
     return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function errorToMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error)
 }
 
 export interface AnlasInfo {
@@ -373,6 +394,221 @@ function processCharacterImage(imageBase64: string): Promise<string> {
     })
 }
 
+async function mapWithConcurrency<T, R>(
+    items: readonly T[],
+    limit: number,
+    mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+    if (items.length === 0) return []
+
+    const results = new Array<R>(items.length)
+    const workerCount = Math.min(Math.max(1, limit), items.length)
+    let nextIndex = 0
+
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (true) {
+            const currentIndex = nextIndex
+            nextIndex += 1
+
+            if (currentIndex >= items.length) break
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex)
+        }
+    })
+
+    await Promise.all(workers)
+    return results
+}
+
+interface ReferencePreprocessResult {
+    processedVibeImages: string[]
+    newlyEncodedVibes: (string | null)[]
+    processedCharImages: string[]
+    charImagesThatNeedProcessing: number[]
+}
+
+async function processVibeImages(
+    token: string,
+    params: GenerationParams
+): Promise<Pick<ReferencePreprocessResult, 'processedVibeImages' | 'newlyEncodedVibes'>> {
+    const vibeImages = params.vibeImages ?? []
+
+    const results = await mapWithConcurrency(vibeImages, IMAGE_PREPROCESS_CONCURRENCY, async (image, index) => {
+        const cachedVibe = params.preEncodedVibes?.[index]
+        if (cachedVibe) {
+            return { processed: cachedVibe, newlyEncoded: null }
+        }
+
+        const encoded = await encodeVibeImage(token, image, params.vibeInfo?.[index] || 1.0)
+        return { processed: encoded, newlyEncoded: encoded }
+    })
+
+    return {
+        processedVibeImages: results.map(result => result.processed),
+        newlyEncodedVibes: results.map(result => result.newlyEncoded),
+    }
+}
+
+async function processCharacterReferenceImages(
+    params: GenerationParams
+): Promise<Pick<ReferencePreprocessResult, 'processedCharImages' | 'charImagesThatNeedProcessing'>> {
+    const charImages = params.charImages ?? []
+
+    const results = await mapWithConcurrency(charImages, IMAGE_PREPROCESS_CONCURRENCY, async (image, index) => {
+        if (params.charCacheKeys?.[index]) {
+            return { processed: '', processedIndex: null }
+        }
+
+        const processed = await processCharacterImage(image)
+        return { processed, processedIndex: index }
+    })
+
+    return {
+        processedCharImages: results.map(result => result.processed),
+        charImagesThatNeedProcessing: results
+            .map(result => result.processedIndex)
+            .filter((index): index is number => index !== null),
+    }
+}
+
+async function preprocessReferenceImages(
+    token: string,
+    params: GenerationParams,
+    logContext = ''
+): Promise<ReferencePreprocessResult> {
+    const [vibeResult, characterResult] = await Promise.all([
+        processVibeImages(token, params).catch(error => {
+            console.error(`Vibe encoding error${logContext}:`, error)
+            throw new Error(`Vibe Processing Failed: ${errorToMessage(error)}`)
+        }),
+        processCharacterReferenceImages(params).catch(error => {
+            console.error(`Character image processing error${logContext}:`, error)
+            throw new Error(`Character Processing Failed: ${errorToMessage(error)}`)
+        }),
+    ])
+
+    return {
+        ...vibeResult,
+        ...characterResult,
+    }
+}
+
+function binaryToBase64(uint8: Uint8Array): string {
+    const chunkSize = 32768
+    const parts: string[] = []
+
+    for (let i = 0; i < uint8.length; i += chunkSize) {
+        const end = Math.min(i + chunkSize, uint8.length)
+        let binaryChunk = ''
+
+        for (let j = i; j < end; j++) {
+            binaryChunk += String.fromCharCode(uint8[j])
+        }
+
+        parts.push(binaryChunk)
+    }
+
+    return btoa(parts.join(''))
+}
+
+class StreamFrameBuffer {
+    private chunks: Uint8Array[] = []
+    private headOffset = 0
+    private queuedLength = 0
+
+    get length(): number {
+        return this.queuedLength
+    }
+
+    append(chunk: Uint8Array): void {
+        if (chunk.length === 0) return
+        this.chunks.push(chunk)
+        this.queuedLength += chunk.length
+    }
+
+    peekMessageLength(): number | null {
+        if (this.queuedLength < 4) return null
+
+        return (
+            this.peekByte(0) * 16_777_216 +
+            this.peekByte(1) * 65_536 +
+            this.peekByte(2) * 256 +
+            this.peekByte(3)
+        )
+    }
+
+    readMessage(length: number): Uint8Array | null {
+        if (this.queuedLength < 4 + length) return null
+
+        this.discard(4)
+        return this.readBytes(length)
+    }
+
+    private peekByte(offset: number): number {
+        let remainingOffset = offset
+
+        for (let i = 0; i < this.chunks.length; i++) {
+            const chunk = this.chunks[i]
+            const start = i === 0 ? this.headOffset : 0
+            const available = chunk.length - start
+
+            if (remainingOffset < available) {
+                return chunk[start + remainingOffset]
+            }
+
+            remainingOffset -= available
+        }
+
+        return 0
+    }
+
+    private discard(count: number): void {
+        let remaining = count
+
+        while (remaining > 0 && this.chunks.length > 0) {
+            const first = this.chunks[0]
+            const available = first.length - this.headOffset
+            const consumed = Math.min(remaining, available)
+
+            this.headOffset += consumed
+            this.queuedLength -= consumed
+            remaining -= consumed
+
+            if (this.headOffset >= first.length) {
+                this.chunks.shift()
+                this.headOffset = 0
+            }
+        }
+    }
+
+    private readBytes(count: number): Uint8Array {
+        const first = this.chunks[0]
+        const firstAvailable = first ? first.length - this.headOffset : 0
+
+        if (first && count <= firstAvailable) {
+            const result = first.subarray(this.headOffset, this.headOffset + count)
+            this.discard(count)
+            return result
+        }
+
+        const result = new Uint8Array(count)
+        let writeOffset = 0
+        let remaining = count
+
+        while (remaining > 0 && this.chunks.length > 0) {
+            const firstChunk = this.chunks[0]
+            const available = firstChunk.length - this.headOffset
+            const copied = Math.min(remaining, available)
+
+            result.set(firstChunk.subarray(this.headOffset, this.headOffset + copied), writeOffset)
+            this.discard(copied)
+            writeOffset += copied
+            remaining -= copied
+        }
+
+        return result
+    }
+}
+
 /**
  * Generate image using NovelAI API
  * Based on NAIS1 working implementation
@@ -387,51 +623,19 @@ export async function generateImage(
     }
 
     try {
-        // Process Vibe Images
-        const processedVibeImages: string[] = []
-        const newlyEncodedVibes: (string | null)[] = []  // Track which vibes were newly encoded
-        if (params.vibeImages && params.vibeImages.length > 0) {
-            for (let i = 0; i < params.vibeImages.length; i++) {
-                // Use pre-encoded vibe if available (saves API call)
-                if (params.preEncodedVibes?.[i]) {
-                    processedVibeImages.push(params.preEncodedVibes[i]!)
-                    newlyEncodedVibes.push(null)  // Already had encoding
-                    continue
-                }
-                try {
-                    const encoded = await encodeVibeImage(token, params.vibeImages[i], params.vibeInfo?.[i] || 1.0)
-                    processedVibeImages.push(encoded)
-                    newlyEncodedVibes.push(encoded)  // Newly encoded - can be cached
-                } catch (e) {
-                    console.error('Vibe encoding error:', e)
-                    // Continue or fail? Let's fail for now to be safe
-                    return { success: false, error: `Vibe Processing Failed: ${e}` }
-                }
-            }
+        let referenceAssets: ReferencePreprocessResult
+        try {
+            referenceAssets = await preprocessReferenceImages(token, params)
+        } catch (error) {
+            return { success: false, error: errorToMessage(error) }
         }
 
-        // Process Character Reference Images (Precise Reference)
-        // 캐시 키가 있으면 이미지 처리 스킵, 없으면 처리 후 전송
-        const processedCharImages: string[] = []
-        const charImagesThatNeedProcessing: number[] = []  // 처리가 필요한 이미지 인덱스
-        
-        if (params.charImages && params.charImages.length > 0) {
-            for (let i = 0; i < params.charImages.length; i++) {
-                // 캐시 키가 있으면 이미지 처리 스킵
-                if (params.charCacheKeys?.[i]) {
-                    processedCharImages.push('')  // placeholder - 캐시 사용 시 이미지 데이터 불필요
-                    continue
-                }
-                try {
-                    const processed = await processCharacterImage(params.charImages[i])
-                    processedCharImages.push(processed)
-                    charImagesThatNeedProcessing.push(i)
-                } catch (e) {
-                    console.error('Character image processing error:', e)
-                    return { success: false, error: `Character Processing Failed: ${e}` }
-                }
-            }
-        }
+        const {
+            processedVibeImages,
+            newlyEncodedVibes,
+            processedCharImages,
+            charImagesThatNeedProcessing,
+        } = referenceAssets
 
         // Build API parameters - matching NAI official format
         const apiParameters = {
@@ -476,7 +680,7 @@ export async function generateImage(
             normalize_reference_strength_multiple: true,
             inpaintImg2ImgStrength: 1,
             deliberate_euler_ancestral_bug: false,
-            image_format: 'png',
+            image_format: params.imageFormat ?? 'png',
 
             // Reference/Vibe Transfer (only include when vibes exist)
             ...(processedVibeImages.length > 0 ? {
@@ -665,7 +869,7 @@ export async function generateImage(
         if (!response.ok) {
             const errorText = await response.text()
             console.error('API Error:', response.status, errorText)
-            return { success: false, error: `API 오류 (${response.status}): ${errorText}` }
+            throw new NovelAIHttpError(response.status, errorText)
         }
 
         // Response is a ZIP file containing the image
@@ -710,6 +914,9 @@ export async function generateImage(
             encodedVibes: newlyEncodedVibes.filter((v): v is string => v !== null)
         }
     } catch (error) {
+        if (error instanceof NovelAIHttpError) {
+            throw error
+        }
         if (isAbortError(error)) {
             return { success: false, error: '요청이 취소되었습니다.' }
         }
@@ -846,53 +1053,21 @@ export async function generateImageStream(
         const endpoint = API_ENDPOINTS.IMAGE_GENERATE_STREAM
 
         // ===========================================
-        // 1. Process Vibe Images & Reference Images (Copied from generateImage)
+        // 1. Process Vibe Images & Reference Images
         // ===========================================
-
-        // Process Vibe Images
-        const processedVibeImages: string[] = []
-        const newlyEncodedVibes: (string | null)[] = []  // Track which vibes were newly encoded
-        if (params.vibeImages && params.vibeImages.length > 0) {
-            for (let i = 0; i < params.vibeImages.length; i++) {
-                // Use pre-encoded vibe if available (saves API call)
-                if (params.preEncodedVibes?.[i]) {
-                    processedVibeImages.push(params.preEncodedVibes[i]!)
-                    newlyEncodedVibes.push(null)  // Already had encoding
-                    continue
-                }
-                try {
-                    const encoded = await encodeVibeImage(token, params.vibeImages[i], params.vibeInfo?.[i] || 1.0)
-                    processedVibeImages.push(encoded)
-                    newlyEncodedVibes.push(encoded)  // Newly encoded - can be cached
-                } catch (e) {
-                    console.error('Vibe encoding error (Stream):', e)
-                    return { success: false, error: `Vibe Processing Failed: ${e}` }
-                }
-            }
+        let referenceAssets: ReferencePreprocessResult
+        try {
+            referenceAssets = await preprocessReferenceImages(token, params, ' (Stream)')
+        } catch (error) {
+            return { success: false, error: errorToMessage(error) }
         }
 
-        // Process Character Reference Images (Precise Reference)
-        // 캐시 키가 있으면 이미지 처리 스킵, 없으면 처리 후 전송
-        const processedCharImages: string[] = []
-        const charImagesThatNeedProcessingStream: number[] = []  // 처리가 필요한 이미지 인덱스
-        
-        if (params.charImages && params.charImages.length > 0) {
-            for (let i = 0; i < params.charImages.length; i++) {
-                // 캐시 키가 있으면 이미지 처리 스킵
-                if (params.charCacheKeys?.[i]) {
-                    processedCharImages.push('')  // placeholder - 캐시 사용 시 이미지 데이터 불필요
-                    continue
-                }
-                try {
-                    const processed = await processCharacterImage(params.charImages[i])
-                    processedCharImages.push(processed)
-                    charImagesThatNeedProcessingStream.push(i)
-                } catch (e) {
-                    console.error('Character image processing error (Stream):', e)
-                    return { success: false, error: `Character Processing Failed: ${e}` }
-                }
-            }
-        }
+        const {
+            processedVibeImages,
+            newlyEncodedVibes,
+            processedCharImages,
+            charImagesThatNeedProcessing: charImagesThatNeedProcessingStream,
+        } = referenceAssets
 
         // ===========================================
         // 2. Build API Parameters
@@ -1139,20 +1314,9 @@ export async function generateImageStream(
             return { success: false, error: '스트리밍 응답 없음' }
         }
 
-        // Helper function to convert binary to base64 (chunk-safe, synchronous)
-        const binaryToBase64 = (uint8: Uint8Array): string => {
-            let binary = ''
-            const chunkSize = 32768
-            for (let i = 0; i < uint8.length; i += chunkSize) {
-                const chunk = uint8.subarray(i, Math.min(i + chunkSize, uint8.length))
-                binary += String.fromCharCode.apply(null, Array.from(chunk))
-            }
-            return btoa(binary)
-        }
-
         // Read the streaming response and parse events in real-time
         const reader = response.body.getReader()
-        let buffer = new Uint8Array(0) // Accumulated buffer for incomplete messages
+        const frameBuffer = new StreamFrameBuffer()
         let finalImageData: string | null = null
         let lastStepShown = -1
         const totalSteps = params.steps || 28
@@ -1163,31 +1327,26 @@ export async function generateImageStream(
             const { done, value } = await reader.read()
 
             if (value) {
-                // Append new data to buffer
-                const newBuffer = new Uint8Array(buffer.length + value.length)
-                newBuffer.set(buffer)
-                newBuffer.set(value, buffer.length)
-                buffer = newBuffer
+                frameBuffer.append(value)
 
-                // Try to parse complete msgpack messages from buffer
-                while (buffer.length >= 4) {
+                // Try to parse complete msgpack messages from queued chunks.
+                while (frameBuffer.length >= 4) {
                     // Read 4-byte length header (big-endian)
-                    const length = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3]
+                    const length = frameBuffer.peekMessageLength()
+                    if (length === null) break
 
-                    if (length <= 0 || length > 50_000_000) {
+                    if (length <= 0 || length > STREAM_MAX_MESSAGE_BYTES) {
                         console.error('[Stream] Invalid message length:', length)
-                        break
+                        await reader.cancel()
+                        return { success: false, error: `Invalid streaming message length: ${length}` }
                     }
 
                     // Check if we have the complete message
-                    if (buffer.length < 4 + length) {
+                    const messageData = frameBuffer.readMessage(length)
+                    if (!messageData) {
                         // Need more data
                         break
                     }
-
-                    // Extract and process this message
-                    const messageData = buffer.slice(4, 4 + length)
-                    buffer = buffer.slice(4 + length) // Remove processed data from buffer
 
                     try {
                         let decoded: Record<string, unknown> | null = msgpackDecode(messageData) as Record<string, unknown>
@@ -1249,7 +1408,7 @@ export async function generateImageStream(
             }
 
             if (done) {
-                console.log('[Stream] Stream ended, remaining buffer:', buffer.length)
+                console.log('[Stream] Stream ended, remaining buffer:', frameBuffer.length)
                 break
             }
         }

@@ -15,6 +15,13 @@ interface RotationSnapshot {
     enabledStates: Record<string, boolean>
 }
 
+interface RotationStopOptions {
+    reason?: string
+    keepSnapshot?: boolean
+}
+
+type RotationStopInput = string | RotationStopOptions
+
 interface RotationRuntimeFlags {
     active: boolean
     paused: boolean
@@ -47,7 +54,7 @@ interface RotationState extends RotationRuntimeFlags {
     start: () => string | null
     resumeSavedSession: () => string | null
     discardSavedSession: () => void
-    stop: (reason?: string) => void
+    stop: (options?: RotationStopInput) => void
     cancel: (reason?: string) => void
     resume: () => void
     endRest: () => void
@@ -85,6 +92,11 @@ function clearRestTimer(): void {
         clearTimeout(restTimer)
         restTimer = null
     }
+}
+
+function normalizeStopOptions(input?: RotationStopInput): RotationStopOptions {
+    if (typeof input === 'string') return { reason: input, keepSnapshot: true }
+    return { keepSnapshot: true, ...input }
 }
 
 function scheduleRestEnd(): void {
@@ -235,13 +247,15 @@ export const useRotationStore = create<RotationState>()(
                 if (snapshot) restoreEnabledStates(snapshot)
             },
 
-            stop: (reason) => {
+            stop: (optionsInput) => {
+                const options = normalizeStopOptions(optionsInput)
                 const snapshot = get().snapshot
-                console.log(`[Rotation] stopped${reason ? `: ${reason}` : ''}`)
+                console.log(`[Rotation] stopped${options.reason ? `: ${options.reason}` : ''}`)
                 clearRestTimer()
                 set({
                     status: 'idle',
                     ...flagsForStatus('idle'),
+                    ...(options.keepSnapshot === false ? { currentIndex: 0, currentRepeat: 0, snapshot: null } : {}),
                     restUntil: null,
                     workStartedAt: null,
                     nextWorkTargetMs: null,

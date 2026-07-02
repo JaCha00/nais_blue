@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Coffee, Drama, Pin, Play, RotateCcw, Square as StopIcon } from 'lucide-react'
+import { AlertTriangle, Coffee, Drama, Pin, Play, RotateCcw, Square as StopIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -46,6 +46,7 @@ export function CharacterRotationDialog({ open, onOpenChange }: CharacterRotatio
     const setRestConfig = useRotationStore(state => state.setRestConfig)
     const start = useRotationStore(state => state.start)
     const stop = useRotationStore(state => state.stop)
+    const cancel = useRotationStore(state => state.cancel)
     const resume = useRotationStore(state => state.resume)
     const endRest = useRotationStore(state => state.endRest)
     const resumeSavedSession = useRotationStore(state => state.resumeSavedSession)
@@ -173,6 +174,33 @@ export function CharacterRotationDialog({ open, onOpenChange }: CharacterRotatio
         }
         toast({ title: '로테이션 재개', variant: 'success' })
         onOpenChange(false)
+    }
+
+    const handleStopKeepingSnapshot = () => {
+        stop({ reason: 'user clicked stop', keepSnapshot: true })
+        toast({
+            title: '로테이션 중단',
+            description: '현재 위치를 저장했습니다. 나중에 이어서 생성할 수 있습니다.',
+        })
+    }
+
+    const handleCancelRotation = () => {
+        cancel('user clicked cancel')
+        toast({
+            title: '로테이션 완전 취소',
+            description: '저장된 세션과 진행 상태를 삭제했습니다.',
+            variant: 'destructive',
+        })
+        onOpenChange(false)
+    }
+
+    const handleDiscardSavedSession = () => {
+        discardSavedSession()
+        toast({
+            title: '저장된 세션 완전 취소',
+            description: '이어가기 상태를 삭제했습니다.',
+            variant: 'destructive',
+        })
     }
 
     const currentCharacter = active ? characters.find(character => character.id === persistedIds[currentIndex]) : null
@@ -358,15 +386,19 @@ export function CharacterRotationDialog({ open, onOpenChange }: CharacterRotatio
                                     재개
                                 </Button>
                             )}
-                            <Button variant="destructive" onClick={() => stop('user clicked stop')}>
+                            <Button variant="outline" onClick={handleStopKeepingSnapshot}>
                                 <StopIcon className="mr-1 h-4 w-4" />
-                                중단
+                                중단하고 나중에 이어서
+                            </Button>
+                            <Button variant="destructive" onClick={handleCancelRotation}>
+                                <X className="mr-1 h-4 w-4" />
+                                완전 취소
                             </Button>
                         </>
                     ) : canResumeSaved ? (
                         <>
-                            <Button variant="ghost" onClick={discardSavedSession}>
-                                세션 삭제
+                            <Button variant="ghost" onClick={handleDiscardSavedSession}>
+                                완전 취소
                             </Button>
                             <Button variant="outline" disabled={sceneGenerating || mainGenerating} onClick={handleStart}>
                                 처음부터

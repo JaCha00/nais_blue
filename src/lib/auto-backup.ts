@@ -1,6 +1,6 @@
 import { BaseDirectory, exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
 import { isTauri } from '@tauri-apps/api/core'
-import { exportAllData, importAllData } from '@/lib/indexed-db'
+import { exportAllData, flushAllPendingWrites, importAllData } from '@/lib/indexed-db'
 
 const BACKUP_ROOT = 'NAIS_Backup'
 const FULL_BACKUP_DIR = `${BACKUP_ROOT}/full`
@@ -135,5 +135,7 @@ export async function restoreFullAutoBackup(fileRelPath: string): Promise<{ succ
         throw new Error('Backup file is missing NAIS2 export metadata.')
     }
 
-    return importAllData(backup, true)
+    const result = await importAllData(backup, true)
+    await flushAllPendingWrites()
+    return result
 }

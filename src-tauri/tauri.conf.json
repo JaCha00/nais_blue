@@ -26,7 +26,11 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["**", "$HOME/**", "$PICTURE/**", "$DESKTOP/**", "$DOWNLOAD/**", "$DOCUMENT/**", "$APPDATA/**", "$LOCALAPPDATA/**", "C:/**", "D:/**", "E:/**", "F:/**", "G:/**", "H:/**"]
+        "scope": [
+          "$PICTURE/**",
+          "$APPDATA/**",
+          "$LOCALAPPDATA/**"
+        ]
       }
     }
   },
@@ -36,7 +40,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/sunanakgo/NAIS2/releases/latest/download/latest.json"
+        "https://github.com/sunakgo/NAIS2/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMUFGMDgxMDY4NEYyRTEKUldUaDhvUUdnZkFhb0RqeVMyOWZ4QXlJVnFyVlZiVDVibHd0bDRUbTRFeTU2TVBGYzdPK0t3UXUK"
     },

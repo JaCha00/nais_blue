@@ -60,15 +60,14 @@ check('Tauri sidecar executable exists for Windows cargo checks', existsSync(joi
   'src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe',
 )))
 check('Tauri updater and deep-link config are preserved', includesAll(JSON.stringify(tauriConfig), [
-  'https://github.com/sunanakgo/NAIS2/releases/latest/download/latest.json',
+  'https://github.com/sunakgo/NAIS2/releases/latest/download/latest.json',
   'nais2',
 ]))
 
 const permissions = defaultCapability.permissions ?? []
 const shellExecute = permissions.find((permission) => permission?.identifier === 'shell:allow-execute')
-check('capabilities allow executing tagger-server sidecar', Boolean(shellExecute?.allow?.some((entry) =>
-  entry.name === 'tagger-server' && entry.cmd === 'tagger-server' && entry.args === true
-)))
+check('capabilities rely on externalBin sidecar without shell execute permission', !shellExecute &&
+  tauriConfig.bundle?.externalBin?.includes('binaries/tagger-server'))
 check('B deep-link capability is preserved', permissions.includes('deep-link:default'))
 
 check('release script verifies tagger-server.exe in release build output', includesAll(releaseScript, [

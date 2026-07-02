@@ -52,6 +52,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
 import { useRotationStore } from '@/stores/character-rotation-store'
+import { toast } from '@/components/ui/use-toast'
 
 const SAMPLERS = [
     'k_euler',
@@ -197,7 +198,11 @@ export function PromptPanel() {
         if (isSceneMode) {
             // Toggle scene generation: start new session or cancel
             if (rotationActive) {
-                useRotationStore.getState().stop('prompt panel stop')
+                useRotationStore.getState().stop({ reason: 'prompt panel stop', keepSnapshot: true })
+                toast({
+                    title: '로테이션 중단',
+                    description: '현재 위치를 저장했습니다. 나중에 이어서 생성할 수 있습니다.',
+                })
                 return
             }
             if (sceneIsGenerating || sceneIsCancelling) {
@@ -683,7 +688,7 @@ export function PromptPanel() {
                             ) : rotationActive ? (
                                 <>
                                     <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                    로테이션 중단
+                                    중단하고 나중에 이어서
                                 </>
                             ) : sceneIsGenerating ? (
                                 <>
