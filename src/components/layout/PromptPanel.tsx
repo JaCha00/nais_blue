@@ -367,20 +367,20 @@ export function PromptPanel() {
             </div>
 
             {/* Quick Actions & Parameters Button */}
-            <div className="flex gap-2 mb-3">
+            <div className="mb-3 grid grid-cols-2 gap-2 min-[420px]:flex">
                 <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
                 {/* Character Prompt Toggle Button */}
                 <Button
                     variant={characterPanelOpen ? "default" : "outline"}
                     size="sm"
                     className={cn(
-                        "flex-1 text-xs rounded-xl h-9 relative",
+                        "relative h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1",
                         characterPanelOpen && "bg-primary text-primary-foreground"
                     )}
                     onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
                 >
-                    <Users className="h-3.5 w-3.5 mr-1.5" />
-                    {t('prompt.character', '캐릭터')}
+                    <Users className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{t('prompt.character', '캐릭터')}</span>
                     {characterCount > 0 && (
                         <div className={cn(
                             "absolute -top-1 -right-1 text-[9px] font-bold rounded-md px-1 py-0.5 min-w-[16px] h-[16px] flex items-center justify-center shadow-sm",
@@ -396,11 +396,11 @@ export function PromptPanel() {
                 <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 text-xs rounded-xl h-9"
+                    className="h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1"
                     onClick={() => setFragmentDialogOpen(true)}
                 >
-                    <Puzzle className="h-3.5 w-3.5 mr-1.5" />
-                    {t('prompt.fragment')}
+                    <Puzzle className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{t('prompt.fragment')}</span>
                 </Button>
                 {/* AI Prompt Generator Button */}
                 <Tip content={t('promptGenerator.desc', 'Gemini AI로 프롬프트 생성')}>
@@ -663,12 +663,12 @@ export function PromptPanel() {
             {/* Bottom Generate Button Area */}
             <div className="p-0">
                 {/* Generate Button + Counter */}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button
                         variant={(isGenerating || (isSceneMode && (sceneIsGenerating || sceneIsCancelling || rotationActive))) ? "destructive" : "generate"}
                         size="lg"
                         className={cn(
-                            "flex-1 h-12 rounded-xl text-base font-semibold shadow-lg transition-all duration-200",
+                            "min-w-[min(100%,220px)] flex-1 h-auto min-h-12 rounded-xl px-4 text-base font-semibold leading-tight whitespace-normal shadow-lg transition-all duration-200",
                             isConflict && "opacity-50 cursor-not-allowed"
                         )}
                         onClick={handleGenerateOrCancel}
@@ -729,6 +729,7 @@ export function PromptPanel() {
                         min={1}
                         max={9999}
                         fontSize={16}
+                        className="shrink-0"
                     />
                 </div>
             </div>

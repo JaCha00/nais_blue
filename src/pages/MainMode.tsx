@@ -574,14 +574,14 @@ export default function MainMode() {
             )}
 
             {/* Bottom Info Bar Overlay */}
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-6 py-2.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-xl flex items-center gap-6 text-sm text-white/90 transition-all hover:bg-black/50">
-                <span className="flex items-center gap-2">
-                    <span className="opacity-60 text-xs uppercase tracking-wider">{t('settings.resolution')}</span>
+            <div className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 text-xs text-white/90 shadow-xl backdrop-blur-md transition-all hover:bg-black/50 sm:gap-x-6 sm:rounded-full sm:px-6 sm:text-sm">
+                <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
+                    <span className="opacity-60 uppercase tracking-wider">{t('settings.resolution')}</span>
                     <span className="font-medium">{selectedResolution.width} × {selectedResolution.height}</span>
                 </span>
-                <div className="w-px h-4 bg-white/20" />
+                <div className="hidden h-4 w-px bg-white/20 min-[360px]:block" />
                 <span
-                    className={`flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity ${previewSeed ? 'text-yellow-400 font-bold' : ''}`}
+                    className={`flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap transition-opacity hover:opacity-80 ${previewSeed ? 'text-yellow-400 font-bold' : ''}`}
                     onClick={() => {
                         const targetSeed = previewSeed ?? seed
                         if (targetSeed) {
@@ -598,7 +598,7 @@ export default function MainMode() {
                         }
                     }}
                 >
-                    <span className="opacity-60 text-xs uppercase tracking-wider">{t('settings.seed')}</span>
+                    <span className="opacity-60 uppercase tracking-wider">{t('settings.seed')}</span>
                     <span className="font-mono">{previewSeed ?? seed ?? t('settings.random')}</span>
                 </span>
             </div>

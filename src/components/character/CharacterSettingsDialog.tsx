@@ -388,9 +388,9 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-1 text-xs rounded-xl h-9 relative group">
-                    <Users className="h-3.5 w-3.5 mr-1.5" />
-                    {t('prompt.imageReference')}
+                <Button variant="outline" size="sm" className="group relative h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1">
+                    <Users className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{t('prompt.imageReference')}</span>
                     {totalCount > 0 && (
                         <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-md px-1 py-0.5 min-w-[16px] h-[16px] flex items-center justify-center shadow-sm">
                             {totalCount}
