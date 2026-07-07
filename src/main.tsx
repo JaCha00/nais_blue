@@ -5,6 +5,7 @@ import './styles/globals.css'
 import './i18n'
 import { BACKUP_STORE_KEYS, cleanupLargeData, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, exportAllData } from './lib/indexed-db'
 import { useCharacterStore } from './stores/character-store'
+import { startAssetProfileDiskSync } from './stores/asset-module-store'
 import { createFullAutoBackup } from './lib/auto-backup'
 import { startStoreSnapshotScheduler } from './lib/store-snapshots'
 
@@ -193,6 +194,10 @@ function renderApp() {
 }
 
 function runPostRenderStartupTasks() {
+    void startAssetProfileDiskSync().catch(err => {
+        console.warn('[Startup] Asset profile disk sync failed:', err)
+    })
+
     if (!isDbInitFailed()) {
         startStoreSnapshotScheduler()
 

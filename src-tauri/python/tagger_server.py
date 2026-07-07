@@ -4,13 +4,14 @@ Tag analysis using WD14 Tagger (ONNX Runtime CPU-only)
 Background removal is handled via cloud API (BRIA-RMBG-2.0) in the frontend.
 """
 from dataclasses import asdict
+import asyncio
 import os
 import sys
 import argparse
 import uvicorn
 import threading
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import Response
+from typing import NamedTuple
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image
@@ -19,7 +20,10 @@ import numpy as np
 import onnxruntime as ort
 import pandas as pd
 from huggingface_hub import hf_hub_download
+from asset_plan_preview import router as asset_plan_preview_router
+from asset_postprocess import router as asset_postprocess_router
 from danbooru_tags import verify_prompt
+from r2_deploy import router as r2_deploy_router
 
 
 # Global download status for UI display
@@ -51,8 +55,6 @@ def update_download_status(model_name: str, progress: int = 0, total: int = 0, m
         download_status["percent"] = int((progress / total) * 100) if total > 0 else 0
         download_status["message"] = message
 
-from contextlib import asynccontextmanager
-
 def get_app_data_dir():
     """Get platform-specific application data directory"""
     if sys.platform == 'win32':
@@ -70,16 +72,7 @@ def get_app_data_dir():
 APP_DATA_DIR = get_app_data_dir()
 os.makedirs(APP_DATA_DIR, exist_ok=True)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        load_model()  # Load WD tagger model only
-    except Exception as e:
-        print(f"Startup error: {e}")
-    yield
-    # Clean up if needed
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 # Allow CORS for local interaction
 app.add_middleware(
@@ -90,17 +83,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Asset deployment cleanup lives in asset_postprocess.py so metadata stripping,
+# sidecar writes, and future R2 deployment prep stay separate from WD Tagger
+# model loading. Including the router here exposes the path through the same
+# Tauri-managed local server used by Danbooru verification.
+app.include_router(asset_postprocess_router)
+
+# R2 deployment is another local asset tool. It uses Wrangler subprocesses and
+# an in-memory job registry, not the WD Tagger model, so it must stay callable
+# for scope checks and polling without triggering load_model().
+app.include_router(r2_deploy_router)
+
+# Agent preview checks read asset-profile.json and mirror the TS resolver enough
+# for self-correction loops. They are intentionally model-free.
+app.include_router(asset_plan_preview_router)
+
 # Global model variables
 MODEL_REPO = "SmilingWolf/wd-v1-4-convnext-tagger-v2"
 MODEL_FILE = "model.onnx"
 TAGS_FILE = "selected_tags.csv"
-model_session = None
-tags_df = None
+
+
+class TaggerModel(NamedTuple):
+    session: ort.InferenceSession
+    tags: pd.DataFrame
+
+
+# Shared with /health and /tag. Danbooru verification uses this sidecar too, so
+# only image-tagging code may call load_model() and pay the WD Tagger load cost.
+_model_cache = None
+_model_lock = threading.Lock()
+
 
 def load_model():
-    global model_session, tags_df
+    global _model_cache
+    if _model_cache is not None:
+        return _model_cache
+
+    with _model_lock:
+        if _model_cache is not None:
+            return _model_cache
+
+        _model_cache = _load_model_uncached()
+        return _model_cache
+
+
+def _load_model_uncached():
     print(f"Loading model from {APP_DATA_DIR}...")
-    
+
     model_path = os.path.join(APP_DATA_DIR, MODEL_FILE)
     tags_path = os.path.join(APP_DATA_DIR, TAGS_FILE)
 
@@ -123,11 +153,12 @@ def load_model():
 
     # Load ONNX Runtime (CPU only for lightweight build)
     print("Loading ONNX model with CPU execution provider...")
-    model_session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
-    
+    session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider'])
+
     print("Loading tags...")
-    tags_df = pd.read_csv(tags_path)
+    tags = pd.read_csv(tags_path)
     print("Models loaded successfully.")
+    return TaggerModel(session=session, tags=tags)
 
 def preprocess_image(image: Image.Image, size=448):
     # Resize and pad to square
@@ -152,39 +183,40 @@ def preprocess_image(image: Image.Image, size=448):
 
 @app.post("/tag")
 async def tag_image(file: UploadFile = File(...), threshold: float = 0.35):
-    if model_session is None:
-        return {"error": "Model not loaded"}
-    
     try:
         contents = await file.read()
-        image = Image.open(io.BytesIO(contents))
-        
-        # Preprocess
-        img_input = preprocess_image(image)
-        img_input = np.expand_dims(img_input, axis=0) # Batch dimension
-        
-        # Inference
-        input_name = model_session.get_inputs()[0].name
-        label_name = model_session.get_outputs()[0].name
-        probs = model_session.run([label_name], {input_name: img_input})[0]
-        
-        # Parse results
-        probs = probs[0]
-        result_tags = []
-        
-        for i, p in enumerate(probs):
-            if p >= threshold:
-                tag_name = tags_df.iloc[i]['name']
-                category = tags_df.iloc[i]['category'] # 0: general, 4: character, 9: rating
-                result_tags.append({"label": tag_name, "score": float(p), "category": int(category)})
-        
-        # Sort by score
-        result_tags.sort(key=lambda x: x['score'], reverse=True)
-        
-        return {"tags": result_tags}
-        
+        return await asyncio.to_thread(run_tagging, contents, threshold)
     except Exception as e:
         return {"error": str(e)}
+
+
+def run_tagging(contents: bytes, threshold: float):
+    model = load_model()
+    image = Image.open(io.BytesIO(contents))
+
+    # Preprocess
+    img_input = preprocess_image(image)
+    img_input = np.expand_dims(img_input, axis=0) # Batch dimension
+
+    # Inference
+    input_name = model.session.get_inputs()[0].name
+    label_name = model.session.get_outputs()[0].name
+    probs = model.session.run([label_name], {input_name: img_input})[0]
+
+    # Parse results
+    probs = probs[0]
+    result_tags = []
+
+    for i, p in enumerate(probs):
+        if p >= threshold:
+            tag_name = model.tags.iloc[i]['name']
+            category = model.tags.iloc[i]['category'] # 0: general, 4: character, 9: rating
+            result_tags.append({"label": tag_name, "score": float(p), "category": int(category)})
+
+    # Sort by score
+    result_tags.sort(key=lambda x: x['score'], reverse=True)
+
+    return {"tags": result_tags}
 
 @app.post("/danbooru/verify-prompt")
 def verify_danbooru_prompt(request: DanbooruVerifyPromptRequest):
@@ -222,7 +254,7 @@ def get_download_status():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "model_loaded": model_session is not None}
+    return {"status": "ok", "model_loaded": _model_cache is not None}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -23,6 +23,11 @@ src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe
 
 # Agent
 .agent/
+.superloopy/
+
+# Python runtime caches
+__pycache__/
+*.py[cod]
 
 # Tauri Signing Keys
 ~/.tauri/

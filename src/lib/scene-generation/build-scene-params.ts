@@ -2,10 +2,12 @@ import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { type SceneCard } from '@/stores/scene-store'
+import { useSceneStore, type SceneCard } from '@/stores/scene-store'
 import { type GenerationParams } from '@/services/novelai-api'
 import { processWildcards } from '@/lib/fragment-processor'
 import { useRotationStore } from '@/stores/character-rotation-store'
+import { useAssetModuleStore } from '@/stores/asset-module-store'
+import { resolveAssetModulePlan, type AssetModulePlan } from '@/lib/asset-modules/resolver'
 
 export interface SceneGenerationBuildResult {
     params: GenerationParams
@@ -20,21 +22,93 @@ const removeComments = (text: string) => text
     .filter(line => !line.trimStart().startsWith('#'))
     .join('\n')
 
+type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
+
+function hasAssetModulePrompts(plan: AssetModulePlan | null): plan is AssetModulePlan {
+    return Boolean(plan && Object.values(plan.promptGroups).some(prompt => prompt.trim().length > 0))
+}
+
+function readStringParam(value: unknown): string {
+    return typeof value === 'string' ? value : ''
+}
+
+function readModuleCharacterPrompts(plan: AssetModulePlan | null): CharacterPromptParams | null {
+    const value = plan?.generationParams.characterPrompts
+    return Array.isArray(value) ? value as CharacterPromptParams : null
+}
+
+async function resolveSceneAssetModulePlan(scene: SceneCard, seed: number): Promise<AssetModulePlan | null> {
+    const profile = useAssetModuleStore.getState().profile
+    if (!profile.recipes.some(recipe => recipe.enabled)) return null
+
+    const sceneState = useSceneStore.getState()
+    const activePreset = sceneState.activePresetId
+        ? sceneState.presets.find(preset => preset.id === sceneState.activePresetId)
+        : undefined
+    const sceneNumber = activePreset
+        ? activePreset.scenes.findIndex(item => item.id === scene.id) + 1
+        : undefined
+
+    try {
+        const plan = await resolveAssetModulePlan({
+            profile,
+            seed,
+            baseParams: {
+                prompt: '',
+                negative_prompt: '',
+            },
+            filenameContext: {
+                seed,
+                scene: {
+                    id: scene.id,
+                    name: scene.name,
+                    number: sceneNumber && sceneNumber > 0 ? sceneNumber : undefined,
+                },
+                preset: activePreset
+                    ? { id: activePreset.id, name: activePreset.name }
+                    : undefined,
+            },
+        })
+
+        return plan.recipe && plan.modules.length > 0 ? plan : null
+    } catch (error) {
+        console.warn('[AssetModules] Failed to resolve scene generation plan; falling back to scene prompts.', error)
+        return null
+    }
+}
+
 // useSceneGeneration workers call this helper before the NovelAI API request.
 // It keeps B's existing scene parameter sources together: generation settings,
 // character/vibe image memory, scene text, and rotation pinned-character state.
 export async function buildSceneGenerationParams(scene: SceneCard): Promise<SceneGenerationBuildResult> {
     const genState = useGenerationStore.getState()
 
-    const parts = [
-        removeComments(genState.basePrompt),
-        genState.i2iMode === 'inpaint' ? removeComments(genState.inpaintingPrompt) : null,
-        removeComments(genState.additionalPrompt),
-        removeComments(scene.scenePrompt),
-        removeComments(genState.detailPrompt),
-    ].filter(p => p && p.trim())
+    let finalSeed = genState.seedLocked ? genState.seed : Math.floor(Math.random() * 4294967295)
+    if (finalSeed === 0) {
+        finalSeed = Math.floor(Math.random() * 4294967295)
+    }
 
-    const finalPrompt = await processWildcards(parts.join(', '))
+    const modulePlan = await resolveSceneAssetModulePlan(scene, finalSeed)
+    const modulePromptsActive = hasAssetModulePrompts(modulePlan)
+
+    let finalPrompt: string
+    let finalNegativePrompt: string
+
+    if (modulePromptsActive) {
+        finalPrompt = readStringParam(modulePlan.generationParams.prompt)
+        finalNegativePrompt = readStringParam(modulePlan.generationParams.negative_prompt)
+    } else {
+        const parts = [
+            removeComments(genState.basePrompt),
+            genState.i2iMode === 'inpaint' ? removeComments(genState.inpaintingPrompt) : null,
+            removeComments(genState.additionalPrompt),
+            removeComments(scene.scenePrompt),
+            removeComments(genState.detailPrompt),
+        ].filter(p => p && p.trim())
+
+        finalPrompt = await processWildcards(parts.join(', '))
+        finalNegativePrompt = removeComments(genState.negativePrompt)
+    }
 
     // CharacterStore owns lazy file-backed image loading. Workers must force
     // this load before building char/vibe arrays, and useSceneGeneration later
@@ -49,21 +123,19 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
         ? new Set(rotation.pinnedCharacterIds)
         : null
 
-    const processedCharacterPrompts = await Promise.all(
-        characterPrompts
-            .filter(c => c.enabled && !(excludedPinnedIds?.has(c.id)))
-            .map(async c => ({
-                prompt: await processWildcards(c.prompt),
-                negative: await processWildcards(c.negative),
-                enabled: c.enabled,
-                position: c.position,
-            }))
-    )
-
-    let finalSeed = genState.seedLocked ? genState.seed : Math.floor(Math.random() * 4294967295)
-    if (finalSeed === 0) {
-        finalSeed = Math.floor(Math.random() * 4294967295)
-    }
+    const moduleCharacterPrompts = readModuleCharacterPrompts(modulePlan)
+    const processedCharacterPrompts = modulePromptsActive
+        ? moduleCharacterPrompts ?? []
+        : await Promise.all(
+            characterPrompts
+                .filter(c => c.enabled && !(excludedPinnedIds?.has(c.id)))
+                .map(async c => ({
+                    prompt: await processWildcards(c.prompt),
+                    negative: await processWildcards(c.negative),
+                    enabled: c.enabled,
+                    position: c.position,
+                }))
+        )
 
     let finalWidth = roundTo64(scene.width || genState.selectedResolution.width)
     let finalHeight = roundTo64(scene.height || genState.selectedResolution.height)
@@ -85,7 +157,8 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
         }
     }
 
-    const imageFormat = useSettingsStore.getState().imageFormat
+    const { imageFormat, metadataMode } = useSettingsStore.getState()
+    const effectiveMetadataMode = modulePlan?.output.metadataMode ?? metadataMode
     const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
     const characterImagesWithData = characterImages.filter(img => img.base64)
     const vibeImagesWithData = vibeImages.filter(img => img.base64)
@@ -95,7 +168,7 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
         mimeType,
         params: {
             prompt: finalPrompt,
-            negative_prompt: removeComments(genState.negativePrompt),
+            negative_prompt: finalNegativePrompt,
             steps: genState.steps,
             cfg_scale: genState.cfgScale,
             cfg_rescale: genState.cfgRescale,
@@ -122,8 +195,27 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
             vibeStrength: vibeImagesWithData.map(img => img.strength),
             preEncodedVibes: vibeImagesWithData.map(img => img.encodedVibe || null),
             characterPrompts: processedCharacterPrompts,
-            characterPositionEnabled: positionEnabled,
+            characterPositionEnabled: modulePromptsActive && moduleCharacterPrompts
+                ? true
+                : positionEnabled,
             imageFormat,
+            metadataMode: effectiveMetadataMode,
+            assetModulePlan: modulePlan ?? undefined,
+            promptParts: modulePromptsActive
+                ? {
+                    base: finalPrompt,
+                    additional: '',
+                    detail: '',
+                    negative: finalNegativePrompt,
+                    inpainting: '',
+                }
+                : {
+                    base: genState.basePrompt,
+                    additional: genState.additionalPrompt,
+                    detail: genState.detailPrompt,
+                    negative: genState.negativePrompt,
+                    inpainting: genState.inpaintingPrompt,
+                },
         },
     }
 }

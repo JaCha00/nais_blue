@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { useAuthStore } from './auth-store'
 import { useSettingsStore } from './settings-store'
-import { generateImage, generateImageStream } from '@/services/novelai-api'
+import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
 import { writeFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
 import { pictureDir, join } from '@tauri-apps/api/path'
 import { useCharacterStore } from './character-store'
@@ -12,6 +12,16 @@ import { processWildcards } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
+import { useAssetModuleStore } from './asset-module-store'
+import { resolveAssetModulePlan, type AssetModulePlan } from '@/lib/asset-modules/resolver'
+import { encodeNais2Sidecar } from '@/lib/nais2-png-meta'
+import {
+    buildNais2Params,
+    ensureImageFileExtension,
+    shouldWriteNais2Sidecar,
+    toSidecarFileName,
+    toSidecarPath,
+} from '@/lib/generation-metadata'
 
 interface Resolution {
     label: string
@@ -26,6 +36,69 @@ interface HistoryItem {
     prompt: string
     seed: number
     timestamp: Date
+}
+
+type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
+
+const removeComments = (text: string) => text
+    .split('\n')
+    .filter(line => !line.trimStart().startsWith('#'))
+    .join('\n')
+
+function hasAssetModulePrompts(plan: AssetModulePlan | null): plan is AssetModulePlan {
+    return Boolean(plan && Object.values(plan.promptGroups).some(prompt => prompt.trim().length > 0))
+}
+
+function readStringParam(value: unknown): string {
+    return typeof value === 'string' ? value : ''
+}
+
+function readModuleCharacterPrompts(plan: AssetModulePlan | null): CharacterPromptParams | null {
+    const value = plan?.generationParams.characterPrompts
+    return Array.isArray(value) ? value as CharacterPromptParams : null
+}
+
+async function resolveMainAssetModulePlan(seed: number): Promise<AssetModulePlan | null> {
+    const profile = useAssetModuleStore.getState().profile
+    if (!profile.recipes.some(recipe => recipe.enabled)) return null
+
+    try {
+        const plan = await resolveAssetModulePlan({
+            profile,
+            seed,
+            baseParams: {
+                prompt: '',
+                negative_prompt: '',
+            },
+            filenameContext: {
+                seed,
+            },
+        })
+
+        return plan.recipe && plan.modules.length > 0 ? plan : null
+    } catch (error) {
+        console.warn('[AssetModules] Failed to resolve main generation plan; falling back to direct prompts.', error)
+        return null
+    }
+}
+
+async function writeNais2SidecarForMainGeneration(params: {
+    generationParams: GenerationParams
+    outputDir: string
+    fileName: string
+    fullPath: string
+    useAbsolutePath: boolean
+}): Promise<void> {
+    const sidecarBytes = encodeNais2Sidecar(buildNais2Params(params.generationParams))
+
+    if (params.useAbsolutePath) {
+        await writeFile(toSidecarPath(params.fullPath), sidecarBytes)
+        return
+    }
+
+    await writeFile(`${params.outputDir}/${toSidecarFileName(params.fileName)}`, sidecarBytes, {
+        baseDir: BaseDirectory.Picture,
+    })
 }
 
 export const AVAILABLE_MODELS = [
@@ -365,23 +438,6 @@ export const useGenerationStore = create<GenerationState>()(
                         set({ currentBatch: i + 1 })
 
                         const startTime = Date.now()
-                        
-                        // Helper to remove comment lines (lines starting with #)
-                        const removeComments = (text: string) => text
-                            .split('\n')
-                            .filter(line => !line.trimStart().startsWith('#'))
-                            .join('\n')
-                        
-                        let finalPrompt = [
-                            removeComments(basePrompt),
-                            removeComments(inpaintingPrompt),
-                            removeComments(additionalPrompt),
-                            removeComments(detailPrompt)
-                        ].filter(Boolean).join(', ')
-
-                        // Fragment Substitution - use processWildcards which handles <filename> syntax
-                        // Wildcard Processing (handles both <filename> fragments and (a/b/c) random selection) - async
-                        finalPrompt = await processWildcards(finalPrompt)
 
                         // Get current seed for this generation
                         // Use the current store seed, then immediately set next seed
@@ -395,6 +451,29 @@ export const useGenerationStore = create<GenerationState>()(
                             set({ seed: Math.floor(Math.random() * 4294967295) })
                         }
 
+                        const modulePlan = await resolveMainAssetModulePlan(currentSeed)
+                        const modulePromptsActive = hasAssetModulePrompts(modulePlan)
+
+                        let finalPrompt: string
+                        let finalNegativePrompt: string
+
+                        if (modulePromptsActive) {
+                            finalPrompt = readStringParam(modulePlan.generationParams.prompt)
+                            finalNegativePrompt = readStringParam(modulePlan.generationParams.negative_prompt)
+                        } else {
+                            finalPrompt = [
+                                removeComments(basePrompt),
+                                removeComments(inpaintingPrompt),
+                                removeComments(additionalPrompt),
+                                removeComments(detailPrompt)
+                            ].filter(Boolean).join(', ')
+
+                            // Fragment Substitution - use processWildcards which handles <filename> syntax
+                            // Wildcard Processing (handles both <filename> fragments and (a/b/c) random selection) - async
+                            finalPrompt = await processWildcards(finalPrompt)
+                            finalNegativePrompt = removeComments(negativePrompt)
+                        }
+
                         // Character & Vibe Data (활성화된 이미지만 필터링)
                         // Ensure base64 data is loaded from files before generation
                         await useCharacterStore.getState().ensureImagesLoaded()
@@ -406,20 +485,24 @@ export const useGenerationStore = create<GenerationState>()(
                         const { characters: characterPrompts, positionEnabled } = useCharacterPromptStore.getState()
 
                         // Apply fragment/wildcard substitution to character prompts (async)
-                        const processedCharacterPrompts = await Promise.all(
-                            characterPrompts.filter(c => c.enabled).map(async c => {
-                                const processedPrompt = await processWildcards(c.prompt)
-                                const processedNegative = await processWildcards(c.negative)
-                                return {
-                                    ...c,
-                                    prompt: processedPrompt,
-                                    negative: processedNegative
-                                }
-                            })
-                        )
+                        const moduleCharacterPrompts = readModuleCharacterPrompts(modulePlan)
+                        const processedCharacterPrompts = modulePromptsActive
+                            ? moduleCharacterPrompts ?? []
+                            : await Promise.all(
+                                characterPrompts.filter(c => c.enabled).map(async c => {
+                                    const processedPrompt = await processWildcards(c.prompt)
+                                    const processedNegative = await processWildcards(c.negative)
+                                    return {
+                                        ...c,
+                                        prompt: processedPrompt,
+                                        negative: processedNegative
+                                    }
+                                })
+                            )
 
                         // Check if streaming is enabled and get image format
-                        const { useStreaming, imageFormat } = useSettingsStore.getState()
+                        const { useStreaming, imageFormat, metadataMode } = useSettingsStore.getState()
+                        const effectiveMetadataMode = modulePlan?.output.metadataMode ?? metadataMode
 
                         // Helper function to round to nearest multiple of 64 (NovelAI requirement)
                         const roundTo64 = (value: number): number => Math.round(value / 64) * 64
@@ -448,9 +531,9 @@ export const useGenerationStore = create<GenerationState>()(
                             }
                         }
 
-                        const generationParams = {
+                        const generationParams: GenerationParams = {
                             prompt: finalPrompt,
-                            negative_prompt: removeComments(negativePrompt),
+                            negative_prompt: finalNegativePrompt,
                             model,
                             width: finalWidth,
                             height: finalHeight,
@@ -485,10 +568,14 @@ export const useGenerationStore = create<GenerationState>()(
 
                             // Character Prompts (V4 char_captions with positions)
                             characterPrompts: processedCharacterPrompts,
-                            characterPositionEnabled: positionEnabled,
+                            characterPositionEnabled: modulePromptsActive && moduleCharacterPrompts
+                                ? true
+                                : positionEnabled,
 
                             // Image format (PNG or WebP)
                             imageFormat,
+                            metadataMode: effectiveMetadataMode,
+                            assetModulePlan: modulePlan ?? undefined,
 
                             // NAI UI options (Quality Tags & UC Preset)
                             qualityToggle: get().qualityToggle,
@@ -497,13 +584,21 @@ export const useGenerationStore = create<GenerationState>()(
                             // Original prompt parts (pre-merge). Embedded into the image
                             // as nais2-params so re-importing restores each section instead
                             // of dumping everything into basePrompt.
-                            promptParts: {
-                                base: basePrompt,
-                                additional: additionalPrompt,
-                                detail: detailPrompt,
-                                negative: negativePrompt,
-                                inpainting: inpaintingPrompt,
-                            },
+                            promptParts: modulePromptsActive
+                                ? {
+                                    base: finalPrompt,
+                                    additional: '',
+                                    detail: '',
+                                    negative: finalNegativePrompt,
+                                    inpainting: '',
+                                }
+                                : {
+                                    base: basePrompt,
+                                    additional: additionalPrompt,
+                                    detail: detailPrompt,
+                                    negative: negativePrompt,
+                                    inpainting: inpaintingPrompt,
+                                },
                         }
 
                         // Reset progress
@@ -588,8 +683,9 @@ export const useGenerationStore = create<GenerationState>()(
                                         typePrefix = 'I2I_'
                                     }
                                     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    const fileName = `NAIS_${typePrefix}${Date.now()}.${fileExt}`
-                                    const outputDir = savePath || 'NAIS_Output'
+                                    const moduleFileName = ensureImageFileExtension(modulePlan?.output.fileName, fileExt)
+                                    const fileName = moduleFileName ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
+                                    const outputDir = modulePlan?.output.directory || savePath || 'NAIS_Output'
 
                                     let fullPath: string
 
@@ -612,6 +708,16 @@ export const useGenerationStore = create<GenerationState>()(
                                         fullPath = await join(picPath, outputDir, fileName)
                                     }
 
+                                    if (shouldWriteNais2Sidecar(effectiveMetadataMode, imageFormat)) {
+                                        await writeNais2SidecarForMainGeneration({
+                                            generationParams,
+                                            outputDir,
+                                            fileName,
+                                            fullPath,
+                                            useAbsolutePath,
+                                        })
+                                    }
+
                                     // Notify HistoryPanel (file path only — HistoryPanel uses
                                     // convertFileSrc for file-based images, no base64 needed)
                                     try {
@@ -626,7 +732,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     const link = document.createElement('a')
                                     link.href = imageUrl
                                     const fallbackExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    link.download = `NAIS_${Date.now()}.${fallbackExt}`
+                                    link.download = ensureImageFileExtension(modulePlan?.output.fileName, fallbackExt) ?? `NAIS_${Date.now()}.${fallbackExt}`
                                     document.body.appendChild(link)
                                     link.click()
                                     document.body.removeChild(link)
@@ -636,7 +742,8 @@ export const useGenerationStore = create<GenerationState>()(
                                 // This allows viewing the generated image in history without saving to disk
                                 try {
                                     const memExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    const memoryPath = `memory://NAIS_${Date.now()}.${memExt}`
+                                    const memoryFileName = ensureImageFileExtension(modulePlan?.output.fileName, memExt) ?? `NAIS_${Date.now()}.${memExt}`
+                                    const memoryPath = `memory://${memoryFileName}`
                                     window.dispatchEvent(new CustomEvent('newImageGenerated', {
                                         detail: { path: memoryPath, data: imageUrl }
                                     }))

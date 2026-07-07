@@ -1,115 +1,64 @@
-# NAIS2 Design Contract
+# NAIS2 Design System
 
-This file is the token contract for NAIS2 frontend work. Components that affect layout, spacing, type, color, depth, or motion must trace new values here first.
+## Atmosphere / Signature
 
-## 1. Atmosphere / Signature
+NAIS2 is a dense production cockpit for image generation work. UI should feel quiet, direct, and repeatable: dark-native surfaces, thin borders, restrained contrast, compact controls, and prompt text kept readable over decoration.
 
-NAIS2 is a dense desktop workbench for repeated image-generation sessions. The UI should feel calm, compact, and operational: panels are tools, center content stays primary, and visual weight comes from borders, muted surfaces, and clear information hierarchy rather than decoration.
+## Color
 
-Do:
-- Preserve usable center content before side-panel convenience.
-- Use compact controls with readable wrapping at narrow widths.
-- Keep panels visually quiet with the existing neutral dark/light theme.
+- `--background` light `0 0% 100%`, dark `0 0% 3.9%`: app background.
+- `--foreground` light `0 0% 3.9%`, dark `0 0% 98%`: primary text.
+- `--card` light `0 0% 100%`, dark `0 0% 3.9%`: framed panel surface.
+- `--card-foreground` light `0 0% 3.9%`, dark `0 0% 98%`: text on card.
+- `--popover` light `0 0% 100%`, dark `0 0% 3.9%`: overlay surface.
+- `--primary` light `0 0% 9%`, dark `0 0% 98%`: primary action and selected states.
+- `--primary-foreground` light `0 0% 98%`, dark `0 0% 9%`: text on primary.
+- `--secondary` light `0 0% 96.1%`, dark `0 0% 14.9%`: secondary control fill.
+- `--muted` light `0 0% 96.1%`, dark `0 0% 14.9%`: inactive panels and quiet fills.
+- `--muted-foreground` light `0 0% 45.1%`, dark `0 0% 63.9%`: secondary text.
+- `--accent` light `0 0% 96.1%`, dark `0 0% 14.9%`: hover and contextual highlight.
+- `--destructive` light `0 84.2% 60.2%`, dark `0 62.8% 30.6%`: errors and destructive actions.
+- `--border` light `0 0% 89.8%`, dark `0 0% 14.9%`: hairline borders.
+- `--ring` light `0 0% 3.9%`, dark `0 0% 83.1%`: focus ring.
+- Chart accents are available through `--chart-1` to `--chart-5`; do not introduce new raw accent colors in components.
 
-Do not:
-- Add decorative gradients, glow layers, or marketing-style hero treatment to app surfaces.
-- Let fixed sidebars consume the center panel below desktop widths.
-- Hide text by clipping when a label can wrap, truncate intentionally, or move to an icon-only affordance with a tooltip.
+## Typography
 
-## 2. Color
+- Font stack: `Pretendard Variable`, `Pretendard`, `Inter`, `-apple-system`, `BlinkMacSystemFont`, `system-ui`, `sans-serif`.
+- Mono stack: `JetBrains Mono`, `Consolas`, `Monaco`, `monospace`.
+- Page title: `text-2xl`, weight `600`, line-height from Tailwind default.
+- Section title: `text-sm` or `text-base`, weight `600`.
+- Body: `text-sm`, weight `400`.
+- Metadata and counters: `text-xs`, mono only for ids, filenames, paths, and numeric job state.
+- Letter spacing remains Tailwind default; no negative tracking.
 
-The existing Tailwind HSL variables in `src/styles/globals.css` remain the source for runtime color values.
+## Spacing
 
-| Token | CSS variable | Role |
-| --- | --- | --- |
-| `background` | `hsl(var(--background))` | app canvas |
-| `foreground` | `hsl(var(--foreground))` | primary text |
-| `card` | `hsl(var(--card))` | panel and card surfaces |
-| `card-foreground` | `hsl(var(--card-foreground))` | text on panels |
-| `muted` | `hsl(var(--muted))` | secondary surface fills |
-| `muted-foreground` | `hsl(var(--muted-foreground))` | secondary labels |
-| `primary` | `hsl(var(--primary))` | selected state and primary actions |
-| `primary-foreground` | `hsl(var(--primary-foreground))` | text on primary |
-| `border` | `hsl(var(--border))` | panel and control hairlines |
-| `input` | `hsl(var(--input))` | input borders |
-| `ring` | `hsl(var(--ring))` | focus ring |
-| `destructive` | `hsl(var(--destructive))` | destructive and warning controls |
+- Base unit is Tailwind spacing `1 = 0.25rem = 4px`.
+- Dense controls use `gap-2`, `px-3`, `py-2`.
+- Panels use `p-3` or `p-4`.
+- Page grids use `gap-3` or `gap-4`.
+- Large shell gutters are owned by `ThreeColumnLayout`; pages should not add outer hero spacing.
 
-Existing contextual colors such as amber token balances and destructive warnings may remain when they already express domain state. New UI chrome should use semantic tokens above.
+## Components
 
-## 3. Typography
+- Page section panel: `rounded-lg border border-border/50 bg-card/50`.
+- Repeated item card: `rounded-lg border border-border/50 bg-background/40`.
+- Form control: existing `Input`, `Textarea`, `Select`, `Switch`, `Button`.
+- Focus: `focus-visible:ring-2 focus-visible:ring-ring`.
+- Disabled: opacity and cursor state from shared UI components.
+- Icons: Lucide only.
+- Do not nest visual cards inside decorative cards; compact repeated cards inside a page section are allowed.
 
-NAIS2 inherits the system font stack through Tailwind. This is intentional for a Tauri desktop utility: it matches the host platform and avoids a web-marketing voice.
+## Motion
 
-| Token | Tailwind class | Use |
-| --- | --- | --- |
-| `type-title` | `text-2xl font-semibold leading-tight` | page-level titles |
-| `type-section` | `text-lg font-semibold leading-snug` | card and panel titles |
-| `type-body` | `text-sm leading-6` | descriptions and dense body copy |
-| `type-label` | `text-xs font-medium leading-5` | field labels and compact metadata |
-| `type-control` | `text-xs leading-tight` or `text-sm leading-5` | buttons and inputs |
-| `type-code` | `font-mono text-xs leading-5` | prompt and template text boxes |
+- Existing transitions use `transition-colors`, `transition-all`, and Framer Motion nav indicator.
+- Studio interactions should use opacity/color/background transitions only.
+- No layout animation for editor panels.
+- Reduced-motion inherits browser and Tailwind defaults.
 
-Text in compact tool surfaces must wrap or truncate deliberately. Fixed-height buttons with translated labels must either use icon-only mode or allow `h-auto min-h-*` plus `whitespace-normal`.
+## Depth
 
-## 4. Spacing
-
-Base unit: `4px`. Use Tailwind scale tokens only.
-
-| Token | Tailwind class | Pixels | Use |
-| --- | --- | --- | --- |
-| `space-1` | `1` | 4 | icon/text gaps |
-| `space-2` | `2` | 8 | control gaps |
-| `space-3` | `3` | 12 | shell padding, panel gaps |
-| `space-4` | `4` | 16 | card spacing |
-| `space-6` | `6` | 24 | roomy card internals |
-| `space-8` | `8` | 32 | page rhythm |
-
-Responsive shell contract:
-- `>= 1536px`: three-column workbench may show left, center, and right panels.
-- `900px - 1535px`: center content stays readable; side panels become explicit drawers or one secondary rail at most.
-- `< 900px`: center content is primary; side panels are hidden behind icon controls.
-
-## 5. Components
-
-Shell panels:
-- Radius: `rounded-2xl` follows the existing app shell.
-- Border: `border border-border/50`.
-- Surface: `bg-card/30` to `bg-card/50` with existing backdrop blur where already used.
-- Width: desktop sidebars may be fixed, but must be hidden or converted to drawers below the responsive shell thresholds.
-
-Navigation:
-- Compact mode is based on available container width, not global window width alone.
-- Icon buttons must have accessible labels or tooltips.
-- Labels may show only when the center panel has enough inline space.
-
-Prompt controls:
-- Action rows must wrap at narrow widths.
-- Primary generate action can take the full row when needed.
-- Numeric counters and icon controls must not force the panel wider than the viewport.
-
-Style Lab text boxes:
-- Prompt/template text areas use `type-code`.
-- Width must be `min-w-0 w-full`.
-- Height should be stable but readable: compact cards use at least `h-24`, template inputs at least `min-h-36`, rendered previews at least `min-h-32`.
-- Long prompt text must remain readable through wrapping and internal scrolling, never through horizontal page scroll.
-
-## 6. Motion
-
-Use the existing low-intensity motion language:
-- Duration: `duration-150` to `duration-300`.
-- Properties: opacity, transform, color, background, border.
-- Avoid animating layout width during breakpoint changes.
-- Respect existing browser reduced-motion behavior when adding new motion.
-
-## 7. Depth
-
-Depth strategy is borders plus muted tonal fills.
-
-| Token | Tailwind class | Use |
-| --- | --- | --- |
-| `depth-panel` | `shadow-lg border border-border/50` | app shell panels |
-| `depth-card` | `border border-border/60 bg-card/70` | Style Lab cards |
-| `depth-muted` | `bg-muted/20` to `bg-muted/50` | nested metrics and empty states |
-
-Avoid adding new raw `box-shadow` values unless this file is updated first.
+- Depth is border-first with muted translucent fills.
+- Existing shell shadows may stay at layout level.
+- New studio panels use borders and tonal fills, not custom box shadows.

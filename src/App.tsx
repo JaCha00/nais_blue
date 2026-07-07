@@ -16,6 +16,7 @@ const Library = lazy(() => import('@/pages/Library'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const ToolsMode = lazy(() => import('@/pages/ToolsMode'))
 const PromptEditor = lazy(() => import('@/pages/PromptEditor'))
+const AssetModuleStudio = lazy(() => import('@/pages/AssetModuleStudio'))
 const StyleLab = lazy(() => import('@/pages/StyleLab'))
 const Marketplace = lazy(() => import('@/pages/Marketplace'))
 const MarketplaceDetail = lazy(() => import('@/pages/MarketplaceDetail'))
@@ -67,6 +68,7 @@ function AppContent() {
                     <Route path="/scenes/:id" element={<SceneDetail />} />
                     <Route path="/tools" element={<ToolsMode />} />
                     <Route path="/prompts" element={<PromptEditor />} />
+                    <Route path="/asset-modules" element={<AssetModuleStudio />} />
                     <Route path="/style-lab" element={<StyleLab />} />
                     <Route path="/marketplace" element={<Marketplace />} />
                     <Route path="/marketplace/:id" element={<MarketplaceDetail />} />

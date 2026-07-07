@@ -9,6 +9,7 @@ interface NavItem {
     path: string
     icon: LucideIcon
     labelKey: string
+    fallbackLabel?: string
 }
 
 interface AnimatedNavBarProps {
@@ -52,11 +53,12 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
         <nav ref={navRef} className="flex w-full min-w-0 items-center justify-center gap-1 overflow-x-auto p-1">
             {items.map((item) => {
                 const isActive = location.pathname === item.path
+                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
                 return (
                     <NavLink
                         key={item.path}
                         to={item.path}
-                        title={isCompact ? t(item.labelKey) : undefined}
+                        title={isCompact ? label : undefined}
                         className={cn(
                             "relative z-0 shrink-0 rounded-full text-sm font-medium transition-colors",
                             isCompact ? (isTiny ? "p-1.5" : "p-2") : "px-4 py-2",
@@ -74,7 +76,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                         )}
                         <span className="relative z-10 flex min-w-0 items-center gap-2">
                             <item.icon className="h-4 w-4 shrink-0" />
-                            {!isCompact && <span className="truncate">{t(item.labelKey)}</span>}
+                            {!isCompact && <span className="truncate">{label}</span>}
                         </span>
                     </NavLink>
                 )

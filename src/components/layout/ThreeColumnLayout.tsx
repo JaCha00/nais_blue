@@ -31,6 +31,7 @@ import {
     PanelLeft,
     PanelRight,
     Store,
+    Package,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
@@ -116,6 +117,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/scenes', icon: Film, labelKey: 'nav.scenes' },
         { path: '/tools', icon: Wand2, labelKey: 'smartTools.title' },
         { path: '/prompts', icon: NotebookPen, labelKey: 'nav.promptEditor' },
+        { path: '/asset-modules', icon: Package, labelKey: 'nav.assetModuleStudio', fallbackLabel: 'Asset Studio' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
         { path: '/marketplace', icon: Store, labelKey: 'nav.marketplace' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },

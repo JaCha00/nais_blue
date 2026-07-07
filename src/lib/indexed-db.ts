@@ -27,6 +27,7 @@ export const BACKUP_STORE_KEYS = [
     'nais2-tools',
     'nais2-update',
     'nais2-style-lab',
+    'nais2-asset-modules',
 ] as const
 
 export type BackupStoreKey = typeof BACKUP_STORE_KEYS[number]

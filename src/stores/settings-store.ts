@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
+import { DEFAULT_METADATA_MODE, type MetadataMode } from '@/lib/generation-metadata'
 
 export interface CustomResolution {
     id: string
@@ -38,6 +39,7 @@ interface SettingsState {
 
     // Image format setting
     imageFormat: 'png' | 'webp'
+    metadataMode: MetadataMode
 
     // Actions
     setSavePath: (path: string, useAbsolute?: boolean) => void
@@ -54,6 +56,7 @@ interface SettingsState {
     setGeminiApiKey: (key: string) => void
     setLibraryPath: (path: string, useAbsolute?: boolean) => void
     setImageFormat: (format: 'png' | 'webp') => void
+    setMetadataMode: (mode: MetadataMode) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -74,6 +77,7 @@ export const useSettingsStore = create<SettingsState>()(
             libraryPath: 'NAIS_Library', // Default: relative to Pictures folder
             useAbsoluteLibraryPath: false, // Default: relative to Pictures folder
             imageFormat: 'png', // Default: PNG format
+            metadataMode: DEFAULT_METADATA_MODE,
 
             setSavePath: (savePath, useAbsolute) => set({
                 savePath,
@@ -104,6 +108,7 @@ export const useSettingsStore = create<SettingsState>()(
                 useAbsoluteLibraryPath: useAbsolute ?? false
             }),
             setImageFormat: (format) => set({ imageFormat: format }),
+            setMetadataMode: (metadataMode) => set({ metadataMode }),
         }),
         {
             name: 'nais2-settings',
