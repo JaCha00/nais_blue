@@ -31,6 +31,29 @@ const DEFAULT_QUICK_LINKS: QuickLink[] = [
 ]
 
 const STORE_KEY = 'webview_quick_links'
+const WEBVIEW_RESIZE_THROTTLE_MS = 80
+
+interface WebViewRect {
+    x: number
+    y: number
+    width: number
+    height: number
+}
+
+const toWebViewRect = (rect: DOMRect): WebViewRect => ({
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.round(rect.width),
+    height: Math.round(rect.height),
+})
+
+const hasMeaningfulRectChange = (previous: WebViewRect | null, next: WebViewRect) => (
+    !previous ||
+    Math.abs(previous.x - next.x) >= 1 ||
+    Math.abs(previous.y - next.y) >= 1 ||
+    Math.abs(previous.width - next.width) >= 2 ||
+    Math.abs(previous.height - next.height) >= 2
+)
 
 export default function WebView() {
     const { t } = useTranslation()
@@ -45,6 +68,9 @@ export default function WebView() {
     const [newLinkUrl, setNewLinkUrl] = useState('')
     const browserAreaRef = useRef<HTMLDivElement>(null)
     const rafRef = useRef<number | null>(null)
+    const pendingResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const lastResizeSentAtRef = useRef(0)
+    const lastWebViewRectRef = useRef<WebViewRect | null>(null)
     const storeRef = useRef<Store | null>(null)
     const [zoomLevel, setZoomLevel] = useState(1.0)
 
@@ -129,8 +155,21 @@ export default function WebView() {
         saveQuickLinks(newLinks)
     }
 
-    // Resize WebView immediately using requestAnimationFrame
-    const updateWebViewSize = useCallback(() => {
+    const sendWebViewResize = useCallback((nextRect: WebViewRect) => {
+        lastResizeSentAtRef.current = Date.now()
+        lastWebViewRectRef.current = nextRect
+        void invoke('resize_embedded_browser', {
+            x: nextRect.x,
+            y: nextRect.y,
+            width: nextRect.width,
+            height: nextRect.height,
+        }).catch(() => {
+            // Native child webview can disappear during page transitions.
+        })
+    }, [])
+
+    // Resize WebView through one RAF read and one throttled IPC write.
+    const updateWebViewSize = useCallback((options?: { immediate?: boolean }) => {
         if (!isBrowserOpen || !browserAreaRef.current) return
 
         if (rafRef.current) {
@@ -141,18 +180,32 @@ export default function WebView() {
             const rect = browserAreaRef.current?.getBoundingClientRect()
             if (!rect) return
 
-            try {
-                await invoke('resize_embedded_browser', {
-                    x: rect.left,
-                    y: rect.top,
-                    width: rect.width,
-                    height: rect.height
-                })
-            } catch (error) {
-                // Ignore resize errors
+            const nextRect = toWebViewRect(rect)
+            if (!hasMeaningfulRectChange(lastWebViewRectRef.current, nextRect)) {
+                return
             }
+
+            if (pendingResizeTimerRef.current) {
+                clearTimeout(pendingResizeTimerRef.current)
+                pendingResizeTimerRef.current = null
+            }
+
+            const elapsed = Date.now() - lastResizeSentAtRef.current
+            const delay = options?.immediate
+                ? 0
+                : Math.max(0, WEBVIEW_RESIZE_THROTTLE_MS - elapsed)
+
+            if (delay === 0) {
+                sendWebViewResize(nextRect)
+                return
+            }
+
+            pendingResizeTimerRef.current = setTimeout(() => {
+                sendWebViewResize(nextRect)
+                pendingResizeTimerRef.current = null
+            }, delay)
         })
-    }, [isBrowserOpen])
+    }, [isBrowserOpen, sendWebViewResize])
 
     // Check if browser exists and restore on mount
     useEffect(() => {
@@ -164,13 +217,7 @@ export default function WebView() {
                     setIsBrowserOpen(true)
                     setTimeout(() => {
                         if (browserAreaRef.current) {
-                            const rect = browserAreaRef.current.getBoundingClientRect()
-                            invoke('resize_embedded_browser', {
-                                x: rect.left,
-                                y: rect.top,
-                                width: rect.width,
-                                height: rect.height
-                            })
+                            sendWebViewResize(toWebViewRect(browserAreaRef.current.getBoundingClientRect()))
                         }
                     }, 50)
                 }
@@ -179,24 +226,25 @@ export default function WebView() {
             }
         }
         checkAndRestoreBrowser()
-    }, [])
+    }, [sendWebViewResize])
 
-    // Listen to resize events
+    // The observed browser area covers window drags and shell/sidebar changes.
     useEffect(() => {
         if (!isBrowserOpen) return
 
-        window.addEventListener('resize', updateWebViewSize)
-
-        const resizeObserver = new ResizeObserver(updateWebViewSize)
+        const resizeObserver = new ResizeObserver(() => updateWebViewSize())
         if (browserAreaRef.current) {
             resizeObserver.observe(browserAreaRef.current)
         }
 
         return () => {
-            window.removeEventListener('resize', updateWebViewSize)
             resizeObserver.disconnect()
             if (rafRef.current) {
                 cancelAnimationFrame(rafRef.current)
+            }
+            if (pendingResizeTimerRef.current) {
+                clearTimeout(pendingResizeTimerRef.current)
+                pendingResizeTimerRef.current = null
             }
         }
     }, [isBrowserOpen, updateWebViewSize])
@@ -233,13 +281,15 @@ export default function WebView() {
 
             const rect = browserArea.getBoundingClientRect()
 
-            await invoke('open_embedded_browser', {
-                url: targetUrl,
-                x: rect.left,
-                y: rect.top,
-                width: rect.width,
-                height: rect.height
-            })
+                await invoke('open_embedded_browser', {
+                    url: targetUrl,
+                    x: rect.left,
+                    y: rect.top,
+                    width: rect.width,
+                    height: rect.height
+                })
+                lastWebViewRectRef.current = toWebViewRect(rect)
+                lastResizeSentAtRef.current = Date.now()
             setIsBrowserOpen(true)
         } catch (error) {
             console.error('Failed to open browser:', error)
@@ -251,6 +301,8 @@ export default function WebView() {
     const closeBrowser = async () => {
         try {
             await invoke('close_embedded_browser')
+            lastWebViewRectRef.current = null
+            lastResizeSentAtRef.current = 0
             setIsBrowserOpen(false)
         } catch (error) {
             console.error('Failed to close browser:', error)

@@ -70,6 +70,7 @@ const GlassSurface = forwardRef<HTMLDivElement, GlassSurfaceProps>(({
     const blueGradId = `blue-grad-${id.replace(/:/g, '')}`;
 
     const containerRef = useRef<HTMLDivElement>(null);
+    const lastMapSizeRef = useRef({ width: 0, height: 0 });
     // Merge refs
     useEffect(() => {
         if (typeof ref === 'function') ref(containerRef.current);
@@ -82,10 +83,10 @@ const GlassSurface = forwardRef<HTMLDivElement, GlassSurfaceProps>(({
     const blueChannelRef = useRef<SVGFEDisplacementMapElement>(null);
     const gaussianBlurRef = useRef<SVGFEGaussianBlurElement>(null);
 
-    const generateDisplacementMap = () => {
+    const generateDisplacementMap = (size?: { width: number; height: number }) => {
         const rect = containerRef.current?.getBoundingClientRect();
-        const actualWidth = rect?.width || 100;
-        const actualHeight = rect?.height || 100;
+        const actualWidth = size?.width || rect?.width || 100;
+        const actualHeight = size?.height || rect?.height || 100;
         const edgeSize = Math.min(actualWidth, actualHeight) * (borderWidth * 0.1);
 
         const svgContent = `
@@ -110,9 +111,9 @@ const GlassSurface = forwardRef<HTMLDivElement, GlassSurfaceProps>(({
         return `data:image/svg+xml,${encodeURIComponent(svgContent)}`;
     };
 
-    const updateDisplacementMap = () => {
+    const updateDisplacementMap = (size?: { width: number; height: number }) => {
         if (feImageRef.current) {
-            feImageRef.current.setAttribute('href', generateDisplacementMap());
+            feImageRef.current.setAttribute('href', generateDisplacementMap(size));
         }
     };
 
@@ -159,14 +160,35 @@ const GlassSurface = forwardRef<HTMLDivElement, GlassSurfaceProps>(({
 
     useEffect(() => {
         if (!containerRef.current) return;
+        let rafId = 0;
 
-        const resizeObserver = new ResizeObserver(() => {
-            setTimeout(updateDisplacementMap, 0);
+        const resizeObserver = new ResizeObserver(([entry]) => {
+            const nextSize = {
+                width: Math.round(entry.contentRect.width),
+                height: Math.round(entry.contentRect.height),
+            };
+            const previousSize = lastMapSizeRef.current;
+
+            if (
+                Math.abs(previousSize.width - nextSize.width) < 2 &&
+                Math.abs(previousSize.height - nextSize.height) < 2
+            ) {
+                return;
+            }
+
+            lastMapSizeRef.current = nextSize;
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+            }
+            rafId = requestAnimationFrame(() => updateDisplacementMap(nextSize));
         });
 
         resizeObserver.observe(containerRef.current);
 
         return () => {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+            }
             resizeObserver.disconnect();
         };
     }, []);

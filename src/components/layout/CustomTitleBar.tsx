@@ -23,14 +23,25 @@ export function CustomTitleBar() {
 
     useEffect(() => {
         if (!appWindow) return
+        let resizeTimer: ReturnType<typeof setTimeout> | null = null
 
         appWindow.isMaximized().then(setIsMaximized)
 
-        const unlisten = appWindow.onResized(async () => {
-            setIsMaximized(await appWindow.isMaximized())
+        const unlisten = appWindow.onResized(() => {
+            if (resizeTimer) {
+                clearTimeout(resizeTimer)
+            }
+
+            resizeTimer = setTimeout(() => {
+                void appWindow.isMaximized().then(setIsMaximized)
+                resizeTimer = null
+            }, 150)
         })
 
         return () => {
+            if (resizeTimer) {
+                clearTimeout(resizeTimer)
+            }
             unlisten.then(fn => fn())
         }
     }, [appWindow])

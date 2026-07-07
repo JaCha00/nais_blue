@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useShortcuts } from '@/hooks/useShortcuts'
+import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
 import MainMode from '@/pages/MainMode'
 import { useMarketAuthStore } from '@/stores/market-auth-store'
 
@@ -34,6 +35,7 @@ function AppContent() {
     useSceneGeneration()
     useUpdateChecker()
     useShortcuts()
+    useWindowResizePerformanceMode()
 
     // Initialize marketplace auth on app mount
     const initMarketAuth = useMarketAuthStore(s => s.init)
