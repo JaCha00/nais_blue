@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "sessionId": "nais2-responsive-stylelab-20260707",
+  "auditsAccepted": 0,
+  "updatedAt": "2026-07-07T03:30:35.725Z",
+  "criteria": [
+    {
+      "criterion": "G001/C001",
+      "scenario": "Happy path works from the real user-facing surface.",
+      "inputHash": "64ab59571153c6950b01ffc7fd09be172dd3509377766f6a0039510489751c51",
+      "sourceHash": "53cba5611a28a5e3f1abfedd435110cd4e76a2eabc6a8ebcf0d4618be6b8f0c1",
+      "verdict": null,
+      "failCount": 0,
+      "auditedAt": "2026-07-07T03:30:25.860Z",
+      "command": [
+        "npm",
+        "run",
+        "test:responsive-layout"
+      ],
+      "rerunStatus": "pass",
+      "rerunExitCode": 0,
+      "rerunArtifact": ".superloopy/sessions/nais2-responsive-stylelab-20260707/evidence/audit/G001-C001-rerun.txt",
+      "rerunArtifactHash": "78b38b070e36315cb13d02e2db85a978f0ced58bc0cc07cc6dd0927b450966d8",
+      "floor": "pass",
+      "verdictArtifact": null,
+      "verdictHash": null
+    },
+    {
+      "criterion": "G001/C002",
+      "scenario": "Riskiest edge or failure path is handled.",
+      "inputHash": "79a0f433445efe33b1ccee5d4d3cfd1efe4ee8907fcc4733bd4d72183e27c716",
+      "sourceHash": "fd9bb524c0e10c4a4332cd9fcd07e95c34166ab618f568681710f96bd41eab47",
+      "verdict": null,
+      "failCount": 0,
+      "auditedAt": "2026-07-07T03:30:35.724Z",
+      "command": null,
+      "rerunStatus": "manual-recheck",
+      "rerunArtifact": ".superloopy/sessions/nais2-responsive-stylelab-20260707/evidence/frontend/VISUAL_QA.md",
+      "rerunArtifactHash": "fd9bb524c0e10c4a4332cd9fcd07e95c34166ab618f568681710f96bd41eab47",
+      "floor": "pass",
+      "verdictArtifact": null,
+      "verdictHash": null
+    }
+  ]
+}

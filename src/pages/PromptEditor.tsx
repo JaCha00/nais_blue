@@ -4,6 +4,7 @@ import { usePromptLibraryStore, type PromptTab, type PromptWindow } from '@/stor
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
+import { DanbooruTagVerifyDialog } from '@/components/prompt/DanbooruTagVerifyDialog'
 import { toast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import {
@@ -17,6 +18,7 @@ import {
     Upload,
     EyeOff,
     Eye,
+    ShieldCheck,
 } from 'lucide-react'
 
 interface CopyMessages {
@@ -63,6 +65,7 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
     const { renameWindow, deleteWindow, toggleExcluded, moveWindow, setWindowText } = usePromptLibraryStore()
     const [editingTitle, setEditingTitle] = useState(false)
     const [titleValue, setTitleValue] = useState(window.title)
+    const [isDanbooruOpen, setIsDanbooruOpen] = useState(false)
 
     const copyMessages: CopyMessages = {
         empty: t('promptEditor.copyEmptyTitle'),
@@ -137,6 +140,16 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
                 </button>
                 <button
                     type="button"
+                    onClick={() => setIsDanbooruOpen(true)}
+                    disabled={!window.text.trim()}
+                    title={t('promptEditor.verifyDanbooru', 'Danbooru 실검증')}
+                    aria-label={t('promptEditor.verifyDanbooru', 'Danbooru 실검증')}
+                    className="shrink-0 p-0.5 text-muted-foreground hover:text-primary disabled:opacity-20"
+                >
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
                     onClick={() => moveWindow(tabId, window.id, -1)}
                     disabled={index === 0}
                     title={t('promptEditor.moveUp')}
@@ -171,6 +184,19 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
                 onChange={(event) => setWindowText(tabId, window.id, event.target.value)}
                 placeholder={t('promptEditor.promptPlaceholder')}
                 className="min-h-[64px] w-full rounded-md border border-white/10 bg-background/40 px-2 py-1.5 text-sm"
+            />
+            <DanbooruTagVerifyDialog
+                open={isDanbooruOpen}
+                onOpenChange={setIsDanbooruOpen}
+                prompt={window.text}
+                onApply={(nextPrompt) => {
+                    setWindowText(tabId, window.id, nextPrompt)
+                    setIsDanbooruOpen(false)
+                    toast({
+                        title: t('promptEditor.danbooruApplied', 'Danbooru 검증 결과가 반영되었습니다'),
+                        variant: 'success',
+                    })
+                }}
             />
         </div>
     )

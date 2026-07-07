@@ -3,6 +3,7 @@ NAIS2 Tagger Server - Lightweight Version
 Tag analysis using WD14 Tagger (ONNX Runtime CPU-only)
 Background removal is handled via cloud API (BRIA-RMBG-2.0) in the frontend.
 """
+from dataclasses import asdict
 import os
 import sys
 import argparse
@@ -11,12 +12,14 @@ import threading
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 from PIL import Image
 import io
 import numpy as np
 import onnxruntime as ort
 import pandas as pd
 from huggingface_hub import hf_hub_download
+from danbooru_tags import verify_prompt
 
 
 # Global download status for UI display
@@ -29,6 +32,14 @@ download_status = {
     "message": ""
 }
 download_lock = threading.Lock()
+
+class DanbooruVerifyPromptRequest(BaseModel):
+    """Request body for the GUI Danbooru prompt verification endpoint."""
+
+    prompt: str
+    ok_threshold: int = Field(default=100, ge=1, le=1_000_000)
+    fuzzy_limit: int = Field(default=5, ge=0, le=20)
+
 
 def update_download_status(model_name: str, progress: int = 0, total: int = 0, message: str = ""):
     global download_status
@@ -174,6 +185,34 @@ async def tag_image(file: UploadFile = File(...), threshold: float = 0.35):
         
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/danbooru/verify-prompt")
+def verify_danbooru_prompt(request: DanbooruVerifyPromptRequest):
+    """Verify prompt tags through Danbooru.
+
+    Local test guide:
+      1. Run: python src-tauri/python/tagger_server.py --port 8002
+      2. Windows curl:
+         curl.exe -X POST http://127.0.0.1:8002/danbooru/verify-prompt ^
+           -H "Content-Type: application/json" ^
+           -d "{\"prompt\":\"blue hair, <character>, # skipped\",\"ok_threshold\":100,\"fuzzy_limit\":5}"
+      3. Browser fetch:
+         fetch("http://127.0.0.1:8002/danbooru/verify-prompt", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ prompt: "blue hair", ok_threshold: 100, fuzzy_limit: 5 }),
+         }).then(r => r.json()).then(console.log)
+
+    Danbooru may fail from Korean networks; use a VPN or temporary bypass route
+    when validating the live API path.
+    """
+
+    results = verify_prompt(
+        request.prompt,
+        ok_threshold=request.ok_threshold,
+        fuzzy_limit=request.fuzzy_limit,
+    )
+    return {"results": [asdict(result) for result in results]}
 
 @app.get("/download-status")
 def get_download_status():

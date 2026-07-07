@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Check, AlertCircle, ChevronDown, Copy } from 'lucide-react'
+import { Loader2, Check, AlertCircle, ChevronDown, Copy, ShieldCheck } from 'lucide-react'
 import GeminiIcon from '@/assets/gemini-color.svg'
 import {
     Dialog,
@@ -31,6 +31,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { generateTagsFromPrompt, GEMINI_MODELS, type GeminiModel, type TokenUsage } from '@/services/gemini-service'
 import type { TagMatchResult } from '@/lib/tag-matcher'
 import { toast } from '@/components/ui/use-toast'
+import { DanbooruTagVerifyDialog } from '@/components/prompt/DanbooruTagVerifyDialog'
 
 interface PromptGeneratorDialogProps {
     open: boolean
@@ -48,6 +49,8 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
     const [selectedTags, setSelectedTags] = useState<Map<number, string>>(new Map())
     const [selectedModel, setSelectedModel] = useState<GeminiModel>('gemini-2.5-flash')
     const [tokenUsage, setTokenUsage] = useState<TokenUsage | null>(null)
+    const [isDanbooruOpen, setIsDanbooruOpen] = useState(false)
+    const [verifiedPrompt, setVerifiedPrompt] = useState<string | null>(null)
 
     // Reset when dialog opens
     useEffect(() => {
@@ -56,6 +59,8 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
             setResults([])
             setSelectedTags(new Map())
             setTokenUsage(null)
+            setIsDanbooruOpen(false)
+            setVerifiedPrompt(null)
         }
     }, [open])
 
@@ -73,6 +78,7 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
 
         setIsLoading(true)
         setResults([])
+        setVerifiedPrompt(null)
 
         try {
             const result = await generateTagsFromPrompt(userInput, geminiApiKey, selectedModel)
@@ -125,16 +131,17 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
         const newSelections = new Map(selectedTags)
         newSelections.set(index, value)
         setSelectedTags(newSelections)
+        setVerifiedPrompt(null)
     }
 
     const handleRemoveTag = (index: number) => {
         const newSelections = new Map(selectedTags)
         newSelections.delete(index)
         setSelectedTags(newSelections)
+        setVerifiedPrompt(null)
     }
 
-    const handleApply = () => {
-        // Collect all selected tags
+    const getSelectedPromptText = () => {
         const tags: string[] = []
         results.forEach((_, i) => {
             const selected = selectedTags.get(i)
@@ -142,9 +149,14 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                 tags.push(selected)
             }
         })
+        return tags.join(', ')
+    }
 
-        if (tags.length > 0) {
-            onApply(tags.join(', '))
+    const handleApply = () => {
+        const finalPrompt = verifiedPrompt ?? getSelectedPromptText()
+
+        if (finalPrompt.trim()) {
+            onApply(finalPrompt)
             onOpenChange(false)
         }
     }
@@ -174,6 +186,9 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                 return 'border-red-500/50 bg-red-500/10'
         }
     }
+
+    const selectedPromptText = getSelectedPromptText()
+    const danbooruPrompt = verifiedPrompt ?? selectedPromptText
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -269,6 +284,17 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                             <p className="text-xs text-muted-foreground">
                                 {t('promptGenerator.rightClickHint', '우클릭으로 태그 제거')}
                             </p>
+                            {verifiedPrompt && (
+                                <div className="rounded-lg border border-primary/30 bg-primary/10 p-2 text-xs text-primary">
+                                    <div className="mb-1 flex items-center gap-1 font-medium">
+                                        <ShieldCheck className="h-3.5 w-3.5" />
+                                        {t('promptGenerator.danbooruApplied', 'Danbooru 실검증 반영됨')}
+                                    </div>
+                                    <p className="line-clamp-2 font-mono text-[11px] leading-5 text-foreground">
+                                        {verifiedPrompt}
+                                    </p>
+                                </div>
+                            )}
 
                             <ScrollArea className="h-[200px] border rounded-lg p-3" data-allow-context-menu>
                                 <div className="flex flex-wrap gap-2">
@@ -348,27 +374,47 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                     <DialogFooter>
                         <Button
                             variant="outline"
+                            onClick={() => setIsDanbooruOpen(true)}
+                            disabled={!danbooruPrompt.trim()}
+                        >
+                            <ShieldCheck className="h-4 w-4 mr-1" />
+                            {t('promptGenerator.verifyDanbooru', 'Danbooru 실검증')}
+                        </Button>
+                        <Button
+                            variant="outline"
                             onClick={() => {
-                                const finalTags = Array.from(selectedTags.values()).join(', ')
-                                navigator.clipboard.writeText(finalTags)
+                                navigator.clipboard.writeText(danbooruPrompt)
                                 toast({
                                     title: t('common.copied', '복사됨'),
                                     description: t('promptGenerator.copiedToClipboard', '클립보드에 복사되었습니다'),
                                 })
                             }}
-                            disabled={selectedTags.size === 0}
+                            disabled={!danbooruPrompt.trim()}
                         >
                             <Copy className="h-4 w-4 mr-1" />
                             {t('common.copy', '복사')}
                         </Button>
                         <Button
                             onClick={handleApply}
-                            disabled={selectedTags.size === 0}
+                            disabled={!danbooruPrompt.trim()}
                         >
                             {t('promptGenerator.apply', '프롬프트에 적용')}
                         </Button>
                     </DialogFooter>
                 )}
+                <DanbooruTagVerifyDialog
+                    open={isDanbooruOpen}
+                    onOpenChange={setIsDanbooruOpen}
+                    prompt={danbooruPrompt}
+                    onApply={(nextPrompt) => {
+                        setVerifiedPrompt(nextPrompt)
+                        setIsDanbooruOpen(false)
+                        toast({
+                            title: t('promptGenerator.danbooruApplied', 'Danbooru 실검증 반영됨'),
+                            variant: 'success',
+                        })
+                    }}
+                />
             </DialogContent>
         </Dialog>
     )

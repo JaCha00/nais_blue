@@ -1,0 +1,15 @@
+Superloopy command capture
+startedAt: 2026-07-07T03:30:25.860Z
+finishedAt: 2026-07-07T03:30:35.712Z
+cwd: C:\Users\User\OneDrive\图片\NAIS\NAIS2-main
+status: pass
+exitCode: 0
+signal: null
+command: ["npm","run","test:responsive-layout"]
+[stdout]
+
+> nais2@2.7.2 test:responsive-layout
+> node scripts/verify-responsive-layout-contract.mjs
+
+
+[stderr]

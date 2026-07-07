@@ -37,6 +37,7 @@ hiddenimports = [
     'PIL',
     'numpy',
     'huggingface_hub',
+    'danbooru_tags',
 ]
 
 # Exclude heavy libraries that we don't need (rembg, torch, etc.)
