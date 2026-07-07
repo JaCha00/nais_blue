@@ -560,6 +560,11 @@ async fn zoom_embedded_browser(app: AppHandle, zoom_level: f64) -> Result<(), St
 }
 
 #[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn check_tagger_binary() -> bool {
     true
 }
@@ -634,6 +639,7 @@ pub fn run() {
             hide_embedded_browser,
             is_browser_open,
             zoom_embedded_browser,
+            exit_app,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

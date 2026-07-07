@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { isTauri } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { PanelLeft, PanelRight, Minus, Square, X, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { flushAllPendingWrites } from '@/lib/indexed-db'
 import { useLayoutStore } from '@/stores/layout-store'
 import { Tip } from '@/components/ui/tooltip'
 
@@ -45,7 +46,15 @@ export function CustomTitleBar() {
     }
 
     const handleClose = async () => {
-        await appWindow.close()
+        // IndexedDB owns debounced Zustand persistence. Flush first, then ask
+        // Rust to exit the app directly so close-request interception cannot
+        // recursively swallow the custom titlebar close action.
+        try {
+            await flushAllPendingWrites()
+        } catch (error) {
+            console.warn('[Window] Close flush failed; exiting anyway:', error)
+        }
+        await invoke('exit_app')
     }
 
     const handleMouseDown = async (e: React.MouseEvent) => {
@@ -66,6 +75,7 @@ export function CustomTitleBar() {
             {/* Drag Region */}
             <div
                 className="flex-1 h-full cursor-default"
+                data-tauri-drag-region
                 onMouseDown={handleMouseDown}
                 onDoubleClick={handleDoubleClick}
             />
