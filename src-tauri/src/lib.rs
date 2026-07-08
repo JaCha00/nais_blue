@@ -43,7 +43,7 @@ async fn verify_token(token: String) -> VerifyTokenResult {
     };
 
     let result = client
-        .get("https://api.novelai.net/user/subscription")
+        .get("https://image.novelai.net/user/subscription")
         .header("Authorization", format!("Bearer {}", clean_token))
         .header("Content-Type", "application/json")
         .send()
@@ -112,7 +112,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
     let client = reqwest::Client::new();
 
     let result = client
-        .get("https://api.novelai.net/user/subscription")
+        .get("https://image.novelai.net/user/subscription")
         .header("Authorization", format!("Bearer {}", token.trim()))
         .header("Content-Type", "application/json")
         .send()

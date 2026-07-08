@@ -1,6 +1,6 @@
 import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
 import type { Nais2Params, Nais2PromptParts } from '@/lib/nais2-png-meta'
-import type { GenerationParams } from '@/services/novelai-api'
+import type { GenerationParams } from '@/services/novelai-types'
 
 export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
 
@@ -71,4 +71,25 @@ export function ensureImageFileExtension(fileName: string | null | undefined, fi
     if (!trimmed) return null
     if (new RegExp(`\\.${fileExt}$`, 'i').test(trimmed)) return trimmed
     return `${trimmed.replace(/\.[A-Za-z0-9]{2,5}$/, '')}.${fileExt}`
+}
+
+export function redactSentPayloadForMetadata(sentPayload: string): string {
+    try {
+        const payload = JSON.parse(sentPayload) as { parameters?: Record<string, unknown> }
+        const params = payload.parameters
+        if (!params) return JSON.stringify(payload)
+
+        for (const key of [
+            'image',
+            'mask',
+            'director_reference_images',
+            'reference_image_multiple',
+        ]) {
+            if (key in params) params[key] = '[redacted-base64]'
+        }
+
+        return JSON.stringify(payload)
+    } catch {
+        return sentPayload
+    }
 }

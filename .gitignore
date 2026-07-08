@@ -34,6 +34,7 @@ __pycache__/
 
 # Misc
 arcalive-intro.html
+release-artifacts/
 *.zip
 *.7z
 
