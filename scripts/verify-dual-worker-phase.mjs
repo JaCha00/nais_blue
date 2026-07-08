@@ -22,7 +22,11 @@ check('scene workers gate API and save with session checks', (sceneGeneration.ma
 check('scene workers honor cancellation state', /isCancelling/.test(sceneGeneration) && /setIsGenerating\(false\)/.test(sceneGeneration))
 check('scene workers can pause a slot mid-run', /isSlotActive\(slot\)/.test(sceneGeneration))
 check('scene workers refresh Anlas per slot', /refreshAnlas\(slot\)/.test(sceneGeneration))
-check('streaming mode is capped to one worker', /const\s+workerTokens\s*=\s*streamingView\s*\?\s*tokens\.slice\(0,\s*1\)\s*:\s*tokens/.test(sceneGeneration))
+check(
+    'streaming mode is capped to one worker unless source edit forces zip',
+    /const\s+sourceEditActive\s*=\s*Boolean\(useGenerationStore\.getState\(\)\.sourceImage\s*\|\|\s*useGenerationStore\.getState\(\)\.mask\)/.test(sceneGeneration) &&
+    /const\s+workerTokens\s*=\s*streamingView\s*&&\s*!sourceEditActive\s*\?\s*tokens\.slice\(0,\s*1\)\s*:\s*tokens/.test(sceneGeneration)
+)
 check('scene generation preserves imageFormat', /imageFormat/.test(sceneGenerationSurface) && /image\/webp/.test(sceneGenerationSurface))
 check('scene generation preserves char cache keys', /charCacheKeys/.test(sceneGenerationSurface))
 check('scene generation preserves thumbnails/history pipeline', /createThumbnail/.test(sceneGenerationSurface) && /addToHistory/.test(sceneGenerationSurface))

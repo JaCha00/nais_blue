@@ -7,7 +7,7 @@ import { GenerationParams, generateImage, generateImageStream } from '@/services
 import { useAuthStore } from '@/stores/auth-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useCharacterStore } from '@/stores/character-store'
-import { useGenerationStore } from '@/stores/generation-store'
+import { useGenerationStore, warnIfUnverifiedPayloadParityModel } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
 import { toast } from '@/components/ui/use-toast'
@@ -241,6 +241,8 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
         })
         return
     }
+
+    warnIfUnverifiedPayloadParityModel(generationState.model)
 
     const abortController = new AbortController()
     const sessionId = Date.now()

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { useSceneStore, type SceneCard } from '@/stores/scene-store'
-import { useGenerationStore } from '@/stores/generation-store'
+import { useGenerationStore, warnIfUnverifiedPayloadParityModel } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAuthStore, type ApiSlot } from '@/stores/auth-store'
 import { generateImage, generateImageStream, NovelAIHttpError } from '@/services/novelai-api'
@@ -297,8 +297,10 @@ export function useSceneGeneration() {
                 initGenerationProgress()
             }
 
-            if (useGenerationStore.getState().generatingMode !== 'scene') {
-                useGenerationStore.getState().setGeneratingMode('scene')
+            const generationStore = useGenerationStore.getState()
+            if (generationStore.generatingMode !== 'scene') {
+                warnIfUnverifiedPayloadParityModel(generationStore.model)
+                generationStore.setGeneratingMode('scene')
             }
 
             const rotation = useRotationStore.getState()

@@ -240,6 +240,21 @@ check(
   /sentPayloadSummary: params\.sentPayloadSummary/.test(metadata) &&
   /sentPayloadSummary: options\.sentPayloadSummary/.test(sceneSave)
 )
+check(
+  'main webp writes compatibility sidecar',
+  /shouldWriteNais2Sidecar\(effectiveMetadataMode,\s*imageFormat,\s*true\)/.test(generationStore)
+)
+check(
+  'V3 and Furry V3 surface an unverified parity warning',
+  /VERIFIED_PAYLOAD_PARITY_MODELS/.test(generationStore) &&
+  /nai-diffusion-4-5-curated/.test(generationStore) &&
+  /nai-diffusion-4-5-full/.test(generationStore) &&
+  /nai-diffusion-4-curated-preview/.test(generationStore) &&
+  /nai-diffusion-4-full/.test(generationStore) &&
+  /isVerifiedPayloadParityModel/.test(generationStore) &&
+  /warnIfUnverifiedPayloadParityModel\(model\)/.test(generationStore) &&
+  /Payload parity 미검증 모델/.test(generationStore)
+)
 check('payload parity scope records V4/V4.5 before V3 expansion', /verified parity scope is V4\/V4\.5/.test(payload) && /sm_dyn/.test(payload))
 
 runPayloadFixtureChecks()

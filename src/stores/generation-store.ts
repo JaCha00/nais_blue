@@ -111,6 +111,30 @@ export const AVAILABLE_MODELS = [
     { id: 'nai-diffusion-furry-3', name: 'NAI Diffusion Furry V3' },
 ] as const
 
+export const VERIFIED_PAYLOAD_PARITY_MODELS = [
+    'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-5-full',
+    'nai-diffusion-4-curated-preview',
+    'nai-diffusion-4-full',
+] as const
+
+export function isVerifiedPayloadParityModel(model: string): boolean {
+    return VERIFIED_PAYLOAD_PARITY_MODELS.includes(model as typeof VERIFIED_PAYLOAD_PARITY_MODELS[number])
+}
+
+export function warnIfUnverifiedPayloadParityModel(model: string): void {
+    if (isVerifiedPayloadParityModel(model)) return
+
+    toast({
+        title: i18n.t('toast.payloadParityUnverified.title', 'Payload parity 미검증 모델'),
+        description: i18n.t(
+            'toast.payloadParityUnverified.desc',
+            '현재 공식 웹 payload parity는 V4/V4.5 모델만 검증되어 있습니다.'
+        ),
+        variant: 'destructive',
+    })
+}
+
 interface GenerationState {
     // Prompt fields
     basePrompt: string
@@ -298,7 +322,10 @@ export const useGenerationStore = create<GenerationState>()(
             setNegativePrompt: (prompt) => set({ negativePrompt: prompt }),
             setInpaintingPrompt: (prompt) => set({ inpaintingPrompt: prompt }),
 
-            setModel: (model) => set({ model }),
+            setModel: (model) => {
+                warnIfUnverifiedPayloadParityModel(model)
+                set({ model })
+            },
             setSteps: (steps) => set({ steps }),
             setCfgScale: (cfgScale) => set({ cfgScale }),
             setCfgRescale: (cfgRescale) => set({ cfgRescale }),
@@ -410,6 +437,8 @@ export const useGenerationStore = create<GenerationState>()(
                     })
                     return
                 }
+
+                warnIfUnverifiedPayloadParityModel(model)
 
                 // Create new AbortController and session ID
                 const abortController = new AbortController()
@@ -715,7 +744,7 @@ export const useGenerationStore = create<GenerationState>()(
                                         fullPath = await join(picPath, outputDir, fileName)
                                     }
 
-                                    if (shouldWriteNais2Sidecar(effectiveMetadataMode, imageFormat)) {
+                                    if (shouldWriteNais2Sidecar(effectiveMetadataMode, imageFormat, true)) {
                                         await writeNais2SidecarForMainGeneration({
                                             generationParams: resultParams,
                                             outputDir,
