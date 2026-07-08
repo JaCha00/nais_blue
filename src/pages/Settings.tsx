@@ -82,13 +82,47 @@ const SECTIONS = [
 export default function Settings() {
     const { t, i18n } = useTranslation()
     const { theme, setTheme } = useThemeStore()
-    const { savePath, autoSave, setSavePath, setAutoSave, promptFontSize, setPromptFontSize, useStreaming, setUseStreaming, generationDelay, setGenerationDelay, geminiApiKey, setGeminiApiKey, useAbsolutePath, libraryPath, useAbsoluteLibraryPath, setLibraryPath, imageFormat, setImageFormat } = useSettingsStore()
+    const {
+        savePath,
+        autoSave,
+        setSavePath,
+        setAutoSave,
+        promptFontSize,
+        setPromptFontSize,
+        useStreaming,
+        setUseStreaming,
+        generationDelay,
+        setGenerationDelay,
+        geminiApiKey,
+        setGeminiApiKey,
+        useAbsolutePath,
+        sceneSavePath,
+        useAbsoluteScenePath,
+        setSceneSavePath,
+        styleLabSavePath,
+        useAbsoluteStyleLabPath,
+        setStyleLabSavePath,
+        toolsSavePath,
+        useAbsoluteToolsPath,
+        setToolsSavePath,
+        libraryPath,
+        useAbsoluteLibraryPath,
+        setLibraryPath,
+        imageFormat,
+        setImageFormat,
+    } = useSettingsStore()
     const { bindings, enabled: shortcutsEnabled, setBinding, resetBinding, resetAllBindings, setEnabled: setShortcutsEnabled } = useShortcutStore()
     const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey)
 
     const [activeSection, setActiveSection] = useState<SettingsSection>('general')
     const [localSavePath, setLocalSavePath] = useState(savePath)
     const [isAbsolutePath, setIsAbsolutePath] = useState(useAbsolutePath)
+    const [localSceneSavePath, setLocalSceneSavePath] = useState(sceneSavePath)
+    const [isAbsoluteScenePath, setIsAbsoluteScenePath] = useState(useAbsoluteScenePath)
+    const [localStyleLabSavePath, setLocalStyleLabSavePath] = useState(styleLabSavePath)
+    const [isAbsoluteStyleLabPath, setIsAbsoluteStyleLabPath] = useState(useAbsoluteStyleLabPath)
+    const [localToolsSavePath, setLocalToolsSavePath] = useState(toolsSavePath)
+    const [isAbsoluteToolsPath, setIsAbsoluteToolsPath] = useState(useAbsoluteToolsPath)
     const [localLibraryPath, setLocalLibraryPath] = useState(libraryPath)
     const [isAbsoluteLibraryPath, setIsAbsoluteLibraryPath] = useState(useAbsoluteLibraryPath)
     const [appVersion, setAppVersion] = useState('')
@@ -128,6 +162,9 @@ export default function Settings() {
         }
     }, [activeSection])
 
+    const isAbsoluteFolderPath = (value: string) =>
+        /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('/')
+
     const handleSavePath = () => {
         setSavePath(localSavePath, isAbsolutePath)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
@@ -155,6 +192,90 @@ export default function Settings() {
         setLocalSavePath('NAIS_Output')
         setIsAbsolutePath(false)
         setSavePath('NAIS_Output', false)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleSaveScenePath = () => {
+        setSceneSavePath(localSceneSavePath, isAbsoluteScenePath)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleBrowseSceneFolder = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                multiple: false,
+                title: t('settingsPage.save.outputFolders.scene.selectFolder', 'Select Scene Folder'),
+            })
+            if (selected && typeof selected === 'string') {
+                setLocalSceneSavePath(selected)
+                setIsAbsoluteScenePath(true)
+            }
+        } catch (e) {
+            console.error('Folder selection failed:', e)
+        }
+    }
+
+    const handleResetSceneToDefault = async () => {
+        setLocalSceneSavePath('NAIS_Scene')
+        setIsAbsoluteScenePath(false)
+        setSceneSavePath('NAIS_Scene', false)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleSaveStyleLabPath = () => {
+        setStyleLabSavePath(localStyleLabSavePath, isAbsoluteStyleLabPath)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleBrowseStyleLabFolder = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                multiple: false,
+                title: t('settingsPage.save.outputFolders.styleLab.selectFolder', 'Select Style Lab Folder'),
+            })
+            if (selected && typeof selected === 'string') {
+                setLocalStyleLabSavePath(selected)
+                setIsAbsoluteStyleLabPath(true)
+            }
+        } catch (e) {
+            console.error('Folder selection failed:', e)
+        }
+    }
+
+    const handleResetStyleLabToDefault = async () => {
+        setLocalStyleLabSavePath('nais-style')
+        setIsAbsoluteStyleLabPath(false)
+        setStyleLabSavePath('nais-style', false)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleSaveToolsPath = () => {
+        setToolsSavePath(localToolsSavePath, isAbsoluteToolsPath)
+        toast({ title: t('settingsPage.saved'), variant: 'success' })
+    }
+
+    const handleBrowseToolsFolder = async () => {
+        try {
+            const selected = await open({
+                directory: true,
+                multiple: false,
+                title: t('settingsPage.save.outputFolders.tools.selectFolder', 'Select Tools Folder'),
+            })
+            if (selected && typeof selected === 'string') {
+                setLocalToolsSavePath(selected)
+                setIsAbsoluteToolsPath(true)
+            }
+        } catch (e) {
+            console.error('Folder selection failed:', e)
+        }
+    }
+
+    const handleResetToolsToDefault = async () => {
+        setLocalToolsSavePath('nais-tools')
+        setIsAbsoluteToolsPath(false)
+        setToolsSavePath('nais-tools', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
 
@@ -328,9 +449,9 @@ export default function Settings() {
     const totalSize = Object.values(storeSizes).reduce((sum, size) => sum + (size > 0 ? size : 0), 0)
 
     return (
-        <div className="flex h-full">
+        <div className="flex h-full flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
             {/* Sidebar */}
-            <aside className="w-56 border-r border-border/50 p-4 space-y-1">
+            <aside className="w-full shrink-0 border-b border-border/50 p-4 space-y-1 lg:w-56 lg:border-b-0 lg:border-r">
                 <h2 className="text-lg font-semibold mb-4 px-2">{t('settingsPage.title')}</h2>
                 {SECTIONS.map((section) => (
                     <button
@@ -361,7 +482,7 @@ export default function Settings() {
             </aside>
 
             {/* Content */}
-            <main className="flex-1 p-6 overflow-y-auto">
+            <main className="min-w-0 flex-1 p-4 sm:p-6 lg:overflow-y-auto">
                 <div className="max-w-2xl space-y-8">
                     {/* General Section */}
                     {activeSection === 'general' && (
@@ -676,7 +797,7 @@ export default function Settings() {
                                         <img src={GeminiIcon} alt="Gemini" className="h-4 w-4" />
                                         {t('settingsPage.api.geminiKey', 'Gemini API Key')}
                                     </label>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row">
                                         <Input
                                             type="password"
                                             placeholder={t('settingsPage.api.geminiKeyPlaceholder', 'AIza...')}
@@ -713,21 +834,19 @@ export default function Settings() {
                             <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <label className="text-sm font-medium">{t('settingsPage.save.folder')}</label>
+                                        <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.main.label', 'Main Output Folder')}</label>
                                         {isAbsolutePath && (
                                             <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
                                                 {t('settingsPage.save.customPath', 'Custom Path')}
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row">
                                         <Input
                                             value={localSavePath}
                                             onChange={(e) => {
                                                 setLocalSavePath(e.target.value)
-                                                // If user manually types, assume it's relative unless it looks like an absolute path
-                                                const isAbsolute = /^[A-Za-z]:[\\/]/.test(e.target.value) || e.target.value.startsWith('/')
-                                                setIsAbsolutePath(isAbsolute)
+                                                setIsAbsolutePath(isAbsoluteFolderPath(e.target.value))
                                             }}
                                             placeholder="NAIS_Output"
                                             className="flex-1"
@@ -751,10 +870,148 @@ export default function Settings() {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsolutePath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
-                                                : t('settingsPage.save.folderHelp')}
+                                                : t('settingsPage.save.outputFolders.main.help', 'Default: Pictures/NAIS_Output')}
                                         </p>
                                         {isAbsolutePath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetToDefault} className="h-6 text-xs">
+                                                <RotateCcw className="h-3 w-3 mr-1" />
+                                                {t('settingsPage.save.resetDefault', 'Reset to Default')}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.scene.label', 'Scene Folder')}</label>
+                                        {isAbsoluteScenePath && (
+                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                                {t('settingsPage.save.customPath', 'Custom Path')}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <Input
+                                            value={localSceneSavePath}
+                                            onChange={(e) => {
+                                                setLocalSceneSavePath(e.target.value)
+                                                setIsAbsoluteScenePath(isAbsoluteFolderPath(e.target.value))
+                                            }}
+                                            placeholder="NAIS_Scene"
+                                            className="flex-1"
+                                        />
+                                        <Button variant="outline" onClick={handleBrowseSceneFolder}>
+                                            <FolderOpen className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.save.browse', 'Browse')}
+                                        </Button>
+                                        <Button
+                                            onClick={handleSaveScenePath}
+                                            variant={(localSceneSavePath !== sceneSavePath || isAbsoluteScenePath !== useAbsoluteScenePath) ? "default" : "outline"}
+                                        >
+                                            <Save className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.saveBtn')}
+                                        </Button>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground">
+                                            {isAbsoluteScenePath
+                                                ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
+                                                : t('settingsPage.save.outputFolders.scene.help', 'Default: Pictures/NAIS_Scene')}
+                                        </p>
+                                        {isAbsoluteScenePath && (
+                                            <Button variant="ghost" size="sm" onClick={handleResetSceneToDefault} className="h-6 text-xs">
+                                                <RotateCcw className="h-3 w-3 mr-1" />
+                                                {t('settingsPage.save.resetDefault', 'Reset to Default')}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.styleLab.label', 'Style Lab Folder')}</label>
+                                        {isAbsoluteStyleLabPath && (
+                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                                {t('settingsPage.save.customPath', 'Custom Path')}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <Input
+                                            value={localStyleLabSavePath}
+                                            onChange={(e) => {
+                                                setLocalStyleLabSavePath(e.target.value)
+                                                setIsAbsoluteStyleLabPath(isAbsoluteFolderPath(e.target.value))
+                                            }}
+                                            placeholder="nais-style"
+                                            className="flex-1"
+                                        />
+                                        <Button variant="outline" onClick={handleBrowseStyleLabFolder}>
+                                            <FolderOpen className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.save.browse', 'Browse')}
+                                        </Button>
+                                        <Button
+                                            onClick={handleSaveStyleLabPath}
+                                            variant={(localStyleLabSavePath !== styleLabSavePath || isAbsoluteStyleLabPath !== useAbsoluteStyleLabPath) ? "default" : "outline"}
+                                        >
+                                            <Save className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.saveBtn')}
+                                        </Button>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground">
+                                            {isAbsoluteStyleLabPath
+                                                ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
+                                                : t('settingsPage.save.outputFolders.styleLab.help', 'Default: Pictures/nais-style')}
+                                        </p>
+                                        {isAbsoluteStyleLabPath && (
+                                            <Button variant="ghost" size="sm" onClick={handleResetStyleLabToDefault} className="h-6 text-xs">
+                                                <RotateCcw className="h-3 w-3 mr-1" />
+                                                {t('settingsPage.save.resetDefault', 'Reset to Default')}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.tools.label', 'Tools Folder')}</label>
+                                        {isAbsoluteToolsPath && (
+                                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                                {t('settingsPage.save.customPath', 'Custom Path')}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col gap-2 sm:flex-row">
+                                        <Input
+                                            value={localToolsSavePath}
+                                            onChange={(e) => {
+                                                setLocalToolsSavePath(e.target.value)
+                                                setIsAbsoluteToolsPath(isAbsoluteFolderPath(e.target.value))
+                                            }}
+                                            placeholder="nais-tools"
+                                            className="flex-1"
+                                        />
+                                        <Button variant="outline" onClick={handleBrowseToolsFolder}>
+                                            <FolderOpen className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.save.browse', 'Browse')}
+                                        </Button>
+                                        <Button
+                                            onClick={handleSaveToolsPath}
+                                            variant={(localToolsSavePath !== toolsSavePath || isAbsoluteToolsPath !== useAbsoluteToolsPath) ? "default" : "outline"}
+                                        >
+                                            <Save className="h-4 w-4 mr-2" />
+                                            {t('settingsPage.saveBtn')}
+                                        </Button>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground">
+                                            {isAbsoluteToolsPath
+                                                ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
+                                                : t('settingsPage.save.outputFolders.tools.help', 'Default: Pictures/nais-tools')}
+                                        </p>
+                                        {isAbsoluteToolsPath && (
+                                            <Button variant="ghost" size="sm" onClick={handleResetToolsToDefault} className="h-6 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -787,13 +1044,12 @@ export default function Settings() {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row">
                                         <Input
                                             value={localLibraryPath}
                                             onChange={(e) => {
                                                 setLocalLibraryPath(e.target.value)
-                                                const isAbsolute = /^[A-Za-z]:[\\/]/.test(e.target.value) || e.target.value.startsWith('/')
-                                                setIsAbsoluteLibraryPath(isAbsolute)
+                                                setIsAbsoluteLibraryPath(isAbsoluteFolderPath(e.target.value))
                                             }}
                                             placeholder="NAIS_Library"
                                             className="flex-1"

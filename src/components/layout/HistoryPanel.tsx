@@ -220,7 +220,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
 export function HistoryPanel() {
     const { t } = useTranslation()
     const { setPreviewImage, isGenerating, setIsGenerating, setSourceImage, setI2IMode } = useGenerationStore()
-    const { savePath, useAbsolutePath } = useSettingsStore()
+    const { savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath } = useSettingsStore()
     const [savedImages, setSavedImages] = useState<SavedImage[]>([])
     const [imageThumbnails, setImageThumbnails] = useState<Record<string, string>>({})
     const [isLoading, setIsLoading] = useState(false)
@@ -417,8 +417,8 @@ export function HistoryPanel() {
                 }
             }
 
-            // 2. Load Scene Images (Recursive) - Always load from Pictures, plus absolute path if set
-            const sceneBaseDir = 'NAIS_Scene'
+            // 2. Load Scene Images (Recursive) - use the dedicated Scene folder setting.
+            const sceneBaseDir = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
             const scenePicturePath = await pictureDir()
 
             // Helper function to load scene images from a directory (supports presetName/sceneName structure)
@@ -532,13 +532,15 @@ export function HistoryPanel() {
                 }
             }
 
-            // Always load from Pictures/NAIS_Scene (for backward compatibility)
-            await loadSceneImagesFromDir(sceneBaseDir, true)
-
-            // Additionally load from absolute path if set
-            if (useAbsolutePath && savePath) {
-                const absoluteSceneDir = await join(savePath, sceneBaseDir)
-                await loadSceneImagesFromDir(absoluteSceneDir, false)
+            if (useAbsoluteScenePath && sceneSavePath) {
+                await loadSceneImagesFromDir(sceneSavePath, false)
+                // Keep old relative Scene output visible after users move to an absolute Scene folder.
+                await loadSceneImagesFromDir('NAIS_Scene', true)
+            } else {
+                await loadSceneImagesFromDir(sceneBaseDir, true)
+                if (sceneBaseDir !== 'NAIS_Scene') {
+                    await loadSceneImagesFromDir('NAIS_Scene', true)
+                }
             }
 
             images.sort((a, b) => b.timestamp - a.timestamp)
@@ -567,7 +569,7 @@ export function HistoryPanel() {
 
     useEffect(() => {
         loadSavedImages()
-    }, [savePath])
+    }, [savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath])
 
     // Listen for instant image updates from generation
     useEffect(() => {

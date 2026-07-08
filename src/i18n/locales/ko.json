@@ -551,6 +551,27 @@
             "customPath": "사용자 경로",
             "autoSave": "자동 저장",
             "autoSaveHelp": "이미지 생성 시 자동으로 저장합니다.",
+            "outputFolders": {
+                "main": {
+                    "label": "메인 출력 폴더",
+                    "help": "기본값: Pictures/NAIS_Output"
+                },
+                "scene": {
+                    "label": "Scene 출력 폴더",
+                    "help": "기본값: Pictures/NAIS_Scene",
+                    "selectFolder": "Scene 폴더 선택"
+                },
+                "styleLab": {
+                    "label": "StyleLab 출력 폴더",
+                    "help": "기본값: Pictures/nais-style",
+                    "selectFolder": "StyleLab 폴더 선택"
+                },
+                "tools": {
+                    "label": "Tools 출력 폴더",
+                    "help": "기본값: Pictures/nais-tools",
+                    "selectFolder": "Tools 폴더 선택"
+                }
+            },
             "imageFormat": {
                 "title": "이미지 포맷",
                 "description": "생성된 이미지의 저장 포맷을 선택합니다.",

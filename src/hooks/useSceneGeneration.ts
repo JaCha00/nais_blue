@@ -21,7 +21,7 @@ type Translate = ReturnType<typeof useTranslation>['t']
 interface SceneWorkerContext {
     activePresetId: string
     sessionId: number
-    savePath: string
+    sceneSavePath: string
     streamingView: boolean
     t: Translate
     rotationCharacterId?: string
@@ -238,7 +238,7 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
 
 export function useSceneGeneration() {
     const { t } = useTranslation()
-    const savePath = useSettingsStore(state => state.savePath)
+    const sceneSavePath = useSettingsStore(state => state.sceneSavePath)
     const streamingView = useSettingsStore(state => state.useStreaming)
     const isGenerating = useSceneStore(state => state.isGenerating)
     const activePresetId = useSceneStore(state => state.activePresetId)
@@ -311,7 +311,7 @@ export function useSceneGeneration() {
             const ctx: SceneWorkerContext = {
                 activePresetId,
                 sessionId: generationSessionId,
-                savePath,
+                sceneSavePath,
                 streamingView,
                 t,
                 rotationCharacterId,
@@ -336,7 +336,7 @@ export function useSceneGeneration() {
         isGenerating,
         activePresetId,
         generationSessionId,
-        savePath,
+        sceneSavePath,
         streamingView,
         t,
         completedCount,

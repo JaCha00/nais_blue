@@ -3,8 +3,8 @@ import { join, pictureDir } from '@tauri-apps/api/path'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 
 export interface SceneOutputPathRequest {
-    savePath: string
-    useAbsolutePath: boolean
+    sceneSavePath: string
+    useAbsoluteScenePath: boolean
     presetName: string
     sceneName: string
     fileName: string
@@ -41,10 +41,11 @@ export async function resolveSceneOutputPath(request: SceneOutputPathRequest): P
     const safeCharacterName = request.rotationCharacterFolderName
         ? sanitizePathComponent(request.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(request.rotationCharacterId)
-    const pathSegments = ['NAIS_Scene', safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
+    const sceneRoot = sanitizePathComponent(request.sceneSavePath || 'NAIS_Scene', 'NAIS_Scene')
+    const pathSegments = [sceneRoot, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
 
-    if (request.useAbsolutePath && request.savePath) {
-        const directoryPath = await join(request.savePath, ...pathSegments)
+    if (request.useAbsoluteScenePath && request.sceneSavePath) {
+        const directoryPath = await join(request.sceneSavePath, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName)
         if (!(await exists(directoryPath))) {
             await mkdir(directoryPath, { recursive: true })
         }

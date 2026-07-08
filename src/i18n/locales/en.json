@@ -523,6 +523,27 @@
             "customPath": "Custom Path",
             "autoSave": "Auto Save",
             "autoSaveHelp": "Automatically save images when generated.",
+            "outputFolders": {
+                "main": {
+                    "label": "Main Output Folder",
+                    "help": "Default: Pictures/NAIS_Output"
+                },
+                "scene": {
+                    "label": "Scene Output Folder",
+                    "help": "Default: Pictures/NAIS_Scene",
+                    "selectFolder": "Select Scene Folder"
+                },
+                "styleLab": {
+                    "label": "Style Lab Output Folder",
+                    "help": "Default: Pictures/nais-style",
+                    "selectFolder": "Select Style Lab Folder"
+                },
+                "tools": {
+                    "label": "Tools Output Folder",
+                    "help": "Default: Pictures/nais-tools",
+                    "selectFolder": "Select Tools Folder"
+                }
+            },
             "imageFormat": {
                 "title": "Image Format",
                 "description": "Choose the format for generated images.",

@@ -16,7 +16,7 @@ import {
 
 export interface SaveSceneResultContext {
     activePresetId: string
-    savePath: string
+    sceneSavePath: string
     rotationCharacterId?: string
     rotationCharacterFolderName?: string
 }
@@ -75,7 +75,7 @@ export async function saveSceneResult(
         ...params,
         sentPayloadSummary: options.sentPayloadSummary,
     }
-    const { useAbsolutePath, metadataMode } = useSettingsStore.getState()
+    const { useAbsoluteScenePath, metadataMode } = useSettingsStore.getState()
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fileName = ensureImageFileExtension(params.assetModulePlan?.output.fileName, fileExt)
         ?? `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}.${fileExt}`
@@ -87,8 +87,8 @@ export async function saveSceneResult(
     if (!canSave()) return false
 
     const outputPath = await resolveSceneOutputPath({
-        savePath: ctx.savePath,
-        useAbsolutePath,
+        sceneSavePath: ctx.sceneSavePath,
+        useAbsoluteScenePath,
         presetName: currentPreset?.name || 'Default',
         sceneName: scene.name,
         fileName,

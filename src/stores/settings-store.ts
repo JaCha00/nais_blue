@@ -14,6 +14,12 @@ interface SettingsState {
     // Save settings
     savePath: string
     useAbsolutePath: boolean  // If true, savePath is absolute path; if false, relative to Pictures folder
+    sceneSavePath: string
+    useAbsoluteScenePath: boolean
+    styleLabSavePath: string
+    useAbsoluteStyleLabPath: boolean
+    toolsSavePath: string
+    useAbsoluteToolsPath: boolean
     autoSave: boolean
 
     // Custom resolution presets
@@ -43,6 +49,9 @@ interface SettingsState {
 
     // Actions
     setSavePath: (path: string, useAbsolute?: boolean) => void
+    setSceneSavePath: (path: string, useAbsolute?: boolean) => void
+    setStyleLabSavePath: (path: string, useAbsolute?: boolean) => void
+    setToolsSavePath: (path: string, useAbsolute?: boolean) => void
     setAutoSave: (autoSave: boolean) => void
     addCustomResolution: (resolution: Omit<CustomResolution, 'id'>) => void
     removeCustomResolution: (id: string) => void
@@ -64,6 +73,12 @@ export const useSettingsStore = create<SettingsState>()(
         (set) => ({
             savePath: 'NAIS_Output',
             useAbsolutePath: false,  // Default: relative to Pictures folder
+            sceneSavePath: 'NAIS_Scene',
+            useAbsoluteScenePath: false,
+            styleLabSavePath: 'nais-style',
+            useAbsoluteStyleLabPath: false,
+            toolsSavePath: 'nais-tools',
+            useAbsoluteToolsPath: false,
             autoSave: true,
             customResolutions: [],
             promptFontSize: 16, // Default text-base equivalent approximately
@@ -82,6 +97,18 @@ export const useSettingsStore = create<SettingsState>()(
             setSavePath: (savePath, useAbsolute) => set({
                 savePath,
                 useAbsolutePath: useAbsolute ?? false
+            }),
+            setSceneSavePath: (sceneSavePath, useAbsolute) => set({
+                sceneSavePath,
+                useAbsoluteScenePath: useAbsolute ?? false
+            }),
+            setStyleLabSavePath: (styleLabSavePath, useAbsolute) => set({
+                styleLabSavePath,
+                useAbsoluteStyleLabPath: useAbsolute ?? false
+            }),
+            setToolsSavePath: (toolsSavePath, useAbsolute) => set({
+                toolsSavePath,
+                useAbsoluteToolsPath: useAbsolute ?? false
             }),
             setAutoSave: (autoSave) => set({ autoSave }),
 

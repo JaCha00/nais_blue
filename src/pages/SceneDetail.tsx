@@ -289,9 +289,10 @@ export default function SceneDetail() {
             const currentPreset = useSceneStore.getState().presets.find(p => p.id === activePresetId)
             const safePresetName = sanitizePathComponent(currentPreset?.name || 'Default', 'Default')
             const safeSceneName = sanitizePathComponent(scene.name || 'Untitled_Scene', 'Untitled_Scene')
-            const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            const basePath = useAbsolutePath && savePath ? savePath : await pictureDir()
-            const sceneRootPath = await join(basePath, 'NAIS_Scene')
+            const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
+            const sceneRootPath = useAbsoluteScenePath && sceneSavePath
+                ? sceneSavePath
+                : await join(await pictureDir(), sceneSavePath || 'NAIS_Scene')
             const presetPath = await join(sceneRootPath, safePresetName)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 

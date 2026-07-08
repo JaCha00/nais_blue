@@ -260,17 +260,18 @@ export const useSceneStore = create<SceneState>()(
                 // subfolders are left untouched to avoid cross-character
                 // collisions until a dedicated migration pass owns that scan.
                 try {
-                    const { savePath, useAbsolutePath } = useSettingsStore.getState()
+                    const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
                     let oldFolderPath: string
                     let newFolderPath: string
                     
-                    if (useAbsolutePath && savePath) {
-                        oldFolderPath = await join(savePath, 'NAIS_Scene', safePresetName, safeOldName)
-                        newFolderPath = await join(savePath, 'NAIS_Scene', safePresetName, safeNewName)
+                    if (useAbsoluteScenePath && sceneSavePath) {
+                        oldFolderPath = await join(sceneSavePath, safePresetName, safeOldName)
+                        newFolderPath = await join(sceneSavePath, safePresetName, safeNewName)
                     } else {
                         const baseDir = await pictureDir()
-                        oldFolderPath = await join(baseDir, 'NAIS_Scene', safePresetName, safeOldName)
-                        newFolderPath = await join(baseDir, 'NAIS_Scene', safePresetName, safeNewName)
+                        const sceneRoot = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
+                        oldFolderPath = await join(baseDir, sceneRoot, safePresetName, safeOldName)
+                        newFolderPath = await join(baseDir, sceneRoot, safePresetName, safeNewName)
                     }
                     
                     if (await exists(oldFolderPath) && !(await exists(newFolderPath))) {

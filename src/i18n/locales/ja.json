@@ -520,6 +520,27 @@
             "customPath": "カスタムパス",
             "autoSave": "自動保存",
             "autoSaveHelp": "画像生成時に自動的に保存します。",
+            "outputFolders": {
+                "main": {
+                    "label": "メイン出力フォルダ",
+                    "help": "デフォルト: Pictures/NAIS_Output"
+                },
+                "scene": {
+                    "label": "Scene出力フォルダ",
+                    "help": "デフォルト: Pictures/NAIS_Scene",
+                    "selectFolder": "Sceneフォルダを選択"
+                },
+                "styleLab": {
+                    "label": "StyleLab出力フォルダ",
+                    "help": "デフォルト: Pictures/nais-style",
+                    "selectFolder": "StyleLabフォルダを選択"
+                },
+                "tools": {
+                    "label": "Tools出力フォルダ",
+                    "help": "デフォルト: Pictures/nais-tools",
+                    "selectFolder": "Toolsフォルダを選択"
+                }
+            },
             "imageFormat": {
                 "title": "画像フォーマット",
                 "description": "生成された画像の保存形式を選択します。",

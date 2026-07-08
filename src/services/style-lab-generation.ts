@@ -73,7 +73,7 @@ async function saveStyleLabImage(
     thumbnail?: string,
     sentPayloadSummary?: string,
 ): Promise<string> {
-    const { savePath, autoSave, useAbsolutePath, imageFormat } = useSettingsStore.getState()
+    const { styleLabSavePath, autoSave, useAbsoluteStyleLabPath, imageFormat } = useSettingsStore.getState()
     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
 
     if (!autoSave) {
@@ -91,10 +91,10 @@ async function saveStyleLabImage(
     }
 
     const fileName = `NAIS_STYLELAB_${Date.now()}.${fileExt}`
-    const outputDir = savePath || 'NAIS_Output'
+    const outputDir = styleLabSavePath || 'nais-style'
     let fullPath: string
 
-    if (useAbsolutePath) {
+    if (useAbsoluteStyleLabPath) {
         if (!(await exists(outputDir))) {
             await mkdir(outputDir, { recursive: true })
         }

@@ -48,6 +48,28 @@ export default function ToolsMode() {
         setProcessedImage(activeImage)
     }, [activeImage])
 
+    const saveToolsImage = async (fileName: string, binaryData: Uint8Array): Promise<string> => {
+        const { toolsSavePath, useAbsoluteToolsPath } = useSettingsStore.getState()
+        const outputDir = toolsSavePath || 'nais-tools'
+
+        if (useAbsoluteToolsPath) {
+            const dirExists = await exists(outputDir)
+            if (!dirExists) {
+                await mkdir(outputDir, { recursive: true })
+            }
+            const fullPath = await join(outputDir, fileName)
+            await writeFile(fullPath, binaryData)
+            return fullPath
+        }
+
+        const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
+        if (!dirExists) {
+            await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+        }
+        await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: BaseDirectory.Picture })
+        return join(await pictureDir(), outputDir, fileName)
+    }
+
     // Handle File Upload
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -133,35 +155,12 @@ export default function ToolsMode() {
         try {
             const result = await smartTools.upscale(processedImage, token)
 
-            // Save to configured save path with UPSCALE prefix
-            const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            const outputDir = savePath || 'NAIS_Output'
             const fileName = `NAIS_UPSCALE_${Date.now()}.png`
 
             try {
                 const base64Data = result.replace(/^data:image\/png;base64,/, '')
                 const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
-
-                let fullPath: string
-
-                if (useAbsolutePath) {
-                    // Save to absolute path directly
-                    const dirExists = await exists(outputDir)
-                    if (!dirExists) {
-                        await mkdir(outputDir, { recursive: true })
-                    }
-                    fullPath = await join(outputDir, fileName)
-                    await writeFile(fullPath, binaryData)
-                } else {
-                    // Save relative to Pictures directory
-                    const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
-                    if (!dirExists) {
-                        await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
-                    }
-                    await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: BaseDirectory.Picture })
-                    const picPath = await pictureDir()
-                    fullPath = await join(picPath, outputDir, fileName)
-                }
+                const fullPath = await saveToolsImage(fileName, binaryData)
 
                 // Dispatch event for instant history update
                 try {
@@ -203,30 +202,13 @@ export default function ToolsMode() {
         try {
             const result = await smartTools.directorTool(processedImage, token, reqType, options)
 
-            // Save to disk
-            const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            const outputDir = savePath || 'NAIS_Output'
             const label = reqType.toUpperCase().replace('-', '_')
             const fileName = `NAIS_${label}_${Date.now()}.png`
 
             try {
                 const base64Data = result.replace(/^data:image\/\w+;base64,/, '')
                 const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
-
-                let fullPath: string
-
-                if (useAbsolutePath) {
-                    const dirExists = await exists(outputDir)
-                    if (!dirExists) await mkdir(outputDir, { recursive: true })
-                    fullPath = await join(outputDir, fileName)
-                    await writeFile(fullPath, binaryData)
-                } else {
-                    const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
-                    if (!dirExists) await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
-                    await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: BaseDirectory.Picture })
-                    const picPath = await pictureDir()
-                    fullPath = await join(picPath, outputDir, fileName)
-                }
+                const fullPath = await saveToolsImage(fileName, binaryData)
 
                 // Dispatch for instant history update
                 window.dispatchEvent(new CustomEvent('newImageGenerated', {
@@ -258,25 +240,7 @@ export default function ToolsMode() {
             for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
 
             const filename = `NAIS_Edit_${Date.now()}.png`
-            const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            const outputDir = savePath || 'NAIS_Output'
-
-            if (useAbsolutePath) {
-                // Save to absolute path directly
-                const dirExists = await exists(outputDir)
-                if (!dirExists) {
-                    await mkdir(outputDir, { recursive: true })
-                }
-                const fullPath = await join(outputDir, filename)
-                await writeFile(fullPath, array)
-            } else {
-                // Save relative to Pictures directory
-                const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
-                if (!dirExists) {
-                    await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
-                }
-                await writeFile(`${outputDir}/${filename}`, array, { baseDir: BaseDirectory.Picture })
-            }
+            await saveToolsImage(filename, array)
 
             toast({ title: t('common.saved', '저장됨'), description: filename, variant: 'success' })
         } catch (e) {
