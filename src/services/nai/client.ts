@@ -135,12 +135,13 @@ export async function generateImage(
             throw new NovelAIHttpError(response.status, errorText)
         }
 
+        const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
         const imageData = await firstZipEntryBase64(await response.arrayBuffer(), 'ZIP 파일이 비어있습니다.')
         return {
             success: true,
-            imageData: taggedImage(imageData, params),
+            imageData: taggedImage(imageData, { ...params, sentPayloadSummary }),
             encodedVibes: adapted.encodedVibes,
-            sentPayloadSummary: makeSentPayloadSummary(sentPayload),
+            sentPayloadSummary,
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error
@@ -181,6 +182,7 @@ export async function generateImageStream(
 
         let lastStepShown = -1
         const totalSteps = params.steps || 28
+        const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
         const imageData = await readNaiImageStream(response.body, {
             onEvent: event => {
                 if (typeof event.stepIx === 'number') {
@@ -198,9 +200,9 @@ export async function generateImageStream(
 
         return {
             success: true,
-            imageData: taggedImage(imageData, params),
+            imageData: taggedImage(imageData, { ...params, sentPayloadSummary }),
             encodedVibes: adapted.encodedVibes,
-            sentPayloadSummary: makeSentPayloadSummary(sentPayload),
+            sentPayloadSummary,
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error

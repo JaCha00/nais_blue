@@ -1,5 +1,8 @@
 import { mergeQualityTags, mergeUcPreset, removeComments, type UcPresetIndex } from '@/services/nai/presets'
 
+// Current verified parity scope is V4/V4.5. V3/Furry V3 remain selectable in
+// the UI, but byte-level parity needs dedicated web/NAIS3 fixtures for sm,
+// sm_dyn, prompt shape, and UC behavior before this builder claims it.
 export interface CharacterPromptInput {
     prompt: string
     negativePrompt: string
@@ -169,6 +172,7 @@ export function buildGenerateImagePayload(
                 ? {
                     director_reference_descriptions: opts.characterReferences.map(ref => ({
                         caption: { base_caption: ref.referenceType, char_captions: [] },
+                        legacy_uc: false,
                     })),
                     director_reference_information_extracted: opts.characterReferences.map(() => 1),
                     director_reference_strength_values: opts.characterReferences.map(ref => ref.strength),

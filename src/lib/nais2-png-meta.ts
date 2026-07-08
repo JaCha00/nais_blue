@@ -19,6 +19,7 @@ export interface Nais2PromptParts {
 export interface Nais2Params {
     qualityToggle?: boolean
     ucPreset?: number
+    sentPayloadSummary?: string
     promptParts?: Nais2PromptParts
     version?: number
     [k: string]: unknown

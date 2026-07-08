@@ -47,6 +47,7 @@ export function buildNais2Params(
     return {
         qualityToggle: params.qualityToggle,
         ucPreset: params.ucPreset,
+        sentPayloadSummary: params.sentPayloadSummary,
         promptParts: promptParts && {
             base: promptParts.base ?? '',
             additional: promptParts.additional ?? '',

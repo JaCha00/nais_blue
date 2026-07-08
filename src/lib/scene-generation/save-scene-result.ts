@@ -23,6 +23,7 @@ export interface SaveSceneResultContext {
 
 interface SaveSceneResultOptions {
     canSave?: () => boolean
+    sentPayloadSummary?: string
 }
 
 const toDataUrl = (imageData: string, mimeType: string): string =>
@@ -70,6 +71,10 @@ export async function saveSceneResult(
     if (!canSave()) return false
 
     const currentPreset = useSceneStore.getState().presets.find(p => p.id === ctx.activePresetId)
+    const metadataParams: GenerationParams = {
+        ...params,
+        sentPayloadSummary: options.sentPayloadSummary,
+    }
     const { useAbsolutePath, metadataMode } = useSettingsStore.getState()
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fileName = ensureImageFileExtension(params.assetModulePlan?.output.fileName, fileExt)
@@ -105,7 +110,7 @@ export async function saveSceneResult(
         // metadata is also used by explicit sidecar-only metadata modes.
         await writeGeneratedFile(
             toSidecarPath(outputPath.writePath),
-            encodeNais2Sidecar(buildNais2Params(params, getFallbackPromptParts())),
+            encodeNais2Sidecar(buildNais2Params(metadataParams, getFallbackPromptParts())),
         )
     }
 
@@ -124,6 +129,7 @@ export async function saveSceneResult(
         prompt: finalPrompt,
         seed: params.seed,
         timestamp: new Date(),
+        sentPayloadSummary: options.sentPayloadSummary,
     })
 
     if (encodedVibes && encodedVibes.length > 0) {

@@ -62,6 +62,7 @@ export interface GenerationParams {
     assetModulePlan?: AssetModulePlan
     qualityToggle?: boolean
     ucPreset?: number
+    sentPayloadSummary?: string
     promptParts?: {
         base?: string
         additional?: string

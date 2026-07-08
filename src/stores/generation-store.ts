@@ -36,6 +36,7 @@ interface HistoryItem {
     prompt: string
     seed: number
     timestamp: Date
+    sentPayloadSummary?: string
 }
 
 type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
@@ -604,9 +605,10 @@ export const useGenerationStore = create<GenerationState>()(
                         // Reset progress
                         set({ streamProgress: 0 })
 
-                        // Use streaming or non-streaming based on settings
-                        // Streaming API supports I2I/Inpainting (same ImageGenerationRequest schema)
-                        const canUseStreaming = useStreaming
+                        // Keep source-edit requests on ZIP until stream-final
+                        // parity is fixture-proven against server-composited output.
+                        const hasSourceEdit = Boolean(generationParams.sourceImage || generationParams.mask)
+                        const canUseStreaming = useStreaming && !hasSourceEdit
 
                         let result
                         const streamMimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
@@ -636,6 +638,10 @@ export const useGenerationStore = create<GenerationState>()(
                         set({ lastGenerationTime: generationTime })
 
                         if (result.success && result.imageData) {
+                            const resultParams: GenerationParams = {
+                                ...generationParams,
+                                sentPayloadSummary: result.sentPayloadSummary,
+                            }
                             const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
                             const imageUrl = `data:${mimeType};base64,${result.imageData}`
                             set({ previewImage: imageUrl })
@@ -662,6 +668,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 prompt: finalPrompt,
                                 seed: currentSeed,
                                 timestamp: new Date(),
+                                sentPayloadSummary: result.sentPayloadSummary,
                             }
 
                             // Save Image: Try Tauri FS first, fallback to browser
@@ -710,7 +717,7 @@ export const useGenerationStore = create<GenerationState>()(
 
                                     if (shouldWriteNais2Sidecar(effectiveMetadataMode, imageFormat)) {
                                         await writeNais2SidecarForMainGeneration({
-                                            generationParams,
+                                            generationParams: resultParams,
                                             outputDir,
                                             fileName,
                                             fullPath,

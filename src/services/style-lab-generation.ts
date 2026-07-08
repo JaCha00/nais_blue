@@ -65,7 +65,14 @@ function getImageDimensions(base64: string): Promise<{ width: number; height: nu
     })
 }
 
-async function saveStyleLabImage(imageData: string, imageUrl: string, finalPrompt: string, seed: number, thumbnail?: string): Promise<string> {
+async function saveStyleLabImage(
+    imageData: string,
+    imageUrl: string,
+    finalPrompt: string,
+    seed: number,
+    thumbnail?: string,
+    sentPayloadSummary?: string,
+): Promise<string> {
     const { savePath, autoSave, useAbsolutePath, imageFormat } = useSettingsStore.getState()
     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
 
@@ -113,6 +120,7 @@ async function saveStyleLabImage(imageData: string, imageUrl: string, finalPromp
         prompt: finalPrompt,
         seed,
         timestamp: new Date(),
+        sentPayloadSummary,
     })
 
     return fullPath
@@ -268,9 +276,11 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
 
                 const { useStreaming, imageFormat } = useSettingsStore.getState()
                 const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
+                const hasSourceEdit = Boolean(params.sourceImage || params.mask)
+                const canUseStreaming = useStreaming && !hasSourceEdit
                 let lastPreviewUpdateAt = 0
                 let lastPreviewProgress = -1
-                const result = useStreaming
+                const result = canUseStreaming
                     ? await generateImageStream(authState.token, params, (progress, partialImage) => {
                         if (isStyleLabSessionCancelled(abortController.signal)) return
                         const progressRatio = progress / 100
@@ -316,7 +326,14 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
 
                 let previewPath: string | undefined
                 try {
-                    previewPath = await saveStyleLabImage(result.imageData, imageUrl, prompt, seed, previewThumbnail)
+                    previewPath = await saveStyleLabImage(
+                        result.imageData,
+                        imageUrl,
+                        prompt,
+                        seed,
+                        previewThumbnail,
+                        result.sentPayloadSummary,
+                    )
                 } catch (saveError) {
                     console.warn('[StyleLab] Failed to save preview image:', saveError)
                     const memoryPath = `memory://NAIS_STYLELAB_${Date.now()}.${imageFormat}`

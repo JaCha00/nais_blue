@@ -116,9 +116,10 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         const { params, finalPrompt, mimeType } = await buildSceneGenerationParams(scene)
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
-        // Streaming renders a single shared preview, so startWorkers limits the
-        // session to one worker whenever this flag is true.
-        const canUseStreaming = ctx.streamingView
+        // Keep i2i/inpaint on ZIP until stream-final output is proven identical
+        // to the server-composited archive result.
+        const hasSourceEdit = Boolean(params.sourceImage || params.mask)
+        const canUseStreaming = ctx.streamingView && !hasSourceEdit
         const streamMimeType = params.imageFormat === 'webp' ? 'image/webp' : 'image/png'
         const result = canUseStreaming
             ? await generateImageStream(token, params, (progress, image) => {
@@ -143,6 +144,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
 
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
             canSave: () => isSessionAlive(ctx.sessionId),
+            sentPayloadSummary: result.sentPayloadSummary,
         })
         if (!saved || !isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
@@ -314,7 +316,8 @@ export function useSceneGeneration() {
                 rotationCharacterFolderName: getRotationCharacterFolderName(rotationCharacterId, rotation.currentIndex) ?? undefined,
             }
 
-            const workerTokens = streamingView ? tokens.slice(0, 1) : tokens
+            const sourceEditActive = Boolean(useGenerationStore.getState().sourceImage || useGenerationStore.getState().mask)
+            const workerTokens = streamingView && !sourceEditActive ? tokens.slice(0, 1) : tokens
 
             for (const activeToken of workerTokens) {
                 if (runningSceneSlots.has(activeToken.slot)) continue

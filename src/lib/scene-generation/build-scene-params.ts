@@ -200,6 +200,8 @@ export async function buildSceneGenerationParams(scene: SceneCard): Promise<Scen
                 : positionEnabled,
             imageFormat,
             metadataMode: effectiveMetadataMode,
+            qualityToggle: genState.qualityToggle,
+            ucPreset: genState.ucPreset,
             assetModulePlan: modulePlan ?? undefined,
             promptParts: modulePromptsActive
                 ? {
