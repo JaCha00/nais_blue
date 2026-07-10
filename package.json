@@ -23,6 +23,12 @@
     "tauri:android:dev": "npx tauri android dev --host 0.0.0.0",
     "tauri:android:build:apk": "npx tauri android build --apk",
     "tauri:android:build:aab": "npx tauri android build --aab",
+    "android:prepare": "node scripts/prepare-android-release.mjs",
+    "test:android-release-contract": "node scripts/verify-android-release-contract.mjs",
+    "test:android-release": "node scripts/verify-android-apk.mjs --mode release",
+    "test:android-debug": "node scripts/verify-android-apk.mjs --mode debug",
+    "release:android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1",
+    "release:android:github": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1 -Publish",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {

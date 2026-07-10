@@ -29,6 +29,7 @@ import { toast } from '@/components/ui/use-toast'
 import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settings-store'
 import {
     getMediaStorageRoot,
@@ -445,63 +446,78 @@ export default function Library() {
             onDrop={onFileDrop}
         >
             {/* Header */}
-            <div className="h-14 border-b flex items-center px-6 justify-between bg-background/50 backdrop-blur-sm z-10 w-full box-border">
+            <div className="z-10 flex min-h-14 w-full shrink-0 items-center border-b bg-background/50 px-3 py-2 backdrop-blur-sm sm:px-4 lg:px-6">
                 {isEditMode ? (
                     /* Edit Mode Header */
-                    <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                            <Button variant="ghost" size="sm" className="h-9 hover:bg-white/10" onClick={() => setEditMode(false)}>
+                    <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Button variant="ghost" size="sm" className="h-11 shrink-0 hover:bg-white/10 lg:h-9" onClick={() => setEditMode(false)}>
                                 <X className="h-4 w-4 mr-2" /> {t('actions.cancel', '취소')}
                             </Button>
-                            <span className="text-sm text-muted-foreground">
+                            <span className="min-w-0 truncate text-sm text-muted-foreground">
                                 {selectedItemIds.length} {t('library.selected', '개 선택')}
                             </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" className="h-9 hover:bg-white/10" onClick={selectAllItems}>
-                                <CheckSquare className="h-4 w-4 mr-2" /> {t('scene.selectAll', '전체 선택')}
+                        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-11 min-w-0 flex-1 px-2 hover:bg-white/10 sm:flex-none sm:px-3 lg:h-9"
+                                onClick={selectAllItems}
+                            >
+                                <CheckSquare className="mr-1.5 h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate">{t('scene.selectAll', '전체 선택')}</span>
                             </Button>
-                            <div className="w-px h-5 bg-white/10" />
+                            <div className="hidden h-5 w-px bg-white/10 sm:block" />
                             {!currentStackId && (
                                 <Tip content={t('library.createStackDesc', '선택한 이미지를 하나의 스택으로 묶음')}>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="h-9 hover:bg-white/10" 
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-11 min-w-0 flex-1 px-2 hover:bg-white/10 sm:flex-none sm:px-3 lg:h-9"
                                         onClick={createStackFromSelected}
                                         disabled={selectedItemIds.length < 2}
                                     >
-                                        <Layers className="h-4 w-4 mr-2" /> {t('library.createStack', '스택 만들기')}
+                                        <Layers className="mr-1.5 h-4 w-4 shrink-0" />
+                                        <span className="min-w-0 truncate">{t('library.createStack', '스택 만들기')}</span>
                                     </Button>
                                 </Tip>
                             )}
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-9 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-11 min-w-0 flex-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:flex-none sm:px-3 lg:h-9"
                                 onClick={deleteSelectedItems}
                                 disabled={selectedItemIds.length === 0}
                             >
-                                <Trash2 className="h-4 w-4 mr-2" /> {t('actions.delete', '삭제')}
+                                <Trash2 className="mr-1.5 h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate">{t('actions.delete', '삭제')}</span>
                             </Button>
                         </div>
                     </div>
                 ) : (
                     /* Normal Header */
-                    <>
-                        <div className="flex items-center gap-3">
+                    <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                             {currentStackId ? (
                                 <>
-                                    <Button variant="ghost" size="sm" className="h-9 hover:bg-white/10" onClick={() => setCurrentStackId(null)}>
-                                        <ArrowLeft className="h-4 w-4 mr-2" /> {t('actions.back', '뒤로')}
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-11 w-11 shrink-0 px-0 hover:bg-white/10 sm:w-auto sm:px-3 lg:h-9"
+                                        onClick={() => setCurrentStackId(null)}
+                                        aria-label={t('actions.back', '뒤로')}
+                                    >
+                                        <ArrowLeft className="h-4 w-4 shrink-0 sm:mr-2" />
+                                        <span className="sr-only sm:not-sr-only">{t('actions.back', '뒤로')}</span>
                                     </Button>
-                                    <h2 className="text-lg font-semibold tracking-tight">{currentStack?.name}</h2>
+                                    <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={currentStack?.name}>{currentStack?.name}</h2>
                                 </>
                             ) : (
-                                <h2 className="text-lg font-semibold tracking-tight">{t('library.title', '라이브러리')}</h2>
+                                <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t('library.title', '라이브러리')}</h2>
                             )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
                             {/* Hidden file input for image import */}
                             <input
                                 ref={fileInputRef}
@@ -513,52 +529,66 @@ export default function Library() {
                             />
                             {/* Import Image Button */}
                             <Tip content={t('library.import', '이미지 불러오기')}>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-white/10" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9 lg:w-9"
                                     onClick={handleImportClick}
+                                    aria-label={t('library.import', '이미지 불러오기')}
                                 >
                                     <Upload className="h-4 w-4" />
                                 </Button>
                             </Tip>
                             <Tip content={t('library.editModeDesc', '여러 이미지를 선택하여 일괄 편집')}>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-white/10" 
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9 lg:w-9"
                                     onClick={() => setEditMode(true)} 
                                     disabled={viewItems.length === 0}
+                                    aria-label={t('library.editModeDesc', '여러 이미지를 선택하여 일괄 편집')}
                                 >
                                     <Edit3 className="h-4 w-4" />
                                 </Button>
                             </Tip>
                             {currentStackId && (
                                 <Tip content={t('library.unstackDesc', '스택을 해제하고 개별 이미지로 복원')}>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="h-9 hover:bg-white/10" 
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-11 w-11 shrink-0 px-0 hover:bg-white/10 sm:w-auto sm:px-3 lg:h-9"
                                         onClick={() => unstack(currentStackId)}
+                                        aria-label={t('library.unstack', '스택 해제')}
                                     >
-                                        <FolderOpen className="h-4 w-4 mr-2" /> {t('library.unstack', '스택 해제')}
+                                        <FolderOpen className="h-4 w-4 shrink-0 sm:mr-2" />
+                                        <span className="sr-only sm:not-sr-only">{t('library.unstack', '스택 해제')}</span>
                                     </Button>
                                 </Tip>
                             )}
                             <Tip content={t('library.gridColumnsDesc', '그리드 열 개수 변경')}>
-                                <Button variant="ghost" size="sm" className="h-9 text-muted-foreground hover:text-foreground hover:bg-white/10" onClick={handleToggleGrid}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-11 shrink-0 px-2 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9"
+                                    onClick={handleToggleGrid}
+                                    aria-label={t('library.gridColumnsDesc', '그리드 열 개수 변경')}
+                                >
                                     <Grid3x3 className="h-4 w-4 mr-1.5" />
-                                    <span className="font-medium text-sm">{gridColumns}</span>
+                                    <span className="text-sm font-medium min-[360px]:hidden">1</span>
+                                    <span className="hidden text-sm font-medium min-[360px]:inline lg:hidden">{Math.min(gridColumns, 2)}</span>
+                                    <span className="hidden text-sm font-medium lg:inline">{gridColumns}</span>
                                 </Button>
                             </Tip>
-                            <span className="text-sm text-muted-foreground">{viewItems.length} {t('library.items', 'items')}</span>
+                            <span className="hidden max-w-24 truncate whitespace-nowrap text-sm text-muted-foreground min-[380px]:inline">
+                                {viewItems.length} {t('library.items', 'items')}
+                            </span>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar w-full">
+            <div className="custom-scrollbar min-h-0 w-full flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
                 <DndContext
                     sensors={sensors}
                     collisionDetection={pointerWithin}
@@ -575,8 +605,13 @@ export default function Library() {
                         strategy={rectSortingStrategy}
                     >
                         <div
-                            className="grid gap-6 pb-10"
-                            style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
+                            className={cn(
+                                "grid min-w-0 grid-cols-1 gap-3 pb-10 min-[360px]:grid-cols-2 sm:gap-4 lg:gap-6",
+                                gridColumns === 2 && "lg:grid-cols-2",
+                                gridColumns === 3 && "lg:grid-cols-3",
+                                gridColumns === 4 && "lg:grid-cols-4",
+                                gridColumns === 5 && "lg:grid-cols-5"
+                            )}
                         >
                             {viewItems.map((item) => (
                                 <SortableLibraryItem
@@ -630,8 +665,8 @@ export default function Library() {
                         <h3 className="text-xl font-semibold mb-2 text-foreground/80">
                             {t('library.emptyTitle', '라이브러리가 비어있습니다')}
                         </h3>
-                        <p className="text-sm text-muted-foreground text-center max-w-sm px-4 leading-relaxed">
-                            {t('library.emptyDesc', '이미지를 드래그하여 컬렉션을 만들어보세요')}
+                        <p className="max-w-sm px-4 text-center text-sm leading-relaxed text-muted-foreground [text-wrap:balance]">
+                            {t('library.emptyDesc', '이미지를 불러오거나 생성해 나만의 컬렉션을 만들어보세요.')}
                         </p>
                     </div>
                 )}
@@ -709,6 +744,7 @@ export default function Library() {
                         size="icon"
                         className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-lg h-10 w-10"
                         onClick={() => setViewerImageSrc(null)}
+                        aria-label={t('common.close', '닫기')}
                     >
                         <X className="h-6 w-6" />
                     </Button>

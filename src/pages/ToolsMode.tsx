@@ -45,6 +45,7 @@ export default function ToolsMode() {
     const [isMosaicOpen, setIsMosaicOpen] = useState(false)
     const [isInpaintingOpen, setIsInpaintingOpen] = useState(false)  // For mask editing only
     const containerRef = useRef<HTMLDivElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
     const [isDragOver, setIsDragOver] = useState(false)
     const dragCounter = useRef(0)
 
@@ -256,7 +257,7 @@ export default function ToolsMode() {
 
     return (
         <div
-            className="flex h-full gap-4 relative"
+            className="relative flex h-full min-h-0 flex-col gap-4 md:flex-row"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
@@ -289,7 +290,7 @@ export default function ToolsMode() {
                 </div>
             )}
             {/* Left: Image Workspace */}
-            <div className="flex-1 bg-muted/20 rounded-xl border border-border overflow-hidden flex flex-col relative" ref={containerRef}>
+            <div className="relative flex min-h-[15rem] flex-[0_0_42%] flex-col overflow-hidden rounded-xl border border-border bg-muted/20 md:min-h-0 md:flex-1" ref={containerRef}>
                 {processedImage ? (
                     <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
                         <img
@@ -317,31 +318,38 @@ export default function ToolsMode() {
                     </div>
                 ) : (
                     <div
-                        className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 border-2 border-dashed border-border rounded-lg m-4 transition-colors hover:border-primary/50"
+                        className="m-3 flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-4 text-center text-muted-foreground transition-colors hover:border-primary/50 sm:m-4 sm:p-8"
                     >
-                        <Upload className="h-16 w-16 mb-4 opacity-20" />
-                        <h3 className="text-xl font-medium mb-2">{t('smartTools.dropHint', '이미지를 열거나 드래그하세요')}</h3>
-                        <p className="text-sm opacity-60 mb-6">{t('smartTools.supportedFormats', 'PNG, JPG, WEBP 지원')}</p>
-                        <Button variant="outline" className="relative">
+                        <Upload className="mb-3 h-12 w-12 opacity-20 sm:mb-4 sm:h-16 sm:w-16" />
+                        <h3 className="mb-2 text-base font-medium sm:text-xl">{t('smartTools.dropHint', '이미지를 열거나 드래그하세요')}</h3>
+                        <p className="mb-4 text-xs opacity-60 sm:mb-6 sm:text-sm">{t('smartTools.supportedFormats', 'PNG, JPG, WEBP 지원')}</p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
                             {t('smartTools.openImage', '이미지 열기')}
-                            <input
-                                type="file"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                accept="image/*"
-                                onChange={handleFileChange}
-                            />
                         </Button>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="sr-only"
+                            accept="image/*"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            onChange={handleFileChange}
+                        />
                     </div>
                 )}
 
                 {/* Image Actions (Bottom Overlay) */}
                 {processedImage && (
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-background/80 backdrop-blur-md rounded-full shadow-lg border border-border z-20">
-                        <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setActiveImage(null)}>
+                        <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setActiveImage(null)} aria-label={t('common.remove', '이미지 제거')}>
                             <X className="h-4 w-4" />
                         </Button>
                         <div className="w-px h-6 bg-border mx-1 my-auto" />
-                        <Button size="icon" variant="ghost" className="rounded-full" onClick={handleSaveFile}>
+                        <Button size="icon" variant="ghost" className="rounded-full" onClick={handleSaveFile} aria-label={t('common.save', '저장')}>
                             <Download className="h-4 w-4" />
                         </Button>
                     </div>
@@ -349,7 +357,7 @@ export default function ToolsMode() {
             </div>
 
             {/* Right: Tools Options */}
-            <div className="w-[320px] bg-card rounded-xl border border-border flex flex-col overflow-hidden">
+            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card md:w-[320px] md:flex-none">
                 <div className="p-4 border-b border-border bg-muted/30">
                     <h2 className="font-semibold flex items-center gap-2">
                         <Wand2 className="h-4 w-4 text-primary" />
@@ -357,7 +365,7 @@ export default function ToolsMode() {
                     </h2>
                 </div>
 
-                <div className="p-4 flex-1 overflow-y-auto space-y-6">
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
                     {/* Background Removal */}
                     <ToolCard
                         icon={Eraser}

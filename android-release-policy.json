@@ -1,0 +1,22 @@
+{
+  "applicationId": "com.sunakgo.nais2",
+  "debugApplicationIdSuffix": ".dev",
+  "minSdkVersion": 24,
+  "targetSdkVersion": 36,
+  "requiredAbis": [
+    "arm64-v8a",
+    "armeabi-v7a",
+    "x86",
+    "x86_64"
+  ],
+  "versionCodeScheme": "semver-major-minor-patch",
+  "signing": {
+    "keyAlias": "release",
+    "certificateSha256": "6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65"
+  },
+  "updateBaseline": {
+    "tag": "v2.8.0",
+    "url": "https://github.com/JaCha00/nais2-integration-complete/releases/download/v2.8.0/NAIS2_2.8.0-universal.apk",
+    "sha256": "5AF5732F7A7D2EB529526A38F7D60D348DC1A3D3BC688BB05C00404EE0F3BDFE"
+  }
+}

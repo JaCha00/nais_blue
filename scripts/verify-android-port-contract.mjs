@@ -43,6 +43,14 @@ assert.equal(pkg.scripts['tauri:android:init'], 'npx tauri android init')
 assert.equal(pkg.scripts['tauri:android:dev'], 'npx tauri android dev --host 0.0.0.0')
 assert.equal(pkg.scripts['tauri:android:build:apk'], 'npx tauri android build --apk')
 assert.equal(pkg.scripts['tauri:android:build:aab'], 'npx tauri android build --aab')
+assert.equal(
+    pkg.scripts['release:android:apk'],
+    'powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1',
+)
+assert.equal(
+    pkg.scripts['release:android:github'],
+    'powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1 -Publish',
+)
 assert.equal(pkg.scripts['test:android-port'], 'node scripts/verify-android-port-contract.mjs')
 assert.equal(
     pkg.scripts['test:android-idle'],
@@ -55,6 +63,10 @@ assert.ok(
 assert.ok(
     existsSync(join(root, 'scripts/track-android-idle.ps1')),
     'Android idle-loop tracking must remain available as a repeatable device check',
+)
+assert.ok(
+    existsSync(join(root, 'scripts/release-android.ps1')),
+    'Signed Android releases must use the local release script',
 )
 
 const androidConfig = readJson('src-tauri/tauri.android.conf.json')

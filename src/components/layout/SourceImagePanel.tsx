@@ -68,6 +68,7 @@ export function SourceImagePanel() {
                                     size="icon"
                                     className="h-6 w-6 rounded-full hover:bg-pink-500/20 hover:text-pink-400"
                                     onClick={() => setInpaintDialogOpen(true)}
+                                    aria-label={t('sourcePanel.editMask', '마스크 영역 편집')}
                                 >
                                     <Edit3 className="h-3.5 w-3.5" />
                                 </Button>
@@ -79,6 +80,7 @@ export function SourceImagePanel() {
                                 size="icon"
                                 className="h-6 w-6 rounded-full hover:bg-destructive/20 hover:text-destructive"
                                 onClick={handleCancel}
+                                aria-label={t('sourcePanel.cancel', '취소하고 T2I로 돌아가기')}
                             >
                                 <X className="h-3.5 w-3.5" />
                             </Button>
@@ -126,6 +128,7 @@ export function SourceImagePanel() {
                                 max={0.99}
                                 step={0.01}
                                 onValueChange={([v]) => setStrength(v)}
+                                aria-label={t('tools.i2i.strength', 'Strength')}
                                 className="flex-1"
                             />
                             <Plus className="h-3 w-3 text-muted-foreground/50" />
@@ -145,6 +148,7 @@ export function SourceImagePanel() {
                                     max={0.99}
                                     step={0.01}
                                     onValueChange={([v]) => setNoise(v)}
+                                    aria-label={t('tools.i2i.noise', 'Noise')}
                                     className="flex-1"
                                 />
                                 <Plus className="h-3 w-3 text-muted-foreground/50" />

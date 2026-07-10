@@ -89,7 +89,7 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
                 </div>
             )}
 
-            <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
                 <p className="text-xs text-white truncate px-1">{item.name}</p>
             </div>
         </div>
