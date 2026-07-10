@@ -6,6 +6,7 @@ import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Download, RefreshCw, Sparkles } from 'lucide-react'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
+import { isMobileRuntime } from '@/platform/runtime'
 
 // Compare semver versions: returns 1 if a > b, -1 if a < b, 0 if equal
 function compareVersions(a: string, b: string): number {
@@ -113,6 +114,8 @@ export function useUpdateChecker() {
     }
 
     useEffect(() => {
+        if (isMobileRuntime) return
+
         const checkForUpdates = async () => {
             try {
                 // First, check if pendingUpdate is outdated (already installed)

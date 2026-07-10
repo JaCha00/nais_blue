@@ -421,19 +421,30 @@ async fn remove_background(image_base64: String) -> RemoveBackgroundResult {
     }
 }
 
+#[cfg(not(mobile))]
 use std::collections::HashMap;
+#[cfg(not(mobile))]
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, RunEvent, Url};
+use tauri::AppHandle;
+#[cfg(not(mobile))]
+use tauri::{LogicalPosition, LogicalSize, Manager, RunEvent, Url};
+#[cfg(not(mobile))]
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
+#[cfg(not(mobile))]
 #[derive(Clone)]
 pub struct TaggerState(pub Arc<Mutex<Option<CommandChild>>>);
 
-// Store for tracking embedded webviews
+#[cfg(mobile)]
+#[derive(Clone)]
+pub struct TaggerState;
+
+#[cfg(not(mobile))]
 struct EmbeddedWebviews {
     webviews: HashMap<String, bool>,
 }
 
+#[cfg(not(mobile))]
 static EMBEDDED_WEBVIEWS: std::sync::LazyLock<Mutex<EmbeddedWebviews>> =
     std::sync::LazyLock::new(|| {
         Mutex::new(EmbeddedWebviews {
@@ -441,6 +452,7 @@ static EMBEDDED_WEBVIEWS: std::sync::LazyLock<Mutex<EmbeddedWebviews>> =
         })
     });
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn open_embedded_browser(
     app: AppHandle,
@@ -481,6 +493,20 @@ async fn open_embedded_browser(
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn open_embedded_browser(
+    _app: AppHandle,
+    _url: String,
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
+) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn close_embedded_browser(app: AppHandle) -> Result<(), String> {
     if let Some(webview) = app.get_webview("embedded_browser") {
@@ -496,6 +522,13 @@ async fn close_embedded_browser(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn close_embedded_browser(_app: AppHandle) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn navigate_embedded_browser(app: AppHandle, url: String) -> Result<(), String> {
     if let Some(webview) = app.get_webview("embedded_browser") {
@@ -507,6 +540,13 @@ async fn navigate_embedded_browser(app: AppHandle, url: String) -> Result<(), St
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn navigate_embedded_browser(_app: AppHandle, _url: String) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn resize_embedded_browser(
     app: AppHandle,
@@ -526,6 +566,19 @@ async fn resize_embedded_browser(
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn resize_embedded_browser(
+    _app: AppHandle,
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
+) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn show_embedded_browser(app: AppHandle) -> Result<(), String> {
     if let Some(webview) = app.get_webview("embedded_browser") {
@@ -534,6 +587,13 @@ async fn show_embedded_browser(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn show_embedded_browser(_app: AppHandle) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn hide_embedded_browser(app: AppHandle) -> Result<(), String> {
     if let Some(webview) = app.get_webview("embedded_browser") {
@@ -542,11 +602,25 @@ async fn hide_embedded_browser(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn hide_embedded_browser(_app: AppHandle) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn is_browser_open(app: AppHandle) -> bool {
     app.get_webview("embedded_browser").is_some()
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn is_browser_open(_app: AppHandle) -> bool {
+    false
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn zoom_embedded_browser(app: AppHandle, zoom_level: f64) -> Result<(), String> {
     if let Some(webview) = app.get_webview("embedded_browser") {
@@ -559,16 +633,30 @@ async fn zoom_embedded_browser(app: AppHandle, zoom_level: f64) -> Result<(), St
     Ok(())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn zoom_embedded_browser(_app: AppHandle, _zoom_level: f64) -> Result<(), String> {
+    Err("Embedded browser is not available on mobile. Use the mobile browser adapter.".to_string())
+}
+
 #[tauri::command]
 fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn check_tagger_binary() -> bool {
     true
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn check_tagger_binary() -> bool {
+    false
+}
+
+#[cfg(not(mobile))]
 fn spawn_tagger_sidecar(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TaggerState>();
     let mut child_guard = state.0.lock().map_err(|error| error.to_string())?;
@@ -590,14 +678,24 @@ fn spawn_tagger_sidecar(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(mobile))]
 #[tauri::command]
 async fn start_tagger(app: AppHandle) -> Result<(), String> {
     spawn_tagger_sidecar(&app)
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+async fn start_tagger(_app: AppHandle) -> Result<(), String> {
+    Err("Tagger sidecar is not available on mobile.".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(not(mobile))]
     let tagger_state = TaggerState(Arc::new(Mutex::new(None)));
+    #[cfg(mobile)]
+    let tagger_state = TaggerState;
     let tagger_state_for_exit = tagger_state.clone();
     let mut builder = tauri::Builder::default();
 
@@ -612,7 +710,7 @@ pub fn run() {
         }));
     }
 
-    builder
+    builder = builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -620,9 +718,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(tagger_state)
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_deep_link::init());
+
+    #[cfg(not(mobile))]
+    {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+
+    builder
         .invoke_handler(tauri::generate_handler![
             verify_token,
             get_anlas_balance,
@@ -668,6 +772,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app_handle, event| {
+            #[cfg(not(mobile))]
             if let RunEvent::Exit = event {
                 if let Ok(mut child) = tagger_state_for_exit.0.lock() {
                     if let Some(child_process) = child.take() {
@@ -675,5 +780,7 @@ pub fn run() {
                     }
                 }
             }
+            #[cfg(mobile)]
+            let _ = (&tagger_state_for_exit, event);
         });
 }

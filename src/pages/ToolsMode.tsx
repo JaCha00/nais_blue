@@ -10,12 +10,17 @@ import { smartTools } from '@/services/smart-tools'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 import { Eraser, Palette, Grid3X3, Wand2, Upload, RefreshCw, Download, X, Maximize2, Image as ImageIcon, Paintbrush, ImagePlus, PenTool, Pencil, Droplets, Smile, Sparkles } from 'lucide-react'
-import { writeFile, BaseDirectory, exists, mkdir } from '@tauri-apps/plugin-fs'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { writeFile, exists, mkdir } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
 import { TagAnalysisDialog } from '@/components/tools/TagAnalysisDialog'
 import { BackgroundRemovalDialog } from '@/components/tools/BackgroundRemovalDialog'
 import { MosaicDialog } from '@/components/tools/MosaicDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 
 
 export default function ToolsMode() {
@@ -52,7 +57,7 @@ export default function ToolsMode() {
         const { toolsSavePath, useAbsoluteToolsPath } = useSettingsStore.getState()
         const outputDir = toolsSavePath || 'nais-tools'
 
-        if (useAbsoluteToolsPath) {
+        if (shouldUseAbsoluteMediaPath(useAbsoluteToolsPath)) {
             const dirExists = await exists(outputDir)
             if (!dirExists) {
                 await mkdir(outputDir, { recursive: true })
@@ -62,12 +67,12 @@ export default function ToolsMode() {
             return fullPath
         }
 
-        const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
+        const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         if (!dirExists) {
-            await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+            await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         }
-        await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: BaseDirectory.Picture })
-        return join(await pictureDir(), outputDir, fileName)
+        await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+        return join(await getMediaStorageRoot(), outputDir, fileName)
     }
 
     // Handle File Upload

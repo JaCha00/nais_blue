@@ -34,6 +34,7 @@ import { previewAssetPlanFromDisk, type AssetPlanPreviewResponse } from '@/servi
 import { verifyPromptTagsWithDanbooru, type DanbooruTagResult } from '@/services/danbooru-tag-verifier'
 import { checkR2DeployScope, startR2DeployJob, type R2DeployJobResponse, type R2ScopeCheckResponse } from '@/services/r2-deploy-service'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
+import { supportsLocalTaggerSidecar } from '@/platform/runtime'
 import type {
     AssetModuleProfile,
     AssetProfile,
@@ -539,9 +540,11 @@ function FilenameTemplateEditor({
 function R2DeployPanel({
     profile,
     saveProfile,
+    canUseLocalTagger,
 }: {
     profile: AssetProfile
     saveProfile: SaveProfile
+    canUseLocalTagger: boolean
 }) {
     const [localRoot, setLocalRoot] = useState(profile.output.directory ?? DEFAULT_OUTPUT_DIRECTORY)
     const [scope, setScope] = useState<R2ScopeCheckResponse | null>(null)
@@ -551,10 +554,10 @@ function R2DeployPanel({
     const [error, setError] = useState<string | null>(null)
     const r2 = profile.r2
 
-    const canRun = Boolean(r2.bucket && localRoot.trim())
+    const canRun = canUseLocalTagger && Boolean(r2.bucket && localRoot.trim())
 
     const runScopeCheck = async () => {
-        if (!r2.bucket) return
+        if (!canUseLocalTagger || !r2.bucket) return
         setIsChecking(true)
         setError(null)
         try {
@@ -572,7 +575,7 @@ function R2DeployPanel({
     }
 
     const startDryRun = async () => {
-        if (!r2.bucket) return
+        if (!canUseLocalTagger || !r2.bucket) return
         setIsStarting(true)
         setError(null)
         try {
@@ -683,6 +686,7 @@ function PreviewPanel({
     pythonPreviewPath,
     onRunPythonPreview,
     isRunningPythonPreview,
+    canUseLocalTagger,
 }: {
     profile: AssetProfile
     selectedRecipeId: string
@@ -693,6 +697,7 @@ function PreviewPanel({
     pythonPreviewPath: string
     onRunPythonPreview: () => void
     isRunningPythonPreview: boolean
+    canUseLocalTagger: boolean
 }) {
     const warnings = [
         ...(plan?.warnings ?? []),
@@ -704,7 +709,7 @@ function PreviewPanel({
             title="Preview"
             subtitle={`revision ${profile.revision} · ${selectedRecipeId || 'no recipe'}`}
             actions={(
-                <Button size="sm" variant="outline" onClick={onRunPythonPreview} disabled={!pythonPreviewPath || isRunningPythonPreview}>
+                <Button size="sm" variant="outline" onClick={onRunPythonPreview} disabled={!canUseLocalTagger || !pythonPreviewPath || isRunningPythonPreview}>
                     {isRunningPythonPreview ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileJson className="mr-1.5 h-3.5 w-3.5" />}
                     Python 검산
                 </Button>
@@ -785,6 +790,7 @@ export default function AssetModuleStudio() {
     const [pythonPreview, setPythonPreview] = useState<AssetPlanPreviewResponse | null>(null)
     const [pythonPreviewPath, setPythonPreviewPath] = useState('')
     const [isRunningPythonPreview, setIsRunningPythonPreview] = useState(false)
+    const canUseLocalTagger = supportsLocalTaggerSidecar
 
     useEffect(() => {
         if (!selectedModuleId && modules[0]) setSelectedModuleId(modules[0].id)
@@ -808,7 +814,7 @@ export default function AssetModuleStudio() {
         let cancelled = false
         const prompt = String(plan?.generationParams.prompt ?? '').trim()
         setDanbooruWarnings([])
-        if (!prompt) return
+        if (!prompt || !canUseLocalTagger) return
 
         const timer = window.setTimeout(() => {
             setIsVerifyingTags(true)
@@ -828,7 +834,7 @@ export default function AssetModuleStudio() {
             cancelled = true
             window.clearTimeout(timer)
         }
-    }, [plan?.generationParams.prompt])
+    }, [canUseLocalTagger, plan?.generationParams.prompt])
 
     useEffect(() => {
         let cancelled = false
@@ -852,7 +858,7 @@ export default function AssetModuleStudio() {
     }, [saveToDisk])
 
     const runPythonPreview = async () => {
-        if (!pythonPreviewPath) return
+        if (!canUseLocalTagger || !pythonPreviewPath) return
         setIsRunningPythonPreview(true)
         try {
             setPythonPreview(await previewAssetPlanFromDisk({
@@ -915,7 +921,7 @@ export default function AssetModuleStudio() {
                 </div>
                 <div className="space-y-4">
                     <FilenameTemplateEditor profile={profile} saveProfile={saveProfile} />
-                    <R2DeployPanel profile={profile} saveProfile={saveProfile} />
+                    <R2DeployPanel profile={profile} saveProfile={saveProfile} canUseLocalTagger={canUseLocalTagger} />
                     <PreviewPanel
                         profile={profile}
                         selectedRecipeId={selectedRecipeId}
@@ -926,6 +932,7 @@ export default function AssetModuleStudio() {
                         pythonPreviewPath={pythonPreviewPath}
                         onRunPythonPreview={runPythonPreview}
                         isRunningPythonPreview={isRunningPythonPreview}
+                        canUseLocalTagger={canUseLocalTagger}
                     />
                 </div>
             </div>

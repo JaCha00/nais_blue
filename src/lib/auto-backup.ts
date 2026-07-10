@@ -1,6 +1,7 @@
-import { BaseDirectory, exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
+import { exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
 import { isTauri } from '@tauri-apps/api/core'
 import { exportAllData, flushAllPendingWrites, importAllData } from '@/lib/indexed-db'
+import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 
 const BACKUP_ROOT = 'NAIS_Backup'
 const FULL_BACKUP_DIR = `${BACKUP_ROOT}/full`
@@ -33,11 +34,11 @@ export function formatAutoBackupTimestamp(timestamp: string): string {
 }
 
 async function ensureBackupDir(): Promise<void> {
-    if (!(await exists(BACKUP_ROOT, { baseDir: BaseDirectory.Picture }))) {
-        await mkdir(BACKUP_ROOT, { baseDir: BaseDirectory.Picture, recursive: true })
+    if (!(await exists(BACKUP_ROOT, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+        await mkdir(BACKUP_ROOT, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY, recursive: true })
     }
-    if (!(await exists(FULL_BACKUP_DIR, { baseDir: BaseDirectory.Picture }))) {
-        await mkdir(FULL_BACKUP_DIR, { baseDir: BaseDirectory.Picture, recursive: true })
+    if (!(await exists(FULL_BACKUP_DIR, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+        await mkdir(FULL_BACKUP_DIR, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY, recursive: true })
     }
 }
 
@@ -45,7 +46,7 @@ async function rotateFullBackups(): Promise<void> {
     const entries = await listFullAutoBackups()
     for (const entry of entries.slice(MAX_FULL_BACKUPS)) {
         try {
-            await remove(entry.relPath, { baseDir: BaseDirectory.Picture })
+            await remove(entry.relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         } catch (error) {
             console.warn('[AutoBackup] Failed to remove old disk snapshot:', entry.fileName, error)
         }
@@ -66,9 +67,9 @@ function parseBackupEntry(fileName: string): FullAutoBackupEntry | null {
 
 export async function listFullAutoBackups(): Promise<FullAutoBackupEntry[]> {
     if (!isTauri()) return []
-    if (!(await exists(FULL_BACKUP_DIR, { baseDir: BaseDirectory.Picture }))) return []
+    if (!(await exists(FULL_BACKUP_DIR, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) return []
 
-    const entries = await readDir(FULL_BACKUP_DIR, { baseDir: BaseDirectory.Picture })
+    const entries = await readDir(FULL_BACKUP_DIR, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     return entries
         .map((entry) => entry.name ? parseBackupEntry(entry.name) : null)
         .filter((entry): entry is FullAutoBackupEntry => entry !== null)
@@ -106,7 +107,7 @@ export async function createFullAutoBackup(options: CreateFullAutoBackupOptions 
     const relPath = `${FULL_BACKUP_DIR}/${fileName}`
     const json = JSON.stringify(backup, null, 2)
 
-    await writeFile(relPath, encoder.encode(json), { baseDir: BaseDirectory.Picture })
+    await writeFile(relPath, encoder.encode(json), { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     localStorage.setItem(DISK_AUTO_BACKUP_LAST_KEY, String(now))
     localStorage.setItem('nais2-last-disk-auto-backup-file', relPath)
 
@@ -129,7 +130,7 @@ export async function restoreFullAutoBackup(fileRelPath: string): Promise<{ succ
         throw new Error('Disk auto-backup restore is only available in the Tauri app.')
     }
 
-    const bytes = await readFile(fileRelPath, { baseDir: BaseDirectory.Picture })
+    const bytes = await readFile(fileRelPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     const backup = JSON.parse(decoder.decode(bytes)) as Record<string, unknown>
     if (!backup._exportedAt || !backup._version) {
         throw new Error('Backup file is missing NAIS2 export metadata.')

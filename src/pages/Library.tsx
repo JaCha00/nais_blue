@@ -23,13 +23,18 @@ import { useLibraryStore, LibraryItem } from '@/stores/library-store'
 import { SortableLibraryItem } from '@/components/library/SortableLibraryItem'
 import { LibraryItem as LibraryItemComponent } from '@/components/library/LibraryItem'
 import { useTranslation } from 'react-i18next'
-import { mkdir, exists, writeFile, BaseDirectory } from '@tauri-apps/plugin-fs'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { mkdir, exists, writeFile } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
 import { toast } from '@/components/ui/use-toast'
 import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { useSettingsStore } from '@/stores/settings-store'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 
 const dropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
@@ -120,7 +125,7 @@ export default function Library() {
         const initDir = async () => {
             try {
                 // 1. Ensure Dir Exists
-                if (useAbsoluteLibraryPath && libraryPath) {
+                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     // Absolute path
                     const existsDir = await exists(libraryPath)
                     if (!existsDir) {
@@ -129,9 +134,9 @@ export default function Library() {
                 } else {
                     // Relative to Pictures folder
                     const relPath = libraryPath || 'NAIS_Library'
-                    const existsDir = await exists(relPath, { baseDir: BaseDirectory.Picture })
+                    const existsDir = await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     if (!existsDir) {
-                        await mkdir(relPath, { baseDir: BaseDirectory.Picture })
+                        await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     }
                 }
 
@@ -209,20 +214,20 @@ export default function Library() {
             if (imageFiles.length === 0) return
 
             try {
-                const picturePath = await pictureDir()
+                const mediaStorageRoot = await getMediaStorageRoot()
                 const relPath = libraryPath || 'NAIS_Library'
-                const libraryDir = useAbsoluteLibraryPath && libraryPath
+                const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                     ? libraryPath
-                    : await join(picturePath, relPath)
+                    : await join(mediaStorageRoot, relPath)
 
                 // Ensure dir exists
-                if (useAbsoluteLibraryPath && libraryPath) {
+                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     if (!(await exists(libraryPath))) {
                         await mkdir(libraryPath, { recursive: true })
                     }
                 } else {
-                    if (!(await exists(relPath, { baseDir: BaseDirectory.Picture }))) {
-                        await mkdir(relPath, { baseDir: BaseDirectory.Picture })
+                    if (!(await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+                        await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     }
                 }
 
@@ -250,11 +255,11 @@ export default function Library() {
                     const newPath = await join(libraryDir, fileName)
 
                     // Write
-                    if (useAbsoluteLibraryPath && libraryPath) {
+                    if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                         await writeFile(newPath, uint8Array)
                     } else {
                         const relPath = libraryPath || 'NAIS_Library'
-                        await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: BaseDirectory.Picture })
+                        await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     }
 
                     const newItem: LibraryItem = {
@@ -360,20 +365,20 @@ export default function Library() {
         if (imageFiles.length === 0) return
 
         try {
-            const picturePath = await pictureDir()
+            const mediaStorageRoot = await getMediaStorageRoot()
             const relPath = libraryPath || 'NAIS_Library'
-            const libraryDir = useAbsoluteLibraryPath && libraryPath
+            const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                 ? libraryPath
-                : await join(picturePath, relPath)
+                : await join(mediaStorageRoot, relPath)
 
             // Ensure dir exists
-            if (useAbsoluteLibraryPath && libraryPath) {
+            if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                 if (!(await exists(libraryPath))) {
                     await mkdir(libraryPath, { recursive: true })
                 }
             } else {
-                if (!(await exists(relPath, { baseDir: BaseDirectory.Picture }))) {
-                    await mkdir(relPath, { baseDir: BaseDirectory.Picture })
+                if (!(await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+                    await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                 }
             }
 
@@ -388,10 +393,10 @@ export default function Library() {
                 const fileName = `${baseName}_${shortUuid}.${ext}`
                 const newPath = await join(libraryDir, fileName)
 
-                if (useAbsoluteLibraryPath && libraryPath) {
+                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     await writeFile(newPath, uint8Array)
                 } else {
-                    await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: BaseDirectory.Picture })
+                    await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                 }
 
                 const newItem: LibraryItem = {

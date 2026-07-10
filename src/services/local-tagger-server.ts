@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { supportsLocalTaggerSidecar } from '@/platform/runtime'
 
 export const LOCAL_TAGGER_BASE_URL = 'http://127.0.0.1:8002'
 
@@ -9,12 +10,20 @@ const HEALTH_REQUEST_TIMEOUT_MS = HEALTH_POLL_INTERVAL_MS
 
 let startupPromise: Promise<void> | null = null
 
+export function isLocalTaggerServerSupported(): boolean {
+    return supportsLocalTaggerSidecar
+}
+
 /**
  * Ensures the Python FastAPI sidecar managed by `src-tauri/src/lib.rs` is ready.
  * This mirrors the legacy `smart-tools.ts` local server pattern while keeping
  * sidecar startup reusable for Danbooru verification and future local tools.
  */
 export async function ensureTaggerServer(): Promise<void> {
+    if (!supportsLocalTaggerSidecar) {
+        throw new Error('Local tagger sidecar is not available on mobile.')
+    }
+
     if (await isTaggerServerHealthy()) {
         return
     }

@@ -4,8 +4,8 @@ import { indexedDBStorage } from '@/lib/indexed-db'
 import { useAuthStore } from './auth-store'
 import { useSettingsStore } from './settings-store'
 import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
-import { writeFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
 import { useCharacterStore } from './character-store'
 import { useCharacterPromptStore } from './character-prompt-store'
 import { processWildcards } from '@/lib/fragment-processor'
@@ -22,6 +22,11 @@ import {
     toSidecarFileName,
     toSidecarPath,
 } from '@/lib/generation-metadata'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 
 interface Resolution {
     label: string
@@ -98,7 +103,7 @@ async function writeNais2SidecarForMainGeneration(params: {
     }
 
     await writeFile(`${params.outputDir}/${toSidecarFileName(params.fileName)}`, sidecarBytes, {
-        baseDir: BaseDirectory.Picture,
+        baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
     })
 }
 
@@ -702,6 +707,7 @@ export const useGenerationStore = create<GenerationState>()(
 
                             // Save Image: Try Tauri FS first, fallback to browser
                             const { savePath, autoSave, useAbsolutePath } = useSettingsStore.getState()
+                            const useAbsoluteOutputPath = shouldUseAbsoluteMediaPath(useAbsolutePath)
 
                             if (autoSave) {
                                 try {
@@ -725,7 +731,7 @@ export const useGenerationStore = create<GenerationState>()(
 
                                     let fullPath: string
 
-                                    if (useAbsolutePath) {
+                                    if (useAbsoluteOutputPath) {
                                         // Save to absolute path directly
                                         const dirExists = await exists(outputDir)
                                         if (!dirExists) {
@@ -735,13 +741,12 @@ export const useGenerationStore = create<GenerationState>()(
                                         await writeFile(fullPath, bytes)
                                     } else {
                                         // Save relative to Pictures directory
-                                        const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
+                                        const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                         if (!dirExists) {
-                                            await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+                                            await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                         }
-                                        await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: BaseDirectory.Picture })
-                                        const picPath = await pictureDir()
-                                        fullPath = await join(picPath, outputDir, fileName)
+                                        await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                                        fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
                                     }
 
                                     if (shouldWriteNais2Sidecar(effectiveMetadataMode, imageFormat, true)) {
@@ -750,7 +755,7 @@ export const useGenerationStore = create<GenerationState>()(
                                             outputDir,
                                             fileName,
                                             fullPath,
-                                            useAbsolutePath,
+                                            useAbsolutePath: useAbsoluteOutputPath,
                                         })
                                     }
 

@@ -1,0 +1,310 @@
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
+const root = process.cwd()
+const read = path => readFileSync(join(root, path), 'utf8')
+const readJson = path => JSON.parse(read(path))
+
+function listSourceFiles(directory) {
+    return readdirSync(join(root, directory), { withFileTypes: true }).flatMap(entry => {
+        const relativePath = join(directory, entry.name)
+        return entry.isDirectory() ? listSourceFiles(relativePath) : [relativePath]
+    })
+}
+
+const pkg = readJson('package.json')
+const rust = read('src-tauri/src/lib.rs')
+const cargoToml = read('src-tauri/Cargo.toml')
+const desktopCapabilities = readJson('src-tauri/capabilities/default.json')
+const viteConfig = read('vite.config.ts')
+const indexHtml = read('index.html')
+
+const baseCargoDependencies = cargoToml.match(
+    /\[dependencies\]([\s\S]*?)(?=\r?\n\[)/,
+)?.[1]
+const desktopCargoDependencies = cargoToml.match(
+    /\[target\.'cfg\(any\(target_os = "windows", target_os = "linux", target_os = "macos"\)\)'\.dependencies\]([\s\S]*?)(?=\r?\n\[)/,
+)?.[1]
+
+assert.ok(baseCargoDependencies, 'Cargo.toml must keep a base dependencies section')
+assert.ok(desktopCargoDependencies, 'Cargo.toml must keep a desktop dependency section')
+assert.ok(
+    !baseCargoDependencies.includes('tauri-plugin-updater'),
+    'updater must not enable its TLS dependency graph on Android',
+)
+assert.ok(
+    desktopCargoDependencies.includes('tauri-plugin-updater'),
+    'desktop builds must retain the updater dependency',
+)
+
+assert.equal(pkg.scripts['dev:mobile'], 'vite --host 0.0.0.0')
+assert.equal(pkg.scripts['tauri:android:init'], 'npx tauri android init')
+assert.equal(pkg.scripts['tauri:android:dev'], 'npx tauri android dev --host 0.0.0.0')
+assert.equal(pkg.scripts['tauri:android:build:apk'], 'npx tauri android build --apk')
+assert.equal(pkg.scripts['tauri:android:build:aab'], 'npx tauri android build --aab')
+assert.equal(pkg.scripts['test:android-port'], 'node scripts/verify-android-port-contract.mjs')
+assert.equal(
+    pkg.scripts['test:android-idle'],
+    'powershell -NoProfile -ExecutionPolicy Bypass -File scripts/track-android-idle.ps1',
+)
+assert.ok(
+    existsSync(join(root, 'src-tauri/tauri.android.conf.json')),
+    'src-tauri/tauri.android.conf.json must exist',
+)
+assert.ok(
+    existsSync(join(root, 'scripts/track-android-idle.ps1')),
+    'Android idle-loop tracking must remain available as a repeatable device check',
+)
+
+const androidConfig = readJson('src-tauri/tauri.android.conf.json')
+const androidTargets = JSON.stringify(androidConfig.bundle?.targets ?? '')
+
+assert.ok(!androidTargets.includes('apk'), 'bundle.targets must not include apk')
+assert.ok(!androidTargets.includes('aab'), 'bundle.targets must not include aab')
+assert.equal(androidConfig.build?.beforeDevCommand, 'npm run dev:mobile')
+assert.equal(androidConfig.bundle?.android?.minSdkVersion, 24)
+assert.deepEqual(androidConfig.bundle?.externalBin, [])
+assert.equal(androidConfig.bundle?.createUpdaterArtifacts, false)
+assert.deepEqual(androidConfig.plugins?.['deep-link']?.mobile, [
+    {
+        scheme: ['nais2'],
+        appLink: false,
+    },
+])
+
+assert.ok(
+    existsSync(join(root, 'src-tauri/capabilities/mobile.json')),
+    'Android builds require a mobile-only capability',
+)
+const mobileCapabilities = readJson('src-tauri/capabilities/mobile.json')
+const mobilePermissions = JSON.stringify(mobileCapabilities.permissions)
+
+assert.deepEqual(desktopCapabilities.platforms, ['windows', 'linux', 'macOS'])
+assert.deepEqual(mobileCapabilities.platforms, ['android', 'iOS'])
+assert.ok(
+    mobilePermissions.includes('$APPDATA/**'),
+    'Android app-scoped storage requires APPDATA scope',
+)
+assert.ok(mobilePermissions.includes('fs:allow-write'), 'FS write permission must remain available')
+assert.ok(mobilePermissions.includes('fs:allow-read'), 'FS read permission must remain available')
+assert.ok(
+    mobilePermissions.includes('fs:allow-stat'),
+    'Startup snapshot and asset-profile checks require the stat command on mobile',
+)
+assert.ok(
+    mobilePermissions.includes('fs:allow-write-file'),
+    'Binary backup and snapshot writes require the write-file command on mobile',
+)
+assert.ok(
+    mobilePermissions.includes('fs:allow-read-file'),
+    'Binary backup and snapshot restores require the read-file command on mobile',
+)
+assert.ok(
+    mobilePermissions.includes('fs:allow-write-text-file'),
+    'Asset profile JSON writes require the text-file command on mobile',
+)
+assert.ok(
+    mobilePermissions.includes('fs:allow-read-text-file'),
+    'Asset profile JSON reads require the text-file command on mobile',
+)
+assert.ok(!mobilePermissions.includes('updater:'), 'mobile capability must not expose updater IPC')
+for (const desktopWindowPermission of [
+    'core:window:allow-minimize',
+    'core:window:allow-toggle-maximize',
+    'core:window:allow-start-dragging',
+]) {
+    assert.ok(
+        !mobilePermissions.includes(desktopWindowPermission),
+        `mobile capability must not expose ${desktopWindowPermission}`,
+    )
+}
+assert.ok(/cfg_attr\(mobile,\s*tauri::mobile_entry_point\)/.test(rust))
+assert.ok(
+    /#\[cfg\(not\(mobile\)\)]\s*use tauri::\{LogicalPosition,\s*LogicalSize,\s*Manager,\s*RunEvent,\s*Url\};/.test(
+        rust,
+    ),
+    'desktop-only embedded browser imports must stay out of mobile builds',
+)
+assert.ok(
+    /#\[cfg\(not\(mobile\)\)]\s*use tauri_plugin_shell::\{process::CommandChild,\s*ShellExt\};/.test(
+        rust,
+    ),
+    'desktop sidecar shell imports must stay out of mobile builds',
+)
+assert.ok(
+    /#\[cfg\(not\(mobile\)\)][\s\S]*?async fn open_embedded_browser/.test(rust) &&
+        /#\[cfg\(mobile\)][\s\S]*?async fn open_embedded_browser[\s\S]*?Embedded browser is not available on mobile/.test(
+            rust,
+        ),
+    'embedded browser command must have desktop implementation and mobile stub',
+)
+assert.ok(
+    /#\[cfg\(mobile\)][\s\S]*?async fn is_browser_open[\s\S]*?\{\s*false\s*\}/.test(rust),
+    'is_browser_open mobile stub must return false',
+)
+assert.ok(
+    /#\[cfg\(mobile\)][\s\S]*?async fn check_tagger_binary\(\) -> bool\s*\{\s*false\s*\}/.test(
+        rust,
+    ),
+    'check_tagger_binary mobile stub must return false',
+)
+assert.ok(
+    /#\[cfg\(mobile\)][\s\S]*?async fn start_tagger[\s\S]*?Tagger sidecar is not available on mobile/.test(
+        rust,
+    ),
+    'tagger sidecar startup must have a mobile stub',
+)
+assert.ok(
+    /#\[cfg\(not\(mobile\)\)]\s*\{\s*builder = builder\.plugin\(tauri_plugin_updater::Builder::new\(\)\.build\(\)\);/m.test(
+        rust,
+    ),
+    'desktop updater plugin must stay behind a non-mobile cfg gate',
+)
+
+assert.ok(
+    !existsSync(join(root, 'src-tauri/gen/android')) ||
+        existsSync(join(root, 'src-tauri/gen/android/app')),
+    'Android init output must be absent or contain src-tauri/gen/android/app',
+)
+
+assert.ok(
+    viteConfig.includes('__NAIS2_TAURI_PLATFORM__') &&
+        viteConfig.includes('TAURI_ENV_PLATFORM'),
+    'Vite must expose the Tauri build platform to frontend runtime gates',
+)
+
+assert.ok(existsSync(join(root, 'src/platform/runtime.ts')), 'src/platform/runtime.ts must exist')
+assert.ok(existsSync(join(root, 'src/platform/browser.ts')), 'src/platform/browser.ts must exist')
+assert.ok(existsSync(join(root, 'src/platform/storage.ts')), 'src/platform/storage.ts must exist')
+
+const runtime = read('src/platform/runtime.ts')
+const browser = read('src/platform/browser.ts')
+const storage = read('src/platform/storage.ts')
+const webView = read('src/pages/WebView.tsx')
+const mainMode = read('src/pages/MainMode.tsx')
+const historyPanel = read('src/components/layout/HistoryPanel.tsx')
+const threeColumnLayout = read('src/components/layout/ThreeColumnLayout.tsx')
+const sheet = read('src/components/ui/sheet.tsx')
+const localTagger = read('src/services/local-tagger-server.ts')
+const shortcuts = read('src/hooks/useShortcuts.ts')
+const promptGenerator = read('src/components/prompt/PromptGeneratorDialog.tsx')
+const assetModuleStudio = read('src/pages/AssetModuleStudio.tsx')
+const animatedNavBar = read('src/components/layout/AnimatedNavBar.tsx')
+const settingsPage = read('src/pages/Settings.tsx')
+const autoBackup = read('src/lib/auto-backup.ts')
+const storeSnapshots = read('src/lib/store-snapshots.ts')
+const updateChecker = read('src/hooks/useUpdateChecker.tsx')
+
+for (const symbol of [
+    'supportsEmbeddedBrowser',
+    'supportsLocalTaggerSidecar',
+    'supportsKeyboardShortcuts',
+    'isMobileRuntime',
+]) {
+    assert.ok(runtime.includes(`export const ${symbol}`), `runtime.ts must export ${symbol}`)
+}
+
+assert.ok(
+    indexHtml.includes('viewport-fit=cover'),
+    'mobile viewport must expose Android safe-area insets',
+)
+assert.ok(
+    threeColumnLayout.includes('isMobileRuntime') &&
+        threeColumnLayout.includes('!isMac && !isMobileRuntime') &&
+        threeColumnLayout.includes('safe-area-inset-top') &&
+        threeColumnLayout.includes('safe-area-inset-bottom'),
+    'mobile shell must hide the desktop titlebar and respect both system insets',
+)
+assert.ok(
+    sheet.includes('safe-area-inset-top'),
+    'sheet close controls must remain below the mobile status bar',
+)
+assert.ok(
+    animatedNavBar.includes('isTiny ? "justify-start" : "justify-center"') &&
+        animatedNavBar.includes('isTiny ? "h-10 w-10 p-0"'),
+    'overflowing mobile navigation must start in bounds with stable touch targets',
+)
+for (const symbol of [
+    'MEDIA_STORAGE_BASE_DIRECTORY',
+    'getMediaStorageRoot',
+    'shouldUseAbsoluteMediaPath',
+]) {
+    assert.ok(storage.includes(`export ${symbol === 'MEDIA_STORAGE_BASE_DIRECTORY' ? 'const' : 'function'} ${symbol}`), `storage.ts must export ${symbol}`)
+}
+for (const [name, source] of [['MainMode', mainMode], ['HistoryPanel', historyPanel]]) {
+    assert.ok(source.includes('@/platform/storage'), `${name} must use the platform storage adapter`)
+    assert.ok(!source.includes('BaseDirectory.Picture'), `${name} must not hard-code Picture storage`)
+    assert.ok(!source.includes('pictureDir'), `${name} must not resolve Picture paths directly`)
+}
+for (const [name, source] of [['AutoBackup', autoBackup], ['StoreSnapshots', storeSnapshots]]) {
+    assert.ok(source.includes('@/platform/storage'), `${name} must use the platform storage adapter`)
+    assert.ok(!source.includes('BaseDirectory.Picture'), `${name} must not hard-code Picture storage`)
+}
+for (const sourcePath of listSourceFiles('src')) {
+    if (!/\.tsx?$/.test(sourcePath) || sourcePath === join('src', 'platform', 'storage.ts')) continue
+    const source = read(sourcePath)
+    assert.ok(
+        !source.includes('BaseDirectory.Picture') && !source.includes('pictureDir'),
+        `${sourcePath} must resolve media storage through src/platform/storage.ts`,
+    )
+}
+assert.ok(
+    updateChecker.includes("@/platform/runtime") &&
+        /useEffect\(\(\) => \{\s*if \(isMobileRuntime\) return/.test(updateChecker),
+    'automatic updater checks must stop before scheduling native IPC on mobile',
+)
+assert.ok(
+    settingsPage.includes("@/platform/runtime") &&
+        settingsPage.includes('{!isMobileRuntime && (') &&
+        settingsPage.includes('{!isMobileRuntime && pendingUpdate && appVersion && (() => {'),
+    'mobile settings must not render desktop updater actions',
+)
+
+assert.ok(
+    browser.includes("@tauri-apps/plugin-opener") &&
+        browser.includes('openUrl') &&
+        browser.includes('supportsEmbeddedBrowser'),
+    'browser adapter must use plugin-opener when embedded browser is unavailable',
+)
+for (const command of [
+    'open_embedded_browser',
+    'close_embedded_browser',
+    'navigate_embedded_browser',
+    'resize_embedded_browser',
+    'hide_embedded_browser',
+    'show_embedded_browser',
+    'zoom_embedded_browser',
+    'is_browser_open',
+]) {
+    assert.ok(browser.includes(command), `browser adapter must own ${command}`)
+    assert.ok(!webView.includes(command), `WebView.tsx must not directly invoke ${command}`)
+}
+assert.ok(!webView.includes("@tauri-apps/api/core"), 'WebView.tsx must not import invoke directly')
+assert.ok(webView.includes("@/platform/browser"), 'WebView.tsx must use the browser adapter')
+
+assert.ok(
+    localTagger.includes('supportsLocalTaggerSidecar') &&
+        localTagger.includes('isLocalTaggerServerSupported') &&
+        localTagger.indexOf('supportsLocalTaggerSidecar') < localTagger.indexOf("invoke('start_tagger')"),
+    'local tagger service must gate sidecar startup before invoking start_tagger',
+)
+assert.ok(
+    shortcuts.includes('supportsKeyboardShortcuts') &&
+        shortcuts.includes('!supportsKeyboardShortcuts || !enabled'),
+    'keyboard shortcut hook must no-op on mobile runtimes',
+)
+assert.ok(
+    promptGenerator.includes('supportsLocalTaggerSidecar') &&
+        promptGenerator.includes('canVerifyDanbooru'),
+    'Danbooru verifier UI must be disabled when the local tagger sidecar is unsupported',
+)
+assert.ok(
+    assetModuleStudio.includes('supportsLocalTaggerSidecar') &&
+        assetModuleStudio.includes('canUseLocalTagger'),
+    'Asset module auto-verification must skip local tagger calls on mobile',
+)
+
+// When Android-specific capabilities are split out, this contract should also
+// reject desktop-only updater and shell permissions from that mobile surface.
+console.log('Android port contract passed.')

@@ -32,6 +32,7 @@ import { generateTagsFromPrompt, GEMINI_MODELS, type GeminiModel, type TokenUsag
 import type { TagMatchResult } from '@/lib/tag-matcher'
 import { toast } from '@/components/ui/use-toast'
 import { DanbooruTagVerifyDialog } from '@/components/prompt/DanbooruTagVerifyDialog'
+import { supportsLocalTaggerSidecar } from '@/platform/runtime'
 
 interface PromptGeneratorDialogProps {
     open: boolean
@@ -189,6 +190,7 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
 
     const selectedPromptText = getSelectedPromptText()
     const danbooruPrompt = verifiedPrompt ?? selectedPromptText
+    const canVerifyDanbooru = supportsLocalTaggerSidecar && Boolean(danbooruPrompt.trim())
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -375,7 +377,7 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                         <Button
                             variant="outline"
                             onClick={() => setIsDanbooruOpen(true)}
-                            disabled={!danbooruPrompt.trim()}
+                            disabled={!canVerifyDanbooru}
                         >
                             <ShieldCheck className="h-4 w-4 mr-1" />
                             {t('promptGenerator.verifyDanbooru', 'Danbooru 실검증')}
@@ -402,19 +404,21 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                         </Button>
                     </DialogFooter>
                 )}
-                <DanbooruTagVerifyDialog
-                    open={isDanbooruOpen}
-                    onOpenChange={setIsDanbooruOpen}
-                    prompt={danbooruPrompt}
-                    onApply={(nextPrompt) => {
-                        setVerifiedPrompt(nextPrompt)
-                        setIsDanbooruOpen(false)
-                        toast({
-                            title: t('promptGenerator.danbooruApplied', 'Danbooru 실검증 반영됨'),
-                            variant: 'success',
-                        })
-                    }}
-                />
+                {supportsLocalTaggerSidecar && (
+                    <DanbooruTagVerifyDialog
+                        open={isDanbooruOpen}
+                        onOpenChange={setIsDanbooruOpen}
+                        prompt={danbooruPrompt}
+                        onApply={(nextPrompt) => {
+                            setVerifiedPrompt(nextPrompt)
+                            setIsDanbooruOpen(false)
+                            toast({
+                                title: t('promptGenerator.danbooruApplied', 'Danbooru 실검증 반영됨'),
+                                variant: 'success',
+                            })
+                        }}
+                    />
+                )}
             </DialogContent>
         </Dialog>
     )

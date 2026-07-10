@@ -23,6 +23,9 @@ const getNodePackageName = (normalizedId: string) => {
 // https://vite.dev/config/
 export default defineConfig({
     plugins: [react()],
+    define: {
+        __NAIS2_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
+    },
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),

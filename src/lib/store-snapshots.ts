@@ -1,4 +1,4 @@
-import { BaseDirectory, exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
+import { exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
 import { isTauri } from '@tauri-apps/api/core'
 import {
     BACKUP_STORE_KEYS,
@@ -8,6 +8,7 @@ import {
     registerIndexedDBWriteListener,
     type BackupStoreKey,
 } from '@/lib/indexed-db'
+import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 
 const BACKUP_ROOT = 'NAIS_Backup'
 const DEBOUNCE_MS = 5000
@@ -54,13 +55,13 @@ function storeSnapshotDir(storeKey: BackupStoreKey): string {
 }
 
 async function ensureStoreSnapshotDir(storeKey: BackupStoreKey): Promise<void> {
-    if (!(await exists(BACKUP_ROOT, { baseDir: BaseDirectory.Picture }))) {
-        await mkdir(BACKUP_ROOT, { baseDir: BaseDirectory.Picture, recursive: true })
+    if (!(await exists(BACKUP_ROOT, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+        await mkdir(BACKUP_ROOT, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY, recursive: true })
     }
 
     const dirRel = storeSnapshotDir(storeKey)
-    if (!(await exists(dirRel, { baseDir: BaseDirectory.Picture }))) {
-        await mkdir(dirRel, { baseDir: BaseDirectory.Picture, recursive: true })
+    if (!(await exists(dirRel, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+        await mkdir(dirRel, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY, recursive: true })
     }
 }
 
@@ -82,7 +83,7 @@ async function rotateStoreSnapshots(storeKey: BackupStoreKey): Promise<void> {
     const entries = await listStoreSnapshotEntries(storeKey)
     for (const entry of entries.slice(MAX_SNAPSHOTS_PER_STORE)) {
         try {
-            await remove(entry.relPath, { baseDir: BaseDirectory.Picture })
+            await remove(entry.relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         } catch (error) {
             console.warn('[StoreSnapshot] Failed to remove old snapshot:', entry.fileName, error)
         }
@@ -91,9 +92,9 @@ async function rotateStoreSnapshots(storeKey: BackupStoreKey): Promise<void> {
 
 async function listStoreSnapshotEntries(storeKey: BackupStoreKey): Promise<StoreSnapshotEntry[]> {
     const dirRel = storeSnapshotDir(storeKey)
-    if (!(await exists(dirRel, { baseDir: BaseDirectory.Picture }))) return []
+    if (!(await exists(dirRel, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) return []
 
-    const entries = await readDir(dirRel, { baseDir: BaseDirectory.Picture })
+    const entries = await readDir(dirRel, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     return entries
         .map((entry) => entry.name ? parseStoreSnapshotEntry(storeKey, entry.name) : null)
         .filter((entry): entry is StoreSnapshotEntry => entry !== null)
@@ -128,7 +129,7 @@ async function writeStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapsh
     const fileName = `${storeKey}_${timestamp}.json`
     const relPath = `${storeSnapshotDir(storeKey)}/${fileName}`
 
-    await writeFile(relPath, encoder.encode(JSON.stringify(backup, null, 2)), { baseDir: BaseDirectory.Picture })
+    await writeFile(relPath, encoder.encode(JSON.stringify(backup, null, 2)), { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     await rotateStoreSnapshots(storeKey)
 
     return { storeKey, fileName, relPath, timestamp, exportedAt }
@@ -233,7 +234,7 @@ export async function restoreStoreSnapshot(
         throw new Error('Store snapshot restore is only available in the Tauri app.')
     }
 
-    const bytes = await readFile(fileRelPath, { baseDir: BaseDirectory.Picture })
+    const bytes = await readFile(fileRelPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     const backup = JSON.parse(decoder.decode(bytes)) as Record<string, unknown>
     if (!backup._exportedAt || !backup._version || !(storeKey in backup)) {
         throw new Error('Store snapshot is missing NAIS2 export metadata or store payload.')

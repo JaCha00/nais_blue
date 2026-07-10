@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "build": {
+    "beforeDevCommand": "npm run dev:mobile"
+  },
+  "bundle": {
+    "android": {
+      "minSdkVersion": 24
+    },
+    "externalBin": [],
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["nais2"],
+          "appLink": false
+        }
+      ]
+    }
+  }
+}

@@ -2,8 +2,9 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { rename, exists } from '@tauri-apps/plugin-fs'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { join } from '@tauri-apps/api/path'
 import { useSettingsStore } from './settings-store'
+import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
 
 export interface SceneImage {
     id: string
@@ -264,11 +265,11 @@ export const useSceneStore = create<SceneState>()(
                     let oldFolderPath: string
                     let newFolderPath: string
                     
-                    if (useAbsoluteScenePath && sceneSavePath) {
+                    if (shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath) {
                         oldFolderPath = await join(sceneSavePath, safePresetName, safeOldName)
                         newFolderPath = await join(sceneSavePath, safePresetName, safeNewName)
                     } else {
-                        const baseDir = await pictureDir()
+                        const baseDir = await getMediaStorageRoot()
                         const sceneRoot = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
                         oldFolderPath = await join(baseDir, sceneRoot, safePresetName, safeOldName)
                         newFolderPath = await join(baseDir, sceneRoot, safePresetName, safeNewName)

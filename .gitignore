@@ -24,6 +24,9 @@ src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe
 # Agent
 .agent/
 .superloopy/
+.artifacts/
+.playwright-cli/
+output/
 
 # Python runtime caches
 __pycache__/

@@ -1,6 +1,11 @@
 import { BaseDirectory, exists, mkdir } from '@tauri-apps/plugin-fs'
-import { join, pictureDir } from '@tauri-apps/api/path'
+import { join } from '@tauri-apps/api/path'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 
 export interface SceneOutputPathRequest {
     sceneSavePath: string
@@ -44,7 +49,7 @@ export async function resolveSceneOutputPath(request: SceneOutputPathRequest): P
     const sceneRoot = sanitizePathComponent(request.sceneSavePath || 'NAIS_Scene', 'NAIS_Scene')
     const pathSegments = [sceneRoot, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
 
-    if (request.useAbsoluteScenePath && request.sceneSavePath) {
+    if (shouldUseAbsoluteMediaPath(request.useAbsoluteScenePath) && request.sceneSavePath) {
         const directoryPath = await join(request.sceneSavePath, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName)
         if (!(await exists(directoryPath))) {
             await mkdir(directoryPath, { recursive: true })
@@ -59,14 +64,14 @@ export async function resolveSceneOutputPath(request: SceneOutputPathRequest): P
     }
 
     const relativeDirectory = pathSegments.join('/')
-    if (!(await exists(relativeDirectory, { baseDir: BaseDirectory.Picture }))) {
-        await mkdir(relativeDirectory, { baseDir: BaseDirectory.Picture, recursive: true })
+    if (!(await exists(relativeDirectory, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+        await mkdir(relativeDirectory, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY, recursive: true })
     }
 
     return {
-        fullPath: await join(await pictureDir(), relativeDirectory, request.fileName),
+        fullPath: await join(await getMediaStorageRoot(), relativeDirectory, request.fileName),
         writePath: `${relativeDirectory}/${request.fileName}`,
-        baseDir: BaseDirectory.Picture,
+        baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
         safePresetName,
         safeSceneName,
         safeCharacterName,

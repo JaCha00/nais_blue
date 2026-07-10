@@ -1,38 +1,30 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window with FS and HTTP access",
-  "platforms": ["windows", "linux", "macOS"],
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "mobile-main",
+  "description": "Mobile main window access limited to app-scoped files and NAIS2 network services",
+  "platforms": ["android", "iOS"],
   "windows": [
     "main"
   ],
   "permissions": [
     "core:default",
-    "core:window:allow-close",
-    "core:window:allow-minimize",
-    "core:window:allow-toggle-maximize",
-    "core:window:allow-start-dragging",
-    "core:window:allow-is-maximized",
     "fs:allow-exists",
     "fs:allow-mkdir",
+    "fs:allow-stat",
     "fs:allow-read",
+    "fs:allow-read-file",
     "fs:allow-write",
+    "fs:allow-write-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
     "fs:allow-read-dir",
     "fs:allow-remove",
     "fs:allow-rename",
-    "fs:allow-picture-read-recursive",
-    "fs:allow-picture-write-recursive",
     {
       "identifier": "fs:scope",
       "allow": [
         {
-          "path": "$PICTURE/**"
-        },
-        {
           "path": "$APPDATA/**"
-        },
-        {
-          "path": "$LOCALAPPDATA/**"
         }
       ]
     },
@@ -51,7 +43,6 @@
     "store:default",
     "dialog:default",
     "opener:default",
-    "updater:default",
     "process:allow-restart",
     "deep-link:default"
   ]

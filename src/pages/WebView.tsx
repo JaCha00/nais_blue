@@ -1,10 +1,20 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, type MutableRefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { invoke } from '@tauri-apps/api/core'
+import {
+    closeBrowserView,
+    hideBrowserView,
+    isBrowserViewOpen,
+    navigateBrowserView,
+    openBrowserView,
+    resizeBrowserView,
+    showBrowserView,
+    zoomBrowserView,
+    type BrowserOpenTarget,
+} from '@/platform/browser'
 import { Store } from '@tauri-apps/plugin-store'
 import {
     Globe,
@@ -47,6 +57,16 @@ const toWebViewRect = (rect: DOMRect): WebViewRect => ({
     height: Math.round(rect.height),
 })
 
+const resetEmbeddedBrowserState = (
+    setIsBrowserOpen: (isOpen: boolean) => void,
+    lastWebViewRectRef: MutableRefObject<WebViewRect | null>,
+    lastResizeSentAtRef: MutableRefObject<number>,
+) => {
+    lastWebViewRectRef.current = null
+    lastResizeSentAtRef.current = 0
+    setIsBrowserOpen(false)
+}
+
 const hasMeaningfulRectChange = (previous: WebViewRect | null, next: WebViewRect) => (
     !previous ||
     Math.abs(previous.x - next.x) >= 1 ||
@@ -80,7 +100,7 @@ export default function WebView() {
         const newZoom = Math.max(0.25, Math.min(3.0, zoomLevel + delta))
         setZoomLevel(newZoom)
         try {
-            await invoke('zoom_embedded_browser', { zoomLevel: newZoom })
+            await zoomBrowserView(newZoom)
         } catch (error) {
             console.error('Zoom failed:', error)
         }
@@ -89,7 +109,7 @@ export default function WebView() {
     const handleZoomReset = useCallback(async () => {
         setZoomLevel(1.0)
         try {
-            await invoke('zoom_embedded_browser', { zoomLevel: 1.0 })
+            await zoomBrowserView(1.0)
         } catch (error) {
             console.error('Zoom reset failed:', error)
         }
@@ -98,9 +118,9 @@ export default function WebView() {
     // Hide WebView when dialog opens (z-index fix)
     useEffect(() => {
         if (isAddDialogOpen && isBrowserOpen) {
-            invoke('hide_embedded_browser').catch(() => { })
+            hideBrowserView().catch(() => { })
         } else if (!isAddDialogOpen && isBrowserOpen) {
-            invoke('show_embedded_browser').catch(() => { })
+            showBrowserView().catch(() => { })
         }
     }, [isAddDialogOpen, isBrowserOpen])
 
@@ -158,12 +178,7 @@ export default function WebView() {
     const sendWebViewResize = useCallback((nextRect: WebViewRect) => {
         lastResizeSentAtRef.current = Date.now()
         lastWebViewRectRef.current = nextRect
-        void invoke('resize_embedded_browser', {
-            x: nextRect.x,
-            y: nextRect.y,
-            width: nextRect.width,
-            height: nextRect.height,
-        }).catch(() => {
+        void resizeBrowserView(nextRect).catch(() => {
             // Native child webview can disappear during page transitions.
         })
     }, [])
@@ -211,9 +226,9 @@ export default function WebView() {
     useEffect(() => {
         const checkAndRestoreBrowser = async () => {
             try {
-                const isOpen = await invoke<boolean>('is_browser_open')
+                const isOpen = await isBrowserViewOpen()
                 if (isOpen) {
-                    await invoke('show_embedded_browser')
+                    await showBrowserView()
                     setIsBrowserOpen(true)
                     setTimeout(() => {
                         if (browserAreaRef.current) {
@@ -253,9 +268,9 @@ export default function WebView() {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.hidden && isBrowserOpen) {
-                invoke('hide_embedded_browser').catch(() => { })
+                hideBrowserView().catch(() => { })
             } else if (!document.hidden && isBrowserOpen) {
-                invoke('show_embedded_browser').catch(() => { })
+                showBrowserView().catch(() => { })
                 updateWebViewSize()
             }
         }
@@ -269,8 +284,21 @@ export default function WebView() {
     // Hide browser when leaving the page
     useEffect(() => {
         return () => {
-            invoke('hide_embedded_browser').catch(() => { })
+            hideBrowserView().catch(() => { })
         }
+    }, [])
+
+    const commitBrowserOpenResult = useCallback((result: BrowserOpenTarget, rect?: DOMRect) => {
+        if (result === 'external') {
+            resetEmbeddedBrowserState(setIsBrowserOpen, lastWebViewRectRef, lastResizeSentAtRef)
+            return
+        }
+
+        if (rect) {
+            lastWebViewRectRef.current = toWebViewRect(rect)
+            lastResizeSentAtRef.current = Date.now()
+        }
+        setIsBrowserOpen(true)
     }, [])
 
     const openBrowserWindow = useCallback(async (targetUrl: string) => {
@@ -280,30 +308,19 @@ export default function WebView() {
             if (!browserArea) return
 
             const rect = browserArea.getBoundingClientRect()
-
-                await invoke('open_embedded_browser', {
-                    url: targetUrl,
-                    x: rect.left,
-                    y: rect.top,
-                    width: rect.width,
-                    height: rect.height
-                })
-                lastWebViewRectRef.current = toWebViewRect(rect)
-                lastResizeSentAtRef.current = Date.now()
-            setIsBrowserOpen(true)
+            const result = await openBrowserView(targetUrl, toWebViewRect(rect))
+            commitBrowserOpenResult(result, rect)
         } catch (error) {
             console.error('Failed to open browser:', error)
         } finally {
             setIsLoading(false)
         }
-    }, [])
+    }, [commitBrowserOpenResult])
 
     const closeBrowser = async () => {
         try {
-            await invoke('close_embedded_browser')
-            lastWebViewRectRef.current = null
-            lastResizeSentAtRef.current = 0
-            setIsBrowserOpen(false)
+            await closeBrowserView()
+            resetEmbeddedBrowserState(setIsBrowserOpen, lastWebViewRectRef, lastResizeSentAtRef)
         } catch (error) {
             console.error('Failed to close browser:', error)
         }
@@ -319,7 +336,8 @@ export default function WebView() {
 
         if (isBrowserOpen) {
             try {
-                await invoke('navigate_embedded_browser', { url: newUrl })
+                const result = await navigateBrowserView(newUrl)
+                commitBrowserOpenResult(result)
             } catch (error) {
                 await openBrowserWindow(newUrl)
             }
@@ -336,7 +354,8 @@ export default function WebView() {
 
         if (isBrowserOpen) {
             try {
-                await invoke('navigate_embedded_browser', { url: linkUrl })
+                const result = await navigateBrowserView(linkUrl)
+                commitBrowserOpenResult(result)
             } catch (error) {
                 await openBrowserWindow(linkUrl)
             }

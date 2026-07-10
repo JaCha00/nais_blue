@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { useShortcutStore, matchesBinding, ShortcutAction } from '@/stores/shortcut-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useFragmentStore } from '@/stores/fragment-store'
+import { supportsKeyboardShortcuts } from '@/platform/runtime'
 
 // 커스텀 이벤트 (다이얼로그 열기용)
 export const SHORTCUT_EVENTS = {
@@ -28,7 +29,7 @@ export function useShortcuts() {
     const resetSequentialCounter = useFragmentStore(state => state.resetSequentialCounter)
 
     useEffect(() => {
-        if (!enabled) return
+        if (!supportsKeyboardShortcuts || !enabled) return
 
         const handleKeyDown = (e: KeyboardEvent) => {
             // 각 바인딩 체크

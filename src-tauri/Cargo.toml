@@ -29,7 +29,6 @@ tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2.5.2"
-tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-deep-link = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
@@ -37,10 +36,11 @@ tokio = { version = "1", features = ["full"] }
 zip = "2.2"
 base64 = "0.22"
 
-# Desktop-only: single-instance plugin is not available on mobile targets,
-# and the "deep-link" feature integrates with our nais2:// callback handler.
+# These crates back the desktop-only gates in src/lib.rs. Keeping updater here
+# also prevents its reqwest rustls-no-provider feature from leaking into Android.
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-updater = "2"
 
 [patch.crates-io]
 # Tauri 2.11 still pulls plist 1.9.0, whose published crate depends on

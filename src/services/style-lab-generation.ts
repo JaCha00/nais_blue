@@ -1,5 +1,5 @@
-import { BaseDirectory, exists, mkdir, writeFile } from '@tauri-apps/plugin-fs'
-import { join, pictureDir } from '@tauri-apps/api/path'
+import { exists, mkdir, writeFile } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
 import { buildStyleLabPrompt, formatWeightedPromptTags } from '@/lib/style-lab'
 import { processWildcards } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
@@ -12,6 +12,11 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
 import { toast } from '@/components/ui/use-toast'
 import i18n from '@/i18n'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 
 let styleLabGenerationLock = false
 const STREAM_PREVIEW_UPDATE_INTERVAL_MS = 250
@@ -92,21 +97,21 @@ async function saveStyleLabImage(
 
     const fileName = `NAIS_STYLELAB_${Date.now()}.${fileExt}`
     const outputDir = styleLabSavePath || 'nais-style'
+    const useAbsoluteOutputPath = shouldUseAbsoluteMediaPath(useAbsoluteStyleLabPath)
     let fullPath: string
 
-    if (useAbsoluteStyleLabPath) {
+    if (useAbsoluteOutputPath) {
         if (!(await exists(outputDir))) {
             await mkdir(outputDir, { recursive: true })
         }
         fullPath = await join(outputDir, fileName)
         await writeFile(fullPath, bytes)
     } else {
-        if (!(await exists(outputDir, { baseDir: BaseDirectory.Picture }))) {
-            await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+        if (!(await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+            await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         }
-        await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: BaseDirectory.Picture })
-        const picPath = await pictureDir()
-        fullPath = await join(picPath, outputDir, fileName)
+        await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+        fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
     }
 
     window.dispatchEvent(new CustomEvent('newImageGenerated', {
