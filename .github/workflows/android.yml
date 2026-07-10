@@ -86,7 +86,9 @@ jobs:
       - name: Install Android SDK components
         shell: bash
         run: |
-          sdkmanager --install \
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
             "platform-tools" \
             "platforms;android-${ANDROID_PLATFORM_VERSION}" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
@@ -166,7 +168,9 @@ jobs:
       - name: Install Android SDK components
         shell: bash
         run: |
-          sdkmanager --install \
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
             "platform-tools" \
             "platforms;android-${ANDROID_PLATFORM_VERSION}" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
@@ -259,7 +263,9 @@ jobs:
       - name: Install Android verification tools
         shell: bash
         run: |
-          sdkmanager --install \
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
             "platform-tools" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
 
