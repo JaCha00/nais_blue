@@ -315,6 +315,13 @@ async function main() {
                     isMobile: Boolean(viewport.mobile),
                 })
                 page.setDefaultTimeout(20_000)
+                await page.route('**/*', route => {
+                    const requestUrl = route.request().url()
+                    if (requestUrl.startsWith(baseUrl) || !/^https?:/i.test(requestUrl)) {
+                        return route.continue()
+                    }
+                    return route.abort()
+                })
                 for (const route of routes) {
                     console.log(`Checking ${route} at ${viewport.width}x${viewport.height}`)
                     await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded' })
