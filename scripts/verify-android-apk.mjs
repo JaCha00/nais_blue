@@ -296,9 +296,9 @@ if (metadata.versionCode !== expectedVersionCode(packageJson.version)) {
     throw new Error(`APK versionCode ${metadata.versionCode} does not match the configured version`)
 }
 const baselineVersion = policy.updateBaseline.tag.replace(/^v/, '')
-if (metadata.versionCode < expectedVersionCode(baselineVersion)) {
+if (metadata.versionCode <= expectedVersionCode(baselineVersion)) {
     throw new Error(
-        `APK versionCode ${metadata.versionCode} is lower than update baseline ${policy.updateBaseline.tag}`,
+        `APK versionCode ${metadata.versionCode} must be newer than update baseline ${policy.updateBaseline.tag}`,
     )
 }
 if (metadata.minSdkVersion !== policy.minSdkVersion) {

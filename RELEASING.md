@@ -44,25 +44,31 @@ that baseline first, and then uses `adb install -r` for the newly built APK. Thi
 turns signer continuity and version monotonicity into an executable update test,
 not just a comparison against the key supplied during the current build.
 
-Configure these repository secrets before enabling signed builds:
+Configure these `android-release` Environment secrets before enabling signed
+builds. Keeping the Android key in the protected Environment ensures the
+signing job cannot read it until the required reviewer approves the deployment:
 
 - `NAIS_KEYSTORE_BASE64`: Base64 encoding of the exact pinned release keystore
 - `NAIS_KEYSTORE_PASSWORD`: keystore and key password
 - `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`: optional production frontend
   configuration, matching the desktop workflow
 
-The tracked policy supplies the non-secret `release` alias. Configure required
-reviewers on the `android-release` GitHub Environment and protect `v*` tags
-before storing production signing secrets. Ordinary branch and manual Android
-runs never receive the release key.
+The tracked policy supplies the non-secret `release` alias. The
+`android-release` GitHub Environment must require a reviewer and allow only
+`v*` tag deployments. Its production signing secrets must not also remain at
+repository scope. The active tag ruleset must reject tag updates and deletions.
+Ordinary branch and manual Android runs never receive the release key.
 
 The workflow pins JDK 17, Android API 36, Build Tools 36.1.0, NDK
 29.0.14206865, and all four Rust Android targets. It uses the lockfile's local
 Tauri CLI rather than installing a different global version. Release workflow
 Actions are pinned to reviewed commit SHAs instead of floating tags.
 
-Tag names must exactly match `v<package.json version>`. Existing assets are
-never replaced; release a new version instead.
+Tag names must exactly match `v<package.json version>`, and the tagged commit
+must already belong to `main`. The preflight also requires npm, Tauri, and Cargo
+version sources to agree and requires the Android version code to be newer than
+the pinned update baseline. Existing assets are verified on a retry and never
+replaced with different content; release a new version instead.
 
 ## Local signed build
 

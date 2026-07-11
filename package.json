@@ -1,6 +1,6 @@
 {
   "name": "nais2",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "license": "GPL-3.0",
   "private": true,
   "type": "module",
@@ -13,6 +13,7 @@
     "test:smart-tools": "node scripts/test-smart-tools-contract.mjs",
     "test:nai-core": "node scripts/verify-nai-core-phase.mjs",
     "test:android-port": "node scripts/verify-android-port-contract.mjs",
+    "test:release-version": "node scripts/verify-release-version.mjs",
     "test:android-idle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/track-android-idle.ps1",
     "smoke:nai-subscription": "node scripts/smoke-nai-subscription.mjs",
     "smoke:nai-endpoints": "node scripts/smoke-nai-endpoints.mjs",

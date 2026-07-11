@@ -24,6 +24,7 @@ assert.ok(policy.signing.keyAlias)
 assert.deepEqual(policy.requiredAbis, ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
 
 assert.equal(pkg.scripts['android:prepare'], 'node scripts/prepare-android-release.mjs')
+assert.equal(pkg.scripts['test:release-version'], 'node scripts/verify-release-version.mjs')
 assert.equal(
     pkg.scripts['test:android-release-contract'],
     'node scripts/verify-android-release-contract.mjs',
@@ -35,6 +36,7 @@ assert.equal(
 assert.equal(pkg.scripts['test:android-debug'], 'node scripts/verify-android-apk.mjs --mode debug')
 
 for (const path of [
+    'scripts/verify-release-version.mjs',
     'scripts/patch-android-signing.mjs',
     'scripts/prepare-android-release.mjs',
     'scripts/verify-android-apk.mjs',
@@ -45,10 +47,11 @@ for (const path of [
 
 const workflow = read('.github/workflows/android.yml')
 for (const requiredText of [
-    'ANDROID_KEY_BASE64',
+    'secrets.NAIS_KEYSTORE_BASE64',
+    'secrets.NAIS_KEYSTORE_PASSWORD',
     'ANDROID_KEY_ALIAS',
-    'ANDROID_KEY_PASSWORD',
     'npm run android:prepare',
+    'npm run test:release-version',
     'npm run test:android-release',
     'signed-build:',
     'signed-install:',
@@ -63,6 +66,8 @@ for (const requiredText of [
     'android-release-policy.json',
     'updateBaseline.url',
     'updateBaseline.sha256',
+    'npm run test:responsive-layout',
+    'verify_or_upload',
 ]) {
     assert.ok(workflow.includes(requiredText), `Android workflow must include ${requiredText}`)
 }
@@ -79,15 +84,19 @@ assert.ok(
 const desktopWorkflow = read('.github/workflows/build.yml')
 for (const requiredText of [
     "if: startsWith(github.ref, 'refs/tags/v')",
+    'release-preflight:',
+    'node scripts/verify-release-version.mjs --tag "$GITHUB_REF_NAME"',
+    'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main',
+    'needs: release-preflight',
     'releaseDraft: true',
     'needs: desktop',
     'release: true',
-    'NAIS_KEYSTORE_BASE64',
-    'NAIS_KEYSTORE_PASSWORD',
 ]) {
     assert.ok(desktopWorkflow.includes(requiredText), `Desktop workflow must include ${requiredText}`)
 }
 assert.ok(!desktopWorkflow.includes('secrets: inherit'))
+assert.ok(!desktopWorkflow.includes('ANDROID_KEY_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}'))
+assert.ok(!desktopWorkflow.includes('ANDROID_KEY_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}'))
 assert.ok(workflow.includes('gh release edit "$GITHUB_REF_NAME" --draft=false'))
 
 for (const [name, source] of [
