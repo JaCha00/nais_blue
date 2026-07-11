@@ -22,6 +22,7 @@ assert.equal(policy.updateBaseline.tag, 'v2.8.0')
 assert.match(policy.updateBaseline.url, /\/v2\.8\.0\/NAIS2_2\.8\.0-universal\.apk$/)
 assert.ok(policy.signing.keyAlias)
 assert.deepEqual(policy.requiredAbis, ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
+assert.match(pkg.devDependencies.playwright, /^\d+\.\d+\.\d+$/)
 
 assert.equal(pkg.scripts['android:prepare'], 'node scripts/prepare-android-release.mjs')
 assert.equal(pkg.scripts['test:release-version'], 'node scripts/verify-release-version.mjs')

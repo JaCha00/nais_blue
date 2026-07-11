@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { chromium } from 'playwright'
 
 const VIEWPORTS = [
     { width: 390, height: 844, minCenterWidth: 330, sidebars: 'hidden', mobile: true },
@@ -29,7 +29,6 @@ const routes = [
 const port = Number(process.env.RESPONSIVE_CONTRACT_PORT || 5177)
 const baseUrl = process.env.RESPONSIVE_CONTRACT_URL || `http://127.0.0.1:${port}`
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx'
 const root = path.resolve(import.meta.dirname, '..')
 const evidenceDir = process.env.RESPONSIVE_EVIDENCE_DIR
     ? path.resolve(process.env.RESPONSIVE_EVIDENCE_DIR)
@@ -62,17 +61,6 @@ function run(command, args, options = {}) {
         stdio: ['ignore', 'pipe', 'pipe'],
         ...options,
     })
-}
-
-function commandOutput(command, args) {
-    const prepared = prepareCommand(command, args)
-    const result = spawnSync(prepared.command, prepared.args, {
-        encoding: 'utf8',
-    })
-    if (result.status !== 0) {
-        throw new Error(`${command} ${args.join(' ')} failed:\n${result.error?.message || result.stderr || result.stdout}`)
-    }
-    return result.stdout.trim()
 }
 
 function verifyDialogSourceContracts() {
@@ -280,37 +268,6 @@ function assertVisibleCtaLayout(report, context) {
     )
 }
 
-function findPlaywrightEntrypoint() {
-    commandOutput(npxCommand, ['--yes', 'playwright', '--version'])
-
-    const cacheRoot = commandOutput(npmCommand, ['config', 'get', 'cache'])
-    const npxRoot = path.join(cacheRoot, '_npx')
-    const candidates = []
-
-    if (!existsSync(npxRoot)) {
-        throw new Error(`Cannot find npm npx cache at ${npxRoot}`)
-    }
-
-    for (const runDir of readdirSync(npxRoot, { withFileTypes: true })) {
-        if (!runDir.isDirectory()) continue
-        const packageDir = path.join(npxRoot, runDir.name, 'node_modules', 'playwright')
-        const entrypoint = path.join(packageDir, 'index.mjs')
-        if (!existsSync(entrypoint)) continue
-        candidates.push({
-            entrypoint,
-            modifiedAt: statSync(entrypoint).mtimeMs,
-        })
-    }
-
-    candidates.sort((a, b) => b.modifiedAt - a.modifiedAt)
-
-    if (!candidates[0]) {
-        throw new Error('Cannot locate Playwright in the npm npx cache')
-    }
-
-    return candidates[0].entrypoint
-}
-
 async function waitForReady(child) {
     let output = ''
     const started = Date.now()
@@ -344,8 +301,6 @@ async function closeServer(child) {
 }
 
 async function main() {
-    const playwrightEntrypoint = findPlaywrightEntrypoint()
-    const { chromium } = await import(pathToFileURL(playwrightEntrypoint).href)
     const server = run(npmCommand, ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'])
 
     try {
