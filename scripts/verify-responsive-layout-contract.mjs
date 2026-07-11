@@ -327,7 +327,13 @@ async function main() {
                         )
                     })
                     await page.evaluate(async () => {
-                        await document.fonts?.ready
+                        // Hosted runners may not reach the external font CDNs.
+                        // Bound that optional wait and validate the system-font
+                        // fallback layout instead of stalling the release gate.
+                        await Promise.race([
+                            document.fonts?.ready ?? Promise.resolve(),
+                            new Promise(resolve => setTimeout(resolve, 750)),
+                        ])
                         await new Promise(resolve => {
                             requestAnimationFrame(() => requestAnimationFrame(resolve))
                         })
