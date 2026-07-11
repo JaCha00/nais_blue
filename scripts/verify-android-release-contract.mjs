@@ -67,6 +67,7 @@ for (const requiredText of [
     'updateBaseline.url',
     'updateBaseline.sha256',
     'npm run test:responsive-layout',
+    'playwright install --with-deps chromium',
     'verify_or_upload',
 ]) {
     assert.ok(workflow.includes(requiredText), `Android workflow must include ${requiredText}`)

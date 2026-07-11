@@ -47,6 +47,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install Chromium for responsive UI checks
+        run: npx --no-install playwright install --with-deps chromium
+
       - name: Verify Android source and release contracts
         run: |
           npm run test:release-version
