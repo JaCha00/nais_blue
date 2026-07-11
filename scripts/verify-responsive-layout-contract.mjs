@@ -300,6 +300,23 @@ async function closeServer(child) {
     ])
 }
 
+async function closeBrowser(browser) {
+    let timeoutId
+    const timeout = new Promise(resolve => {
+        timeoutId = setTimeout(() => {
+            console.warn('Chromium cleanup exceeded 5 seconds; forcing test process shutdown')
+            resolve()
+        }, 5000)
+    })
+    await Promise.race([
+        browser.close().catch(error => {
+            console.warn(`Chromium cleanup failed: ${error.message}`)
+        }),
+        timeout,
+    ])
+    clearTimeout(timeoutId)
+}
+
 async function main() {
     const server = run(npmCommand, ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port), '--strictPort'])
 
@@ -594,14 +611,17 @@ async function main() {
             }
             verifyDialogSourceContracts()
         } finally {
-            await browser.close()
+            await closeBrowser(browser)
         }
     } finally {
         await closeServer(server)
     }
 }
 
-main().catch(error => {
-    console.error(error)
-    process.exit(1)
-})
+main().then(
+    () => process.exit(0),
+    error => {
+        console.error(error)
+        process.exit(1)
+    },
+)
