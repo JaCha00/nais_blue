@@ -1,5 +1,5 @@
 
-import { useState, useRef, useEffect, MouseEvent } from 'react'
+import { useState, useRef, useEffect, PointerEvent } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -38,7 +38,7 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
     // Canvas & State
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const [isDrawing, setIsDrawing] = useState(false)
+    const activePointerIdRef = useRef<number | null>(null)
     const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null)
 
 
@@ -50,6 +50,8 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
     // (i.e., only reset if i2iMode is null, meaning dialog was opened for standalone generation)
     useEffect(() => {
         if (!open) {
+            activePointerIdRef.current = null
+            lastGridPosRef.current = null
             // Check if we're in sidebar workflow mode - if so, don't reset
             const currentI2IMode = useGenerationStore.getState().i2iMode
             if (!currentI2IMode) {
@@ -179,10 +181,16 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
         }
     }
 
-    const startDrawing = (e: MouseEvent<HTMLCanvasElement>) => {
+    const startDrawing = (e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== null || (e.pointerType === 'mouse' && e.button !== 0)) return
+
         const canvas = canvasRef.current
         const ctx = canvas?.getContext('2d')
         if (!canvas || !ctx) return
+
+        e.preventDefault()
+        activePointerIdRef.current = e.pointerId
+        e.currentTarget.setPointerCapture(e.pointerId)
 
         const rect = canvas.getBoundingClientRect()
         const scaleX = canvas.width / rect.width
@@ -193,24 +201,27 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
         const { gx, gy } = pixelToGrid(x, y, canvas.width, canvas.height)
         lastGridPosRef.current = { gx, gy }
         fillBrushArea(ctx, gx, gy, isErasing)
-        setIsDrawing(true)
     }
 
-    const stopDrawing = () => {
-        if (isDrawing) {
-            setIsDrawing(false)
-            saveHistory()
-        }
+    const stopDrawing = (e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== e.pointerId) return
+
+        activePointerIdRef.current = null
         lastGridPosRef.current = null
+        saveHistory()
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId)
+        }
     }
 
-    const draw = (e: MouseEvent<HTMLCanvasElement>) => {
-        if (!isDrawing || !lastGridPosRef.current) return
+    const draw = (e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== e.pointerId || !lastGridPosRef.current) return
 
         const canvas = canvasRef.current
         const ctx = canvas?.getContext('2d')
         if (!canvas || !ctx) return
 
+        e.preventDefault()
         const rect = canvas.getBoundingClientRect()
         const scaleX = canvas.width / rect.width
         const scaleY = canvas.height / rect.height
@@ -285,28 +296,28 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
 
     return (
         <Dialog open={open} onOpenChange={(open) => !open && onOpenChange(false)}>
-            <DialogContent className="flex flex-col p-6 gap-4" style={{ maxWidth: '60vw', maxHeight: '85vh', width: '60vw', height: '85vh' }}>
-                <DialogHeader className="mb-0 shrink-0">
-                    <DialogTitle className="flex items-center gap-2 text-xl">
+            <DialogContent className="flex h-[85dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-3 overflow-hidden p-3 sm:w-[calc(100vw-2rem)] sm:p-6">
+                <DialogHeader className="shrink-0 pr-10">
+                    <DialogTitle className="flex min-w-0 items-center gap-2 text-lg sm:text-xl">
                         <Paintbrush className="w-5 h-5" />
-                        {t('tools.inpainting.title', 'Inpainting')}
+                        <span className="min-w-0 truncate">{t('tools.inpainting.title', 'Inpainting')}</span>
                     </DialogTitle>
                     <DialogDescription>
                         {t('tools.inpainting.description', 'Mask areas to regenerate.')}
                     </DialogDescription>
                 </DialogHeader>
 
-                <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
+                <div className="flex min-h-0 flex-1 overflow-hidden">
                     {/* Canvas Area - now takes full width */}
                     <div className="flex-1 flex flex-col gap-2 min-w-0">
                         {/* Toolbar */}
-                        <div className="flex gap-6 shrink-0 items-center justify-center p-2 bg-muted/20 rounded-lg border">
-                            <div className="flex items-center gap-2">
+                        <div className="grid shrink-0 gap-3 rounded-lg border bg-muted/20 p-2 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                            <div className="grid grid-cols-2 gap-2">
                                 <Button
                                     variant={!isErasing ? "secondary" : "ghost"}
                                     size="sm"
                                     onClick={() => setIsErasing(false)}
-                                    className={!isErasing ? "bg-primary text-primary-foreground hover:bg-primary/90" : ""}
+                                    className={!isErasing ? "w-full bg-primary text-primary-foreground hover:bg-primary/90" : "w-full"}
                                 >
                                     <Paintbrush className="w-4 h-4 mr-2" />
                                     {t('common.brush', 'Brush')}
@@ -315,37 +326,34 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                                     variant={isErasing ? "secondary" : "ghost"}
                                     size="sm"
                                     onClick={() => setIsErasing(true)}
-                                    className={isErasing ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}
+                                    className={isErasing ? "w-full bg-destructive text-destructive-foreground hover:bg-destructive/90" : "w-full"}
                                 >
                                     <Eraser className="w-4 h-4 mr-2" />
                                     {t('common.eraser', 'Eraser')}
                                 </Button>
                             </div>
 
-                            <div className="h-6 w-px bg-border mx-2" />
-
-                            <div className="flex items-center gap-3">
-                                <Label className="text-sm whitespace-nowrap">{t('common.size', 'Size')}</Label>
-                                <div className="flex items-center gap-2">
+                            <div className="min-w-0 space-y-1 sm:px-2">
+                                <Label className="text-sm">{t('common.size', 'Size')}</Label>
+                                <div className="flex min-w-0 items-center gap-2">
                                     <Slider
                                         value={brushSize}
                                         min={5}
                                         max={100}
                                         step={5}
                                         onValueChange={setBrushSize}
-                                        className="w-32"
+                                        aria-label={t('common.size', 'Size')}
+                                        className="min-w-0 flex-1"
                                     />
-                                    <span className="text-xs text-muted-foreground w-8 text-center">{brushSize[0]}</span>
+                                    <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{brushSize[0]}</span>
                                 </div>
                             </div>
 
-                            <div className="h-6 w-px bg-border mx-2" />
-
-                            <div className="flex items-center gap-1">
-                                <Button variant="ghost" size="icon" onClick={undo} disabled={historyStep < 0}>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button variant="ghost" size="icon" className="w-full sm:w-11" onClick={undo} disabled={historyStep < 0} aria-label={t('common.undo', '실행 취소')}>
                                     <Undo className="w-4 h-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" onClick={clearCanvas}>
+                                <Button variant="ghost" size="icon" className="w-full sm:w-11" onClick={clearCanvas} aria-label={t('actions.clear', '초기화')}>
                                     <Trash2 className="w-4 h-4" />
                                 </Button>
                             </div>
@@ -354,7 +362,7 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                         {/* Canvas Container */}
                         <div
                             ref={containerRef}
-                            className="flex-1 relative overflow-hidden rounded-lg bg-muted/50 flex items-center justify-center p-4 min-h-0"
+                            className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted/50 p-2 sm:p-4"
                         >
                             {propSourceImage && (
                                 <div
@@ -396,10 +404,11 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                                     <canvas
                                         ref={canvasRef}
                                         className="absolute top-0 left-0 w-full h-full touch-none cursor-crosshair opacity-50"
-                                        onMouseDown={startDrawing}
-                                        onMouseMove={draw}
-                                        onMouseUp={stopDrawing}
-                                        onMouseLeave={stopDrawing}
+                                        onPointerDown={startDrawing}
+                                        onPointerMove={draw}
+                                        onPointerUp={stopDrawing}
+                                        onPointerCancel={stopDrawing}
+                                        onLostPointerCapture={stopDrawing}
                                     />
                                 </div>
                             )}
@@ -407,7 +416,7 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                     </div>
                 </div>
 
-                <DialogFooter className="mt-4 sm:justify-end items-center gap-2">
+                <DialogFooter className="shrink-0 gap-2 [&>button]:w-full sm:justify-end sm:[&>button]:w-auto">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         {t('common.cancel', 'Cancel')}
                     </Button>

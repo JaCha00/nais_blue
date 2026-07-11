@@ -1,0 +1,376 @@
+name: Android APK
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release:
+        required: true
+        type: boolean
+    secrets:
+      VITE_SUPABASE_URL:
+        required: false
+      VITE_SUPABASE_ANON_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  ANDROID_PLATFORM_VERSION: '36'
+  ANDROID_BUILD_TOOLS_VERSION: '36.1.0'
+  ANDROID_NDK_VERSION: '29.0.14206865'
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Chromium for responsive UI checks
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Verify Android source and release contracts
+        run: |
+          npm run test:release-version
+          npm run test:android-port
+          npm run test:android-release-contract
+
+      - name: Verify production and responsive UI contracts
+        run: |
+          npm run lint -- --no-cache
+          npm run build
+          npm run test:responsive-layout
+
+  debug-install:
+    if: ${{ !inputs.release }}
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Rust Android target
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: x86_64-linux-android
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
+            "platform-tools" \
+            "platforms;android-${ANDROID_PLATFORM_VERSION}" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Initialize and patch a clean Android project
+        run: |
+          npx --no-install tauri android init --ci --skip-targets-install
+          node scripts/patch-android-signing.mjs
+
+      - name: Build x86_64 debug APK
+        run: npx --no-install tauri android build --debug --apk --ci --target x86_64
+
+      - name: Verify debug APK metadata
+        run: >-
+          npm run test:android-debug --
+          --apk src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install and launch debug APK
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          script: >-
+            npm run test:android-debug --
+            --apk src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+            --install
+
+  signed-build:
+    if: ${{ inputs.release && startsWith(github.ref, 'refs/tags/v') }}
+    needs: source-contract
+    runs-on: ubuntu-24.04
+    environment: android-release
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.stage.outputs.version }}
+      asset_name: ${{ steps.stage.outputs.asset_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Rust Android targets
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: >-
+            aarch64-linux-android,
+            armv7-linux-androideabi,
+            i686-linux-android,
+            x86_64-linux-android
+
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
+            "platform-tools" \
+            "platforms;android-${ANDROID_PLATFORM_VERSION}" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" \
+            "ndk;${ANDROID_NDK_VERSION}"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Decode release keystore
+        shell: bash
+        env:
+          ANDROID_KEY_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEY_BASE64" || { echo '::error::Android keystore secret is not configured'; exit 1; }
+          keystore="$RUNNER_TEMP/nais2-release.jks"
+          printf '%s' "$ANDROID_KEY_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          key_alias="$(node -p "require('./android-release-policy.json').signing.keyAlias")"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$key_alias" >> "$GITHUB_ENV"
+
+      - name: Initialize Android project and configure signing
+        run: npm run android:prepare
+
+      - name: Build signed universal APK
+        env:
+          ANDROID_KEY_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run tauri:android:build:apk -- --ci
+
+      - name: Verify release APK
+        run: >-
+          npm run test:android-release --
+          --apk src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        run: rm -f src-tauri/gen/android/keystore.properties "${ANDROID_KEYSTORE_PATH:-}"
+
+      - name: Stage immutable release assets
+        id: stage
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          source_apk="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
+          mkdir -p release-artifacts/android
+          asset_name="NAIS2_${version}-universal.apk"
+          asset="release-artifacts/android/$asset_name"
+          cp "$source_apk" "$asset"
+          (
+            cd "$(dirname "$asset")"
+            sha256sum "$asset_name" > "$asset_name.sha256"
+          )
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload signed APK for isolated smoke testing
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nais2-android-${{ steps.stage.outputs.version }}
+          path: |
+            release-artifacts/android/${{ steps.stage.outputs.asset_name }}
+            release-artifacts/android/${{ steps.stage.outputs.asset_name }}.sha256
+          if-no-files-found: error
+
+  signed-install:
+    if: ${{ inputs.release && startsWith(github.ref, 'refs/tags/v') }}
+    needs: signed-build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android verification tools
+        shell: bash
+        run: |
+          sdkmanager_path="$(find "${ANDROID_HOME}/cmdline-tools" -path '*/bin/sdkmanager' -type f -print | sort -V | tail -n 1)"
+          test -x "$sdkmanager_path" || { echo '::error::sdkmanager was not found under ANDROID_HOME'; exit 1; }
+          "$sdkmanager_path" --install \
+            "platform-tools" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+
+      - name: Download signed APK
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nais2-android-${{ needs.signed-build.outputs.version }}
+          path: release-artifacts/android
+
+      - name: Verify downloaded artifact checksum
+        shell: bash
+        working-directory: release-artifacts/android
+        run: sha256sum --check --strict "${{ needs.signed-build.outputs.asset_name }}.sha256"
+
+      - name: Download pinned update baseline
+        shell: bash
+        run: |
+          mkdir -p .artifacts/android-update
+          baseline=".artifacts/android-update/NAIS2_2.8.0-baseline.apk"
+          baseline_url="$(node -p "require('./android-release-policy.json').updateBaseline.url")"
+          baseline_sha="$(node -p "require('./android-release-policy.json').updateBaseline.sha256.toLowerCase()")"
+          curl --fail --location --output "$baseline" "$baseline_url"
+          echo "$baseline_sha  $baseline" | sha256sum --check --strict
+
+      - name: Enable KVM
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify update, install, and launch
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7
+          script: |
+            adb install -r .artifacts/android-update/NAIS2_2.8.0-baseline.apk
+            npm run test:android-release -- \
+              --apk "release-artifacts/android/${{ needs.signed-build.outputs.asset_name }}" \
+              --install
+
+  publish-android:
+    if: ${{ inputs.release && startsWith(github.ref, 'refs/tags/v') }}
+    needs:
+      - signed-build
+      - signed-install
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download smoke-tested APK
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nais2-android-${{ needs.signed-build.outputs.version }}
+          path: release-artifacts/android
+
+      - name: Upload Android assets and publish the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.signed-build.outputs.version }}
+          ASSET_NAME: ${{ needs.signed-build.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "v$VERSION" || {
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version $VERSION"
+            exit 1
+          }
+          is_draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')"
+          test "$is_draft" = "true" || {
+            echo "::error::Release $GITHUB_REF_NAME is missing or is already public"
+            exit 1
+          }
+          asset="release-artifacts/android/$ASSET_NAME"
+
+          verify_or_upload() {
+            local path="$1"
+            local name
+            local temporary
+            name="$(basename "$path")"
+            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' \
+              | grep -Fxq "$name"; then
+              temporary="$(mktemp -d)"
+              gh release download "$GITHUB_REF_NAME" --pattern "$name" --dir "$temporary"
+              test "$(sha256sum "$path" | cut -d ' ' -f 1)" = \
+                "$(sha256sum "$temporary/$name" | cut -d ' ' -f 1)" || {
+                  echo "::error::Existing release asset $name does not match the tested artifact"
+                  exit 1
+                }
+              rm -rf "$temporary"
+            else
+              gh release upload "$GITHUB_REF_NAME" "$path"
+            fi
+          }
+
+          verify_or_upload "$asset"
+          verify_or_upload "$asset.sha256"
+          gh release edit "$GITHUB_REF_NAME" --draft=false

@@ -47,11 +47,11 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="flex flex-col p-6" style={{ maxWidth: '60vw', maxHeight: '85vh', width: '60vw', height: '85vh' }}>
-                <DialogHeader className="mb-2 shrink-0">
-                    <DialogTitle className="flex items-center gap-2 text-xl">
+            <DialogContent className="flex h-[85dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-4xl flex-col gap-3 overflow-hidden p-3 sm:w-[calc(100vw-2rem)] sm:p-6">
+                <DialogHeader className="shrink-0 pr-10">
+                    <DialogTitle className="flex min-w-0 items-center gap-2 text-lg sm:text-xl">
                         <ImageIcon className="w-5 h-5" />
-                        {t('tools.i2i.title', 'Image to Image')}
+                        <span className="min-w-0 truncate">{t('tools.i2i.title', 'Image to Image')}</span>
                     </DialogTitle>
                     <DialogDescription>
                         {t('tools.i2i.description', 'Generate a new image based on an existing image.')}
@@ -59,10 +59,10 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
                 </DialogHeader>
 
                 {/* Controls */}
-                <div className="flex gap-6 mb-4 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <Label className="text-sm whitespace-nowrap">{t('tools.i2i.strength', 'Strength')}</Label>
-                        <div className="flex items-center gap-2">
+                <div className="grid shrink-0 gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">
+                    <div className="min-w-0 space-y-1">
+                        <Label className="text-sm">{t('tools.i2i.strength', 'Strength')}</Label>
+                        <div className="flex min-w-0 items-center gap-2">
                             <Minus className="h-3 w-3 text-muted-foreground" />
                             <Slider
                                 value={[strength]}
@@ -70,16 +70,17 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
                                 max={0.99}
                                 step={0.01}
                                 onValueChange={([v]) => setStrength(v)}
-                                className="w-32"
+                                aria-label={t('tools.i2i.strength', 'Strength')}
+                                className="min-w-0 flex-1"
                             />
                             <Plus className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground w-8">{strength.toFixed(2)}</span>
+                            <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{strength.toFixed(2)}</span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <Label className="text-sm whitespace-nowrap">{t('tools.i2i.noise', 'Noise')}</Label>
-                        <div className="flex items-center gap-2">
+                    <div className="min-w-0 space-y-1">
+                        <Label className="text-sm">{t('tools.i2i.noise', 'Noise')}</Label>
+                        <div className="flex min-w-0 items-center gap-2">
                             <Minus className="h-3 w-3 text-muted-foreground" />
                             <Slider
                                 value={[noise]}
@@ -87,18 +88,18 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
                                 max={0.99}
                                 step={0.01}
                                 onValueChange={([v]) => setNoise(v)}
-                                className="w-32"
+                                aria-label={t('tools.i2i.noise', 'Noise')}
+                                className="min-w-0 flex-1"
                             />
                             <Plus className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground w-8">{noise.toFixed(2)}</span>
+                            <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{noise.toFixed(2)}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Image Preview Container */}
                 <div
-                    className="flex-1 relative overflow-hidden rounded-lg bg-muted/50 flex items-center justify-center p-4"
-                    style={{ minHeight: '400px' }}
+                    className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted/50 p-2 sm:p-4"
                 >
                     {propSourceImage ? (
                         <img
@@ -113,7 +114,7 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
                     )}
                 </div>
 
-                <DialogFooter className="mt-4 sm:justify-end items-center gap-2">
+                <DialogFooter className="shrink-0 gap-2 [&>button]:w-full sm:justify-end sm:[&>button]:w-auto">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         {t('common.cancel', 'Cancel')}
                     </Button>

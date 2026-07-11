@@ -390,7 +390,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+            <DialogContent className="flex h-[85dvh] w-[calc(100vw-1rem)] max-w-4xl flex-col p-4 sm:h-[80vh] sm:p-6">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Puzzle className="h-5 w-5" />
@@ -399,7 +399,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                             <TooltipProvider delayDuration={300}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <button type="button" className="inline-flex items-center justify-center h-5 w-5 ml-1 rounded hover:bg-muted">
+                                        <button type="button" aria-label={t('fragment.usageGuide', '사용법')} className="inline-flex items-center justify-center h-5 w-5 ml-1 rounded hover:bg-muted">
                                             <Info className="h-4 w-4 text-muted-foreground" />
                                         </button>
                                     </TooltipTrigger>
@@ -418,22 +418,23 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                             </TooltipProvider>
                         )}
                         {!tooltipEnabled && (
-                            <button type="button" className="inline-flex items-center justify-center h-5 w-5 ml-1 rounded hover:bg-muted">
+                            <button type="button" aria-label={t('fragment.usageGuide', '사용법')} className="inline-flex items-center justify-center h-5 w-5 ml-1 rounded hover:bg-muted">
                                 <Info className="h-4 w-4 text-muted-foreground" />
                             </button>
                         )}
                     </DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 flex gap-4 min-h-0">
+                <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row md:gap-4">
                     {/* 왼쪽: 파일 트리 */}
-                    <div className="w-64 flex flex-col border rounded-lg">
+                    <div className="flex h-[42%] w-full shrink-0 flex-col rounded-lg border md:h-auto md:w-64">
                         <div className="p-2 border-b flex gap-1">
                             <Tip content={t('fragment.newFile', '새 파일')}>
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleCreateFile()}
+                                    aria-label={t('fragment.newFile', '새 파일')}
                                 >
                                     <Plus className="h-4 w-4" />
                                 </Button>
@@ -443,6 +444,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setIsCreatingFolder(true)}
+                                    aria-label={t('fragment.newFolder', '새 폴더')}
                                 >
                                     <FolderPlus className="h-4 w-4" />
                                 </Button>
@@ -452,6 +454,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                     variant="ghost"
                                     size="sm"
                                     onClick={handleResetCounters}
+                                    aria-label={t('fragment.resetCounters', '순차 카운터 리셋')}
                                 >
                                     <RotateCcw className="h-4 w-4" />
                                 </Button>
@@ -459,7 +462,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                             <div className="flex-1" />
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" title={t('fragment.importExport', '불러오기/내보내기')}>
+                                    <Button variant="ghost" size="sm" title={t('fragment.importExport', '불러오기/내보내기')} aria-label={t('fragment.importExport', '불러오기/내보내기')}>
                                         <MoreHorizontal className="h-4 w-4" />
                                     </Button>
                                 </DropdownMenuTrigger>
@@ -564,30 +567,31 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                     </div>
 
                     {/* 오른쪽: 에디터 */}
-                    <div className="flex-1 flex flex-col border rounded-lg">
+                    <div className="flex min-h-0 flex-1 flex-col rounded-lg border">
                         {selectedFile ? (
                             <>
-                                <div className="p-2 border-b flex gap-2 items-center">
-                                    <Input
-                                        value={editingFolder}
-                                        onChange={(e) => {
-                                            setEditingFolder(e.target.value)
-                                            setHasChanges(true)
-                                        }}
-                                        placeholder={t('fragment.folderOptional', '폴더 (선택)')}
-                                        className="h-8 w-32"
-                                    />
-                                    <span className="text-muted-foreground">/</span>
-                                    <Input
-                                        value={editingName}
-                                        onChange={(e) => {
-                                            setEditingName(e.target.value)
-                                            setHasChanges(true)
-                                        }}
-                                        placeholder={t('fragment.fileName', '파일 이름')}
-                                        className="h-8 w-40"
-                                    />
-                                    <div className="flex-1" />
+                                <div className="flex flex-wrap items-center gap-2 border-b p-2">
+                                    <div className="flex min-w-0 flex-1 items-center gap-1">
+                                        <Input
+                                            value={editingFolder}
+                                            onChange={(e) => {
+                                                setEditingFolder(e.target.value)
+                                                setHasChanges(true)
+                                            }}
+                                            placeholder={t('fragment.folderOptional', '폴더 (선택)')}
+                                            className="h-8 min-w-20 flex-1 sm:w-32 sm:flex-none"
+                                        />
+                                        <span className="text-muted-foreground">/</span>
+                                        <Input
+                                            value={editingName}
+                                            onChange={(e) => {
+                                                setEditingName(e.target.value)
+                                                setHasChanges(true)
+                                            }}
+                                            placeholder={t('fragment.fileName', '파일 이름')}
+                                            className="h-8 min-w-24 flex-1 sm:w-40 sm:flex-none"
+                                        />
+                                    </div>
                                     <Tip content={t('fragment.exportTxt', 'txt 파일로 내보내기')}>
                                         <Button
                                             variant="ghost"

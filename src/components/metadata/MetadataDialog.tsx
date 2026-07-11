@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
@@ -63,6 +63,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
         vibeTransfer: true,
     })
     const [isDragOver, setIsDragOver] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Load metadata from initial image when dialog opens with an image
     useEffect(() => {
@@ -96,12 +97,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
         }
     }
 
-    const handleFileDrop = useCallback(async (e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        setIsDragOver(false)
-
-        const file = e.dataTransfer.files[0]
+    const loadFile = useCallback(async (file?: File) => {
         if (!file || !file.type.startsWith('image/')) {
             toast({
                 title: t('metadata.invalidFile', '잘못된 파일'),
@@ -116,19 +112,27 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
             // Read file as data URL for preview
             const reader = new FileReader()
             reader.onload = async () => {
-                const dataUrl = reader.result as string
-                setImageDataUrl(dataUrl)
+                try {
+                    const dataUrl = reader.result as string
+                    setImageDataUrl(dataUrl)
 
-                // Parse metadata
-                const meta = await parseMetadataFromFile(file)
-                setMetadata(meta)
-                if (!meta) {
-                    toast({
-                        title: t('metadata.noData', '메타데이터 없음'),
-                        description: t('metadata.noDataDesc', '이 이미지에서 메타데이터를 찾을 수 없습니다.'),
-                        variant: 'destructive',
-                    })
+                    // Parse metadata
+                    const meta = await parseMetadataFromFile(file)
+                    setMetadata(meta)
+                    if (!meta) {
+                        toast({
+                            title: t('metadata.noData', '메타데이터 없음'),
+                            description: t('metadata.noDataDesc', '이 이미지에서 메타데이터를 찾을 수 없습니다.'),
+                            variant: 'destructive',
+                        })
+                    }
+                } catch (error) {
+                    console.error('Failed to parse file:', error)
+                } finally {
+                    setIsLoading(false)
                 }
+            }
+            reader.onerror = () => {
                 setIsLoading(false)
             }
             reader.readAsDataURL(file)
@@ -137,6 +141,19 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
             setIsLoading(false)
         }
     }, [t])
+
+    const handleFileDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragOver(false)
+        void loadFile(e.dataTransfer.files[0])
+    }, [loadFile])
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        void loadFile(file)
+        e.target.value = ''
+    }
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault()
@@ -294,7 +311,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogContent className="flex max-h-[85dvh] max-w-4xl flex-col overflow-hidden">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <FileImage className="h-5 w-5" />
@@ -309,17 +326,36 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                     // Drop zone
                     <div
                         className={`
-                            border-2 border-dashed rounded-xl p-12 text-center transition-colors
+                            rounded-xl border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-12
                             ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/30'}
                             ${isLoading ? 'opacity-50' : 'cursor-pointer hover:border-primary/50'}
                         `}
+                        role="button"
+                        tabIndex={isLoading ? -1 : 0}
+                        aria-label={t('metadata.chooseImage', '메타데이터를 읽을 이미지 선택')}
+                        onClick={() => !isLoading && fileInputRef.current?.click()}
+                        onKeyDown={(e) => {
+                            if (!isLoading && (e.key === 'Enter' || e.key === ' ')) {
+                                e.preventDefault()
+                                fileInputRef.current?.click()
+                            }
+                        }}
                         onDrop={handleFileDrop}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                     >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            tabIndex={-1}
+                            aria-hidden="true"
+                            onChange={handleFileChange}
+                        />
                         <Download className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                         <p className="text-base font-medium mb-2">
-                            {isLoading ? t('metadata.loading', '불러오는 중...') : t('metadata.dropHere', '이미지를 여기에 드롭하세요')}
+                            {isLoading ? t('metadata.loading', '불러오는 중...') : t('metadata.chooseOrDrop', '탭하여 이미지를 선택하거나 여기에 드롭하세요')}
                         </p>
                         <p className="text-sm text-muted-foreground">
                             {t('metadata.dropDesc', 'PNG 파일에서 메타데이터를 추출합니다')}
@@ -327,15 +363,15 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                     </div>
                 ) : (
                     // Two-column layout: Image | Info
-                    <div className="flex gap-4 min-h-0 flex-1 overflow-hidden">
+                    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden md:flex-row">
                         {/* Left: Image Preview */}
-                        <div className="w-1/3 flex-shrink-0">
+                        <div className="w-full shrink-0 md:w-1/3">
                             {imageDataUrl && (
                                 <div className="rounded-xl overflow-hidden bg-muted/30 border">
                                     <img
                                         src={imageDataUrl}
                                         alt="Preview"
-                                        className="w-full h-auto object-contain max-h-[400px]"
+                                        className="h-auto max-h-40 w-full object-contain md:max-h-[400px]"
                                     />
                                 </div>
                             )}
@@ -398,7 +434,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                                                 {t('metadata.optParams', '파라미터')}
                                             </Label>
                                         </div>
-                                        <div className="grid grid-cols-3 gap-2 text-xs">
+                                        <div className="grid grid-cols-1 gap-2 text-xs min-[380px]:grid-cols-2 md:grid-cols-3">
                                             <div className="bg-muted/30 rounded-lg p-2">
                                                 <span className="text-muted-foreground">Steps:</span>
                                                 <span className="ml-1 font-medium">{metadata.steps || '-'}</span>

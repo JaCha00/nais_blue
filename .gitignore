@@ -3,9 +3,17 @@ node_modules/
 dist/
 dist-isolation/
 .env
+.env.*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+nais-release-key
+NAIS_KEYSTORE_BASE64.txt
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
 
 # Mac
 .DS_Store

@@ -200,7 +200,8 @@ export function ResolutionSelector({ value, onChange, disabled }: ResolutionSele
                                                                 })
                                                             }
                                                         }}
-                                                        className="opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity p-0.5 cursor-pointer"
+                                                        className="cursor-pointer p-0.5 opacity-100 transition-opacity hover:text-destructive lg:opacity-0 lg:group-hover:opacity-100"
+                                                        aria-label={`${t('common.delete')} ${c.label}`}
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </button>

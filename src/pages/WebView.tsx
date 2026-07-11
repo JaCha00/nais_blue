@@ -376,6 +376,7 @@ export default function WebView() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-9 w-9 rounded-lg"
+                                aria-label={t('web.home', '홈 URL')}
                                 onClick={() => {
                                     setUrl('https://hijiribe.donmai.us')
                                     setInputUrl('https://hijiribe.donmai.us')
@@ -390,18 +391,20 @@ export default function WebView() {
                                     size="icon"
                                     className="h-9 w-9 rounded-lg text-destructive"
                                     onClick={closeBrowser}
+                                    aria-label={t('web.close', '닫기')}
                                 >
                                     <X className="h-4 w-4" />
                                 </Button>
                             )}
                         </div>
 
-                        <div className="flex-1 relative">
+                        <div className="relative min-w-0 flex-1">
                             <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                                 value={inputUrl}
                                 onChange={(e) => setInputUrl(e.target.value)}
                                 placeholder={t('web.urlPlaceholder')}
+                                aria-label={t('web.urlPlaceholder', 'URL')}
                                 className="pl-10 h-9 text-sm rounded-xl"
                             />
                         </div>
@@ -428,25 +431,28 @@ export default function WebView() {
             {/* Quick Links */}
             <div className="flex flex-wrap gap-2 items-center">
                 {quickLinks.map((link, index) => (
-                    <div key={`${link.name}-${index}`} className="relative group">
+                    <div key={`${link.name}-${index}`} className="group flex min-w-0 items-center gap-2">
                         <Button
+                            type="button"
                             variant="outline"
                             size="sm"
-                            className={`text-sm rounded-xl ${isEditMode ? 'pr-8' : ''}`}
+                            className="max-w-[calc(100vw-8rem)] min-w-0 rounded-xl text-sm sm:max-w-none"
                             onClick={() => handleQuickLink(link.url)}
-                            disabled={isLoading}
+                            disabled={isLoading || isEditMode}
                         >
-                            <Globe className="h-3 w-3 mr-1.5" />
-                            {link.name}
+                            <Globe className="mr-1.5 h-3 w-3 shrink-0" />
+                            <span className="min-w-0 truncate">{link.name}</span>
                         </Button>
                         {isEditMode && (
                             <Button
+                                type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-5 w-5 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0 hover:bg-destructive/80"
+                                className="h-11 w-11 shrink-0 rounded-xl bg-destructive p-0 text-destructive-foreground hover:bg-destructive/80"
                                 onClick={() => removeQuickLink(index)}
+                                aria-label={`${t('common.delete', '삭제')}: ${link.name}`}
                             >
-                                <X className="h-3 w-3" />
+                                <X className="h-4 w-4" />
                             </Button>
                         )}
                     </div>
@@ -454,6 +460,7 @@ export default function WebView() {
 
                 {/* Add button */}
                 <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     className="text-sm rounded-xl"
@@ -465,10 +472,12 @@ export default function WebView() {
 
                 {/* Edit mode toggle */}
                 <Button
+                    type="button"
                     variant={isEditMode ? "destructive" : "ghost"}
                     size="sm"
                     className="text-sm rounded-xl"
                     onClick={() => setIsEditMode(!isEditMode)}
+                    aria-pressed={isEditMode}
                 >
                     <Edit className="h-3 w-3 mr-1" />
                     {isEditMode ? t('web.done') : t('web.edit')}
@@ -532,7 +541,7 @@ export default function WebView() {
                             <h2 className="text-xl font-semibold mb-2">
                                 {t('web.title')}
                             </h2>
-                            <p className="text-muted-foreground max-w-md">
+                            <p className="max-w-md text-muted-foreground [text-wrap:balance]">
                                 {t('web.description')}
                             </p>
                         </CardContent>

@@ -176,18 +176,18 @@ export default function Marketplace() {
                 </div>
             </div>
         )}
-        <div className="flex flex-col h-full p-4 gap-4 overflow-hidden">
+        <div className="flex h-full min-w-0 flex-col gap-3 overflow-hidden p-3 sm:gap-4 sm:p-4">
             {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
                     <Store className="h-6 w-6 text-primary" />
-                    <h1 className="text-2xl font-bold">{t('marketplace.title', '마켓')}</h1>
+                    <h1 className="truncate text-xl font-bold sm:text-2xl">{t('marketplace.title', '마켓')}</h1>
                 </div>
 
                 {authLoading ? (
                     <div className="h-9 w-32 bg-muted/30 rounded-lg animate-pulse" />
                 ) : user && profile ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button size="sm" className="gap-2 rounded-full">
@@ -210,17 +210,25 @@ export default function Marketplace() {
                             type="button"
                             onClick={() => setShowUsernameDialog(true)}
                             title={t('marketplace.changeUsername', '닉네임 변경')}
-                            className="group flex items-center gap-2 px-3 py-1.5 bg-muted/30 hover:bg-muted/50 rounded-full transition-colors"
+                            aria-label={`${t('marketplace.changeUsername', '닉네임 변경')}: ${profile.username}`}
+                            className="group flex min-w-0 max-w-40 items-center gap-2 rounded-full bg-muted/30 px-2 py-1.5 transition-colors hover:bg-muted/50 sm:max-w-64 sm:px-3"
                         >
                             {profile.avatar_url ? (
                                 <img src={profile.avatar_url} alt={profile.username} className="h-6 w-6 rounded-full" />
                             ) : (
                                 <User className="h-5 w-5" />
                             )}
-                            <span className="text-sm font-medium">{profile.username}</span>
-                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <span className="min-w-0 truncate text-sm font-medium">{profile.username}</span>
+                            <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-70 transition-opacity sm:opacity-0 sm:group-focus-visible:opacity-100 sm:group-hover:opacity-100" />
                         </button>
-                        <Button variant="ghost" size="icon" onClick={handleSignOut} title={t('marketplace.signOut', '로그아웃')}>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="shrink-0"
+                            onClick={handleSignOut}
+                            title={t('marketplace.signOut', '로그아웃')}
+                            aria-label={t('marketplace.signOut', '로그아웃')}
+                        >
                             <LogOut className="h-4 w-4" />
                         </Button>
                     </div>
@@ -235,6 +243,8 @@ export default function Marketplace() {
             {/* View Tabs */}
             <div className="flex items-center gap-2 border-b border-border">
                 <button
+                    type="button"
+                    aria-pressed={viewMode === 'browse'}
                     className={cn(
                         "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
                         viewMode === 'browse' ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -245,6 +255,8 @@ export default function Marketplace() {
                 </button>
                 {user && (
                     <button
+                        type="button"
+                        aria-pressed={viewMode === 'myUploads'}
                         className={cn(
                             "px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5",
                             viewMode === 'myUploads' ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
@@ -258,35 +270,55 @@ export default function Marketplace() {
             </div>
 
             {/* Search + Filters */}
-            <div className="flex items-center gap-3">
-                <form onSubmit={handleSearch} className="flex-1 relative">
+            <div className="grid shrink-0 grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_auto_auto] xl:items-center xl:gap-3">
+                <form onSubmit={handleSearch} className="relative min-w-0 sm:col-span-2 xl:col-span-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder={t('marketplace.searchPlaceholder', '프리셋 검색...')}
-                        className="pl-10 h-10 rounded-xl"
+                        aria-label={t('marketplace.searchPlaceholder', '프리셋 검색...')}
+                        className="h-11 min-w-0 rounded-xl pl-10"
                     />
                 </form>
-                <div className="flex items-center bg-muted/30 rounded-xl p-1">
-                    <Button variant={contentFilter === 'all' ? 'secondary' : 'ghost'} size="sm" onClick={() => setContentFilter('all')} className="rounded-lg text-xs">
+                <div className="grid min-w-0 grid-cols-3 items-center gap-1 rounded-xl bg-muted/30 p-1">
+                    <Button
+                        variant={contentFilter === 'all' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setContentFilter('all')}
+                        aria-pressed={contentFilter === 'all'}
+                        className="min-w-0 rounded-lg px-2 text-xs"
+                    >
                         {t('marketplace.filterAll', '전체')}
                     </Button>
-                    <Button variant={contentFilter === 'scene' ? 'secondary' : 'ghost'} size="sm" onClick={() => setContentFilter('scene')} className="rounded-lg text-xs gap-1">
+                    <Button
+                        variant={contentFilter === 'scene' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setContentFilter('scene')}
+                        aria-pressed={contentFilter === 'scene'}
+                        className="min-w-0 gap-1 rounded-lg px-2 text-xs"
+                    >
                         <Film className="h-3 w-3 text-blue-400" />
                         {t('marketplace.filterScene', '씬')}
                     </Button>
-                    <Button variant={contentFilter === 'fragment' ? 'secondary' : 'ghost'} size="sm" onClick={() => setContentFilter('fragment')} className="rounded-lg text-xs gap-1">
+                    <Button
+                        variant={contentFilter === 'fragment' ? 'secondary' : 'ghost'}
+                        size="sm"
+                        onClick={() => setContentFilter('fragment')}
+                        aria-pressed={contentFilter === 'fragment'}
+                        className="min-w-0 gap-1 rounded-lg px-2 text-xs"
+                    >
                         <Puzzle className="h-3 w-3 text-green-400" />
                         {t('marketplace.filterFragment', '조각')}
                     </Button>
                 </div>
-                <div className="flex items-center bg-muted/30 rounded-xl p-1">
+                <div className="grid min-w-0 grid-cols-2 items-center gap-1 rounded-xl bg-muted/30 p-1">
                     <Button
                         variant={sortMode === 'latest' ? 'secondary' : 'ghost'}
                         size="sm"
                         onClick={() => setSortMode('latest')}
-                        className="rounded-lg gap-1.5"
+                        aria-pressed={sortMode === 'latest'}
+                        className="min-w-0 gap-1.5 rounded-lg px-2"
                     >
                         <Clock className="h-3.5 w-3.5" />
                         {t('marketplace.latest', '최신순')}
@@ -295,7 +327,8 @@ export default function Marketplace() {
                         variant={sortMode === 'popular' ? 'secondary' : 'ghost'}
                         size="sm"
                         onClick={() => setSortMode('popular')}
-                        className="rounded-lg gap-1.5"
+                        aria-pressed={sortMode === 'popular'}
+                        className="min-w-0 gap-1.5 rounded-lg px-2"
                     >
                         <Flame className="h-3.5 w-3.5" />
                         {t('marketplace.popular', '인기순')}
@@ -304,7 +337,7 @@ export default function Marketplace() {
             </div>
 
             {/* Grid */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
                 {loading ? (
                     <div className="flex flex-col gap-2">
                         {[...Array(8)].map((_, i) => (
@@ -404,10 +437,10 @@ function EmptyState({ viewMode, hasSearch, t }: { viewMode: ViewMode; hasSearch:
     }
 
     return (
-        <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">
+        <div className="flex h-full flex-col items-center justify-center px-4 py-20 text-center text-muted-foreground">
             <Store className="h-16 w-16 opacity-30 mb-4" />
-            <p className="text-lg font-medium">{title}</p>
-            <p className="text-sm mt-2">{desc}</p>
+            <p className="text-lg font-medium [text-wrap:balance]">{title}</p>
+            <p className="mt-2 max-w-sm text-sm [text-wrap:balance]">{desc}</p>
         </div>
     )
 }
@@ -418,6 +451,8 @@ function PresetRow({ preset, onClick, showDelete, onDelete }: {
     showDelete?: boolean
     onDelete?: (e: React.MouseEvent) => void
 }) {
+    const { t } = useTranslation()
+
     const timeAgo = (date: string) => {
         const d = Math.floor((Date.now() - new Date(date).getTime()) / 1000)
         if (d < 60) return '방금 전'
@@ -430,7 +465,7 @@ function PresetRow({ preset, onClick, showDelete, onDelete }: {
     return (
         <div
             onClick={onClick}
-            className="bg-card border border-border rounded-xl hover:border-primary/50 transition-colors cursor-pointer group px-4 py-3 flex items-center gap-4"
+            className="group flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-3 py-3 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-4 sm:px-4"
         >
             {/* Main info */}
             <div className="flex-1 min-w-0">
@@ -485,8 +520,9 @@ function PresetRow({ preset, onClick, showDelete, onDelete }: {
                 <Button
                     size="icon"
                     variant="ghost"
-                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-11 w-11 shrink-0 text-destructive opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100"
                     onClick={onDelete}
+                    aria-label={`${t('common.delete', '삭제')}: ${preset.title}`}
                 >
                     <Trash2 className="h-4 w-4" />
                 </Button>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, MouseEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     X,
@@ -417,13 +417,14 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                             ({chars.length})
                                                         </span>
                                                     </button>
-                                                    <div className="opacity-0 group-hover/folder:opacity-100 transition-opacity flex gap-1">
+                                                    <div className="flex gap-1 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within/folder:opacity-100 lg:group-hover/folder:opacity-100">
                                                         <Tip content={t('characterPanel.toggleAll', '폴더 내 전체 활성화/비활성화')}>
                                                             <Button
                                                                 size="icon"
                                                                 variant="ghost"
                                                                 className="h-7 w-7"
                                                                 onClick={() => toggleGroupEnabled(group.id)}
+                                                                aria-label={t('characterPanel.toggleAll', '폴더 내 전체 활성화/비활성화')}
                                                             >
                                                                 <Eye className="w-4 h-4" />
                                                             </Button>
@@ -436,6 +437,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                                 setEditingGroupId(group.id)
                                                                 setEditingGroupName(group.name)
                                                             }}
+                                                            aria-label={t('characterPanel.renameFolder', '폴더 이름 변경')}
                                                         >
                                                             <Pencil className="w-4 h-4" />
                                                         </Button>
@@ -444,6 +446,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                             variant="ghost"
                                                             className="h-7 w-7 text-destructive hover:text-destructive"
                                                             onClick={() => deleteGroup(group.id)}
+                                                            aria-label={t('characterPanel.deleteFolder', '폴더 삭제')}
                                                         >
                                                             <Trash2 className="w-4 h-4" />
                                                         </Button>
@@ -948,30 +951,50 @@ function PositionDialog({ open, onOpenChange, characters, onPositionChange }: Po
     const gridRef = useRef<HTMLDivElement>(null)
     const [dragging, setDragging] = useState<string | null>(null)
     const [selectedId, setSelectedId] = useState<string | null>(null)
+    const activePointerIdRef = useRef<number | null>(null)
+    const draggingIdRef = useRef<string | null>(null)
 
-    const handleMouseDown = (e: MouseEvent, id: string) => {
+    useEffect(() => {
+        if (!open) {
+            activePointerIdRef.current = null
+            draggingIdRef.current = null
+            setDragging(null)
+        }
+    }, [open])
+
+    const handlePointerDown = (e: PointerEvent<HTMLDivElement>, id: string) => {
+        if (activePointerIdRef.current !== null || (e.pointerType === 'mouse' && e.button !== 0)) return
+
         e.preventDefault()
+        e.stopPropagation()
+        activePointerIdRef.current = e.pointerId
+        draggingIdRef.current = id
+        gridRef.current?.setPointerCapture(e.pointerId)
         setDragging(id)
         setSelectedId(id)
     }
 
-    const handleMouseMove = (e: MouseEvent) => {
-        if (!dragging || !gridRef.current) return
+    const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+        const draggingId = draggingIdRef.current
+        if (activePointerIdRef.current !== e.pointerId || !draggingId || !gridRef.current) return
+
+        e.preventDefault()
         const rect = gridRef.current.getBoundingClientRect()
         const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
         const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
-        onPositionChange(dragging, x, y)
+        onPositionChange(draggingId, x, y)
     }
 
-    const handleMouseUp = () => {
+    const handlePointerEnd = (e: PointerEvent<HTMLDivElement>) => {
+        if (activePointerIdRef.current !== e.pointerId) return
+
+        activePointerIdRef.current = null
+        draggingIdRef.current = null
         setDragging(null)
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId)
+        }
     }
-
-    useEffect(() => {
-        const handleGlobalMouseUp = () => setDragging(null)
-        window.addEventListener('mouseup', handleGlobalMouseUp)
-        return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
-    }, [])
 
     const zones = [
         { label: '↖', x: 0.17, y: 0.15 },
@@ -999,10 +1022,11 @@ function PositionDialog({ open, onOpenChange, characters, onPositionChange }: Po
 
                 <div
                     ref={gridRef}
-                    className="relative w-full aspect-[3/4] bg-muted/30 rounded-lg border cursor-crosshair select-none overflow-hidden shadow-inner"
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
+                    className="relative aspect-[3/4] w-full touch-none cursor-crosshair select-none overflow-hidden rounded-lg border bg-muted/30 shadow-inner"
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerEnd}
+                    onPointerCancel={handlePointerEnd}
+                    onLostPointerCapture={handlePointerEnd}
                 >
                     {/* Grid lines */}
                     <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
@@ -1033,7 +1057,7 @@ function PositionDialog({ open, onOpenChange, characters, onPositionChange }: Po
                             <div
                                 key={char.id}
                                 className={cn(
-                                    "absolute w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold cursor-grab active:cursor-grabbing shadow-lg transition-transform",
+                                    "absolute flex h-11 w-11 touch-none cursor-grab items-center justify-center rounded-full text-sm font-bold text-white shadow-lg transition-transform active:cursor-grabbing",
                                     selectedId === char.id && "ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110 z-10",
                                     dragging === char.id && "scale-125 z-20"
                                 )}
@@ -1043,7 +1067,7 @@ function PositionDialog({ open, onOpenChange, characters, onPositionChange }: Po
                                     transform: 'translate(-50%, -50%)',
                                     backgroundColor: CHARACTER_COLORS[colorIndex % CHARACTER_COLORS.length],
                                 }}
-                                onMouseDown={(e) => handleMouseDown(e, char.id)}
+                                onPointerDown={(e) => handlePointerDown(e, char.id)}
                             >
                                 {colorIndex + 1}
                             </div>

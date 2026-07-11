@@ -22,7 +22,19 @@ function Copy-RequiredFile {
 
 function Get-Sha256 {
     param([string]$Path)
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $hashBytes = $hasher.ComputeHash($stream)
+            return ([BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $hasher.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
 }
 
 function Test-FileContainsBytes {
@@ -71,6 +83,31 @@ function Assert-NoReleaseSecrets {
             Name = 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD'
             Value = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'Process')
             UserValue = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD', 'User')
+        },
+        @{
+            Name = 'APK_RELEASE_KEY_PASSWORD'
+            Value = [Environment]::GetEnvironmentVariable('APK_RELEASE_KEY_PASSWORD', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('APK_RELEASE_KEY_PASSWORD', 'User')
+        },
+        @{
+            Name = 'ANDROID_KEY_PASSWORD'
+            Value = [Environment]::GetEnvironmentVariable('ANDROID_KEY_PASSWORD', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('ANDROID_KEY_PASSWORD', 'User')
+        },
+        @{
+            Name = 'ANDROID_KEY_BASE64'
+            Value = [Environment]::GetEnvironmentVariable('ANDROID_KEY_BASE64', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('ANDROID_KEY_BASE64', 'User')
+        },
+        @{
+            Name = 'NAIS_KEYSTORE_PASSWORD'
+            Value = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_PASSWORD', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_PASSWORD', 'User')
+        },
+        @{
+            Name = 'NAIS_KEYSTORE_BASE64'
+            Value = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_BASE64', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_BASE64', 'User')
         }
     )
 
@@ -113,6 +150,33 @@ function Assert-NoReleaseSecrets {
 
     if ($hits.Count -gt 0) {
         throw "Release secret scan failed. Matching secret bytes were found in: $($hits -join '; ')"
+    }
+}
+
+function Assert-SourceArchiveHasNoPrivateEntries {
+    param([string]$ArchivePath)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $blockedEntryPatterns = @(
+        '(?i)(^|/)\.env(\..*)?$',
+        '(?i)(^|/)(nais-release-key|NAIS_KEYSTORE_BASE64\.txt|keystore\.properties)$',
+        '(?i)\.(pem|key|jks|keystore|p12|pfx)$'
+    )
+
+    $archive = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
+    try {
+        $privateEntries = foreach ($entry in $archive.Entries) {
+            $normalized = $entry.FullName.Replace('\\', '/')
+            if ($blockedEntryPatterns | Where-Object { $normalized -match $_ }) {
+                $normalized
+            }
+        }
+
+        if ($privateEntries) {
+            throw "Source archive contains private key material: $($privateEntries -join '; ')"
+        }
+    } finally {
+        $archive.Dispose()
     }
 }
 
@@ -182,8 +246,13 @@ $excludeDirs = @(
 $excludeFiles = @(
     '.env',
     '.env.*',
+    'nais-release-key',
+    'NAIS_KEYSTORE_BASE64.txt',
+    'keystore.properties',
     '*.pem',
     '*.key',
+    '*.jks',
+    '*.keystore',
     '*.p12',
     '*.pfx',
     '*.sqlite',
@@ -212,6 +281,7 @@ if ($LASTEXITCODE -gt 7) {
 }
 
 Compress-Archive -LiteralPath $sourceStage -DestinationPath $sourceZip -CompressionLevel Optimal -Force
+Assert-SourceArchiveHasNoPrivateEntries -ArchivePath $sourceZip
 Remove-Item -LiteralPath $sourceStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path (Join-Path $releaseRoot 'docs'), (Join-Path $releaseRoot 'checksums') | Out-Null

@@ -46,16 +46,19 @@ the only supported way to move settings or metadata between installations.
 
 ## Release verification
 
-The 2.8.0 source release requires these commands to pass:
+The source release requires these commands to pass:
 
 ```text
 npm run lint
 npm run build
 npm run test:responsive-layout
 npm run test:android-port
+npm run test:android-release-contract
 cd src-tauri && cargo check
 ```
 
-Physical-device evidence from the Android foundation work is diagnostic only;
-the GitHub release workflow currently builds desktop artifacts. Android store
-or production APK distribution requires a dedicated release-signing workflow.
+The Android workflow additionally creates the generated Gradle project, builds
+and verifies a signed universal APK, installs it on an x86_64 emulator, launches
+the app, and checks that the process remains alive without a crash-buffer entry.
+The pinned public certificate and package policy live in
+`android-release-policy.json`; signing secrets remain outside Git.

@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
-import { useState, useRef, useCallback, useEffect, MouseEvent } from "react"
+import { useRef, useCallback, useEffect, PointerEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, Grid3X3, Minus, Plus } from "lucide-react"
 import { save } from "@tauri-apps/plugin-dialog"
@@ -24,7 +24,7 @@ export function MosaicDialog({
     const { t } = useTranslation()
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const containerRef = useRef<HTMLDivElement>(null)
-    const [isDrawing, setIsDrawing] = useState(false)
+    const activePointerIdRef = useRef<number | null>(null)
 
 
     // Persisted state
@@ -43,7 +43,11 @@ export function MosaicDialog({
 
     // Initialize canvas when dialog opens or image changes
     useEffect(() => {
-        if (!isOpen || !sourceImage) return
+        if (!isOpen) {
+            activePointerIdRef.current = null
+            return
+        }
+        if (!sourceImage) return
 
         // Small delay to ensure canvas is rendered
         const timer = setTimeout(() => {
@@ -144,27 +148,30 @@ export function MosaicDialog({
         }
     }, [pixelSize, brushSize])
 
-    const handleMouseDown = useCallback((e: MouseEvent) => {
-        setIsDrawing(true)
+    const handlePointerDown = useCallback((e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== null || (e.pointerType === 'mouse' && e.button !== 0)) return
+
+        e.preventDefault()
+        activePointerIdRef.current = e.pointerId
+        e.currentTarget.setPointerCapture(e.pointerId)
         applyMosaicToRegion(e.clientX, e.clientY)
     }, [applyMosaicToRegion])
 
-    const handleMouseMove = useCallback((e: MouseEvent) => {
-        if (!isDrawing) return
+    const handlePointerMove = useCallback((e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== e.pointerId) return
+
+        e.preventDefault()
         applyMosaicToRegion(e.clientX, e.clientY)
-    }, [isDrawing, applyMosaicToRegion])
+    }, [applyMosaicToRegion])
 
-    const handleMouseUp = useCallback(() => {
-        setIsDrawing(false)
-    }, [])
+    const handlePointerEnd = useCallback((e: PointerEvent<HTMLCanvasElement>) => {
+        if (activePointerIdRef.current !== e.pointerId) return
 
-    useEffect(() => {
-        if (isDrawing) {
-            const handleGlobalMouseUp = () => setIsDrawing(false)
-            window.addEventListener('mouseup', handleGlobalMouseUp)
-            return () => window.removeEventListener('mouseup', handleGlobalMouseUp)
+        activePointerIdRef.current = null
+        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            e.currentTarget.releasePointerCapture(e.pointerId)
         }
-    }, [isDrawing])
+    }, [])
 
     const handleReset = useCallback(() => {
         if (!canvasRef.current || !sourceImage) return
@@ -210,22 +217,22 @@ export function MosaicDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="flex flex-col p-6" style={{ maxWidth: '60vw', maxHeight: '85vh', width: '60vw', height: '85vh' }}>
-                <DialogHeader className="mb-2 shrink-0">
-                    <DialogTitle className="flex items-center gap-2 text-xl">
+            <DialogContent className="flex h-[85dvh] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-3 overflow-hidden p-3 sm:w-[calc(100vw-2rem)] sm:p-6">
+                <DialogHeader className="shrink-0 pr-10">
+                    <DialogTitle className="flex min-w-0 items-center gap-2 text-lg sm:text-xl">
                         <Grid3X3 className="h-5 w-5" />
-                        {t('smartTools.mosaicEditor', '모자이크 편집기')}
+                        <span className="min-w-0 truncate">{t('smartTools.mosaicEditor', '모자이크 편집기')}</span>
                     </DialogTitle>
                     <DialogDescription>
-                        {t('smartTools.mosaicEditorDesc', '마우스로 드래그하여 모자이크를 적용하세요.')}
+                        {t('smartTools.mosaicEditorTouchDesc', '이미지 위를 드래그하여 모자이크를 적용하세요.')}
                     </DialogDescription>
                 </DialogHeader>
 
                 {/* Controls */}
-                <div className="flex gap-6 mb-4 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <Label className="text-sm whitespace-nowrap">{t('smartTools.pixelSize', '픽셀 크기')}</Label>
-                        <div className="flex items-center gap-2">
+                <div className="grid shrink-0 gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+                    <div className="min-w-0 space-y-1">
+                        <Label className="text-sm">{t('smartTools.pixelSize', '픽셀 크기')}</Label>
+                        <div className="flex min-w-0 items-center gap-2">
                             <Minus className="h-3 w-3 text-muted-foreground" />
                             <Slider
                                 value={[pixelSize]}
@@ -233,15 +240,16 @@ export function MosaicDialog({
                                 min={5}
                                 max={30}
                                 step={1}
-                                className="w-24"
+                                aria-label={t('smartTools.pixelSize', '픽셀 크기')}
+                                className="min-w-0 flex-1"
                             />
                             <Plus className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground w-6">{pixelSize}</span>
+                            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{pixelSize}</span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <Label className="text-sm whitespace-nowrap">{t('smartTools.brushSize', '브러쉬 크기')}</Label>
-                        <div className="flex items-center gap-2">
+                    <div className="min-w-0 space-y-1">
+                        <Label className="text-sm">{t('smartTools.brushSize', '브러쉬 크기')}</Label>
+                        <div className="flex min-w-0 items-center gap-2">
                             <Minus className="h-3 w-3 text-muted-foreground" />
                             <Slider
                                 value={[brushSize]}
@@ -249,13 +257,14 @@ export function MosaicDialog({
                                 min={20}
                                 max={150}
                                 step={5}
-                                className="w-24"
+                                aria-label={t('smartTools.brushSize', '브러쉬 크기')}
+                                className="min-w-0 flex-1"
                             />
                             <Plus className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground w-8">{brushSize}</span>
+                            <span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{brushSize}</span>
                         </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={handleReset}>
+                    <Button variant="outline" size="sm" className="w-full xl:w-auto" onClick={handleReset}>
                         {t('smartTools.reset', '초기화')}
                     </Button>
                 </div>
@@ -263,12 +272,11 @@ export function MosaicDialog({
                 {/* Canvas Container */}
                 <div
                     ref={containerRef}
-                    className="flex-1 relative overflow-hidden rounded-lg bg-muted/50 flex items-center justify-center p-4"
-                    style={{ minHeight: '400px' }}
+                    className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-muted/50 p-2 sm:p-4"
                 >
                     <canvas
                         ref={canvasRef}
-                        className="cursor-crosshair"
+                        className="touch-none cursor-crosshair"
                         style={{
                             imageRendering: 'pixelated',
                             maxWidth: '100%',
@@ -277,14 +285,15 @@ export function MosaicDialog({
                             height: 'auto',
                             objectFit: 'contain'
                         }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerEnd}
+                        onPointerCancel={handlePointerEnd}
+                        onLostPointerCapture={handlePointerEnd}
                     />
                 </div>
 
-                <DialogFooter className="mt-4 sm:justify-end items-center gap-2">
+                <DialogFooter className="shrink-0 gap-2 [&>button]:w-full sm:justify-end sm:[&>button]:w-auto">
                     <Button variant="outline" onClick={onClose}>
                         {t('common.cancel', '취소')}
                     </Button>

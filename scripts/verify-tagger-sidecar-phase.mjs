@@ -17,7 +17,8 @@ const releaseScript = read('scripts/create-public-release.ps1')
 
 check('tagger state tracks exactly one Tauri sidecar child', includesAll(libRs, [
   'use std::sync::{Arc, Mutex};',
-  'use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, RunEvent, Url};',
+  'use tauri::AppHandle;',
+  'use tauri::{LogicalPosition, LogicalSize, Manager, RunEvent, Url};',
   'use tauri_plugin_shell::{process::CommandChild, ShellExt};',
   'pub struct TaggerState(pub Arc<Mutex<Option<CommandChild>>>);',
 ]))
@@ -60,7 +61,7 @@ check('Tauri sidecar executable exists for Windows cargo checks', existsSync(joi
   'src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe',
 )))
 check('Tauri updater and deep-link config are preserved', includesAll(JSON.stringify(tauriConfig), [
-  'https://github.com/sunakgo/NAIS2/releases/latest/download/latest.json',
+  'https://github.com/JaCha00/nais2-integration-complete/releases/latest/download/latest.json',
   'nais2',
 ]))
 
