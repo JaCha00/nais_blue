@@ -314,8 +314,24 @@ async function main() {
                     hasTouch: Boolean(viewport.mobile),
                     isMobile: Boolean(viewport.mobile),
                 })
+                page.setDefaultTimeout(20_000)
                 for (const route of routes) {
-                    await page.goto(`${baseUrl}${route}`, { waitUntil: 'networkidle' })
+                    console.log(`Checking ${route} at ${viewport.width}x${viewport.height}`)
+                    await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded' })
+                    await page.waitForFunction(() => {
+                        const main = document.querySelector('main')
+                        return Boolean(
+                            main?.querySelector(
+                                'a, button, input, textarea, [role="tab"], [data-testid]',
+                            ),
+                        )
+                    })
+                    await page.evaluate(async () => {
+                        await document.fonts?.ready
+                        await new Promise(resolve => {
+                            requestAnimationFrame(() => requestAnimationFrame(resolve))
+                        })
+                    })
                     if (route === '/style-lab') {
                         await page.locator('[role="tab"]').last().click()
                     }
