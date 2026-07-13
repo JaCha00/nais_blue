@@ -9,8 +9,9 @@ const check = (name, pass) => checks.push({ name, pass })
 
 const sceneGeneration = read('src/hooks/useSceneGeneration.ts')
 const buildSceneParams = read('src/lib/scene-generation/build-scene-params.ts')
+const legacyBuildSceneParams = read('src/lib/scene-generation/legacy-build-scene-params.ts')
 const saveSceneResult = read('src/lib/scene-generation/save-scene-result.ts')
-const sceneGenerationSurface = `${sceneGeneration}\n${buildSceneParams}\n${saveSceneResult}`
+const sceneGenerationSurface = `${sceneGeneration}\n${buildSceneParams}\n${legacyBuildSceneParams}\n${saveSceneResult}`
 const authStore = read('src/stores/auth-store.ts')
 
 check('scene generation helper files exist', /buildSceneGenerationParams/.test(buildSceneParams) && /saveSceneResult/.test(saveSceneResult))

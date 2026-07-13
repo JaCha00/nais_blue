@@ -2,66 +2,21 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { useGenerationStore } from './generation-store'
 import { indexedDBStorage } from '@/lib/indexed-db'
+import {
+    DEFAULT_GENERATION_PRESET_ID,
+    createDefaultGenerationPreset,
+    migrateGenerationPresetPersistedState,
+    normalizeLegacyGenerationPreset,
+    type MigratedPresetPersistedState,
+    type NormalizedGenerationPreset,
+} from '@/lib/composition/preset-store-migration'
 
-export const DEFAULT_PRESET_ID = 'default'
-
-export interface Preset {
-    id: string
-    name: string
-    createdAt: number
-    isDefault?: boolean // Cannot be deleted
-
-    // Prompts
-    basePrompt: string
-    additionalPrompt: string
-    detailPrompt: string
-    negativePrompt: string
-
-    // Model & Settings
-    model: string
-    steps: number
-    cfgScale: number
-    cfgRescale: number
-    sampler: string
-    scheduler: string
-    smea: boolean
-    smeaDyn: boolean
-    variety: boolean
-
-    // Quality & UC
-    qualityToggle: boolean
-    ucPreset: number
-
-    // Resolution
-    selectedResolution: {
-        label: string
-        width: number
-        height: number
-    }
-}
-
-const createDefaultPreset = (): Preset => ({
-    id: DEFAULT_PRESET_ID,
-    name: '기본',
-    createdAt: 0,
-    isDefault: true,
-    basePrompt: '',
-    additionalPrompt: '',
-    detailPrompt: '',
-    negativePrompt: '',
-    model: 'nai-diffusion-4-5-full',
-    steps: 28,
-    cfgScale: 5.0,
-    cfgRescale: 0.0,
-    sampler: 'k_euler_ancestral',
-    scheduler: 'karras',
-    smea: true,
-    smeaDyn: true,
-    variety: false,
-    qualityToggle: true,
-    ucPreset: 0,
-    selectedResolution: { label: 'Portrait', width: 832, height: 1216 },
-})
+export const DEFAULT_PRESET_ID = DEFAULT_GENERATION_PRESET_ID
+export const createDefaultPreset = createDefaultGenerationPreset
+export const normalizeLegacyPreset = normalizeLegacyGenerationPreset
+export const migratePresetPersistedState = migrateGenerationPresetPersistedState
+export type Preset = NormalizedGenerationPreset
+export type PresetPersistedState = MigratedPresetPersistedState
 
 interface PresetState {
     presets: Preset[]
@@ -259,22 +214,16 @@ export const usePresetStore = create<PresetState>()(
         {
             name: 'nais2-presets',
             storage: createJSONStorage(() => indexedDBStorage),
+            version: 2,
+            migrate: (persistedState) => (
+                migratePresetPersistedState(persistedState) as unknown as PresetState
+            ),
             // Ensure default preset exists and migrate old presets missing new fields
             onRehydrateStorage: () => (state) => {
-                if (state && !state.presets.find(p => p.id === DEFAULT_PRESET_ID)) {
-                    state.presets = [createDefaultPreset(), ...state.presets]
-                }
-                if (state && !state.activePresetId) {
-                    state.activePresetId = DEFAULT_PRESET_ID
-                }
-                // Migrate old presets missing variety/qualityToggle/ucPreset fields
                 if (state) {
-                    state.presets = state.presets.map(p => ({
-                        ...p,
-                        variety: p.variety ?? false,
-                        qualityToggle: p.qualityToggle ?? true,
-                        ucPreset: p.ucPreset ?? 0,
-                    }))
+                    const migrated = migratePresetPersistedState(state)
+                    state.presets = migrated.presets
+                    state.activePresetId = migrated.activePresetId
                 }
             }
         }

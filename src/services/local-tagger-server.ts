@@ -1,5 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
-import { supportsLocalTaggerSidecar } from '@/platform/runtime'
+import {
+    requireRuntimeCapability,
+    runtimeCapabilities,
+} from '@/platform/capabilities'
+
+const supportsLocalTaggerSidecar = runtimeCapabilities.localTaggerSidecar.supported
 
 export const LOCAL_TAGGER_BASE_URL = 'http://127.0.0.1:8002'
 
@@ -20,9 +25,7 @@ export function isLocalTaggerServerSupported(): boolean {
  * sidecar startup reusable for Danbooru verification and future local tools.
  */
 export async function ensureTaggerServer(): Promise<void> {
-    if (!supportsLocalTaggerSidecar) {
-        throw new Error('Local tagger sidecar is not available on mobile.')
-    }
+    requireRuntimeCapability('localTaggerSidecar')
 
     if (await isTaggerServerHealthy()) {
         return

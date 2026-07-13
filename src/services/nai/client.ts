@@ -1,5 +1,7 @@
 import JSZip from 'jszip'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { embedNais2Params } from '@/lib/nais2-png-meta'
 import {
     buildNais2Params,
@@ -18,7 +20,12 @@ import {
     type GenerationParams,
 } from '@/services/novelai-types'
 
-const CLIENT_FETCH = window.fetch.bind(window)
+// Tauri WebViews are subject to browser CORS when using window.fetch. The
+// HTTP plugin is the capability-scoped transport on desktop and Android;
+// browsers/tests keep the native fetch implementation.
+const CLIENT_FETCH: typeof fetch = isTauri()
+    ? tauriFetch
+    : window.fetch.bind(window)
 
 const DEFAULT_HEADERS = {
     'Content-Type': 'application/json',
@@ -49,7 +56,7 @@ async function firstZipEntryBase64(data: ArrayBuffer, emptyMessage: string): Pro
 }
 
 function makeSentPayloadSummary(sentPayload: string): string {
-    return redactSentPayloadForMetadata(sentPayload)
+    return `sha256:${sha256Utf8(redactSentPayloadForMetadata(sentPayload))}`
 }
 
 export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } | null> {

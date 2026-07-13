@@ -693,7 +693,7 @@ function CharacterCard({
 
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
     const [newName, setNewName] = useState(character.name || '')
-    const debounceRef = useRef<NodeJS.Timeout | null>(null)
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // 외부에서 캐릭터가 변경되면 로컬 상태 동기화
     useEffect(() => {

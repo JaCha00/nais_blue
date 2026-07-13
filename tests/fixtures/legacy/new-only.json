@@ -1,0 +1,20 @@
+{
+  "case": "new-only",
+  "description": "Only a committed v2 record exists.",
+  "input": {
+    "legacyRecord": null,
+    "v2Record": {
+      "schemaVersion": 2,
+      "revision": 8,
+      "profileName": "synthetic-v2-profile",
+      "commitState": "committed"
+    },
+    "writeState": "complete"
+  },
+  "expected": {
+    "readSource": "v2",
+    "writeTarget": "v2",
+    "legacyRetained": false,
+    "outcome": "primary-read"
+  }
+}

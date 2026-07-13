@@ -1,0 +1,38 @@
+{
+  "_exportedAt": "2025-06-01T00:00:00.000Z",
+  "_version": "2.3",
+  "nais2-generation": {
+    "version": 8,
+    "state": {
+      "prompt": "restored local prompt",
+      "seed": 1234,
+      "seedLocked": true
+    }
+  },
+  "nais2-scenes": {
+    "version": 1,
+    "state": {
+      "activePresetId": "preset:fixture",
+      "presets": [
+        {
+          "id": "preset:fixture",
+          "name": "Restored local scenes",
+          "scenes": []
+        }
+      ]
+    }
+  },
+  "nais2-marketplace-cache": {
+    "version": 1,
+    "state": {
+      "presets": [
+        {
+          "id": "remote:obsolete",
+          "title": "Historical remote catalog entry"
+        }
+      ]
+    }
+  },
+  "supabase.auth.session": "[REDACTED:OAUTH_SESSION]",
+  "sb-obsolete-project-auth-token": "[REDACTED:TOKEN]"
+}

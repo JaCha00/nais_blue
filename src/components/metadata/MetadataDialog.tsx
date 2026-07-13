@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
@@ -22,11 +22,12 @@ import {
 } from '@/components/ui/select'
 import { NAIMetadata, parseMetadataFromFile, parseMetadataFromBase64 } from '@/lib/metadata-parser'
 import { usePresetStore } from '@/stores/preset-store'
-import { useGenerationStore } from '@/stores/generation-store'
-import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { toast } from '@/components/ui/use-toast'
 import { FileImage, Download, AlertCircle } from 'lucide-react'
-import { useCharacterStore } from '@/stores/character-store'
+import {
+    applyMetadataPreview,
+    createMetadataApplyPreview,
+} from '@/services/output/metadata-apply'
 
 interface MetadataDialogProps {
     open: boolean
@@ -43,12 +44,17 @@ interface LoadOptions {
     vibeTransfer: boolean
 }
 
+function previewDiffValue(value: unknown): string {
+    if (value === null) return '∅'
+    if (typeof value === 'string') return value.length > 36 ? `${value.slice(0, 33)}…` : value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    const serialized = JSON.stringify(value) ?? String(value)
+    return serialized.length > 36 ? `${serialized.slice(0, 33)}…` : serialized
+}
+
 export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDialogProps) {
     const { t } = useTranslation()
-    const { presets, activePresetId, loadPreset, syncFromGenerationStore } = usePresetStore()
-    const genStore = useGenerationStore()
-    const charStore = useCharacterPromptStore()
-    const { addVibeImage } = useCharacterStore()
+    const { presets, activePresetId } = usePresetStore()
 
     const [metadata, setMetadata] = useState<NAIMetadata | null>(null)
     const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
@@ -63,6 +69,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
         vibeTransfer: true,
     })
     const [isDragOver, setIsDragOver] = useState(false)
+    const [isApplying, setIsApplying] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Load metadata from initial image when dialog opens with an image
@@ -98,10 +105,11 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
     }
 
     const loadFile = useCallback(async (file?: File) => {
-        if (!file || !file.type.startsWith('image/')) {
+        const isSidecar = file?.name.toLowerCase().endsWith('.nais2.json')
+        if (!file || (!file.type.startsWith('image/') && !isSidecar)) {
             toast({
                 title: t('metadata.invalidFile', '잘못된 파일'),
-                description: t('metadata.invalidFileDesc', 'PNG 이미지 파일만 지원합니다.'),
+                description: t('metadata.invalidFileDesc', '이미지 또는 .nais2.json 파일만 지원합니다.'),
                 variant: 'destructive',
             })
             return
@@ -114,7 +122,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
             reader.onload = async () => {
                 try {
                     const dataUrl = reader.result as string
-                    setImageDataUrl(dataUrl)
+                    setImageDataUrl(isSidecar ? null : dataUrl)
 
                     // Parse metadata
                     const meta = await parseMetadataFromFile(file)
@@ -167,124 +175,30 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
         setIsDragOver(false)
     }
 
-    const handleApply = () => {
-        if (!metadata) return
+    const applyPreview = useMemo(() => metadata
+        ? createMetadataApplyPreview(metadata, { ...loadOptions, targetPresetId: selectedPresetId })
+        : null, [metadata, loadOptions, selectedPresetId])
 
-        // First, load the target preset
-        if (selectedPresetId !== activePresetId) {
-            loadPreset(selectedPresetId)
-        }
-
-        // Apply selected metadata to generation store
-        if (loadOptions.prompts) {
-            if (metadata.promptParts) {
-                // NAIS2-generated image: restore each section separately.
-                genStore.setBasePrompt(metadata.promptParts.base)
-                genStore.setAdditionalPrompt(metadata.promptParts.additional)
-                genStore.setDetailPrompt(metadata.promptParts.detail)
-                if (metadata.promptParts.inpainting !== undefined) {
-                    genStore.setInpaintingPrompt(metadata.promptParts.inpainting)
-                }
-                if (metadata.promptParts.negative !== undefined) {
-                    genStore.setNegativePrompt(metadata.promptParts.negative)
-                }
-            } else if (metadata.prompt) {
-                // External image: merged prompt lands in basePrompt (fallback).
-                genStore.setBasePrompt(metadata.prompt)
-            }
-            // V4 negative prompt has priority over legacy uc when not already set
-            // by promptParts above.
-            if (!metadata.promptParts?.negative) {
-                if (metadata.v4_negative_prompt?.caption?.base_caption) {
-                    genStore.setNegativePrompt(metadata.v4_negative_prompt.caption.base_caption)
-                } else if (metadata.negativePrompt) {
-                    genStore.setNegativePrompt(metadata.negativePrompt)
-                }
-            }
-        }
-
-        if (loadOptions.parameters) {
-            if (metadata.steps) genStore.setSteps(metadata.steps)
-            if (metadata.cfgScale) genStore.setCfgScale(metadata.cfgScale)
-            if (metadata.cfgRescale) genStore.setCfgRescale(metadata.cfgRescale)
-            if (metadata.sampler) genStore.setSampler(metadata.sampler)
-            if (metadata.scheduler) genStore.setScheduler(metadata.scheduler)
-            if (typeof metadata.smea === 'boolean') genStore.setSmea(metadata.smea)
-            if (typeof metadata.smeaDyn === 'boolean') genStore.setSmeaDyn(metadata.smeaDyn)
-            if (typeof metadata.variety === 'boolean') genStore.setVariety(metadata.variety)
-            if (typeof metadata.qualityToggle === 'boolean') genStore.setQualityToggle(metadata.qualityToggle)
-            if (typeof metadata.ucPreset === 'number') genStore.setUcPreset(metadata.ucPreset)
-        }
-
-        if (loadOptions.resolution && metadata.width && metadata.height) {
-            genStore.setSelectedResolution({
-                label: `${metadata.width}x${metadata.height}`,
-                width: metadata.width,
-                height: metadata.height,
+    const handleApply = async () => {
+        if (!applyPreview || !applyPreview.validation.valid || isApplying) return
+        setIsApplying(true)
+        try {
+            await applyMetadataPreview(applyPreview)
+            toast({
+                title: t('metadata.applied', '메타데이터 적용됨'),
+                description: t('metadata.appliedDesc', '선택한 설정이 프리셋에 적용되었습니다.'),
+                variant: 'success',
             })
-        }
-
-        if (loadOptions.seed && metadata.seed) {
-            genStore.setSeed(metadata.seed)
-            genStore.setSeedLocked(true)
-        }
-
-        if (loadOptions.characterPrompts && metadata.v4_prompt?.caption?.char_captions) {
-            // 기존 캐릭터 프롬프트 유지하고 새 캐릭터 추가 (병합 방식)
-            const negativeCharCaptions = metadata.v4_negative_prompt?.caption?.char_captions || []
-
-            metadata.v4_prompt.caption.char_captions.forEach((cap, index) => {
-                const presetId = Date.now().toString() + Math.random().toString(36).substr(2, 9) + index
-
-                // 해당 인덱스의 캐릭터 네거티브 프롬프트 가져오기
-                const charNegative = negativeCharCaptions[index]?.char_caption || ''
-
-                // 1. Add to Library (Presets)
-                charStore.addPreset({
-                    id: presetId,
-                    name: `Imported ${index + 1}`,
-                    prompt: cap.char_caption,
-                    negative: charNegative
-                })
-
-                // 2. Add to Stage (Linked)
-                cap.centers.forEach(center => {
-                    charStore.addCharacter({
-                        presetId: presetId,
-                        prompt: cap.char_caption,
-                        negative: charNegative,
-                        position: center,
-                        enabled: true
-                    })
-                })
+            onOpenChange(false)
+        } catch (error) {
+            toast({
+                title: t('metadata.applyFailed', '메타데이터 적용 실패'),
+                description: error instanceof Error ? error.message : String(error),
+                variant: 'destructive',
             })
+        } finally {
+            setIsApplying(false)
         }
-
-        if (loadOptions.vibeTransfer && metadata.encodedVibes && metadata.encodedVibes.length > 0) {
-            // Import Vibe Transfers (Encoded only)
-            const infos = metadata.vibeTransferInfo || []
-            metadata.encodedVibes.forEach((encoded, index) => {
-                // We don't have the original image, so we pass empty string for base64
-                // The CharacterList component will handle displaying a placeholder
-                addVibeImage(
-                    '',
-                    encoded,
-                    infos[index]?.informationExtracted ?? 1.0,
-                    infos[index]?.strength ?? 0.6
-                )
-            })
-        }
-
-        // Save to preset
-        syncFromGenerationStore()
-
-        toast({
-            title: t('metadata.applied', '메타데이터 적용됨'),
-            description: t('metadata.appliedDesc', '선택한 설정이 프리셋에 적용되었습니다.'),
-            variant: 'success',
-        })
-
-        onOpenChange(false)
     }
 
     const toggleOption = (key: keyof LoadOptions) => {
@@ -347,7 +261,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*"
+                            accept="image/*,.nais2.json,application/json"
                             className="sr-only"
                             tabIndex={-1}
                             aria-hidden="true"
@@ -579,6 +493,44 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                                             </p>
                                         </div>
                                     )}
+
+                                    {applyPreview && (
+                                        <div className="space-y-2 rounded-lg border bg-muted/20 p-3 text-xs">
+                                            <div className="flex items-center justify-between gap-2 font-medium">
+                                                <span>{t('metadata.changePreview', '변경 미리보기')}</span>
+                                                <span className="text-muted-foreground">
+                                                    {applyPreview.sourceVersion === 'v2' ? 'Metadata v2' : 'Legacy compatibility'}
+                                                    {' · '}{applyPreview.diff.length}
+                                                </span>
+                                            </div>
+                                            {applyPreview.diff.slice(0, 6).map(change => (
+                                                <div
+                                                    key={`${change.repository}:${change.path}`}
+                                                    className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-muted-foreground"
+                                                >
+                                                    <span className="shrink-0">{change.repository}</span>
+                                                    <span className="min-w-0 truncate">{change.path}</span>
+                                                    <span />
+                                                    <span className="min-w-0 truncate font-mono" title={`${previewDiffValue(change.before)} → ${previewDiffValue(change.after)}`}>
+                                                        {previewDiffValue(change.before)} → {previewDiffValue(change.after)}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            {applyPreview.diff.length > 6 && (
+                                                <p className="text-muted-foreground">+{applyPreview.diff.length - 6}</p>
+                                            )}
+                                            {[...applyPreview.validation.errors, ...applyPreview.validation.warnings].map(issue => (
+                                                <p
+                                                    key={`${issue.code}:${issue.path ?? ''}`}
+                                                    className={applyPreview.validation.errors.includes(issue)
+                                                        ? 'text-destructive'
+                                                        : 'text-amber-600 dark:text-amber-400'}
+                                                >
+                                                    {issue.message}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </ScrollArea>
 
@@ -612,8 +564,12 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                                     <Button variant="outline" size="sm" onClick={resetAndLoadAnother}>
                                         {t('metadata.loadAnother', '다른 이미지')}
                                     </Button>
-                                    <Button size="sm" onClick={handleApply}>
-                                        {t('metadata.apply', '적용')}
+                                    <Button
+                                        size="sm"
+                                        onClick={() => void handleApply()}
+                                        disabled={!applyPreview?.validation.valid || isApplying}
+                                    >
+                                        {isApplying ? t('metadata.applying', '적용 중...') : t('metadata.apply', '적용')}
                                     </Button>
                                 </div>
                             </div>

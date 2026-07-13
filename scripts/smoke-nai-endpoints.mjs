@@ -27,10 +27,10 @@ const headers = {
 async function checkSubscription() {
   const response = await fetch('https://image.novelai.net/user/subscription', { headers })
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`subscription failed ${response.status}: ${text.slice(0, 200)}`)
+    throw new Error(`subscription failed with HTTP ${response.status}`)
   }
-  return { subscription: 'ok' }
+  const data = await response.json()
+  return { subscription: 'ok', tier: data.tier }
 }
 
 function buildTinyGeneratePayload() {
@@ -96,8 +96,7 @@ async function checkGenerateImage() {
   })
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(`generate-image failed ${response.status}: ${text.slice(0, 500)}`)
+    throw new Error(`generate-image failed with HTTP ${response.status}`)
   }
 
   const zip = await JSZip.loadAsync(await response.arrayBuffer())
@@ -125,6 +124,10 @@ const result = await checkSubscription()
 if (!allowGenerate) {
   console.log(JSON.stringify({ ...result, generate: 'skipped; set NAI_SMOKE_GENERATE=1' }, null, 2))
   process.exit(0)
+}
+
+if (result.tier !== 3 && result.tier !== 'opus') {
+  throw new Error('generate-image smoke requires an Opus subscription')
 }
 
 console.log(JSON.stringify({ ...result, generate: await checkGenerateImage() }, null, 2))

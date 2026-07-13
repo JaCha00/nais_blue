@@ -1,0 +1,43 @@
+{
+  "workflow": "main",
+  "case": "default-direct-prompt",
+  "description": "Characterizes the current direct prompt path when no enabled Asset Profile recipe contributes prompts.",
+  "input": {
+    "assetModulePlan": null,
+    "promptParts": {
+      "base": "1girl, silver hair\n# synthetic note removed",
+      "inpainting": "",
+      "additional": "soft light",
+      "detail": "detailed eyes",
+      "negative": "lowres\n# synthetic note removed"
+    },
+    "model": "nai-diffusion-4-5-full",
+    "selectedResolution": {
+      "width": 832,
+      "height": 1216
+    },
+    "seed": 424242,
+    "seedLocked": true,
+    "characterImages": [],
+    "vibeImages": [],
+    "characterPrompts": []
+  },
+  "determinism": {
+    "date": "2026-07-11T00:00:00.000Z",
+    "wildcardSelections": []
+  },
+  "expected": {
+    "modulePromptsActive": false,
+    "finalPrompt": "1girl, silver hair, soft light, detailed eyes",
+    "finalNegativePrompt": "lowres",
+    "width": 832,
+    "height": 1216,
+    "seed": 424242,
+    "promptPartsPreserved": true
+  },
+  "invariants": [
+    "No token or credential is required to evaluate prompt composition.",
+    "The direct path removes full-line comments before joining prompt parts.",
+    "An absent Asset Profile plan does not change the direct prompt result."
+  ]
+}

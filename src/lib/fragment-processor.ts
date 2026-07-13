@@ -1,215 +1,421 @@
-import { useFragmentStore, normalizeFragmentPath } from '@/stores/fragment-store'
+import {
+    createFragmentLookup,
+    hasFragmentSyntax,
+    normalizeFragmentLookupPath,
+    resolveFragments,
+    type FragmentDefinitionSnapshot,
+    type FragmentLookup,
+    type FragmentResolutionMode,
+    type FragmentSequenceCommitProposal,
+    type FragmentSelectionSource,
+    type FragmentStrictnessPolicy,
+    type ResolveFragmentsResult,
+} from '@/domain/composition/fragment-resolver'
+import type { DeepReadonly } from '@/domain/composition/provenance'
+import type { ProvenanceRef } from '@/domain/composition/types'
+import {
+    useFragmentStore,
+    type FragmentLookupRepository,
+    type FragmentSequenceLease,
+} from '@/stores/fragment-store'
 
-/**
- * Fragment Processor (조각 프롬프트 처리기)
- * 프롬프트에서 조각 프롬프트를 랜덤 선택으로 치환
- * 
- * 지원 형식:
- * 1. 괄호 형식 (권장): (option1/option2/option3)
- *    - 각 옵션에 쉼표 포함 가능: (white hair, blue eyes/red hair, purple eyes)
- * 2. 단순 형식: red/blue/green (쉼표로 구분된 단일 태그 내에서만)
- * 3. 파일 기반: <filename> 또는 <folder/filename>
- *    - 조각 프롬프트 스토어에서 파일 내용을 가져와 랜덤 선택
- * 4. 인라인: <option1|option2|option3>
- *    - 파일 없이 인라인으로 옵션 정의
- * 5. 순차 모드: <*filename>
- *    - 랜덤이 아닌 순서대로 선택 (배치 생성용)
- */
+const DEFAULT_COMPATIBILITY_SCOPE = 'compatibility:fragment-processor'
+export const LEGACY_FRAGMENT_SELECTION_ALGORITHM = 'legacy-math-random-v1' as const
 
-/**
- * 파일 기반 조각 프롬프트 처리 (비동기)
- * "<hair>" → 조각 프롬프트 파일에서 랜덤 줄 선택
- * "<*hair>" → 조각 프롬프트 파일에서 순차적으로 줄 선택
- * "<red|blue|green>" → 인라인 옵션에서 랜덤 선택
- */
-async function processFileWildcards(prompt: string): Promise<string> {
-    // <...> 패턴 찾기 (중첩 불가)
-    const filePattern = /<([^<>]+)>/g
-    const matches: { match: string; content: string; index: number }[] = []
+export interface WildcardResolutionOptions {
+    /** Composition generation seed. Omitted deferred resolutions use zero. */
+    seed?: number
+    scope?: string
+    mode?: FragmentResolutionMode
+    strictness?: FragmentStrictnessPolicy
+    maxRecursion?: number
+    sourceRef?: ProvenanceRef
+    selectionSource?: FragmentSelectionSource
+    /** Injectable for tests and non-default storage boundaries. */
+    repository?: FragmentLookupRepository
+}
 
-    let match
-    while ((match = filePattern.exec(prompt)) !== null) {
-        matches.push({
-            match: match[0],
-            content: match[1],
-            index: match.index
-        })
+export interface ProcessWildcardsOptions extends WildcardResolutionOptions {
+    /**
+     * Legacy calls commit immediately. Generation code that can fail or be
+     * cancelled must use prepareWildcardResolution() and commit after success.
+     */
+    commitSequence?: boolean
+}
+
+export type WildcardResolutionStatus = 'pending' | 'committed' | 'discarded' | 'conflict'
+
+export interface PreparedWildcardResolution {
+    readonly result: ResolveFragmentsResult
+    readonly resolvedText: string
+    readonly status: WildcardResolutionStatus
+    /** One-shot CAS commit. Returns false after preview, failure, discard, or conflict. */
+    commitSequence(): boolean
+    /** Marks failed/cancelled work complete without touching sequence state. */
+    discard(): void
+}
+
+export interface WildcardResolutionSession {
+    /** Serialized so multiple prompt fields share one in-memory sequence view. */
+    process(prompt: string): Promise<string>
+    readonly status: WildcardResolutionStatus
+    readonly sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
+    /** One-shot CAS commit after every generation/output success guard passes. */
+    commitSequence(): Promise<boolean>
+    /** Failed or cancelled work is discarded without mutating the store. */
+    discard(): void
+}
+
+interface MaterializedFragmentRepository {
+    definitions: FragmentDefinitionSnapshot[]
+    failedPaths: Set<string>
+}
+
+export function createLegacyFragmentSelectionSource(
+    random: () => number = Math.random,
+): FragmentSelectionSource {
+    return {
+        algorithm: LEGACY_FRAGMENT_SELECTION_ALGORITHM,
+        nextFloat: () => random(),
+    }
+}
+
+/** Extracts only named/sequential references; inline pipe syntax needs no repository. */
+export function referencedFragmentPaths(text: string): string[] {
+    const paths: string[] = []
+    for (const match of text.matchAll(/<([^<>]+)>/g)) {
+        const token = match[1].trim()
+        if (token.includes('|')) continue
+        const path = normalizeFragmentLookupPath(token.startsWith('*') ? token.slice(1) : token)
+        if (path.length > 0) paths.push(path)
+    }
+    return paths
+}
+
+async function materializeReachableFragments(
+    texts: readonly string[],
+    repository: FragmentLookupRepository,
+): Promise<MaterializedFragmentRepository> {
+    const pending = texts.flatMap(referencedFragmentPaths)
+    const visitedPaths = new Set<string>()
+    const loadedIds = new Set<string>()
+    const definitions: FragmentDefinitionSnapshot[] = []
+    const failedPaths = new Set<string>()
+
+    while (pending.length > 0) {
+        const requestedPath = pending.shift()
+        if (requestedPath === undefined || visitedPaths.has(requestedPath)) continue
+        visitedPaths.add(requestedPath)
+
+        let definition: FragmentDefinitionSnapshot | null
+        try {
+            definition = await repository.loadDefinitionByPath(requestedPath)
+        } catch {
+            failedPaths.add(requestedPath)
+            continue
+        }
+        if (definition === null || loadedIds.has(definition.id)) continue
+
+        loadedIds.add(definition.id)
+        const snapshot: FragmentDefinitionSnapshot = {
+            id: definition.id,
+            path: definition.path,
+            lines: [...definition.lines],
+        }
+        definitions.push(snapshot)
+        for (const line of snapshot.lines) {
+            pending.push(...referencedFragmentPaths(line))
+        }
     }
 
-    if (matches.length === 0) return prompt
+    return { definitions, failedPaths }
+}
 
-    // 모든 매치를 비동기로 처리
-    const replacements = await Promise.all(
-        matches.map(async ({ match, content }) => {
-            const trimmed = content.trim()
+export interface StoreFragmentResolverInput {
+    lookup: FragmentLookup
+    sequenceSnapshot: ReturnType<FragmentLookupRepository['getSequenceSnapshot']>
+    mode: FragmentResolutionMode
+    strictness: FragmentStrictnessPolicy
+    maxRecursion: number
+}
 
-            // 1. 인라인 와일드카드: <option1|option2|option3>
-            if (trimmed.includes('|')) {
-                const options = trimmed.split('|').map(o => o.trim()).filter(o => o.length > 0)
-                if (options.length > 0) {
-                    const randomIndex = Math.floor(Math.random() * options.length)
-                    return { match, replacement: options[randomIndex] }
-                }
-                return { match, replacement: match } // 유효하지 않으면 원본 반환
-            }
+/**
+ * Captures metadata, separately stored content, and ID-keyed counters at one
+ * revision. A concurrent edit retries instead of pairing stale content with a
+ * newer sequence snapshot.
+ */
+export async function createStoreFragmentResolverInput(
+    sourceTexts: readonly string[],
+    options: Pick<WildcardResolutionOptions,
+        'mode' | 'strictness' | 'maxRecursion' | 'repository'> = {},
+): Promise<StoreFragmentResolverInput> {
+    const repository = options.repository ?? useFragmentStore.getState().getLookupRepository()
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const sequenceSnapshot = repository.getSequenceSnapshot()
+        const materialized = await materializeReachableFragments(sourceTexts, repository)
+        if (repository.getSequenceSnapshot().revision !== sequenceSnapshot.revision) continue
+        return {
+            lookup: lookupWithMaterializationFailures(materialized),
+            sequenceSnapshot,
+            mode: options.mode ?? 'generate',
+            strictness: options.strictness ?? 'compatible',
+            maxRecursion: options.maxRecursion ?? 10,
+        }
+    }
+    throw new Error('Fragment store changed while materializing a resolver snapshot')
+}
 
-            // 2. 순차 모드: <*filename>
-            const isSequential = trimmed.startsWith('*')
-            const path = normalizeFragmentPath(isSequential ? trimmed.slice(1) : trimmed)
+export function commitWildcardSequenceProposal(
+    proposal: DeepReadonly<FragmentSequenceCommitProposal> | null,
+    repository: FragmentLookupRepository = useFragmentStore.getState().getLookupRepository(),
+): boolean {
+    if (proposal === null) return true
+    return repository.commitSequenceProposal({
+        expectedRevision: proposal.expectedRevision,
+        changes: proposal.changes.map(change => ({ ...change })),
+    })
+}
 
-            if (!path) return { match, replacement: match }
-
-            // 조각 프롬프트 스토어에서 라인 가져오기 (비동기)
-            const store = useFragmentStore.getState()
-            const line = isSequential
-                ? await store.getSequentialLine(path)
-                : await store.getRandomLine(path)
-
-            if (line === null) {
-                // 파일을 찾을 수 없으면 원본 유지
-                console.warn(`Fragment not found: ${path}`)
-                return { match, replacement: match }
-            }
-
-            // 재귀적으로 중첩된 조각 프롬프트 처리
-            const processedLine = await processFileWildcards(line)
-            return { match, replacement: processedLine }
+export function reserveWildcardSequenceProposal(
+    proposal: DeepReadonly<FragmentSequenceCommitProposal> | null,
+): FragmentSequenceLease | null {
+    return useFragmentStore.getState().reserveSequenceProposal(proposal === null
+        ? null
+        : {
+            expectedRevision: proposal.expectedRevision,
+            changes: proposal.changes.map(change => ({ ...change })),
         })
+}
+
+function lookupWithMaterializationFailures(
+    materialized: MaterializedFragmentRepository,
+): FragmentLookup {
+    const lookup = createFragmentLookup(materialized.definitions)
+    return {
+        getFragment: path => {
+            const normalizedPath = normalizeFragmentLookupPath(path)
+            if (materialized.failedPaths.has(normalizedPath)) {
+                throw new Error(`Fragment content lookup failed: ${normalizedPath}`)
+            }
+            return lookup.getFragment(normalizedPath)
+        },
+    }
+}
+
+/**
+ * Store-aware compatibility boundary around the pure resolver. Sequence changes
+ * remain staged until commitSequence() is called after a successful generation.
+ */
+export async function prepareWildcardResolution(
+    prompt: string,
+    options: WildcardResolutionOptions = {},
+): Promise<PreparedWildcardResolution> {
+    const repository = options.repository ?? useFragmentStore.getState().getLookupRepository()
+    const mode = options.mode ?? 'generate'
+    const fragment = await createStoreFragmentResolverInput([prompt], {
+        repository,
+        mode,
+        strictness: options.strictness,
+        maxRecursion: options.maxRecursion,
+    })
+    const result = resolveFragments({
+        text: prompt,
+        seed: options.seed ?? 0,
+        scope: options.scope ?? DEFAULT_COMPATIBILITY_SCOPE,
+        lookup: fragment.lookup,
+        sequenceSnapshot: fragment.sequenceSnapshot,
+        mode,
+        maxRecursion: options.maxRecursion ?? 10,
+        strictness: options.strictness ?? 'compatible',
+        ...(options.sourceRef === undefined ? {} : { sourceRef: options.sourceRef }),
+        ...(options.selectionSource === undefined
+            ? {}
+            : { selectionSource: options.selectionSource }),
+    })
+
+    let status: WildcardResolutionStatus = 'pending'
+    return {
+        result,
+        resolvedText: result.resolvedText,
+        get status() {
+            return status
+        },
+        commitSequence() {
+            if (status !== 'pending') return false
+            if (mode !== 'generate' || !result.success) {
+                status = 'discarded'
+                return false
+            }
+            const committed = commitWildcardSequenceProposal(result.sequenceCommitProposal, repository)
+            status = committed ? 'committed' : 'conflict'
+            return committed
+        },
+        discard() {
+            if (status === 'pending') status = 'discarded'
+        },
+    }
+}
+
+/**
+ * Deferred compatibility session for legacy generation paths that resolve more
+ * than one prompt field. Each call sees the counters staged by earlier calls,
+ * while the persisted store remains untouched until the caller commits.
+ */
+export function createWildcardResolutionSession(
+    options: WildcardResolutionOptions = {},
+): WildcardResolutionSession {
+    const repository = options.repository ?? useFragmentStore.getState().getLookupRepository()
+    const mode = options.mode ?? 'generate'
+    const selectionSource = options.selectionSource ?? (
+        options.seed === undefined && mode === 'generate'
+            ? createLegacyFragmentSelectionSource()
+            : undefined
     )
+    let status: WildcardResolutionStatus = 'pending'
+    let failed = false
+    let pendingCount = 0
+    let baseRevision: number | null = null
+    let localCounters: Record<string, number> = {}
+    const stagedChanges = new Map<string, FragmentSequenceCommitProposal['changes'][number]>()
+    let queue: Promise<void> = Promise.resolve()
 
-    // 역순으로 교체 (인덱스 유지를 위해)
-    let result = prompt
-    for (let i = replacements.length - 1; i >= 0; i--) {
-        const { match, replacement } = replacements[i]
-        const idx = result.lastIndexOf(match)
-        if (idx !== -1) {
-            result = result.slice(0, idx) + replacement + result.slice(idx + match.length)
+    const resolveOne = async (prompt: string): Promise<string> => {
+        if (status !== 'pending') {
+            throw new Error(`Wildcard resolution session is already ${status}`)
         }
-    }
+        if (!prompt || !hasFragmentSyntax(prompt)) return prompt
 
-    return result
-}
-
-/**
- * 괄호로 감싸진 와일드카드 처리
- * "(a, b/c, d/e, f)" → "a, b" 또는 "c, d" 또는 "e, f" 중 하나
- */
-function processParenthesisWildcards(prompt: string): string {
-    // 괄호 안에 슬래시가 있는 패턴 찾기
-    // 중첩 괄호는 지원하지 않음
-    const parenPattern = /\(([^()]+\/[^()]+)\)/g
-
-    return prompt.replace(parenPattern, (_match, content: string) => {
-        // 슬래시로 옵션 분리
-        const options = content.split('/').map((o: string) => o.trim()).filter((o: string) => o.length > 0)
-
-        if (options.length <= 1) {
-            return content // 와일드카드 아님
-        }
-
-        // 랜덤 선택
-        const randomIndex = Math.floor(Math.random() * options.length)
-        return options[randomIndex]
-    })
-}
-
-/**
- * 쉼표로 구분된 태그 내에서 단순 와일드카드 처리
- * "tag1, a/b/c, tag2" → "tag1, [선택된값], tag2"
- * 주의: 공백이 포함된 옵션은 괄호 형식 사용 필요
- */
-function processSimpleWildcards(prompt: string): string {
-    // 쉼표로 태그 분리
-    const tags = prompt.split(',')
-
-    const processedTags = tags.map(tag => {
-        const trimmed = tag.trim()
-
-        // 슬래시가 있고, URL이 아니며, 공백이 없는 단순 형태만 처리
-        // 공백이 있으면 괄호 형식을 사용해야 함
-        if (trimmed.includes('/') &&
-            !trimmed.startsWith('http') &&
-            !trimmed.includes('://') &&
-            !trimmed.includes(' ')) {
-
-            const options = trimmed.split('/').map(o => o.trim()).filter(o => o.length > 0)
-            if (options.length > 1) {
-                const randomIndex = Math.floor(Math.random() * options.length)
-                return options[randomIndex]
+        try {
+            const fragment = await createStoreFragmentResolverInput([prompt], {
+                repository,
+                mode,
+                strictness: options.strictness,
+                maxRecursion: options.maxRecursion,
+            })
+            if (baseRevision === null) {
+                baseRevision = fragment.sequenceSnapshot.revision
+                localCounters = { ...fragment.sequenceSnapshot.counters }
+            } else if (fragment.sequenceSnapshot.revision !== baseRevision) {
+                throw new Error('Fragment store changed during deferred wildcard resolution')
             }
-        }
 
-        return trimmed
-    })
-
-    return processedTags.join(', ')
-}
-
-/**
- * 프롬프트에서 모든 와일드카드 처리 (비동기)
- * @param prompt 원본 프롬프트
- * @returns 와일드카드가 랜덤 선택으로 치환된 프롬프트
- * 
- * 사용 예시:
- * - (white hair, blue eyes/red hair, purple eyes) → 세트 중 하나 선택
- * - red/blue/green_hair → 단순 옵션 중 하나 선택
- * - (long hair/short hair), smile → 괄호 내 선택 + 일반 태그
- * - <hair> → 조각 프롬프트 파일에서 랜덤 선택
- * - <*hair> → 조각 프롬프트 파일에서 순차 선택
- * - <red|blue|green> → 인라인 옵션에서 랜덤 선택
- */
-export async function processWildcards(prompt: string): Promise<string> {
-    if (!prompt) return prompt
-
-    let result = prompt
-
-    // 1단계: 파일 기반 조각 프롬프트 처리 (최우선, 비동기)
-    // <filename>, <*filename>, <option1|option2>
-    result = await processFileWildcards(result)
-
-    // 2단계: 괄호 형식 와일드카드 처리 (쉼표 포함 옵션 지원)
-    // (white hair, blue eyes/red hair, purple eyes) → 선택된 세트
-    result = processParenthesisWildcards(result)
-
-    // 3단계: 단순 와일드카드 처리 (공백 없는 단일 태그만)
-    // red/blue/green → 선택된 값
-    result = processSimpleWildcards(result)
-
-    return result
-}
-
-/**
- * 프롬프트에 와일드카드가 있는지 확인
- */
-export function hasWildcards(prompt: string): boolean {
-    if (!prompt) return false
-
-    // 파일 기반 조각 프롬프트 체크 <...>
-    if (/<[^<>]+>/.test(prompt)) return true
-
-    // 괄호 형식 체크
-    const parenPattern = /\([^()]+\/[^()]+\)/
-    if (parenPattern.test(prompt)) return true
-
-    // 단순 형식 체크 (쉼표로 구분된 태그 내 슬래시, 공백 없음)
-    const tags = prompt.split(',')
-    for (const tag of tags) {
-        const trimmed = tag.trim()
-        if (trimmed.includes('/') &&
-            !trimmed.startsWith('http') &&
-            !trimmed.includes('://') &&
-            !trimmed.includes(' ')) {
-            return true
+            const result = resolveFragments({
+                text: prompt,
+                seed: options.seed ?? 0,
+                scope: options.scope ?? DEFAULT_COMPATIBILITY_SCOPE,
+                lookup: fragment.lookup,
+                sequenceSnapshot: {
+                    revision: baseRevision,
+                    counters: { ...localCounters },
+                },
+                mode,
+                maxRecursion: options.maxRecursion ?? 10,
+                strictness: options.strictness ?? 'compatible',
+                ...(options.sourceRef === undefined ? {} : { sourceRef: options.sourceRef }),
+                ...(selectionSource === undefined ? {} : { selectionSource }),
+            })
+            if (!result.success) failed = true
+            for (const change of result.sequenceCommitProposal?.changes ?? []) {
+                const existing = stagedChanges.get(change.fragmentId)
+                stagedChanges.set(change.fragmentId, {
+                    ...change,
+                    fragmentPath: existing?.fragmentPath ?? change.fragmentPath,
+                    expectedCounter: existing?.expectedCounter ?? change.expectedCounter,
+                })
+                localCounters[change.fragmentId] = change.nextCounter
+            }
+            return result.resolvedText
+        } catch (error) {
+            failed = true
+            throw error
         }
     }
 
-    return false
+    const process = (prompt: string): Promise<string> => {
+        pendingCount += 1
+        const result = queue.then(() => resolveOne(prompt))
+        queue = result.then(() => undefined, () => undefined)
+        return result.finally(() => {
+            pendingCount -= 1
+        })
+    }
+
+    const proposal = (): FragmentSequenceCommitProposal | null => {
+        if (
+            status !== 'pending'
+            || mode !== 'generate'
+            || failed
+            || pendingCount !== 0
+            || baseRevision === null
+            || stagedChanges.size === 0
+        ) return null
+        return {
+            expectedRevision: baseRevision,
+            changes: [...stagedChanges.values()]
+                .sort((left, right) => (
+                    left.fragmentId < right.fragmentId ? -1 : left.fragmentId > right.fragmentId ? 1 : 0
+                )),
+        }
+    }
+
+    return {
+        process,
+        get status() {
+            return status
+        },
+        get sequenceCommitProposal() {
+            return proposal()
+        },
+        async commitSequence() {
+            await queue
+            if (status !== 'pending') return false
+            if (mode !== 'generate' || failed) {
+                status = 'discarded'
+                return false
+            }
+            const committed = commitWildcardSequenceProposal(proposal(), repository)
+            status = committed ? 'committed' : 'conflict'
+            return committed
+        },
+        discard() {
+            if (status === 'pending') status = 'discarded'
+        },
+    }
 }
 
 /**
- * 순차 조각 프롬프트 카운터 리셋
- * @param path 특정 조각 프롬프트 경로 (없으면 전체 리셋)
+ * Existing string-in/string-out signature. It still commits sequential counters
+ * immediately for callers that cannot carry a lifecycle token. New generation
+ * paths should use prepareWildcardResolution() so failure/cancel can discard.
  */
-export function resetWildcardCounters(path?: string): void {
-    useFragmentStore.getState().resetSequentialCounter(path)
+export async function processWildcards(
+    prompt: string,
+    options: ProcessWildcardsOptions = {},
+): Promise<string> {
+    if (!prompt || !hasFragmentSyntax(prompt)) return prompt
+
+    const mode = options.mode ?? 'generate'
+    const compatibilitySelectionSource = options.selectionSource ?? (
+        options.seed === undefined && mode === 'generate'
+            ? createLegacyFragmentSelectionSource()
+            : undefined
+    )
+    const prepared = await prepareWildcardResolution(prompt, {
+        ...options,
+        seed: options.seed ?? 0,
+        mode,
+        ...(compatibilitySelectionSource === undefined
+            ? {}
+            : { selectionSource: compatibilitySelectionSource }),
+    })
+    if (mode === 'generate' && (options.commitSequence ?? true)) {
+        prepared.commitSequence()
+    } else {
+        prepared.discard()
+    }
+    return prepared.resolvedText
+}
+
+export function hasWildcards(prompt: string): boolean {
+    return hasFragmentSyntax(prompt)
 }

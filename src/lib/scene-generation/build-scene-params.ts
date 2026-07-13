@@ -1,223 +1,664 @@
-import { useCharacterPromptStore } from '@/stores/character-prompt-store'
-import { useCharacterStore } from '@/stores/character-store'
-import { useGenerationStore } from '@/stores/generation-store'
-import { useSettingsStore } from '@/stores/settings-store'
-import { useSceneStore, type SceneCard } from '@/stores/scene-store'
-import { type GenerationParams } from '@/services/novelai-api'
-import { processWildcards } from '@/lib/fragment-processor'
-import { useRotationStore } from '@/stores/character-rotation-store'
+import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
+import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
+import type {
+    CompositionEngineIssue,
+    CompositionEnginePlan,
+} from '@/domain/composition/engine'
+import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
+import type { DeepReadonly } from '@/domain/composition/provenance'
+import type { GenerationParams } from '@/services/novelai-api'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
-import { resolveAssetModulePlan, type AssetModulePlan } from '@/lib/asset-modules/resolver'
+import { useCharacterPromptStore } from '@/stores/character-prompt-store'
+import {
+    createCharacterStoreResourceRepository,
+    useCharacterStore,
+} from '@/stores/character-store'
+import { useGenerationStore } from '@/stores/generation-store'
+import {
+    createRuntimeCharacterOverrides,
+    getRuntimeSelection,
+    useRotationStore,
+} from '@/stores/character-rotation-store'
+import {
+    useSceneStore,
+    type SceneCard,
+    type SceneCompositionMode,
+} from '@/stores/scene-store'
+import { useSettingsStore } from '@/stores/settings-store'
+import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
+import { cloneCompositionRandomTrace } from '@/lib/generation-metadata'
+import {
+    diagnosticsFromSceneResolution,
+    resolveSceneComposition,
+    type SceneCompositionResolution,
+    type SceneCompositionSnapshot,
+    type SceneRuntimeCharacterOverride,
+} from '@/lib/composition/scene-adapter'
+import {
+    type MainReferenceSnapshot,
+} from '@/lib/composition/main-adapter'
+import { materializeCharacterResourcesForNai } from '@/lib/composition/character-resource-adapter'
+import { effectiveSceneCompositionMode } from '@/lib/composition-authority'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+import {
+    buildLegacySceneGenerationParams,
+    resolveLegacySceneAssetModulePlan,
+    selectSceneGenerationSeed,
+} from './legacy-build-scene-params'
+import {
+    buildSceneFragmentInput,
+    collectSceneFragmentSourceTexts,
+} from './fragment-runtime'
 
-export interface SceneGenerationBuildResult {
+type ReadonlyScenePlan = DeepReadonly<CompositionEnginePlan>
+type ReadonlySceneIssue = DeepReadonly<CompositionEngineIssue>
+
+export interface SceneCompositionBuildDiagnostics {
+    mode: SceneCompositionMode
+    planHash: CompositionPlanHash | null
+    warnings: readonly ReadonlySceneIssue[]
+    errors: readonly ReadonlySceneIssue[]
+}
+
+interface SceneGenerationBuildBase extends SceneCompositionBuildDiagnostics {
+    sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
+}
+
+export interface SceneGenerationBuildSuccess extends SceneGenerationBuildBase {
+    success: true
     params: GenerationParams
     finalPrompt: string
     mimeType: string
 }
 
+export interface SceneGenerationBuildFailure extends SceneGenerationBuildBase {
+    success: false
+}
+
+export type SceneGenerationBuildResult = SceneGenerationBuildSuccess | SceneGenerationBuildFailure
+
+interface SceneMaterializedReference {
+    id: string
+    base64?: string
+    enabled: boolean
+    encodedVibe?: string
+    thumbnail?: string
+    informationExtracted: number
+    strength: number
+    fidelity: number
+    referenceType: 'character' | 'style' | 'character&style'
+    cacheKey?: string
+}
+
+interface ResolveSceneRuntimeOptions {
+    mode: 'preview' | 'generate'
+    seed: number
+    now: Date
+    requestId: string
+    scenePrompt?: string
+}
+
+interface SceneRuntimeCompositionCapture {
+    resolution: SceneCompositionResolution
+    snapshot: SceneCompositionSnapshot
+    sourceImage: string | null
+    mask: string | null
+    runtimeCharacterOverride?: SceneRuntimeCharacterOverride
+}
+
 const roundTo64 = (value: number): number => Math.round(value / 64) * 64
 
-const removeComments = (text: string) => text
-    .split('\n')
-    .filter(line => !line.trimStart().startsWith('#'))
-    .join('\n')
-
-type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
-
-function hasAssetModulePrompts(plan: AssetModulePlan | null): plan is AssetModulePlan {
-    return Boolean(plan && Object.values(plan.promptGroups).some(prompt => prompt.trim().length > 0))
+function runtimeDigest(value: string | null | undefined): string | undefined {
+    return value ? `sha256:${sha256Utf8(value)}` : undefined
 }
 
-function readStringParam(value: unknown): string {
-    return typeof value === 'string' ? value : ''
+function referenceSnapshots(
+    characterImages: readonly SceneMaterializedReference[],
+    vibeImages: readonly SceneMaterializedReference[],
+): MainReferenceSnapshot[] {
+    return [
+        ...characterImages.map(image => ({
+            id: image.id,
+            enabled: image.enabled !== false,
+            kind: 'character' as const,
+            referenceType: image.referenceType,
+            strength: image.strength,
+            fidelity: image.fidelity,
+            informationExtracted: image.informationExtracted,
+            digest: runtimeDigest(image.thumbnail),
+        })),
+        ...vibeImages.map(image => ({
+            id: image.id,
+            enabled: image.enabled !== false,
+            kind: 'vibe' as const,
+            referenceType: image.referenceType,
+            strength: image.strength,
+            fidelity: image.fidelity,
+            informationExtracted: image.informationExtracted,
+            digest: runtimeDigest(image.thumbnail),
+        })),
+    ]
 }
 
-function readModuleCharacterPrompts(plan: AssetModulePlan | null): CharacterPromptParams | null {
-    const value = plan?.generationParams.characterPrompts
-    return Array.isArray(value) ? value as CharacterPromptParams : null
-}
-
-async function resolveSceneAssetModulePlan(scene: SceneCard, seed: number): Promise<AssetModulePlan | null> {
-    const profile = useAssetModuleStore.getState().profile
-    if (!profile.recipes.some(recipe => recipe.enabled)) return null
-
-    const sceneState = useSceneStore.getState()
-    const activePreset = sceneState.activePresetId
-        ? sceneState.presets.find(preset => preset.id === sceneState.activePresetId)
-        : undefined
-    const sceneNumber = activePreset
-        ? activePreset.scenes.findIndex(item => item.id === scene.id) + 1
-        : undefined
-
+async function resolveSourceDimensions(
+    sourceImage: string | null,
+    fallback: { width: number; height: number },
+): Promise<{ width: number; height: number }> {
+    if (!sourceImage) return fallback
     try {
-        const plan = await resolveAssetModulePlan({
-            profile,
-            seed,
-            baseParams: {
-                prompt: '',
-                negative_prompt: '',
-            },
-            filenameContext: {
-                seed,
-                scene: {
-                    id: scene.id,
-                    name: scene.name,
-                    number: sceneNumber && sceneNumber > 0 ? sceneNumber : undefined,
-                },
-                preset: activePreset
-                    ? { id: activePreset.id, name: activePreset.name }
-                    : undefined,
-            },
+        const image = new Image()
+        await new Promise<void>((resolve, reject) => {
+            image.onload = () => resolve()
+            image.onerror = () => reject(new Error('Failed to load source image'))
+            image.src = sourceImage
         })
-
-        return plan.recipe && plan.modules.length > 0 ? plan : null
-    } catch (error) {
-        console.warn('[AssetModules] Failed to resolve scene generation plan; falling back to scene prompts.', error)
-        return null
+        const result = { width: roundTo64(image.width), height: roundTo64(image.height) }
+        image.src = ''
+        return result
+    } catch {
+        console.warn('[SceneGeneration] Failed to get source image dimensions, using scene/global resolution')
+        return fallback
     }
 }
 
-// useSceneGeneration workers call this helper before the NovelAI API request.
-// It keeps B's existing scene parameter sources together: generation settings,
-// character/vibe image memory, scene text, and rotation pinned-character state.
-export async function buildSceneGenerationParams(scene: SceneCard): Promise<SceneGenerationBuildResult> {
-    const genState = useGenerationStore.getState()
+function effectiveRecipeSources(snapshot: SceneCompositionSnapshot): string[] {
+    const requestedId = snapshot.scene.compositionRef?.recipeId
+    const recipe = snapshot.scene.compositionRef?.selectionKind === 'direct'
+        ? undefined
+        : requestedId === undefined
+            ? snapshot.profile.recipes.find(candidate => candidate.enabled)
+            : snapshot.profile.recipes.find(candidate => candidate.id === requestedId)
+    if (recipe === undefined) return []
+    return collectSceneFragmentSourceTexts({
+        steps: recipe.steps,
+        modules: recipe.steps.map(step => snapshot.profile.modules[step.moduleId]),
+    })
+}
 
-    let finalSeed = genState.seedLocked ? genState.seed : Math.floor(Math.random() * 4294967295)
-    if (finalSeed === 0) {
-        finalSeed = Math.floor(Math.random() * 4294967295)
-    }
-
-    const modulePlan = await resolveSceneAssetModulePlan(scene, finalSeed)
-    const modulePromptsActive = hasAssetModulePrompts(modulePlan)
-
-    let finalPrompt: string
-    let finalNegativePrompt: string
-
-    if (modulePromptsActive) {
-        finalPrompt = readStringParam(modulePlan.generationParams.prompt)
-        finalNegativePrompt = readStringParam(modulePlan.generationParams.negative_prompt)
-    } else {
-        const parts = [
-            removeComments(genState.basePrompt),
-            genState.i2iMode === 'inpaint' ? removeComments(genState.inpaintingPrompt) : null,
-            removeComments(genState.additionalPrompt),
-            removeComments(scene.scenePrompt),
-            removeComments(genState.detailPrompt),
-        ].filter(p => p && p.trim())
-
-        finalPrompt = await processWildcards(parts.join(', '))
-        finalNegativePrompt = removeComments(genState.negativePrompt)
-    }
-
-    // CharacterStore owns lazy file-backed image loading. Workers must force
-    // this load before building char/vibe arrays, and useSceneGeneration later
-    // releases the same data once the last worker exits.
-    await useCharacterStore.getState().ensureImagesLoaded()
-    const latestCharStore = useCharacterStore.getState()
-    const characterImages = latestCharStore.characterImages.filter(img => img.enabled !== false && img.base64)
-    const vibeImages = latestCharStore.vibeImages.filter(img => img.enabled !== false && img.base64)
-    const { characters: characterPrompts, positionEnabled } = useCharacterPromptStore.getState()
+async function createSceneCompositionSnapshot(
+    scene: SceneCard,
+    seed: number,
+    scenePrompt = scene.scenePrompt,
+): Promise<{
+    snapshot: SceneCompositionSnapshot
+    sourceImage: string | null
+    mask: string | null
+    runtimeCharacterOverride?: SceneRuntimeCharacterOverride
+}> {
+    const generation = useGenerationStore.getState()
+    const settings = useSettingsStore.getState()
+    const characterPrompts = useCharacterPromptStore.getState()
+    const referenceState = useCharacterStore.getState()
     const rotation = useRotationStore.getState()
+    const { usePresetStore } = await import('@/stores/preset-store')
+    const paramsPresetState = usePresetStore.getState()
     const excludedPinnedIds = rotation.active && scene.excludePinned
         ? new Set(rotation.pinnedCharacterIds)
         : null
+    const activePreset = useSceneStore.getState().presets.find(preset => (
+        preset.id === useSceneStore.getState().activePresetId
+    ))
+    const sceneNumber = activePreset?.scenes.findIndex(candidate => candidate.id === scene.id)
+    const fallbackDimensions = {
+        width: roundTo64(scene.width ?? generation.selectedResolution.width),
+        height: roundTo64(scene.height ?? generation.selectedResolution.height),
+    }
+    const sourceDimensions = await resolveSourceDimensions(generation.sourceImage, fallbackDimensions)
 
-    const moduleCharacterPrompts = readModuleCharacterPrompts(modulePlan)
-    const processedCharacterPrompts = modulePromptsActive
-        ? moduleCharacterPrompts ?? []
-        : await Promise.all(
-            characterPrompts
-                .filter(c => c.enabled && !(excludedPinnedIds?.has(c.id)))
-                .map(async c => ({
-                    prompt: await processWildcards(c.prompt),
-                    negative: await processWildcards(c.negative),
-                    enabled: c.enabled,
-                    position: c.position,
-                }))
-        )
+    const characters = characterPrompts.characters.filter(character => !excludedPinnedIds?.has(character.id))
+    const rotationSelection = getRuntimeSelection(rotation, seed)
+    const rotationPatches = createRuntimeCharacterOverrides(
+        rotationSelection,
+        characters.map(character => character.id),
+        { excludePinned: scene.excludePinned },
+    )
+    const runtimeCharacterOverride = rotationSelection === null
+        ? undefined
+        : {
+            characterPatches: rotationPatches,
+            randomTrace: rotationSelection.trace,
+        }
+    const snapshot: SceneCompositionSnapshot = {
+        profile: useAssetModuleStore.getState().profile,
+        scene: {
+            id: scene.id,
+            name: scene.name,
+            scenePrompt,
+            ...(scene.width === undefined ? {} : { width: roundTo64(scene.width) }),
+            ...(scene.height === undefined ? {} : { height: roundTo64(scene.height) }),
+            createdAt: scene.createdAt,
+            ...(scene.compositionRef === undefined ? {} : { compositionRef: scene.compositionRef }),
+        },
+        ...(activePreset === undefined
+            ? {}
+            : {
+                preset: {
+                    id: activePreset.id,
+                    name: activePreset.name,
+                    ...(sceneNumber === undefined || sceneNumber < 0 ? {} : { sceneNumber: sceneNumber + 1 }),
+                },
+            }),
+        prompt: {
+            base: generation.basePrompt,
+            inpainting: generation.i2iMode === 'inpaint' ? generation.inpaintingPrompt : '',
+            additional: generation.additionalPrompt,
+            detail: generation.detailPrompt,
+            negative: generation.negativePrompt,
+        },
+        characters,
+        characterPresets: characterPrompts.presets,
+        characterGroups: characterPrompts.groups,
+        positionEnabled: characterPrompts.positionEnabled,
+        references: referenceSnapshots(referenceState.characterImages, referenceState.vibeImages),
+        paramsPresets: paramsPresetState.presets,
+        activeParamsPresetId: paramsPresetState.activePresetId,
+        params: {
+            model: generation.model,
+            width: roundTo64(generation.selectedResolution.width),
+            height: roundTo64(generation.selectedResolution.height),
+            steps: generation.steps,
+            cfgScale: generation.cfgScale,
+            cfgRescale: generation.cfgRescale,
+            sampler: generation.sampler,
+            scheduler: generation.scheduler,
+            smea: generation.smea,
+            smeaDyn: generation.smeaDyn,
+            variety: generation.variety ?? false,
+            seed,
+            qualityToggle: generation.qualityToggle,
+            ucPreset: generation.ucPreset,
+            sourceMode: 'text-to-image',
+            strength: generation.strength,
+            noise: generation.noise,
+            characterPositionEnabled: characterPrompts.positionEnabled,
+        },
+        output: {
+            autoSave: true,
+            savePath: settings.sceneSavePath,
+            useAbsolutePath: settings.useAbsoluteScenePath,
+            imageFormat: settings.imageFormat,
+            metadataMode: settings.metadataMode,
+            portableRoot: runtimeCapabilities.absoluteOutputPath.supported
+                ? 'pictures'
+                : 'app-data',
+        },
+        source: {
+            hasSourceImage: Boolean(generation.sourceImage),
+            hasMask: Boolean(generation.mask),
+            sourceImageDigest: runtimeDigest(generation.sourceImage),
+            maskDigest: runtimeDigest(generation.mask),
+            width: sourceDimensions.width,
+            height: sourceDimensions.height,
+            strength: generation.strength,
+            noise: generation.noise,
+        },
+    }
+    return {
+        snapshot,
+        sourceImage: generation.sourceImage,
+        mask: generation.mask,
+        ...(runtimeCharacterOverride === undefined ? {} : { runtimeCharacterOverride }),
+    }
+}
 
-    let finalWidth = roundTo64(scene.width || genState.selectedResolution.width)
-    let finalHeight = roundTo64(scene.height || genState.selectedResolution.height)
+async function resolveSceneRuntimeComposition(
+    scene: SceneCard,
+    options: ResolveSceneRuntimeOptions,
+): Promise<SceneRuntimeCompositionCapture> {
+    const captured = await createSceneCompositionSnapshot(
+        scene,
+        options.seed,
+        options.scenePrompt ?? scene.scenePrompt,
+    )
+    const { snapshot } = captured
+    const fragment = await buildSceneFragmentInput(options.mode, [
+        snapshot.prompt.base,
+        snapshot.prompt.inpainting,
+        snapshot.prompt.additional,
+        snapshot.scene.scenePrompt,
+        snapshot.prompt.detail,
+        snapshot.prompt.negative,
+        ...snapshot.characters.flatMap(character => [character.prompt, character.negative]),
+        ...collectSceneFragmentSourceTexts(snapshot.scene.compositionRef?.sceneContributions ?? []),
+        ...effectiveRecipeSources(snapshot),
+    ])
+    return {
+        ...captured,
+        resolution: resolveSceneComposition({
+            snapshot,
+            requestId: options.requestId,
+            now: options.now.toISOString(),
+        seed: options.seed,
+        fragment,
+        fragmentMode: options.mode,
+        runtimeCharacterOverride: captured.runtimeCharacterOverride,
+    }),
+    }
+}
 
-    if (genState.sourceImage) {
-        try {
-            const img = new Image()
-            await new Promise<void>((resolve, reject) => {
-                img.onload = () => resolve()
-                img.onerror = () => reject(new Error('Failed to load source image'))
-                img.src = genState.sourceImage!
-            })
-            finalWidth = roundTo64(img.width)
-            finalHeight = roundTo64(img.height)
-            console.log(`[SceneGeneration] Using source image dimensions: ${img.width}x${img.height} -> ${finalWidth}x${finalHeight}`)
-            img.src = ''
-        } catch {
-            console.warn('[SceneGeneration] Failed to get source image dimensions, using scene/global resolution')
+function clonePlanHash(plan: ReadonlyScenePlan): CompositionPlanHash {
+    return {
+        version: plan.planHash.version,
+        algorithm: plan.planHash.algorithm,
+        canonicalization: plan.planHash.canonicalization,
+        digest: plan.planHash.digest,
+    }
+}
+
+function promptGroupsFromPlan(plan: ReadonlyScenePlan): Record<string, string> {
+    const groups: Record<string, string> = {
+        'main.base': plan.promptParts.base,
+        'main.inpainting': plan.promptParts.inpainting,
+        'main.additional': plan.promptParts.additional,
+        'main.workflow': plan.promptParts.workflow,
+        'main.detail': plan.promptParts.detail,
+        'main.negative': plan.promptParts.negative,
+    }
+    plan.characters.forEach((character, index) => {
+        groups[`v4.char.${index}.positive`] = character.positive
+        groups[`v4.char.${index}.negative`] = character.negative
+    })
+    return Object.fromEntries(Object.entries(groups).filter(([, value]) => value.length > 0))
+}
+
+function reconcileSceneAssetModulePlan(
+    modulePlan: AssetModulePlan | null,
+    plan: ReadonlyScenePlan,
+): AssetModulePlan | null {
+    if (modulePlan === null) return null
+    const promptGroups = promptGroupsFromPlan(plan)
+    return {
+        ...modulePlan,
+        promptGroups,
+        contributions: modulePlan.contributions.map(contribution => ({
+            ...contribution,
+            prompt: promptGroups[contribution.target] ?? '',
+        })),
+        generationParams: {
+            ...modulePlan.generationParams,
+            prompt: plan.positivePrompt,
+            negative_prompt: plan.negativePrompt,
+            seed: plan.params.seed,
+            promptGroups,
+            characterPrompts: plan.characters.filter(character => character.enabled).map(character => ({
+                prompt: character.positive,
+                negative: character.negative,
+                enabled: true,
+                position: character.position.mode === 'manual'
+                    ? { x: character.position.x, y: character.position.y }
+                    : { x: 0.5, y: 0.5 },
+            })),
+        },
+    }
+}
+
+async function materializeV2GenerationParams(
+    scene: SceneCard,
+    plan: ReadonlyScenePlan,
+    mode: 'shadow' | 'v2',
+    now: Date,
+    selectedRecipeId: string,
+    directRecipeId: string,
+    sourceImage: string | null,
+    mask: string | null,
+    output: SceneCompositionSnapshot['output'],
+): Promise<GenerationParams> {
+    if (mode === 'v2') {
+        const portability = assessPortableCompositionPlan(plan, runtimeCapabilities)
+        if (!portability.readyForGeneration) {
+            throw new Error(portability.issues
+                .map(issue => `${issue.code}:${issue.resourceId ?? 'output'}:${issue.repairAction.label}`)
+                .join(', '))
+        }
+    }
+    const enabledBindings = [
+        ...plan.resourceBindings,
+        ...plan.characters
+            .filter(character => character.enabled)
+            .flatMap(character => character.resourceBindings),
+    ].filter((binding, index, bindings) => binding.enabled && bindings.findIndex(candidate => (
+        candidate.resourceId === binding.resourceId
+        && candidate.referenceType === binding.referenceType
+        && candidate.strength === binding.strength
+        && candidate.fidelity === binding.fidelity
+        && candidate.informationExtracted === binding.informationExtracted
+    )) === index)
+    const materialized = await materializeCharacterResourcesForNai({
+        resources: plan.resources,
+        bindings: enabledBindings,
+        repository: createCharacterStoreResourceRepository(),
+    })
+    if (!materialized.success) {
+        throw new Error(materialized.errors.map(error => `${error.code}:${error.resourceId}`).join(', '))
+    }
+    const references = materialized.value
+    const requestedRecipeId = selectedRecipeId === directRecipeId ? undefined : selectedRecipeId
+    const legacyModulePlan = requestedRecipeId === undefined
+        ? null
+        : await resolveLegacySceneAssetModulePlan(scene, plan.params.seed, {
+            recipeId: requestedRecipeId,
+            now,
+            wildcardProcessor: prompt => prompt,
+        })
+    const modulePlan = reconcileSceneAssetModulePlan(legacyModulePlan, plan)
+
+    return {
+        prompt: plan.positivePrompt,
+        negative_prompt: plan.negativePrompt,
+        model: plan.params.model,
+        width: plan.params.width,
+        height: plan.params.height,
+        steps: plan.params.steps,
+        cfg_scale: plan.params.cfgScale,
+        cfg_rescale: plan.params.cfgRescale,
+        sampler: plan.params.sampler,
+        scheduler: plan.params.scheduler,
+        smea: plan.params.smea,
+        smea_dyn: plan.params.smeaDyn,
+        variety: plan.params.variety,
+        seed: plan.params.seed,
+        ...(sourceImage ? { sourceImage } : {}),
+        strength: plan.params.strength,
+        noise: plan.params.noise,
+        ...(mask ? { mask } : {}),
+        charImages: references.charImages,
+        charStrength: references.charStrength,
+        charFidelity: references.charFidelity,
+        charReferenceType: references.charReferenceType,
+        charCacheKeys: references.charCacheKeys,
+        charInfo: references.charInfo,
+        vibeImages: references.vibeImages,
+        vibeInfo: references.vibeInfo,
+        vibeStrength: references.vibeStrength,
+        preEncodedVibes: references.preEncodedVibes,
+        characterPrompts: plan.characters.filter(character => character.enabled).map(character => ({
+            stableId: character.characterId,
+            prompt: character.positive,
+            negative: character.negative,
+            enabled: true,
+            position: character.position.mode === 'manual'
+                ? { x: character.position.x, y: character.position.y }
+                : { x: 0.5, y: 0.5 },
+        })),
+        characterPositionEnabled: plan.params.characterPositionEnabled,
+        // Scene output ownership remains in saveSceneResult during this phase.
+        imageFormat: output.imageFormat,
+        metadataMode: modulePlan?.output.metadataMode ?? output.metadataMode,
+        ...(modulePlan === null ? {} : { assetModulePlan: modulePlan }),
+        qualityToggle: plan.params.qualityToggle,
+        ucPreset: plan.params.ucPreset,
+        promptParts: {
+            base: plan.promptParts.base,
+            inpainting: plan.promptParts.inpainting,
+            additional: plan.promptParts.additional,
+            workflow: plan.promptParts.workflow,
+            detail: plan.promptParts.detail,
+            negative: plan.promptParts.negative,
+        },
+        compositionMode: mode,
+        engineVersion: plan.engineVersion,
+        sourceRevision: plan.documentRevision,
+        compositionPlanHash: clonePlanHash(plan),
+        compositionPlanId: plan.planId,
+        compositionRecipeId: plan.recipeId,
+        compositionProvenanceSummary: {
+            sourceCount: plan.provenance.length,
+            promptContributionCount: plan.provenanceDetails.prompts.length,
+            randomSelectionCount: plan.provenanceDetails.randomSelections.length,
+        },
+        compositionRandomTrace: cloneCompositionRandomTrace(plan.randomTrace),
+        outputPolicySummary: {
+            imageFormat: output.imageFormat,
+            metadataMode: modulePlan?.output.metadataMode ?? output.metadataMode,
+            destinationKind: output.useAbsolutePath ? 'custom' : 'default',
+            writesSidecar: (modulePlan?.output.metadataMode ?? output.metadataMode) !== 'embedded'
+                || output.imageFormat === 'webp',
+            writesThumbnail: true,
+            filenameTemplateId: plan.outputPolicy.filenameTemplate,
+            collisionPolicy: plan.outputPolicy.collisionPolicy,
+        },
+        ...(plan.outputPolicy.destination.kind === 'filesystem'
+            ? {
+                portableOutputDirectory: plan.outputPolicy.destination.directory.kind === 'standard'
+                    ? {
+                        kind: 'standard' as const,
+                        root: plan.outputPolicy.destination.directory.root,
+                        segments: [...plan.outputPolicy.destination.directory.segments],
+                    }
+                    : {
+                        kind: 'bookmark' as const,
+                        bookmarkId: plan.outputPolicy.destination.directory.bookmarkId,
+                        segments: [...plan.outputPolicy.destination.directory.segments],
+                    },
+            }
+            : {}),
+    }
+}
+
+function diagnosticsFor(
+    mode: SceneCompositionMode,
+    resolution: SceneCompositionResolution,
+): SceneCompositionBuildDiagnostics {
+    const diagnostics = diagnosticsFromSceneResolution(resolution)
+    return {
+        mode,
+        planHash: diagnostics.plan === null ? null : clonePlanHash(diagnostics.plan),
+        warnings: diagnostics.warnings,
+        errors: diagnostics.errors,
+    }
+}
+
+export async function previewSceneComposition(
+    scene: SceneCard,
+    options: { scenePrompt?: string; seed?: number; now?: Date } = {},
+): Promise<SceneCompositionResolution> {
+    const authorityMode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
+    if (authorityMode === 'legacy') {
+        throw new Error('Composition preview is unavailable while legacy authority is active')
+    }
+    const generation = useGenerationStore.getState()
+    const seed = options.seed ?? generation.previewSeed ?? (generation.seed || 1)
+    const now = options.now ?? new Date()
+    const captured = await resolveSceneRuntimeComposition(scene, {
+        mode: 'preview',
+        seed,
+        now,
+        requestId: `scene-preview:${scene.id}:${seed}`,
+        scenePrompt: options.scenePrompt,
+    })
+    return captured.resolution
+}
+
+// Facade only: store snapshot -> engine (v2/shadow) -> existing GenerationParams.
+// Legacy prompt assembly is isolated in legacy-build-scene-params.ts for rollback.
+export async function buildSceneGenerationParams(
+    scene: SceneCard,
+    options: { sessionId?: number; requestId?: string; now?: Date } = {},
+): Promise<SceneGenerationBuildResult> {
+    const mode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
+    if (mode === 'legacy') {
+        const legacy = await buildLegacySceneGenerationParams(scene)
+        return {
+            success: true,
+            ...legacy,
+            mode,
+            planHash: null,
+            warnings: [],
+            errors: [],
+            sequenceCommitProposal: legacy.sequenceCommitProposal,
         }
     }
 
-    const { imageFormat, metadataMode } = useSettingsStore.getState()
-    const effectiveMetadataMode = modulePlan?.output.metadataMode ?? metadataMode
-    const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
-    const characterImagesWithData = characterImages.filter(img => img.base64)
-    const vibeImagesWithData = vibeImages.filter(img => img.base64)
-
-    return {
-        finalPrompt,
-        mimeType,
-        params: {
-            prompt: finalPrompt,
-            negative_prompt: finalNegativePrompt,
-            steps: genState.steps,
-            cfg_scale: genState.cfgScale,
-            cfg_rescale: genState.cfgRescale,
-            sampler: genState.sampler,
-            scheduler: genState.scheduler,
-            smea: genState.smea,
-            smea_dyn: genState.smeaDyn,
-            variety: genState.variety ?? false,
-            seed: finalSeed,
-            width: finalWidth,
-            height: finalHeight,
-            model: genState.model,
-            sourceImage: genState.sourceImage || undefined,
-            strength: genState.strength,
-            noise: genState.noise,
-            mask: genState.mask || undefined,
-            charImages: characterImagesWithData.map(img => img.base64!),
-            charStrength: characterImagesWithData.map(img => img.strength),
-            charFidelity: characterImagesWithData.map(img => img.fidelity ?? 0.6),
-            charReferenceType: characterImagesWithData.map(img => img.referenceType ?? 'character&style'),
-            charCacheKeys: characterImagesWithData.map(img => img.cacheKey || null),
-            vibeImages: vibeImagesWithData.map(img => img.base64!),
-            vibeInfo: vibeImagesWithData.map(img => img.informationExtracted),
-            vibeStrength: vibeImagesWithData.map(img => img.strength),
-            preEncodedVibes: vibeImagesWithData.map(img => img.encodedVibe || null),
-            characterPrompts: processedCharacterPrompts,
-            characterPositionEnabled: modulePromptsActive && moduleCharacterPrompts
-                ? true
-                : positionEnabled,
-            imageFormat,
-            metadataMode: effectiveMetadataMode,
-            qualityToggle: genState.qualityToggle,
-            ucPreset: genState.ucPreset,
-            assetModulePlan: modulePlan ?? undefined,
-            promptParts: modulePromptsActive
-                ? {
-                    base: finalPrompt,
-                    additional: '',
-                    detail: '',
-                    negative: finalNegativePrompt,
-                    inpainting: '',
-                }
-                : {
-                    base: genState.basePrompt,
-                    additional: genState.additionalPrompt,
-                    detail: genState.detailPrompt,
-                    negative: genState.negativePrompt,
-                    inpainting: genState.inpaintingPrompt,
+    if (mode === 'shadow') {
+        const legacy = await buildLegacySceneGenerationParams(scene)
+        const now = options.now ?? new Date()
+        const captured = await resolveSceneRuntimeComposition(scene, {
+            mode: 'preview',
+            seed: legacy.params.seed,
+            now,
+            requestId: options.requestId ?? `scene-shadow:${options.sessionId ?? 0}:${scene.id}`,
+        })
+        const { resolution } = captured
+        const diagnostics = diagnosticsFor(mode, resolution)
+        const params = resolution.result.success
+            ? {
+                ...legacy.params,
+                compositionMode: 'shadow' as const,
+                compositionPlanHash: clonePlanHash(resolution.result.plan),
+                compositionPlanId: resolution.result.plan.planId,
+                compositionRecipeId: resolution.result.plan.recipeId,
+                compositionProvenanceSummary: {
+                    sourceCount: resolution.result.plan.provenance.length,
+                    promptContributionCount: resolution.result.plan.provenanceDetails.prompts.length,
+                    randomSelectionCount: resolution.result.plan.provenanceDetails.randomSelections.length,
                 },
-        },
+            }
+            : legacy.params
+        return {
+            success: true,
+            ...legacy,
+            params,
+            ...diagnostics,
+            sequenceCommitProposal: legacy.sequenceCommitProposal,
+        }
+    }
+
+    const generation = useGenerationStore.getState()
+    const seed = selectSceneGenerationSeed(generation.seedLocked, generation.seed)
+    const now = options.now ?? new Date()
+    const captured = await resolveSceneRuntimeComposition(scene, {
+        mode: 'generate',
+        seed,
+        now,
+        requestId: options.requestId ?? `scene-request:${options.sessionId ?? 0}:${scene.id}:${seed}`,
+    })
+    const { resolution } = captured
+    const diagnostics = diagnosticsFor(mode, resolution)
+    if (!resolution.result.success) {
+        return {
+            success: false,
+            ...diagnostics,
+            sequenceCommitProposal: null,
+        }
+    }
+    const params = await materializeV2GenerationParams(
+        scene,
+        resolution.result.plan,
+        'v2',
+        now,
+        resolution.selectedRecipeId,
+        resolution.directRecipeId,
+        captured.sourceImage,
+        captured.mask,
+        captured.snapshot.output,
+    )
+    return {
+        success: true,
+        params,
+        finalPrompt: params.prompt,
+        mimeType: params.imageFormat === 'webp' ? 'image/webp' : 'image/png',
+        ...diagnostics,
+        sequenceCommitProposal: resolution.result.sequenceCommitProposal,
     }
 }

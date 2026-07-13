@@ -1,0 +1,15 @@
+{
+  "case": "malformed-old",
+  "description": "Malformed legacy input is reported without deleting the original bytes.",
+  "input": {
+    "legacyRecord": "{synthetic-invalid-json",
+    "v2Record": null,
+    "writeState": "idle"
+  },
+  "expected": {
+    "readSource": null,
+    "writeTarget": "v2",
+    "legacyRetained": true,
+    "outcome": "recoverable-error"
+  }
+}

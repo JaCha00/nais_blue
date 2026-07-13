@@ -1,0 +1,57 @@
+{
+  "_exportedAt": "2026-07-01T00:00:00.000Z",
+  "_version": "2.2",
+  "nais2-character-rotation": {
+    "version": 0,
+    "state": {
+      "active": true,
+      "awaitingWorker": true,
+      "characterIds": [
+        "character:hero"
+      ],
+      "pinnedCharacterIds": [],
+      "repeats": 1,
+      "restEnabled": false,
+      "workJitterMinutes": 0,
+      "restJitterMinutes": 0,
+      "currentIndex": 0,
+      "currentRepeat": 0,
+      "snapshot": {
+        "presetId": "preset:legacy",
+        "queueCounts": {
+          "scene:legacy": 1
+        },
+        "enabledStates": {
+          "character:hero": true
+        }
+      }
+    }
+  },
+  "tools-storage": {
+    "version": 0,
+    "state": {
+      "legacyFalse": false,
+      "legacyZero": 0,
+      "label": "retained legacy tool state"
+    }
+  },
+  "nais2-character-store": {
+    "version": 0,
+    "state": {
+      "characterImages": [
+        {
+          "id": "resource:character-image",
+          "base64": "[REDACTED:BASE64]",
+          "encodedVibe": "existing-character-cache"
+        }
+      ],
+      "vibeImages": [
+        {
+          "id": "resource:vibe-image",
+          "base64": "[REDACTED:BASE64]",
+          "encodedVibe": "existing-vibe-cache"
+        }
+      ]
+    }
+  }
+}

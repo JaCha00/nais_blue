@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
 import {
+    dryRunFullAutoBackup,
     formatAutoBackupTimestamp,
     listFullAutoBackups,
     restoreFullAutoBackup,
@@ -25,7 +26,6 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
     const [selectedRelPath, setSelectedRelPath] = useState('')
     const [loading, setLoading] = useState(false)
     const [restoring, setRestoring] = useState(false)
-    const [pendingRestart, setPendingRestart] = useState(false)
 
     const reload = async () => {
         setLoading(true)
@@ -49,24 +49,53 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
         if (open) void reload()
     }, [open])
 
+    const restartAfterRestore = async () => {
+        try {
+            if (isTauri()) {
+                await relaunch()
+                return
+            }
+        } catch (error) {
+            console.error('[AutoBackup] Relaunch failed:', error)
+        }
+        window.location.reload()
+    }
+
     const handleRestore = async () => {
         if (!selectedRelPath) return
         const entry = entries.find((item) => item.relPath === selectedRelPath)
         const label = entry ? formatAutoBackupTimestamp(entry.timestamp) : selectedRelPath
-        const confirmed = window.confirm(
-            `${t('settingsPage.backup.confirmRestoreDesc')}\n\n${label}\n${t('settingsPage.backup.restoreWarning')}`
-        )
-        if (!confirmed) return
 
         setRestoring(true)
         try {
+            const dryRun = await dryRunFullAutoBackup(selectedRelPath)
+            if (!dryRun.canRestore) {
+                throw new Error(dryRun.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n'))
+            }
+            const confirmed = window.confirm([
+                t('settingsPage.backup.confirmRestoreDesc'),
+                '',
+                label,
+                `Dry run: ${dryRun.restoreKeys.length} store(s) ready, ${dryRun.ignoredKeys.length} ignored`,
+                ...dryRun.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
+                dryRun.ignoredKeys.length > 5 ? `- +${dryRun.ignoredKeys.length - 5} more` : '',
+                t('settingsPage.backup.restoreWarning'),
+            ].filter(Boolean).join('\n'))
+            if (!confirmed) return
+
             const result = await restoreFullAutoBackup(selectedRelPath)
+            if (result.failed.length > 0) {
+                throw new Error(`Restore verification failed for: ${result.failed.join(', ')}`)
+            }
             toast({
                 title: t('settingsPage.backup.imported'),
                 description: t('settingsPage.backup.importedDesc', { success: result.success.length }),
                 variant: 'success',
             })
-            setPendingRestart(true)
+            // Hydrated stores still contain the pre-restore state. Restart
+            // before releasing this modal so no live writer can overwrite the
+            // verified restore with stale in-memory data.
+            await restartAfterRestore()
         } catch (error) {
             console.error('[AutoBackup] Disk snapshot restore failed:', error)
             toast({
@@ -77,18 +106,6 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
         } finally {
             setRestoring(false)
         }
-    }
-
-    const handleRestart = async () => {
-        try {
-            if (isTauri()) {
-                await relaunch()
-                return
-            }
-        } catch (error) {
-            console.error('[AutoBackup] Relaunch failed:', error)
-        }
-        window.location.reload()
     }
 
     return (
@@ -139,30 +156,19 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
                     </div>
                 </div>
 
-                <DialogFooter className="sm:justify-between">
-                    {pendingRestart ? (
-                        <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                            {t('settingsPage.backup.snapshotRestartRequired')}
-                        </span>
-                    ) : <span />}
+                <DialogFooter className="sm:justify-end">
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={restoring}>
                             {t('common.cancel', 'Close')}
                         </Button>
-                        {pendingRestart ? (
-                            <Button onClick={handleRestart}>
-                                {t('settingsPage.backup.restartNow')}
-                            </Button>
-                        ) : (
-                            <Button onClick={handleRestore} disabled={!selectedRelPath || restoring || entries.length === 0}>
-                                {restoring ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : (
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                )}
-                                {t('settingsPage.backup.snapshotRestore')}
-                            </Button>
-                        )}
+                        <Button onClick={handleRestore} disabled={!selectedRelPath || restoring || entries.length === 0}>
+                            {restoring ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                                <RotateCcw className="h-4 w-4 mr-2" />
+                            )}
+                            {t('settingsPage.backup.snapshotRestore')}
+                        </Button>
                     </div>
                 </DialogFooter>
             </DialogContent>

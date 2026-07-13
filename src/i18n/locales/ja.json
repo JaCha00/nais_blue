@@ -17,7 +17,13 @@
         "generate": "生成",
         "change": "変更",
         "download": "ダウンロード",
-        "export": "エクスポート"
+        "export": "エクスポート",
+        "enable": "有効化",
+        "disable": "無効化",
+        "moveUp": "上へ移動",
+        "moveDown": "下へ移動",
+        "moreActions": "その他の操作",
+        "close": "閉じる"
     },
     "update": {
         "available": "アップデートがあります",
@@ -117,7 +123,92 @@
         "noImages": "生成された画像がありません",
         "applyResolution": "選択シーンに解像度適用",
         "gridColumnsDesc": "グリッド列数変更",
-        "deletePreset": "プリセット削除"
+        "deletePreset": "プリセット削除",
+        "wildcardPreview": "ワイルドカードプレビュー",
+        "characterLayout": "キャラクター配置",
+        "composition": {
+            "mode": "モード",
+            "recipe": "レシピ",
+            "inspector": "シーンインスペクター",
+            "resolved": "解決結果",
+            "resolvedPlan": "解決済みプラン",
+            "bulkRecipe": "一括レシピ",
+            "applyBulkRecipe": "レシピを適用",
+            "bulkApplied": "{{count}}シーンにレシピを適用しました",
+            "inherited": "デフォルト",
+            "override": "オーバーライド",
+            "advancedCompatibility": "詳細 / 互換プロンプト"
+        }
+    },
+    "composition": {
+        "commandBar": "Compositionコマンド",
+        "modules": "モジュール",
+        "searchModules": "モジュール検索",
+        "noModules": "モジュールなし",
+        "output": "出力",
+        "externalConflict": "外部のcomposition変更",
+        "externalConflictDescription": "編集前にrepository revisionの競合を解決してください。",
+        "workspace": {
+            "modules": "モジュール",
+            "moduleStack": "モジュールスタック",
+            "moduleStackHelp": "レシピのモジュールを選択し、確認または編集します。",
+            "inspector": "コンテキストインスペクター",
+            "inspectorHelp": "canonicalエディターを開く前にモジュールの状態を確認します。"
+        },
+        "mode": { "title": "モード" },
+        "recipe": {
+            "title": "レシピ",
+            "direct": "直接プロンプト",
+            "noneSelected": "レシピ未選択",
+            "disabled": "無効なレシピ",
+            "unavailable": "{{id}}（利用不可）"
+        },
+        "module": {
+            "noneSelected": "モジュール未選択",
+            "emptyRecipe": "このレシピにはモジュールがありません。",
+            "search": "モジュール検索",
+            "selectToInspect": "解決状態を確認するモジュールを選択してください。",
+            "kind": "種類",
+            "id": "モジュールID",
+            "edit": "モジュール編集",
+            "missing": "参照切れモジュール",
+            "repairRequired": "修復が必要",
+            "compatibility": "互換モジュール",
+            "summary": "モジュール概要"
+        },
+        "validation": {
+            "pending": "検証待ち",
+            "legacy": "レガシーモード",
+            "conflict": "競合"
+        },
+        "conflict": {
+            "label": "競合",
+            "externalEdit": "外部変更を検出",
+            "review": "生成前にrepositoryの競合を確認してください。"
+        },
+        "override": {
+            "diff": "オーバーライド差分",
+            "inherited": "継承値",
+            "value": "オーバーライド",
+            "unchanged": "変更なし",
+            "reset": "オーバーライドをリセット"
+        },
+        "plan": {
+            "title": "解決済みプラン",
+            "open": "解決済みプランを開く",
+            "resolved": "解決結果",
+            "help": "プロンプト、パラメータ、random trace、provenanceを確認します。"
+        },
+        "cost": { "estimated": "推定コスト" },
+        "random": {
+            "preview": "ワイルドカード解決をプレビュー",
+            "lockSeed": "シードをロック",
+            "unlockSeed": "シードのロックを解除"
+        },
+        "outputCapabilityFallbackTitle": "このプラットフォーム向けに出力先を変更しました",
+        "outputCapabilityFallbackDescription": "{{reason}} 代替手段: {{alternative}}",
+        "resourceRepairRequired": "生成前に出力先を修復してください",
+        "compatibility": { "rawPrompt": "詳細rawプロンプト" }
     },
     "preset": {
         "default": "デフォルト",
@@ -171,6 +262,182 @@
         "settings": "設定",
         "styleLab": "画風研究所",
         "promptEditor": "プロンプトエディター"
+    },
+    "assetModuleStudioV2": {
+        "wrapper": {
+            "legacyTitle": "レガシー互換ツール",
+            "legacyDescription": "従来のJSONインポート、R2スコープ、Python検証ツールです。Composition v2の下書きには自動マージされません。",
+            "backToV2": "Composition v2に戻る",
+            "authorityCaption": "Composition Domain v2 リポジトリコマンド編集",
+            "openLegacy": "レガシーインポート / デプロイツール",
+            "pageTitle": "Asset Module Studio",
+            "loading": "Composition v2リポジトリを読み込んでいます。",
+            "unavailable": "Composition v2 authorityを利用できません。",
+            "retry": "再読み込み"
+        },
+        "header": {
+            "title": "Asset Module Studio · Composition v2",
+            "draftModified": "下書き変更あり",
+            "committed": "コミット済み",
+            "description": "リポジトリコマンドの下書きを検証してから明示的にコミットします。編集中にディスク全体への書き込みは行いません。",
+            "blocking": "ブロック中 {{count}}件",
+            "validationPassed": "検証済み",
+            "totalIssues": "合計 {{count}}件の問題"
+        },
+        "common": {
+            "inherit": "継承",
+            "on": "オン",
+            "off": "オフ",
+            "enabled": "有効",
+            "disabled": "無効",
+            "name": "名前",
+            "kind": "種類",
+            "order": "順序",
+            "revision": "リビジョン",
+            "missing": "不足"
+        },
+        "actions": {
+            "addModule": "新規モジュール",
+            "enable": "有効化",
+            "disable": "無効化",
+            "delete": "削除",
+            "deleteContribution": "プロンプト寄与を削除",
+            "addContribution": "プロンプト寄与を追加",
+            "addStep": "ステップを追加",
+            "undo": "元に戻す",
+            "saving": "保存中…",
+            "commit": "コミット",
+            "reviewExternal": "外部変更を確認",
+            "useLocal": "ローカルを使用",
+            "useExternal": "外部版を使用",
+            "useMerged": "マージ結果を使用"
+        },
+        "filters": {
+            "browserAria": "モジュールブラウザー",
+            "modules": "モジュール",
+            "search": "検索",
+            "searchPlaceholder": "名前またはstable ID",
+            "kindAria": "モジュール種類フィルター",
+            "enabledAria": "有効状態フィルター",
+            "validationAria": "検証状態フィルター",
+            "allKinds": "すべての種類",
+            "allStates": "すべての状態",
+            "allValidation": "すべての検証状態",
+            "valid": "有効",
+            "warnings": "警告",
+            "errors": "エラー",
+            "recent": "最近使用",
+            "currentResults": "現在の結果",
+            "selected": "{{count}}件選択",
+            "empty": "現在のフィルターに一致するモジュールはありません。"
+        },
+        "tabs": {
+            "aria": "Studioセクション",
+            "module": "モジュールエディター",
+            "recipe": "レシピエディター",
+            "preview": "解決結果プレビュー"
+        },
+        "module": {
+            "newName": "新規モジュール",
+            "identity": "モジュール識別情報",
+            "validationState": "検証状態",
+            "valid": "このモジュールは有効です。",
+            "emptyEditor": "編集するモジュールを作成または選択してください。"
+        },
+        "contributions": {
+            "title": "プロンプト寄与",
+            "description": "自由入力のtargetではなくcanonical PromptTargetとマージモードを選択します。",
+            "empty": "プロンプト寄与はありません。",
+            "target": "プロンプト対象",
+            "merge": "マージ",
+            "text": "プロンプトテキスト"
+        },
+        "authoring": {
+            "paramsTitle": "パラメーター上書き",
+            "paramsDescription": "空の値は親レイヤーから継承します。",
+            "characterTitle": "キャラクタースロット / 位置",
+            "characterDescription": "キャラクターのstable IDを使ってプロンプトと位置パッチを編集します。",
+            "addCharacter": "スロットを追加",
+            "emptyCharacters": "キャラクターパッチはありません。",
+            "removeCharacter": "キャラクタースロットを削除",
+            "outputTitle": "出力ポリシー",
+            "outputDescription": "認証情報を含めず、出力先capability、ファイル名、メタデータ、競合設定のみを保存します。",
+            "addOutput": "出力上書きを追加",
+            "removeOutput": "上書きを削除",
+            "randomTitle": "ランダムルール",
+            "randomDescription": "モジュールはstable rule IDのみを参照し、ルールはtyped document entityとして編集します。",
+            "newRule": "新規ルール",
+            "attachExistingRule": "既存のランダムルールを接続",
+            "existingRule": "既存ルール",
+            "attachRule": "接続",
+            "emptyRules": "接続されたランダムルールはありません。",
+            "missingRule": "不足しているルール",
+            "removeReference": "参照を削除",
+            "detachRule": "接続解除",
+            "pathSegmentsHint": "/ で区切った portable segment"
+        },
+        "recipe": {
+            "title": "レシピエディター",
+            "description": "ステップのstable IDが順序を保持します。同じモジュールを複数のステップで使用できます。",
+            "recipe": "レシピ",
+            "empty": "レシピはありません。",
+            "identity": "レシピ識別情報",
+            "orderedSteps": "並べ替え済みステップ",
+            "orderedStepsDescription": "ドラッグハンドルはポインターとキーボードに対応し、上下ボタンはモバイルとキーボード向けの明示的な代替手段です。",
+            "moveStep": "レシピステップ{{index}}を移動",
+            "stepModule": "ステップ{{index}}のモジュール",
+            "missingReference": "参照がありません。既存のモジュールを選択して修復してください。",
+            "moveControls": "ステップ移動コントロール",
+            "moveUp": "ステップを上へ移動",
+            "moveDown": "ステップを下へ移動",
+            "removeStep": "レシピステップを削除"
+        },
+        "preview": {
+            "title": "解決結果プレビュー",
+            "description": "canonicalエンジンリクエストコンテキストがある場合、実際のCompositionEngine結果を表示します。",
+            "unavailable": "プレビューを利用できません。UIは任意のエンジン既定値を作成しません。",
+            "resolutionErrors": "解決エラー",
+            "positive": "ポジティブ",
+            "negative": "ネガティブ",
+            "slotBreakdown": "スロット内訳",
+            "characters": "キャラクター",
+            "noCharacters": "解決済みキャラクターはありません。",
+            "paramsWinner": "パラメーター適用元",
+            "output": "出力",
+            "warningsErrors": "警告 / エラー",
+            "randomTrace": "ランダムトレース",
+            "noRandomDraws": "ランダム抽選はありません。",
+            "provenance": "来歴",
+            "noIssues": "警告やエラーはありません。"
+        },
+        "conflict": {
+            "aria": "競合解決",
+            "title": "3-wayマージ",
+            "description": "基準、ローカル下書き、外部ディスク版を比較し、フィールドごとにマージ結果を選択してください。",
+            "base": "基準",
+            "local": "ローカル",
+            "external": "外部 / ディスク",
+            "mergeResult": "マージ結果"
+        },
+        "external": {
+            "detected": "外部変更を検出: ディスクリビジョン {{diskRevision}}、ローカル基準リビジョン {{localRevision}}。",
+            "dirtySuffix": "ローカル下書きがあるため自動再読み込みを行いませんでした。"
+        },
+        "capabilities": {
+            "title": "プラットフォーム機能",
+            "available": "利用可能",
+            "unavailable": "このプラットフォームでは利用不可",
+            "alternative": "代替手段",
+            "externalWatch": "外部プロファイルファイル監視",
+            "externalWatchReason": "モバイルアプリのサンドボックスでは外部プロファイルファイルを継続監視できません。",
+            "externalWatchAlternative": "プロファイルを明示的に読み込み、システムファイルピッカーで更新してください。",
+            "localTagger": "ローカルタグ付けサイドカー",
+            "localTaggerReason": "デスクトップ用 Python タグ付けサイドカーはモバイルに同梱されません。",
+            "localTaggerAlternative": "ローカル検証なしで生成するか、デスクトップアプリでタグを検証してください。",
+            "r2Deploy": "R2 デプロイツール",
+            "r2DeployReason": "R2 デプロイツールにはデスクトップサイドカーとローカル Wrangler 環境が必要です。",
+            "r2DeployAlternative": "ローカルへエクスポートし、デスクトップアプリまたは Wrangler CLI からデプロイしてください。"
+        }
     },
     "promptEditor": {
         "title": "プロンプトライブラリ",

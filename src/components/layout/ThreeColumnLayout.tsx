@@ -30,7 +30,6 @@ import {
     Zap,
     PanelLeft,
     PanelRight,
-    Store,
     Package,
 } from 'lucide-react'
 
@@ -71,6 +70,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const [leftSheetOpen, setLeftSheetOpen] = useState(false)
     const [rightSheetOpen, setRightSheetOpen] = useState(false)
     const isDesktopShell = useMediaQuery('(min-width: 1536px)')
+    const compositionWorkspaceOwnsRails = location.pathname === '/'
+        || location.pathname === '/scenes'
+        || location.pathname.startsWith('/scenes/')
+    const supportPanelsAreDocked = isDesktopShell && !compositionWorkspaceOwnsRails
 
     // Get generation params for cost calculation
     const { characterImages, vibeImages } = useCharacterStore()
@@ -139,7 +142,6 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/prompts', icon: NotebookPen, labelKey: 'nav.promptEditor' },
         { path: '/asset-modules', icon: Package, labelKey: 'nav.assetModuleStudio', fallbackLabel: 'Asset Studio' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
-        { path: '/marketplace', icon: Store, labelKey: 'nav.marketplace' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },
         { path: '/library', icon: Images, labelKey: 'nav.library' },
         { path: '/settings', icon: Settings, labelKey: 'nav.settings' },
@@ -151,7 +153,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }
 
     const handleLeftPanelToggle = () => {
-        if (isDesktopShell) {
+        if (supportPanelsAreDocked) {
             toggleLeftSidebar()
         } else {
             setLeftSheetOpen(true)
@@ -159,7 +161,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }
 
     const handleRightPanelToggle = () => {
-        if (isDesktopShell) {
+        if (supportPanelsAreDocked) {
             toggleRightSidebar()
         } else {
             setRightSheetOpen(true)
@@ -268,7 +270,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     id="nais2-prompt-dock"
                     className={cn(
                         "hidden w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-card 2xl:flex 2xl:w-[500px]",
-                        !leftSidebarVisible && "2xl:hidden"
+                        (!leftSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
                     {promptPanelContent}
@@ -283,11 +285,11 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 className={cn(
                                     "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-transparent transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                                     "text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
-                                    isDesktopShell && !leftSidebarVisible && "opacity-50"
+                                    supportPanelsAreDocked && !leftSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}
-                                aria-expanded={isDesktopShell ? leftSidebarVisible : leftSheetOpen}
-                                aria-controls={isDesktopShell ? 'nais2-prompt-dock' : 'nais2-prompt-sheet'}
+                                aria-expanded={supportPanelsAreDocked ? leftSidebarVisible : leftSheetOpen}
+                                aria-controls={supportPanelsAreDocked ? 'nais2-prompt-dock' : 'nais2-prompt-sheet'}
                             >
                                 <PanelLeft className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -302,11 +304,11 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 className={cn(
                                     "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-transparent transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                                     "text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
-                                    isDesktopShell && !rightSidebarVisible && "opacity-50"
+                                    supportPanelsAreDocked && !rightSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}
-                                aria-expanded={isDesktopShell ? rightSidebarVisible : rightSheetOpen}
-                                aria-controls={isDesktopShell ? 'nais2-history-dock' : 'nais2-history-sheet'}
+                                aria-expanded={supportPanelsAreDocked ? rightSidebarVisible : rightSheetOpen}
+                                aria-controls={supportPanelsAreDocked ? 'nais2-history-dock' : 'nais2-history-sheet'}
                             >
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -326,7 +328,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     id="nais2-history-dock"
                     className={cn(
                         "hidden w-[280px] flex-shrink-0 overflow-hidden rounded-panel border border-border bg-card 2xl:block",
-                        !rightSidebarVisible && "2xl:hidden"
+                        (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
                     <HistoryPanel />

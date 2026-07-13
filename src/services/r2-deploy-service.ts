@@ -2,6 +2,7 @@ import {
     ensureTaggerServer,
     LOCAL_TAGGER_BASE_URL,
 } from '@/services/local-tagger-server'
+import { requireRuntimeCapability } from '@/platform/capabilities'
 
 export type R2DeployMode = 'current-session' | 'delta' | 'full-sync' | 'dry-run'
 export type R2UploaderKind = 'wrangler' | 's3'
@@ -138,6 +139,7 @@ const R2_SCOPE_CHECK_URL = `${LOCAL_TAGGER_BASE_URL}/asset/r2/scope-check`
 export async function startR2DeployJob(
     request: R2DeployRequest,
 ): Promise<R2DeployStartResponse> {
+    requireRuntimeCapability('r2DeployTooling')
     await ensureTaggerServer()
 
     const response = await fetch(R2_DEPLOY_URL, {
@@ -156,6 +158,7 @@ export async function startR2DeployJob(
 }
 
 export async function getR2DeployJob(jobId: string): Promise<R2DeployJobResponse> {
+    requireRuntimeCapability('r2DeployTooling')
     await ensureTaggerServer()
 
     const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}`, {
@@ -170,6 +173,7 @@ export async function getR2DeployJob(jobId: string): Promise<R2DeployJobResponse
 }
 
 export async function cancelR2DeployJob(jobId: string): Promise<R2DeployJobResponse> {
+    requireRuntimeCapability('r2DeployTooling')
     await ensureTaggerServer()
 
     const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}/cancel`, {
@@ -186,6 +190,7 @@ export async function cancelR2DeployJob(jobId: string): Promise<R2DeployJobRespo
 export async function checkR2DeployScope(
     params: R2ScopeCheckParams,
 ): Promise<R2ScopeCheckResponse> {
+    requireRuntimeCapability('r2DeployTooling')
     await ensureTaggerServer()
 
     const query = toScopeCheckQuery(params)

@@ -5,6 +5,15 @@ import { rename, exists } from '@tauri-apps/plugin-fs'
 import { join } from '@tauri-apps/api/path'
 import { useSettingsStore } from './settings-store'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
+import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
+import type { CompositionEngineIssue } from '@/domain/composition/engine'
+import type { DeepReadonly } from '@/domain/composition/provenance'
+import type {
+    SceneCompositionMode,
+    SceneCompositionRef,
+} from '@/lib/composition/scene-adapter'
+
+export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
 export interface SceneImage {
     id: string
@@ -22,7 +31,26 @@ export interface SceneCard {
     width?: number
     height?: number
     excludePinned?: boolean // Rotation-only: skip pinned characters for this scene.
+    compositionRef?: SceneCompositionRef
     createdAt: number
+}
+
+export interface SceneCompositionRuntimeRecord {
+    mode: SceneCompositionMode
+    planHash?: DeepReadonly<CompositionPlanHash>
+    warnings: readonly DeepReadonly<CompositionEngineIssue>[]
+    errors: readonly DeepReadonly<CompositionEngineIssue>[]
+}
+
+export function hasSceneCompositionOverrides(scene: Pick<SceneCard, 'scenePrompt' | 'width' | 'height' | 'compositionRef'>): boolean {
+    const ref = scene.compositionRef
+    return scene.scenePrompt.trim().length > 0
+        || scene.width !== undefined
+        || scene.height !== undefined
+        || (ref?.sceneContributions?.length ?? 0) > 0
+        || ref?.paramsOverride !== undefined
+        || (ref?.characterOverrides?.length ?? 0) > 0
+        || ref?.outputOverride !== undefined
 }
 
 export interface ScenePreset {
@@ -51,6 +79,8 @@ interface SceneState {
     renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
     updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean }) => void
+    setSceneCompositionRef: (presetId: string, sceneId: string, ref: SceneCompositionRef | undefined) => void
+    resetSceneToRecipe: (presetId: string, sceneId: string) => void
     updateAllScenesResolution: (presetId: string, width: number, height: number) => void
     reorderScenes: (presetId: string, scenes: SceneCard[]) => void
     getScene: (presetId: string, sceneId: string) => SceneCard | undefined
@@ -112,8 +142,20 @@ interface SceneState {
     deleteSelectedScenes: () => void
     moveSelectedScenesToPreset: (targetPresetId: string) => void
     updateSelectedScenesResolution: (width: number, height: number) => void
+    applyRecipeToSelectedScenes: (
+        recipeId: string,
+        recipeRevision?: number,
+        selectionKind?: SceneCompositionRef['selectionKind'],
+    ) => void
     lastSelectedSceneId: string | null
     setLastSelectedSceneId: (id: string | null) => void
+
+    // Composition v2 rollout and transient worker diagnostics
+    sceneCompositionMode: SceneCompositionMode
+    sceneCompositionResults: Record<string, SceneCompositionRuntimeRecord>
+    setSceneCompositionMode: (mode: SceneCompositionMode) => void
+    recordSceneCompositionResult: (sceneId: string, record: SceneCompositionRuntimeRecord) => void
+    clearSceneCompositionResult: (sceneId: string) => void
 
     // Generation Progress
     completedCount: number
@@ -141,11 +183,59 @@ const createDefaultPreset = (): ScenePreset => ({
     createdAt: Date.now(),
 })
 
+function withoutSceneCompositionResult(
+    records: Record<string, SceneCompositionRuntimeRecord>,
+    sceneId: string,
+): Record<string, SceneCompositionRuntimeRecord> {
+    if (!(sceneId in records)) return records
+    const next = { ...records }
+    delete next[sceneId]
+    return next
+}
+
+function withoutSceneCompositionResults(
+    records: Record<string, SceneCompositionRuntimeRecord>,
+    sceneIds: readonly string[],
+): Record<string, SceneCompositionRuntimeRecord> {
+    if (!sceneIds.some(id => id in records)) return records
+    const next = { ...records }
+    sceneIds.forEach(id => delete next[id])
+    return next
+}
+
 export const useSceneStore = create<SceneState>()(
     persist(
         (set, get) => ({
             presets: [createDefaultPreset()],
             activePresetId: DEFAULT_PRESET_ID,
+            sceneCompositionMode: 'v2',
+            sceneCompositionResults: {},
+            setSceneCompositionMode: (sceneCompositionMode) => set({
+                sceneCompositionMode,
+                sceneCompositionResults: {},
+            }),
+            recordSceneCompositionResult: (sceneId, record) => set(state => ({
+                sceneCompositionResults: {
+                    ...state.sceneCompositionResults,
+                    [sceneId]: {
+                        ...record,
+                        ...(record.planHash === undefined
+                            ? {}
+                            : { planHash: { ...record.planHash } }),
+                        warnings: record.warnings.map(issue => ({
+                            ...issue,
+                            fieldPath: [...issue.fieldPath],
+                        })),
+                        errors: record.errors.map(issue => ({
+                            ...issue,
+                            fieldPath: [...issue.fieldPath],
+                        })),
+                    },
+                },
+            })),
+            clearSceneCompositionResult: (sceneId) => set(state => ({
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
 
             // Preset Actions
             addPreset: (name) => {
@@ -219,6 +309,7 @@ export const useSceneStore = create<SceneState>()(
                             ? { ...p, scenes: p.scenes.filter(s => s.id !== sceneId) }
                             : p
                     ),
+                    sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
                 }))
             },
 
@@ -330,6 +421,7 @@ export const useSceneStore = create<SceneState>()(
                         }
                         : preset
                 ),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
             })),
             updateSceneSettings: (presetId, sceneId, settings) => set((state) => ({
                 presets: state.presets.map((preset) =>
@@ -342,6 +434,49 @@ export const useSceneStore = create<SceneState>()(
                         }
                         : preset
                 ),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
+            setSceneCompositionRef: (presetId, sceneId, compositionRef) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => scene.id === sceneId
+                            ? {
+                                ...scene,
+                                ...(compositionRef === undefined ? { compositionRef: undefined } : { compositionRef }),
+                            }
+                            : scene),
+                    }
+                    : preset),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
+            resetSceneToRecipe: (presetId, sceneId) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => {
+                            if (scene.id !== sceneId) return scene
+                            const { width: _width, height: _height, ...rest } = scene
+                            const ref = scene.compositionRef
+                            return {
+                                ...rest,
+                                scenePrompt: '',
+                                ...(ref === undefined
+                                    ? {}
+                                    : {
+                                        compositionRef: {
+                                            recipeId: ref.recipeId,
+                                            ...(ref.selectionKind === undefined ? {} : { selectionKind: ref.selectionKind }),
+                                            ...(ref.recipeRevision === undefined ? {} : { recipeRevision: ref.recipeRevision }),
+                                            ...(ref.migrationMarker === undefined ? {} : { migrationMarker: ref.migrationMarker }),
+                                            ...(ref.extensions === undefined ? {} : { extensions: ref.extensions }),
+                                        },
+                                    }),
+                            }
+                        }),
+                    }
+                    : preset),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
             })),
             updateAllScenesResolution: (presetId, width, height) => set((state) => ({
                 presets: state.presets.map((preset) =>
@@ -355,6 +490,10 @@ export const useSceneStore = create<SceneState>()(
                             })),
                         }
                         : preset
+                ),
+                sceneCompositionResults: withoutSceneCompositionResults(
+                    state.sceneCompositionResults,
+                    state.presets.find(preset => preset.id === presetId)?.scenes.map(scene => scene.id) ?? [],
                 ),
             })),
             reorderScenes: (presetId, scenes) => {
@@ -665,7 +804,12 @@ export const useSceneStore = create<SceneState>()(
             generationSessionId: 0,
             startNewGenerationSession: () => {
                 const newSessionId = Date.now()
-                set({ generationSessionId: newSessionId, isGenerating: true, isCancelling: false })
+                set({
+                    generationSessionId: newSessionId,
+                    isGenerating: true,
+                    isCancelling: false,
+                    sceneCompositionResults: {},
+                })
                 return newSessionId
             },
 
@@ -938,7 +1082,11 @@ export const useSceneStore = create<SceneState>()(
                             : p
                     ),
                     selectedSceneIds: [],
-                    lastSelectedSceneId: null
+                    lastSelectedSceneId: null,
+                    sceneCompositionResults: withoutSceneCompositionResults(
+                        state.sceneCompositionResults,
+                        state.selectedSceneIds,
+                    ),
                 }
             }),
 
@@ -978,8 +1126,43 @@ export const useSceneStore = create<SceneState>()(
                             )
                         }
                         : p
-                )
+                ),
+                sceneCompositionResults: withoutSceneCompositionResults(
+                    state.sceneCompositionResults,
+                    state.selectedSceneIds,
+                ),
             })),
+
+            applyRecipeToSelectedScenes: (recipeId, recipeRevision, selectionKind = 'asset') => set(state => {
+                if (!state.activePresetId || state.selectedSceneIds.length === 0) return state
+                const selected = new Set(state.selectedSceneIds)
+                return {
+                    presets: state.presets.map(preset => preset.id === state.activePresetId
+                        ? {
+                            ...preset,
+                            scenes: preset.scenes.map(scene => selected.has(scene.id)
+                                ? {
+                                    ...scene,
+                                    compositionRef: {
+                                        ...scene.compositionRef,
+                                        recipeId,
+                                        recipeRevision,
+                                        selectionKind,
+                                        migrationMarker: scene.compositionRef?.migrationMarker ?? {
+                                            kind: 'legacy-scene-prompt' as const,
+                                            schemaVersion: 2 as const,
+                                        },
+                                    },
+                                }
+                                : scene),
+                        }
+                        : preset),
+                    sceneCompositionResults: withoutSceneCompositionResults(
+                        state.sceneCompositionResults,
+                        state.selectedSceneIds,
+                    ),
+                }
+            }),
 
             // Generation Progress Implementation
             completedCount: 0,
@@ -1040,6 +1223,7 @@ export const useSceneStore = create<SceneState>()(
                     activePresetId: state.activePresetId,
                     gridColumns: state.gridColumns,
                     thumbnailLayout: state.thumbnailLayout,
+                    sceneCompositionMode: state.sceneCompositionMode,
                 }
             },
             onRehydrateStorage: () => (state, error) => {
@@ -1049,6 +1233,10 @@ export const useSceneStore = create<SceneState>()(
                 }
                 
                 if (state) {
+                    if (!['legacy', 'shadow', 'v2'].includes(state.sceneCompositionMode)) {
+                        state.sceneCompositionMode = 'v2'
+                    }
+                    state.sceneCompositionResults = {}
                     // 복원 로그
                     const presetCount = state.presets?.length || 0
                     const totalScenes = state.presets?.reduce((sum, p) => sum + (p.scenes?.length || 0), 0) || 0

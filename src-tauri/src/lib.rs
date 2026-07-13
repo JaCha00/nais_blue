@@ -718,8 +718,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(tagger_state)
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_process::init());
 
     #[cfg(not(mobile))]
     {
@@ -752,12 +751,6 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
-            }
-
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
-            {
-                use tauri_plugin_deep_link::DeepLinkExt;
-                let _ = app.deep_link().register_all();
             }
 
             #[cfg(target_os = "macos")]

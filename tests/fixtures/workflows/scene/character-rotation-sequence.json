@@ -1,0 +1,45 @@
+{
+  "case": "rotation-store-fixed-sequence",
+  "description": "Character rotation follows persisted order; the fixed generation seed is trace metadata and does not re-roll the selection.",
+  "seed": 515151,
+  "presetId": "preset:rotation-characterization",
+  "characterIds": [
+    "character:hero",
+    "character:rival"
+  ],
+  "pinnedCharacterIds": [
+    "character:guide"
+  ],
+  "availableCharacterIds": [
+    "character:hero",
+    "character:rival",
+    "character:guide",
+    "character:bystander"
+  ],
+  "sequence": [
+    {
+      "currentIndex": 0,
+      "currentRepeat": 0,
+      "selectedCharacterId": "character:hero",
+      "sequenceOrdinal": 0
+    },
+    {
+      "currentIndex": 1,
+      "currentRepeat": 0,
+      "selectedCharacterId": "character:rival",
+      "sequenceOrdinal": 1
+    },
+    {
+      "currentIndex": 0,
+      "currentRepeat": 1,
+      "selectedCharacterId": "character:hero",
+      "sequenceOrdinal": 2
+    }
+  ],
+  "invariants": {
+    "source": "rotation-store-sequence",
+    "seedAffectsSelection": false,
+    "pinnedEnabledByDefault": true,
+    "excludePinnedDisablesPinned": true
+  }
+}

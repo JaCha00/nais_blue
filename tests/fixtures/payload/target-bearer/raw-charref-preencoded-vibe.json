@@ -1,0 +1,125 @@
+{
+  "case": "raw-charref-preencoded-vibe",
+  "sourceKind": "synthetic-target-bearer",
+  "request": {
+    "prompt": "1girl, silver hair",
+    "negativePrompt": "lowres",
+    "model": "nai-diffusion-4-5-full",
+    "width": 832,
+    "height": 1216,
+    "steps": 28,
+    "cfgScale": 5,
+    "cfgRescale": 0,
+    "sampler": "k_euler_ancestral",
+    "noiseSchedule": "karras",
+    "seed": 24681,
+    "variety": false,
+    "qualityToggle": false,
+    "ucPreset": 4,
+    "characterPrompts": [],
+    "useCoords": false
+  },
+  "options": {
+    "stream": "msgpack",
+    "imageFormat": "png",
+    "characterReferences": [
+      {
+        "referenceType": "character",
+        "strength": 0.8,
+        "fidelity": 0.6,
+        "imageBase64": "[REDACTED:BASE64]"
+      }
+    ],
+    "vibes": [
+      {
+        "strength": 0.55,
+        "encodedVibeBase64": "[REDACTED:BASE64]"
+      }
+    ]
+  },
+  "expected": {
+    "action": "generate",
+    "input": "1girl, silver hair",
+    "model": "nai-diffusion-4-5-full",
+    "parameters": {
+      "params_version": 3,
+      "width": 832,
+      "height": 1216,
+      "scale": 5,
+      "sampler": "k_euler_ancestral",
+      "steps": 28,
+      "n_samples": 1,
+      "ucPreset": 4,
+      "qualityToggle": false,
+      "autoSmea": false,
+      "dynamic_thresholding": false,
+      "controlnet_strength": 1,
+      "legacy": false,
+      "add_original_image": true,
+      "cfg_rescale": 0,
+      "noise_schedule": "karras",
+      "legacy_v3_extend": false,
+      "skip_cfg_above_sigma": null,
+      "use_coords": false,
+      "normalize_reference_strength_multiple": true,
+      "inpaintImg2ImgStrength": 1,
+      "seed": 24681,
+      "v4_prompt": {
+        "caption": {
+          "base_caption": "1girl, silver hair",
+          "char_captions": []
+        },
+        "use_coords": false,
+        "use_order": true
+      },
+      "v4_negative_prompt": {
+        "caption": {
+          "base_caption": "lowres",
+          "char_captions": []
+        }
+      },
+      "characterPrompts": [],
+      "director_reference_descriptions": [
+        {
+          "caption": {
+            "base_caption": "character",
+            "char_captions": []
+          },
+          "legacy_uc": false
+        }
+      ],
+      "director_reference_information_extracted": [
+        1
+      ],
+      "director_reference_strength_values": [
+        0.8
+      ],
+      "director_reference_secondary_strength_values": [
+        0.4
+      ],
+      "director_reference_images": [
+        "[REDACTED:BASE64]"
+      ],
+      "reference_strength_multiple": [
+        0.55
+      ],
+      "reference_image_multiple": [
+        "[REDACTED:BASE64]"
+      ],
+      "negative_prompt": "lowres",
+      "deliberate_euler_ancestral_bug": false,
+      "prefer_brownian": true,
+      "image_format": "png",
+      "stream": "msgpack"
+    }
+  },
+  "provenance": {
+    "repository": "https://github.com/sunanakgo/NAIS3.git",
+    "pinnedCommit": "5c65aa6b00b1d3ecbeaf3787e5ab510e2464f464",
+    "sourcePath": "src/main/nai/payload.ts",
+    "sourceBlob": "b7f1950c7ed539bd069746f06f736128799477d0",
+    "license": "GPL-3.0",
+    "reconstructedAt": "2026-07-11",
+    "webCapture": false
+  }
+}

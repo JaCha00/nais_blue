@@ -30,7 +30,7 @@ check('auto-backup writes full B export snapshots', /exportAllData/.test(autoBac
 check('auto-backup restores through B import boundary', /importAllData/.test(autoBackup) && /restoreFullAutoBackup/.test(autoBackup))
 check('auto-backup avoids A per-store attach hooks', !/attachStoreBackup|storeRegistry|persist\?\.getOptions/.test(autoBackup))
 check('auto-backup is guarded outside Tauri browser runtime', /isTauri\(\)/.test(autoBackup))
-check('auto-backup stores under Pictures NAIS_Backup', /BaseDirectory\.Picture/.test(autoBackup) && /NAIS_Backup/.test(autoBackup))
+check('auto-backup stores under the media root NAIS_Backup', /MEDIA_STORAGE_BASE_DIRECTORY/.test(autoBackup) && /NAIS_Backup/.test(autoBackup))
 check('restore dialog lists and restores full snapshots', /listFullAutoBackups/.test(restoreDialog) && /restoreFullAutoBackup/.test(restoreDialog))
 check('restore dialog restarts or reloads after restore', /relaunch/.test(restoreDialog) && /window\.location\.reload/.test(restoreDialog))
 check('Settings exposes snapshot creation and restore UI', /createFullAutoBackup/.test(settings) && /RestoreDialog/.test(settings))

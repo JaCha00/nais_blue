@@ -53,6 +53,8 @@ import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import { toast } from '@/components/ui/use-toast'
+import { RecipeSelector } from '@/components/composition/RecipeSelector'
+import { ResolvedPlanPanel } from '@/components/composition/ResolvedPlanPanel'
 
 const SAMPLERS = [
     'k_euler',
@@ -69,6 +71,7 @@ const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
 export function PromptPanel() {
     const { t } = useTranslation()
     const location = useLocation()
+    const isMainMode = location.pathname === '/'
     const isSceneMode = location.pathname.startsWith('/scenes')
 
     // Zustand 선택적 구독 - sceneStore
@@ -229,6 +232,13 @@ export function PromptPanel() {
                 rail and generate control below remain reachable on short Android
                 viewports while every prompt field stays available. */}
             <div className="relative mb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
+                {isMainMode && (
+                    <div className="flex flex-none flex-col gap-2">
+                        <RecipeSelector />
+                        <ResolvedPlanPanel />
+                    </div>
+                )}
+
                 {/* Character Prompt Panel (Accordion Style) - 프롬프트 영역 위에 오버레이 */}
                 <CharacterPromptPanel
                     open={characterPanelOpen}

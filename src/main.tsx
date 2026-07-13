@@ -1,13 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.tsx'
 import './styles/globals.css'
 import './i18n'
-import { BACKUP_STORE_KEYS, cleanupLargeData, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, exportAllData } from './lib/indexed-db'
-import { useCharacterStore } from './stores/character-store'
-import { startAssetProfileDiskSync } from './stores/asset-module-store'
-import { createFullAutoBackup } from './lib/auto-backup'
-import { startStoreSnapshotScheduler } from './lib/store-snapshots'
+import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, type RetainedStoreMigrationResult } from './lib/indexed-db'
+import { createCurrentBackupEnvelopeV3, createFullAutoBackup } from './lib/auto-backup'
+import { setRuntimeCompositionAuthority } from './lib/composition-authority'
 
 // 자동 백업 상수
 const AUTO_BACKUP_KEY = 'nais2-auto-backup'
@@ -17,7 +14,55 @@ const LEGACY_STORE_KEY_RENAMES: [string, string][] = [
     ['nais-library-storage', 'nais2-library'],
     ['tools-storage', 'nais2-tools'],
     ['nais-update', 'nais2-update'],
+    // Same-shape pre-v2 aliases. Sources are retained for old-authority
+    // rollback; targets are only populated when no canonical value exists.
+    ['scenes', 'nais2-scenes'],
+    ['scene-store', 'nais2-scenes'],
+    ['wildcards', 'nais2-wildcards'],
+    ['fragments', 'nais2-wildcards'],
+    ['character-prompts', 'nais2-character-prompts'],
+    ['characterPrompts', 'nais2-character-prompts'],
+    ['generation-presets', 'nais2-presets'],
+    ['generationPresets', 'nais2-presets'],
+    ['prompt-presets', 'nais2-prompt-library'],
+    ['promptPresets', 'nais2-prompt-library'],
 ]
+
+function retainedStoreCopiesAreHealthy(results: readonly RetainedStoreMigrationResult[]): boolean {
+    return results.every(result => result.status !== 'failed' && result.status !== 'verification-failed')
+}
+
+async function rehydrateCompositionConnectedStores(): Promise<void> {
+    const [
+        { useGenerationStore },
+        { useSceneStore },
+        { useCharacterPromptStore },
+        { useFragmentStore },
+        { usePromptLibraryStore },
+        { usePresetStore },
+        { useAssetModuleStore },
+        { useCharacterStore },
+    ] = await Promise.all([
+        import('./stores/generation-store'),
+        import('./stores/scene-store'),
+        import('./stores/character-prompt-store'),
+        import('./stores/fragment-store'),
+        import('./stores/prompt-library-store'),
+        import('./stores/preset-store'),
+        import('./stores/asset-module-store'),
+        import('./stores/character-store'),
+    ])
+    await Promise.all([
+        useGenerationStore.persist.rehydrate(),
+        useSceneStore.persist.rehydrate(),
+        useCharacterPromptStore.persist.rehydrate(),
+        useFragmentStore.persist.rehydrate(),
+        usePromptLibraryStore.persist.rehydrate(),
+        usePresetStore.persist.rehydrate(),
+        useAssetModuleStore.persist.rehydrate(),
+        useCharacterStore.persist.rehydrate(),
+    ])
+}
 
 const setSplashStage = (message: string) => {
     const subtitle = document.querySelector<HTMLElement>('#splash-screen .splash-subtitle')
@@ -60,7 +105,7 @@ async function performAutoBackup() {
         }
         
         console.log('[AutoBackup] Starting automatic backup...')
-        const backup = await exportAllData()
+        const backup = await createCurrentBackupEnvelopeV3()
         
         // 기존 자동 백업들 로드
         const existingBackupsStr = localStorage.getItem(AUTO_BACKUP_KEY)
@@ -185,7 +230,8 @@ async function checkDataIntegrity(): Promise<boolean> {
     }
 }
 
-function renderApp() {
+async function renderApp(): Promise<void> {
+    const { default: App } = await import('./App.tsx')
     ReactDOM.createRoot(document.getElementById('root')!).render(
         <React.StrictMode>
             <App />
@@ -193,7 +239,29 @@ function renderApp() {
     )
 }
 
-function runPostRenderStartupTasks() {
+async function runPostRenderStartupTasks(): Promise<void> {
+    const [
+        { startAssetProfileDiskSync },
+        { useCharacterStore },
+        { startStoreSnapshotScheduler },
+        { getRuntimeOutputWriter },
+    ] = await Promise.all([
+        import('./stores/asset-module-store'),
+        import('./stores/character-store'),
+        import('./lib/store-snapshots'),
+        import('./services/output/output-writer'),
+    ])
+    void getRuntimeOutputWriter().recoverPending().then(results => {
+        const failures = results.filter(result => result.action === 'failed')
+        if (results.length > 0) {
+            console.log(`[Startup] Recovered ${results.length - failures.length}/${results.length} output transactions`)
+        }
+        for (const failure of failures) {
+            console.warn(`[Startup] Output recovery is still pending for ${failure.transactionId}:`, failure.error)
+        }
+    }).catch(err => {
+        console.warn('[Startup] Output recovery scan failed:', err)
+    })
     void startAssetProfileDiskSync().catch(err => {
         console.warn('[Startup] Asset profile disk sync failed:', err)
     })
@@ -223,13 +291,8 @@ function runPostRenderStartupTasks() {
             console.warn('[Startup] Disk auto-backup failed:', err)
         })
 
-        void cleanupLargeData('nais2-wildcards', 100).then((cleaned) => {
-            if (cleaned) {
-                console.log('[Startup] Large wildcard data was cleaned up')
-            }
-        }).catch(err => {
-            console.warn('[Startup] Wildcard cleanup failed:', err)
-        })
+        // FragmentStore owns embedded-content migration and verified repository
+        // writes. Startup must not strip/delete legacy wildcard content first.
     }
 
     window.setTimeout(async () => {
@@ -243,11 +306,17 @@ function runPostRenderStartupTasks() {
 }
 
 function schedulePostRenderStartupTasks() {
-    window.setTimeout(runPostRenderStartupTasks, 0)
+    window.setTimeout(() => {
+        void runPostRenderStartupTasks().catch(err => {
+            console.warn('[Startup] Post-render task initialization failed:', err)
+        })
+    }, 0)
 }
 
 // Start app only after migrations complete
 async function startApp() {
+    // No workflow may use v2 authority until repository migration verifies.
+    setRuntimeCompositionAuthority('legacy')
     console.log('[Startup] Starting app initialization...')
     setSplashStage('Starting database')
     
@@ -263,21 +332,26 @@ async function startApp() {
     // Otherwise Zustand stores will hydrate from empty IndexedDB
     
     if (!isDbInitFailed()) {
+        let legacySourceCopyHealthy = true
         // Step 1: Migrate renamed keys within IndexedDB (old name → new name)
         // This handles stores that were already using IndexedDB but had their names changed
         try {
             setSplashStage('Migrating IndexedDB keys')
-            await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
+            const results = await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
+            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
             console.log('[Startup] IndexedDB key migration complete')
         } catch (err) {
+            legacySourceCopyHealthy = false
             console.error('[Startup] IndexedDB key migration failed:', err)
         }
 
         try {
             setSplashStage('Migrating legacy local data')
-            await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
+            const results = await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
+            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
             console.log('[Startup] Legacy localStorage key migration complete')
         } catch (err) {
+            legacySourceCopyHealthy = false
             console.error('[Startup] Legacy localStorage key migration failed:', err)
         }
 
@@ -285,10 +359,48 @@ async function startApp() {
         // Missing entries here will cause data loss on app restart/update!
         try {
             setSplashStage('Migrating local data')
-            await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
+            const results = await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
+            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
             console.log('[Startup] LocalStorage migration complete')
         } catch (err) {
+            legacySourceCopyHealthy = false
             console.error('[Startup] LocalStorage migration failed:', err)
+        }
+
+        try {
+            setSplashStage('Migrating Composition data')
+            const { runStartupCompositionMigration } = await import('./lib/composition-migration-startup')
+            const migration = await runStartupCompositionMigration(
+                legacySourceCopyHealthy ? {} : { authority: 'legacy' },
+            )
+            if (!legacySourceCopyHealthy) {
+                console.error('[Startup] Composition v2 activation blocked because a retained source copy was not verified')
+            }
+            if (migration.status === 'failed') {
+                console.error('[Startup] Composition migration retained legacy authority:', migration.error)
+            } else {
+                console.log(
+                    `[Startup] Composition migration ${migration.status}; authority=${migration.authority}`,
+                )
+            }
+        } catch (err) {
+            // The migration transaction is fail-closed and never deletes old
+            // stores. Startup can safely continue on the legacy authority.
+            console.error('[Startup] Composition migration failed; legacy authority retained:', err)
+        }
+
+        try {
+            setSplashStage('Hydrating migrated stores')
+            await rehydrateCompositionConnectedStores()
+        } catch (err) {
+            console.error('[Startup] Migrated store hydration failed; forcing legacy authority:', err)
+            try {
+                const { applyCompositionAuthorityFeatureFlag } = await import('./lib/composition-migration-startup')
+                await applyCompositionAuthorityFeatureFlag('legacy')
+            } catch (authorityError) {
+                setRuntimeCompositionAuthority('legacy')
+                console.error('[Startup] Failed to persist hydration rollback authority:', authorityError)
+            }
         }
         
         // Non-critical integrity, backup, image-load, and cleanup tasks run after
@@ -301,7 +413,7 @@ async function startApp() {
     setSplashStage('Rendering app')
 
     // NOW render React app
-    renderApp()
+    await renderApp()
 
     // Delay slightly to ensure app renders, then hide splash
     requestAnimationFrame(() => {

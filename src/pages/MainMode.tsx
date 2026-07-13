@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal, Square } from 'lucide-react'
+import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { AVAILABLE_MODELS, useGenerationStore } from '@/stores/generation-store'
+import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { parseMetadataFromBase64 } from '@/lib/metadata-parser'
 import { generateImage } from '@/services/novelai-api'
+import { createThumbnail } from '@/lib/image-utils'
+import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import { toast } from '@/components/ui/use-toast'
 import {
     ContextMenu,
@@ -23,7 +25,6 @@ import { join } from '@tauri-apps/api/path'
 import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import {
     getMediaStorageRoot,
-    MEDIA_STORAGE_BASE_DIRECTORY,
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
 import { useNavigate } from 'react-router-dom'
@@ -31,6 +32,67 @@ import { useToolsStore } from '@/stores/tools-store'
 import { Wand2 } from 'lucide-react'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { LAYOUT_SHEET_EVENTS } from '@/components/layout/layout-events'
+import { useAssetModuleStore } from '@/stores/asset-module-store'
+import { useCharacterStore } from '@/stores/character-store'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
+import {
+    MAIN_ASSET_SELECTION_PREFIX,
+    MAIN_DIRECT_RECIPE_ID,
+    MAIN_DIRECT_SELECTION_ID,
+    getMainDirectRecipeId,
+    mainAssetRecipeSelectionId,
+    type MainCompositionMode,
+} from '@/lib/composition/main-adapter'
+import type {
+    CompositionValidationSummary,
+    ModuleStackItem,
+    ReadonlyCompositionIssue,
+} from '@/components/composition-workspace/types'
+import {
+    CompositionCommandBar,
+    CompositionInspector,
+    CompositionWorkspaceLayout,
+    CompositionWorkspaceSheet,
+    MobileCommandDock,
+    ModuleStack,
+    portableIssuesForResolvedPlan,
+    ResolvedPlanView,
+} from '@/components/composition-workspace'
+import { RecipeSelector } from '@/components/composition/RecipeSelector'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+
+const MAIN_MODE_OPTIONS: readonly MainCompositionMode[] = ['legacy', 'shadow', 'v2']
+
+function useMediaQuery(query: string): boolean {
+    const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia(query)
+        const handleChange = () => setMatches(mediaQuery.matches)
+        handleChange()
+        mediaQuery.addEventListener('change', handleChange)
+        return () => mediaQuery.removeEventListener('change', handleChange)
+    }, [query])
+
+    return matches
+}
+
+function rawRecipeId(selectionId: string | null, directRecipeId: string): string | null {
+    if (selectionId === null) return null
+    if (selectionId === MAIN_DIRECT_SELECTION_ID
+        || selectionId === MAIN_DIRECT_RECIPE_ID
+        || selectionId === directRecipeId) return directRecipeId
+    if (!selectionId.startsWith(MAIN_ASSET_SELECTION_PREFIX)) return selectionId
+
+    const encoded = selectionId.slice(MAIN_ASSET_SELECTION_PREFIX.length)
+    try {
+        return decodeURIComponent(encoded)
+    } catch {
+        return encoded
+    }
+}
 
 export default function MainMode() {
     const { t } = useTranslation()
@@ -45,22 +107,39 @@ export default function MainMode() {
         batchCount,
         currentBatch,
         streamProgress,
-        model,
+        steps,
         isCancelled,
         generatingMode,
+        compositionMode,
+        selectedRecipeId,
+        compositionWarnings,
+        compositionErrors,
+        lastResolvedPlan,
         generate,
         cancelGeneration,
+        setCompositionMode,
+        setSelectedRecipeId,
         setSourceImage,
         setI2IMode,
     } = useGenerationStore()
 
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
-    const anlas = useAuthStore(state => state.anlas)
-    const anlas2 = useAuthStore(state => state.anlas2)
-    const slot2Enabled = useAuthStore(state => state.slot2Enabled)
-    const selectedModelName = AVAILABLE_MODELS.find(option => option.id === model)?.name ?? model
-    const visibleBalance = slot2Enabled && anlas2 ? anlas2.total : anlas?.total
+    const assetProfile = useAssetModuleStore(state => state.profile)
+    const profileLoading = useAssetModuleStore(state => state.isLoading)
+    const profileConflict = useAssetModuleStore(state => state.hasConflict)
+    const profileConflictMessage = useAssetModuleStore(state => state.conflictMessage)
+    const characterImages = useCharacterStore(state => state.characterImages)
+    const vibeImages = useCharacterStore(state => state.vibeImages)
+    const isMobileWorkspace = useMediaQuery('(max-width: 767px)')
+    const isDockedWorkspace = useMediaQuery('(min-width: 1536px)')
+    const [moduleSheetOpen, setModuleSheetOpen] = useState(false)
+    const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false)
+    const [resolvedSheetOpen, setResolvedSheetOpen] = useState(false)
+    const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
+    const moduleSheetTriggerRef = useRef<HTMLElement | null>(null)
+    const inspectorSheetTriggerRef = useRef<HTMLElement | null>(null)
+    const resolvedSheetTriggerRef = useRef<HTMLElement | null>(null)
 
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
     const [metadataImage, setMetadataImage] = useState<string | undefined>(undefined)
@@ -71,6 +150,150 @@ export default function MainMode() {
 
     // Get more store functions for regenerate with metadata
     const genStore = useGenerationStore()
+
+    const directRecipeId = getMainDirectRecipeId(assetProfile.recipes)
+    const firstEnabledRecipe = assetProfile.recipes.find(recipe => recipe.enabled)
+    const automaticRecipeSelection = firstEnabledRecipe === undefined
+        ? MAIN_DIRECT_SELECTION_ID
+        : mainAssetRecipeSelectionId(firstEnabledRecipe.id)
+    const displayedRecipeSelection = selectedRecipeId === null
+        ? automaticRecipeSelection
+        : selectedRecipeId === MAIN_DIRECT_SELECTION_ID
+            || selectedRecipeId === MAIN_DIRECT_RECIPE_ID
+            || selectedRecipeId === directRecipeId
+            ? MAIN_DIRECT_SELECTION_ID
+            : selectedRecipeId.startsWith(MAIN_ASSET_SELECTION_PREFIX)
+                ? selectedRecipeId
+                : mainAssetRecipeSelectionId(selectedRecipeId)
+    const effectiveRecipeId = rawRecipeId(displayedRecipeSelection, directRecipeId)
+    const runtimeDocument = getRuntimeCompositionDocument()
+    const canonicalRecipe = runtimeDocument?.recipes.find(recipe => recipe.id === effectiveRecipeId)
+    const legacyRecipe = assetProfile.recipes.find(recipe => recipe.id === effectiveRecipeId)
+    const selectedRecipeName = canonicalRecipe?.name
+        ?? legacyRecipe?.label
+        ?? (effectiveRecipeId === directRecipeId
+            ? t('composition.recipe.direct', 'Direct prompts')
+            : effectiveRecipeId ?? t('composition.recipe.noneSelected', 'Select a recipe'))
+
+    const portableResolvedIssues = useMemo(() => lastResolvedPlan === null
+        ? []
+        : portableIssuesForResolvedPlan(
+            assessPortableCompositionPlan(lastResolvedPlan, runtimeCapabilities).issues,
+        ), [lastResolvedPlan])
+
+    const validation = useMemo<CompositionValidationSummary>(() => {
+        if (profileConflict) {
+            return {
+                severity: 'conflict',
+                warningCount: compositionWarnings.length,
+                errorCount: compositionErrors.length,
+                label: t('composition.validation.conflict', 'External edit conflict'),
+            }
+        }
+        if (profileLoading) {
+            return { severity: 'loading', label: t('common.loading', 'Loading...') }
+        }
+        if (compositionMode === 'legacy') {
+            return { severity: 'disabled', label: t('composition.validation.legacy', 'Legacy') }
+        }
+        if (compositionErrors.length + portableResolvedIssues.length > 0) {
+            return {
+                severity: 'error',
+                errorCount: compositionErrors.length + portableResolvedIssues.length,
+                warningCount: compositionWarnings.length,
+            }
+        }
+        if (compositionWarnings.length > 0) {
+            return { severity: 'warning', warningCount: compositionWarnings.length }
+        }
+        return lastResolvedPlan === null
+            ? { severity: 'disabled', label: t('composition.validation.pending', 'Not resolved') }
+            : { severity: 'valid' }
+    }, [
+        compositionErrors.length,
+        compositionMode,
+        compositionWarnings.length,
+        lastResolvedPlan,
+        portableResolvedIssues.length,
+        profileConflict,
+        profileLoading,
+        t,
+    ])
+
+    const moduleStackItems = useMemo<ModuleStackItem[]>(() => {
+        const allIssues = [...compositionErrors, ...compositionWarnings]
+        const canonicalById = new Map(runtimeDocument?.modules.map(module => [module.id, module]) ?? [])
+        const recipeModuleIds = canonicalRecipe?.steps.map(step => step.moduleId)
+            ?? legacyRecipe?.steps.map(step => step.moduleId)
+            ?? []
+        const fallbackIds = runtimeDocument?.profiles.find(profile => profile.id === runtimeDocument.activeProfileId)?.moduleIds
+            ?? Object.keys(assetProfile.modules)
+        const moduleIds = recipeModuleIds.length > 0 ? recipeModuleIds : fallbackIds
+
+        return [...new Set(moduleIds)].map((moduleId, order) => {
+            const canonical = canonicalById.get(moduleId)
+            const legacy = assetProfile.modules[moduleId]
+            const issues = allIssues.filter(issue => issue.entityRef?.kind === 'module' && issue.entityRef.id === moduleId)
+            const errorCount = issues.filter(issue => issue.severity === 'error').length
+            const warningCount = issues.length - errorCount
+            const itemValidation: CompositionValidationSummary = errorCount > 0
+                ? { severity: 'error', errorCount, warningCount }
+                : warningCount > 0
+                    ? { severity: 'warning', warningCount }
+                    : { severity: 'valid' }
+
+            if (canonical !== undefined) {
+                return {
+                    id: canonical.id,
+                    name: canonical.name,
+                    kind: canonical.kind,
+                    enabled: canonical.enabled,
+                    order,
+                    validation: itemValidation,
+                    summary: t('composition.module.summary', '{{count}} prompt parts', {
+                        count: canonical.contributions.length,
+                    }),
+                }
+            }
+
+            return {
+                id: moduleId,
+                name: legacy?.label?.trim() || moduleId,
+                kind: legacy?.kind ?? 'composite',
+                enabled: legacy?.enabled ?? false,
+                order,
+                validation: legacy === undefined
+                    ? { severity: 'error', errorCount: 1, label: t('composition.module.missing', 'Missing reference') }
+                    : itemValidation,
+                summary: legacy === undefined
+                    ? t('composition.module.repairRequired', 'Repair required')
+                    : legacy.target || t('composition.module.compatibility', 'Compatibility module'),
+                missing: legacy === undefined,
+            }
+        })
+    }, [
+        assetProfile.modules,
+        canonicalRecipe,
+        compositionErrors,
+        compositionWarnings,
+        legacyRecipe,
+        runtimeDocument,
+        t,
+    ])
+
+    const selectedModule = moduleStackItems.find(module => module.id === selectedModuleId) ?? null
+    const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
+    const enabledCharacterCount = characterImages.filter(item => item.enabled !== false).length
+    const uncachedVibeCount = vibeImages.filter(item => item.enabled !== false && !item.encodedVibe).length
+    const resolvedParams = lastResolvedPlan?.params
+    const estimatedCost = calculateAnlasCost(
+        resolvedParams?.width ?? selectedResolution.width,
+        resolvedParams?.height ?? selectedResolution.height,
+        resolvedParams?.steps ?? steps,
+        batchCount,
+        resolvedParams === undefined ? enabledCharacterCount : lastResolvedPlan?.characters.length ?? enabledCharacterCount,
+        uncachedVibeCount,
+    )
 
     // Regenerate with metadata - direct API call without modifying UI
     const handleRegenerateWithMetadata = async () => {
@@ -124,7 +347,7 @@ export default function MainMode() {
 
             // Call API directly with metadata (without modifying UI store)
             // Use all settings from metadata, only randomize seed
-            const result = await generateImage(token, {
+            const regenerateParams = {
                 prompt: metadata.prompt || '',
                 negative_prompt: metadata.negativePrompt || '',
                 model: mapModelNameToId(metadata.model),
@@ -140,7 +363,9 @@ export default function MainMode() {
                 variety: metadata.variety ?? false,
                 seed: newSeed,
                 imageFormat: useSettingsStore.getState().imageFormat,
-            })
+                metadataMode: useSettingsStore.getState().metadataMode,
+            } as const
+            const result = await generateImage(token, regenerateParams)
 
             if (result.success && result.imageData) {
                 // Update preview with new image
@@ -161,35 +386,42 @@ export default function MainMode() {
 
                         const fileName = `NAIS_${Date.now()}.${fileExt}`
                         const outputDir = savePath || 'NAIS_Output'
-
-                        let fullPath: string
-
-                        if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
-                            // Save to absolute path directly
-                            const dirExists = await exists(outputDir)
-                            if (!dirExists) {
-                                await mkdir(outputDir, { recursive: true })
-                            }
-                            fullPath = await join(outputDir, fileName)
-                            await writeFile(fullPath, bytes)
-                        } else {
-                            // Save relative to Pictures directory
-                            const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                            if (!dirExists) {
-                                await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                            }
-                            await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                            fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
+                        const imageDataUrl = `data:${mimeType};base64,${result.imageData}`
+                        const canCommit = (): boolean => {
+                            const state = useGenerationStore.getState()
+                            return state.isGenerating && state.generatingMode === 'main' && !state.isCancelled
                         }
-
-                        // Dispatch event for instant history update
-                        try {
-                            window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                                detail: { path: fullPath, data: `data:${mimeType};base64,${result.imageData}` }
-                            }))
-                        } catch (e) {
-                            console.warn('Failed to dispatch newImageGenerated event:', e)
-                        }
+                        await getRuntimeOutputWriter().write({
+                            destination: {
+                                directory: outputDir,
+                                useAbsolutePath,
+                                capabilityFallbackDirectory: 'NAIS_Output',
+                                workflowDefaultDirectory: 'NAIS_Output',
+                                fileName,
+                                extension: fileExt,
+                                collisionPolicy: 'unique',
+                            },
+                            imageBytes: bytes,
+                            imageDataUrl,
+                            metadata: {
+                                params: { ...regenerateParams, sentPayloadSummary: result.sentPayloadSummary },
+                                imageFormat,
+                                metadataMode: useSettingsStore.getState().metadataMode,
+                                includeWebpCompatibilitySidecar: true,
+                            },
+                            generateThumbnail: createThumbnail,
+                            canCommit,
+                            commitWorkflow: output => {
+                                if (!canCommit()) throw new Error('Main metadata regeneration session changed')
+                                try {
+                                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
+                                        detail: { path: output.path },
+                                    }))
+                                } catch (eventError) {
+                                    console.warn('Failed to dispatch newImageGenerated event:', eventError)
+                                }
+                            },
+                        })
                     } catch (e) {
                         console.warn('Failed to save regenerated image:', e)
                     }
@@ -338,19 +570,49 @@ export default function MainMode() {
         }
     }
 
-    const handleSeedAction = () => {
-        const targetSeed = previewSeed ?? seed
-        if (targetSeed === null || targetSeed === undefined) return
+    const handleRecipeSelection = (recipeId: string) => {
+        setSelectedRecipeId(recipeId)
+        setSelectedModuleId(null)
+    }
 
-        if (previewSeed !== null && previewSeed !== undefined) {
-            genStore.setSeed(previewSeed)
-            genStore.setPreviewSeed(null)
-            toast({ title: t('toast.seedApplied', '시드 적용됨'), variant: 'success' })
-            return
+    const currentTrigger = (): HTMLElement | null => document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+
+    const handleOpenModuleStack = () => {
+        moduleSheetTriggerRef.current = currentTrigger()
+        setModuleSheetOpen(true)
+    }
+
+    const handleOpenInspector = () => {
+        inspectorSheetTriggerRef.current = currentTrigger()
+        setInspectorSheetOpen(true)
+    }
+
+    const handleSelectModule = (moduleId: string) => {
+        setSelectedModuleId(moduleId)
+        if (!isDockedWorkspace) {
+            inspectorSheetTriggerRef.current = currentTrigger()
+            setInspectorSheetOpen(true)
         }
+    }
 
-        navigator.clipboard.writeText(targetSeed.toString())
-        toast({ title: t('toast.copied', '복사됨'), variant: 'success' })
+    const handleEditModule = (moduleId: string) => {
+        navigate('/asset-modules', { state: { moduleId, from: 'main' } })
+    }
+
+    const handleOpenResolvedPlan = () => {
+        resolvedSheetTriggerRef.current = currentTrigger()
+        setResolvedSheetOpen(true)
+    }
+
+    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
+        const repairTarget = issue.entityRef?.id ?? issue.code
+        const params = new URLSearchParams({ repair: repairTarget })
+        if (issue.actionId) params.set('action', issue.actionId)
+        navigate(`/asset-modules?${params.toString()}`, {
+            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'main' },
+        })
     }
 
     // Drag counter to prevent flickering from child elements
@@ -427,6 +689,166 @@ export default function MainMode() {
     // Format time (s.ms)
     const formatTime = (ms: number) => (ms / 1000).toFixed(1)
 
+    const generationControl = {
+        generating: isGenerating && generatingMode === 'main',
+        disabled: generationDisabled,
+        progressLabel: isGenerating && generatingMode === 'main' && batchCount > 1
+            ? `${t('generate.cancel', '취소')} (${currentBatch}/${batchCount})`
+            : undefined,
+        generateLabel: t('generate.button', '생성'),
+        cancelLabel: t('generate.cancel', '취소'),
+        onGenerate: handlePrimaryGeneration,
+        onCancel: cancelGeneration,
+        actionTestId: 'main-generate-action',
+        cancelTestId: 'main-generate-action',
+    }
+    const recipeOptions = [
+        { value: MAIN_DIRECT_SELECTION_ID, label: t('composition.recipe.direct', 'Direct prompts') },
+        ...assetProfile.recipes.map(recipe => ({
+            value: mainAssetRecipeSelectionId(recipe.id),
+            label: recipe.label || recipe.id,
+            disabled: !recipe.enabled,
+        })),
+    ]
+    const workspaceLabels = {
+        modules: t('composition.workspace.modules', 'Modules'),
+        inspector: t('composition.workspace.inspector', 'Inspector'),
+        resolvedPlan: t('composition.plan.title', 'Resolved plan'),
+        edit: t('common.edit', 'Edit'),
+        enable: t('common.enable', 'Enable'),
+        disable: t('common.disable', 'Disable'),
+        moveUp: t('common.moveUp', 'Move up'),
+        moveDown: t('common.moveDown', 'Move down'),
+        empty: t('composition.module.noneSelected', 'No module selected'),
+    }
+    const moduleStack = (
+        <ModuleStack
+            modules={moduleStackItems}
+            activeModuleId={selectedModuleId}
+            title={t('composition.workspace.moduleStack', 'Module Stack')}
+            disabled={isGenerating}
+            height="100%"
+            emptyLabel={t('composition.module.emptyRecipe', 'This recipe has no modules.')}
+            searchLabel={t('composition.module.search', 'Search modules')}
+            labels={workspaceLabels}
+            onSelectModule={handleSelectModule}
+            onEditModule={handleEditModule}
+        />
+    )
+    const inspector = (
+        <CompositionInspector
+            module={selectedModule}
+            recipeName={selectedRecipeName}
+            validation={validation}
+            resolvedPlan={lastResolvedPlan}
+            conflict={profileConflict ? {
+                severity: 'error',
+                title: t('composition.conflict.externalEdit', 'External edit detected'),
+                message: profileConflictMessage || t('composition.conflict.review', 'Review the repository conflict before generating.'),
+                revision: String(assetProfile.revision),
+            } : null}
+            disabled={isGenerating}
+            labels={{
+                title: t('composition.workspace.inspector', 'Context Inspector'),
+                noSelection: t('composition.module.selectToInspect', 'Select a module to inspect its resolved state.'),
+                recipe: t('composition.recipe.title', 'Recipe'),
+                kind: t('composition.module.kind', 'Kind'),
+                moduleId: t('composition.module.id', 'Module ID'),
+                overrideDiff: t('composition.override.diff', 'Override diff'),
+                inherited: t('composition.override.inherited', 'Inherited'),
+                override: t('composition.override.value', 'Override'),
+                unchanged: t('composition.override.unchanged', 'Unchanged'),
+                edit: t('composition.module.edit', 'Edit module'),
+                resetOverride: t('composition.override.reset', 'Reset override'),
+                resolvedPlan: t('composition.plan.open', 'Open resolved plan'),
+            }}
+            onEditModule={handleEditModule}
+            onOpenResolvedPlan={handleOpenResolvedPlan}
+        >
+            <div className="border-t border-border p-3">
+                <Button type="button" variant="outline" className="w-full justify-start" onClick={handleOpenPromptSheet}>
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    <span className="min-w-0 truncate">{t('composition.compatibility.rawPrompt', 'Advanced raw prompt')}</span>
+                </Button>
+            </div>
+        </CompositionInspector>
+    )
+    const resolvedPlan = (
+        <ResolvedPlanView
+            plan={lastResolvedPlan}
+            issues={[...compositionErrors, ...portableResolvedIssues, ...compositionWarnings]}
+            loading={profileLoading}
+            error={profileConflict ? profileConflictMessage : null}
+            title={t('composition.plan.title', 'Resolved plan')}
+            onRepairIssue={handleRepairCompositionIssue}
+        />
+    )
+    const commandBar = (
+        <div data-testid="main-command-dock">
+            <CompositionCommandBar
+                mode={{
+                    value: compositionMode,
+                    options: MAIN_MODE_OPTIONS.map(value => ({ value, label: value })),
+                    onChange: value => setCompositionMode(value as MainCompositionMode),
+                    label: t('composition.mode.title', 'Mode'),
+                    disabled: isGenerating,
+                }}
+                recipe={{
+                    value: displayedRecipeSelection,
+                    options: recipeOptions,
+                    onChange: handleRecipeSelection,
+                    label: t('composition.recipe.title', 'Recipe'),
+                    disabled: isGenerating || profileLoading || compositionMode === 'legacy',
+                }}
+                validation={validation}
+                cost={{
+                    value: `${estimatedCost} Anlas`,
+                    label: t('composition.cost.estimated', 'Estimated cost'),
+                    severity: estimatedCost > 0 ? 'warning' : 'normal',
+                }}
+                seed={{
+                    value: previewSeed ?? seed ?? t('settings.random', 'Random'),
+                    label: t('settings.seed', 'Seed'),
+                    disabled: isGenerating,
+                    onPreviewWildcard: handleOpenResolvedPlan,
+                    wildcardPreviewLabel: t('composition.random.preview', 'Preview wildcard resolution'),
+                }}
+                resolved={{
+                    available: true,
+                    label: t('composition.plan.resolved', 'Resolved'),
+                    open: resolvedSheetOpen,
+                    onOpen: handleOpenResolvedPlan,
+                }}
+                generation={generationControl}
+                labels={{
+                    modules: t('composition.workspace.modules', 'Modules'),
+                    inspector: t('composition.workspace.inspector', 'Inspector'),
+                    generate: t('generate.button', 'Generate'),
+                    cancel: t('generate.cancel', 'Cancel'),
+                }}
+                onOpenModules={handleOpenModuleStack}
+                onOpenInspector={handleOpenInspector}
+            />
+        </div>
+    )
+    const mobileDock = isMobileWorkspace ? (
+        <MobileCommandDock
+            generation={generationControl}
+            resolvedAvailable
+            testId="main-command-dock"
+            labels={{
+                modules: t('composition.workspace.modules', 'Modules'),
+                inspector: t('composition.workspace.inspector', 'Inspector'),
+                resolved: t('composition.plan.resolved', 'Resolved'),
+                generate: t('generate.button', 'Generate'),
+                cancel: t('generate.cancel', 'Cancel'),
+            }}
+            onOpenModules={handleOpenModuleStack}
+            onOpenInspector={handleOpenInspector}
+            onOpenResolved={handleOpenResolvedPlan}
+        />
+    ) : null
+
     return (
         <div
             className="relative h-full min-h-0 w-full overflow-hidden bg-canvas"
@@ -453,8 +875,16 @@ export default function MainMode() {
                 </div>
             )}
 
+            <CompositionWorkspaceLayout
+                commandBar={isMobileWorkspace ? null : commandBar}
+                moduleStack={moduleStack}
+                inspector={inspector}
+                mobileDock={mobileDock}
+                workspaceClassName="rounded-panel border border-border bg-canvas"
+                workspace={(
+                    <div className="relative h-full min-h-0 min-w-0 overflow-hidden" data-testid="main-result-canvas">
             {/* Full Screen Image Area */}
-            <div className="flex h-full w-full items-center justify-center overflow-hidden pb-36 sm:pb-28 2xl:pb-0">
+            <div className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden">
                 {previewImage ? (
                     // Generated Image with Context Menu
                     <ContextMenu>
@@ -582,7 +1012,7 @@ export default function MainMode() {
 
             {/* Generation Progress Bar - Above Info Bar */}
             {isGenerating && (
-                <div className="absolute bottom-36 left-1/2 z-20 flex w-[min(30rem,calc(100%-1rem))] -translate-x-1/2 items-center gap-3 rounded-panel border border-border bg-card px-3 py-2 shadow-overlay sm:bottom-28 2xl:bottom-16" role="status" aria-live="polite">
+                <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex w-[min(30rem,calc(100%-1rem))] -translate-x-1/2 items-center gap-3 rounded-panel border border-border bg-card px-3 py-2 shadow-overlay md:bottom-3" role="status" aria-live="polite">
                     <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-3">
@@ -616,61 +1046,54 @@ export default function MainMode() {
                 </div>
             )}
 
-            {/* Compact generation command dock. ThreeColumnLayout supplies the
-                full PromptPanel only at 2xl, so all smaller widths keep the core
-                prompt/generate path visible without hiding any advanced fields. */}
-            <div data-testid="main-command-dock" className="absolute inset-x-2 bottom-2 z-10 mx-auto grid max-w-4xl gap-2 rounded-panel border border-border bg-card p-2 shadow-overlay sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center 2xl:hidden">
-                <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-1 px-1 sm:grid-cols-4">
-                    <div className="min-w-0">
-                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.model', '모델')}</dt>
-                        <dd className="truncate text-xs font-medium text-foreground" title={selectedModelName}>{selectedModelName}</dd>
                     </div>
-                    <div className="min-w-0">
-                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.resolution')}</dt>
-                        <dd className="truncate text-xs font-medium text-foreground">{selectedResolution.width} × {selectedResolution.height}</dd>
-                    </div>
-                    <div className="min-w-0">
-                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.seed')}</dt>
-                        <dd>
-                            <button type="button" className="max-w-full truncate text-left font-mono text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={handleSeedAction} title={t('actions.copy', '복사')}>
-                                {previewSeed ?? seed ?? t('settings.random')}
-                            </button>
-                        </dd>
-                    </div>
-                    <div className="min-w-0">
-                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settingsPage.api.token', 'Anlas')}</dt>
-                        <dd className="truncate font-mono text-xs font-medium tabular-nums text-foreground">{visibleBalance?.toLocaleString() ?? 'N/A'}</dd>
-                    </div>
-                </dl>
-                <div className="grid grid-cols-2 gap-2 sm:flex">
-                    <Button variant="outline" className="min-w-0 sm:min-w-28" onClick={handleOpenPromptSheet}>
-                        <SlidersHorizontal className="h-4 w-4" />
-                        {t('prompt.title', '프롬프트')}
-                    </Button>
-                    <Button
-                        data-testid="main-generate-action"
-                        variant={isGenerating && generatingMode === 'main' ? 'destructive' : 'generate'}
-                        className="min-w-0 sm:min-w-32"
-                        onClick={handlePrimaryGeneration}
-                        disabled={(isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)}
-                    >
-                        {isGenerating && generatingMode === 'main' ? <Square className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
-                        {isGenerating && generatingMode === 'main' ? t('generate.cancel', '취소') : t('generate.button', '생성')}
-                    </Button>
-                </div>
-            </div>
+                )}
+            />
 
-            {/* At 2xl the side panels are docked, leaving only image provenance
-                in this footer. It remains keyboard-operable over bright images. */}
-            <div className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 items-center gap-4 rounded-panel border border-border bg-card px-3 py-2 text-xs text-foreground shadow-panel 2xl:flex">
-                <span className="whitespace-nowrap text-muted-foreground">
-                    {t('settings.resolution')} <strong className="ml-1 font-medium text-foreground">{selectedResolution.width} × {selectedResolution.height}</strong>
-                </span>
-                <span className="h-4 w-px bg-border" aria-hidden="true" />
-                <button type="button" className="whitespace-nowrap text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={handleSeedAction}>
-                    {t('settings.seed')} <strong className="ml-1 font-mono font-medium text-primary">{previewSeed ?? seed ?? t('settings.random')}</strong>
-                </button>
-            </div>
+            <CompositionWorkspaceSheet
+                open={moduleSheetOpen}
+                onOpenChange={setModuleSheetOpen}
+                title={t('composition.workspace.moduleStack', 'Module Stack')}
+                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module, then inspect or edit it.')}
+                side={isMobileWorkspace ? 'bottom' : 'left'}
+                level="primary"
+                testId="main-module-stack-sheet"
+                closeLabel={t('common.close', 'Close')}
+                returnFocusRef={moduleSheetTriggerRef}
+            >
+                <div className="flex min-h-0 flex-col gap-3">
+                    {isMobileWorkspace && <RecipeSelector />}
+                    {moduleStack}
+                </div>
+            </CompositionWorkspaceSheet>
+
+            <CompositionWorkspaceSheet
+                open={inspectorSheetOpen}
+                onOpenChange={setInspectorSheetOpen}
+                title={t('composition.workspace.inspector', 'Context Inspector')}
+                description={t('composition.workspace.inspectorHelp', 'Review module context before opening the canonical editor.')}
+                side={isMobileWorkspace ? 'bottom' : 'right'}
+                level="secondary"
+                testId="main-composition-inspector-sheet"
+                closeLabel={t('common.close', 'Close')}
+                returnFocusRef={inspectorSheetTriggerRef}
+            >
+                {inspector}
+            </CompositionWorkspaceSheet>
+
+            <CompositionWorkspaceSheet
+                open={resolvedSheetOpen}
+                onOpenChange={setResolvedSheetOpen}
+                title={t('composition.plan.title', 'Resolved plan')}
+                description={t('composition.plan.help', 'Final prompts, parameters, random trace, and provenance.')}
+                side={isMobileWorkspace ? 'bottom' : 'right'}
+                level="secondary"
+                testId="main-resolved-plan-sheet"
+                closeLabel={t('common.close', 'Close')}
+                returnFocusRef={resolvedSheetTriggerRef}
+            >
+                {resolvedPlan}
+            </CompositionWorkspaceSheet>
 
             {/* Metadata Dialog */}
             <MetadataDialog

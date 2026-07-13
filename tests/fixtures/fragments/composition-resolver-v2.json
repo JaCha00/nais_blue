@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "case": "composition-fragment-resolver-v2",
+  "seed": 305419896,
+  "scope": "recipe:fixture",
+  "fragments": [
+    {
+      "id": "fragment:hair",
+      "lookupKey": "hair",
+      "lines": [
+        "  # ignored comment",
+        "",
+        "silver hair",
+        "blue hair # inline"
+      ]
+    },
+    {
+      "id": "fragment:nested",
+      "lookupKey": "nested",
+      "lines": [
+        "<hair>, smile"
+      ]
+    },
+    {
+      "id": "fragment:outfit",
+      "lookupKey": "wardrobe/outfit",
+      "lines": [
+        "coat",
+        "dress",
+        "uniform"
+      ]
+    },
+    {
+      "id": "fragment:casual",
+      "lookupKey": "wardrobe/casual",
+      "lines": [
+        "t-shirt, jeans"
+      ]
+    },
+    {
+      "id": "fragment:loop",
+      "lookupKey": "loop",
+      "lines": [
+        "<loop>"
+      ]
+    },
+    {
+      "id": "fragment:empty",
+      "lookupKey": "empty",
+      "lines": [
+        "",
+        " # ignored"
+      ]
+    }
+  ],
+  "sequenceSnapshot": {
+    "revision": 7,
+    "counters": {
+      "fragment:outfit": 1
+    }
+  },
+  "cases": {
+    "named": {
+      "input": "portrait, <hair>, soft light",
+      "expected": "portrait, silver hair, soft light"
+    },
+    "nested": {
+      "input": "<nested>",
+      "expected": "silver hair, smile"
+    },
+    "inlineSlash": {
+      "input": "<red|blue|green>, (day light/night light), warm/cool, https://example.com/a/b",
+      "expected": "green, day light, warm, https://example.com/a/b"
+    },
+    "folderAlias": {
+      "input": "< /WARDROBE \\ casual/ >",
+      "expected": "t-shirt, jeans"
+    },
+    "sequential": {
+      "input": "<*wardrobe/outfit>",
+      "expected": "dress",
+      "expectedCounter": 1,
+      "nextCounter": 2
+    }
+  }
+}

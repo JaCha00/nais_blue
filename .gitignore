@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-isolation/
 .env
+artifacts/
 .env.*
 npm-debug.log*
 yarn-debug.log*
@@ -35,6 +36,10 @@ src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe
 .artifacts/
 .playwright-cli/
 output/
+!src/services/output/
+!src/services/output/**
+!tests/services/output/
+!tests/services/output/**
 
 # Python runtime caches
 __pycache__/
@@ -55,14 +60,13 @@ discord_setup/
 # Copilot instructions
 .github/copilot-instructions.md
 
-# Docs (local planning)
-docs/
+# Docs (local planning; Composition Domain v2 baseline is repository guidance)
+docs/*
+!docs/composition-v2/
+!docs/composition-v2/**
 
 # Claude Code
 .claude/
-
-# Supabase (marketplace - private)
-supabase/
 
 # Project-scoped Codex surfaces
 .codex/*

@@ -8,7 +8,6 @@ import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
 import MainMode from '@/pages/MainMode'
-import { useMarketAuthStore } from '@/stores/market-auth-store'
 
 const SceneMode = lazy(() => import('@/pages/SceneMode'))
 const SceneDetail = lazy(() => import('@/pages/SceneDetail'))
@@ -19,8 +18,6 @@ const ToolsMode = lazy(() => import('@/pages/ToolsMode'))
 const PromptEditor = lazy(() => import('@/pages/PromptEditor'))
 const AssetModuleStudio = lazy(() => import('@/pages/AssetModuleStudio'))
 const StyleLab = lazy(() => import('@/pages/StyleLab'))
-const Marketplace = lazy(() => import('@/pages/Marketplace'))
-const MarketplaceDetail = lazy(() => import('@/pages/MarketplaceDetail'))
 
 function RouteLoadingFallback() {
     return (
@@ -36,12 +33,6 @@ function AppContent() {
     useUpdateChecker()
     useShortcuts()
     useWindowResizePerformanceMode()
-
-    // Initialize marketplace auth on app mount
-    const initMarketAuth = useMarketAuthStore(s => s.init)
-    useEffect(() => {
-        initMarketAuth()
-    }, [initMarketAuth])
 
     // Disable right-click globally except for allowed elements
     useEffect(() => {
@@ -72,8 +63,6 @@ function AppContent() {
                     <Route path="/prompts" element={<PromptEditor />} />
                     <Route path="/asset-modules" element={<AssetModuleStudio />} />
                     <Route path="/style-lab" element={<StyleLab />} />
-                    <Route path="/marketplace" element={<Marketplace />} />
-                    <Route path="/marketplace/:id" element={<MarketplaceDetail />} />
                     <Route path="/web" element={<WebView />} />
                     <Route path="/library" element={<Library />} />
                     <Route path="/settings" element={<Settings />} />

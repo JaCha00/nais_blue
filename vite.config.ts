@@ -72,7 +72,6 @@ export default defineConfig({
                     if (
                         packageName?.startsWith('@gradio/') ||
                         packageName?.startsWith('@msgpack/') ||
-                        packageName?.startsWith('@supabase/') ||
                         packageName === 'fuse.js' ||
                         packageName === 'jszip' ||
                         packageName === 'pako'

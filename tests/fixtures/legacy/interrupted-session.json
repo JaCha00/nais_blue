@@ -1,0 +1,24 @@
+{
+  "case": "interrupted-session",
+  "description": "A staged record from an interrupted session remains non-authoritative.",
+  "input": {
+    "legacyRecord": {
+      "schemaVersion": 1,
+      "revision": 7,
+      "profileName": "synthetic-old-profile"
+    },
+    "v2Record": {
+      "schemaVersion": 2,
+      "revision": 8,
+      "profileName": "synthetic-v2-profile",
+      "commitState": "staged"
+    },
+    "writeState": "interrupted"
+  },
+  "expected": {
+    "readSource": "legacy",
+    "writeTarget": "v2",
+    "legacyRetained": true,
+    "outcome": "fallback-read"
+  }
+}

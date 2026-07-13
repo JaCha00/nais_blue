@@ -1,0 +1,905 @@
+{
+  "workflow": "scene",
+  "captureDate": "2026-07-11",
+  "workerPolicy": {
+    "streamingWithoutSourceEdit": [
+      "first-active-slot-only"
+    ],
+    "nonStreaming": [
+      "all-active-slots"
+    ],
+    "streamingWithSourceOrMask": [
+      "all-active-slots"
+    ],
+    "sourceContract": "streamingView && !sourceEditActive ? tokens.slice(0, 1) : tokens"
+  },
+  "guards": [
+    "process entry before streaming reset",
+    "after builder before transport",
+    "inside streaming callback",
+    "after transport before result handling",
+    "before saver call",
+    "saver entry, before output resolution, and after thumbnail",
+    "after saver before progress update"
+  ],
+  "nondeterminism": [
+    "Unlocked or locked-zero seed uses Math.random for every queued item.",
+    "Wildcards, Scene output filename suffixes and history IDs use Math.random independently of generation seed.",
+    "Date.now controls sessions, filenames, image IDs and history IDs.",
+    "Multiple workers claim in preset order but response/save completion order is transport-race dependent.",
+    "Fixed seed can produce duplicate requests when queueCount is greater than one."
+  ],
+  "scenarios": [
+    {
+      "name": "streaming queue-two with scene resolution override",
+      "composition": {
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting"
+        },
+        "finalPositive": "main base, main additional, rainy rooftop, main detail",
+        "finalNegative": "main negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "hero, blue coat",
+            "negative": "hero negative",
+            "enabled": true
+          },
+          {
+            "name": null,
+            "positive": "guide",
+            "negative": "guide negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.25,
+            "y": 0.75
+          },
+          {
+            "x": 0.8,
+            "y": 0.2
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1088,
+          "steps": 28,
+          "cfg": 5.5,
+          "cfgRescale": 0.1,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 515151,
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.65,
+          "noise": 0.05,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "streaming",
+        "requestCount": 2,
+        "allPayloadsMatchFirst": true
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "main base, main additional, rainy rooftop, main detail, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1088,
+          "seed": 515151,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5.5,
+          "cfgRescale": 0.1,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, main negative",
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": "msgpack",
+          "characterPrompts": [
+            {
+              "prompt": "hero, blue coat",
+              "uc": "hero negative",
+              "center": {
+                "x": 0.25,
+                "y": 0.75
+              },
+              "enabled": true
+            },
+            {
+              "prompt": "guide",
+              "uc": "guide negative",
+              "center": {
+                "x": 0.8,
+                "y": 0.2
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
+        "fileNames": [
+          "NAIS_SCENE_1783728000000_7500.png",
+          "NAIS_SCENE_1783728000000_7500-2.png"
+        ],
+        "targetSegments": [
+          [
+            "NAIS_Scene",
+            "Golden_Preset",
+            "Opening_Shot"
+          ],
+          [
+            "NAIS_Scene",
+            "Golden_Preset",
+            "Opening_Shot"
+          ]
+        ],
+        "generatedFileCount": 2,
+        "eventCount": 2
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 1,
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting",
+          "workflow": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddedInWrittenImage": true,
+        "embeddedMatchesPlanned": true
+      },
+      "finalState": {
+        "queueCount": 0,
+        "savedImageCount": 2,
+        "historyCount": 2,
+        "completedCount": 0,
+        "totalQueuedCount": 0,
+        "isGenerating": false,
+        "isCancelling": false,
+        "generatingMode": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:streaming",
+        "output:exists",
+        "output:mkdir",
+        "output:write-image",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:streaming",
+        "output:exists",
+        "output:mkdir",
+        "output:write-image",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "rotation excludes pinned character",
+      "composition": {
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting"
+        },
+        "finalPositive": "main base, main additional, rainy rooftop, main detail",
+        "finalNegative": "main negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "hero, blue coat",
+            "negative": "hero negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.25,
+            "y": 0.75
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1088,
+          "steps": 28,
+          "cfg": 5.5,
+          "cfgRescale": 0.1,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 515151,
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.65,
+          "noise": 0.05,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "requestCount": 1
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "main base, main additional, rainy rooftop, main detail, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1088,
+          "seed": 515151,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5.5,
+          "cfgRescale": 0.1,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, main negative",
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "hero, blue coat",
+              "uc": "hero negative",
+              "center": {
+                "x": 0.25,
+                "y": 0.75
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
+        "fileNames": [
+          "NAIS_SCENE_1783728000000_7500.png"
+        ],
+        "targetSegments": [
+          [
+            "NAIS_Scene",
+            "Golden_Preset",
+            "Hero",
+            "Rotation Scene"
+          ]
+        ],
+        "generatedFileCount": 1,
+        "eventCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 1,
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting",
+          "workflow": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddedInWrittenImage": true,
+        "embeddedMatchesPlanned": true
+      },
+      "finalState": {
+        "queueCount": 0,
+        "savedImageCount": 1,
+        "historyCount": 1,
+        "completedCount": 0,
+        "totalQueuedCount": 0,
+        "isGenerating": false,
+        "isCancelling": false,
+        "generatingMode": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "output:exists",
+        "output:mkdir",
+        "output:write-image",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "non-streaming-multiple-workers-claim-queue-two",
+      "composition": {
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting"
+        },
+        "finalPositive": "main base, main additional, rainy rooftop, main detail",
+        "finalNegative": "main negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "hero, blue coat",
+            "negative": "hero negative",
+            "enabled": true
+          },
+          {
+            "name": null,
+            "positive": "guide",
+            "negative": "guide negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.25,
+            "y": 0.75
+          },
+          {
+            "x": 0.8,
+            "y": 0.2
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1088,
+          "steps": 28,
+          "cfg": 5.5,
+          "cfgRescale": 0.1,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 515151,
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.65,
+          "noise": 0.05,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "modes": [
+          "non-streaming",
+          "non-streaming"
+        ],
+        "requestCount": 2,
+        "fixedSeeds": [
+          515151,
+          515151
+        ]
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "main base, main additional, rainy rooftop, main detail, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1088,
+          "seed": 515151,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5.5,
+          "cfgRescale": 0.1,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, main negative",
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "hero, blue coat",
+              "uc": "hero negative",
+              "center": {
+                "x": 0.25,
+                "y": 0.75
+              },
+              "enabled": true
+            },
+            {
+              "prompt": "guide",
+              "uc": "guide negative",
+              "center": {
+                "x": 0.8,
+                "y": 0.2
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
+        "fileNames": [
+          "NAIS_SCENE_1783728000000_7500.png",
+          "NAIS_SCENE_1783728000000_7500-2.png"
+        ],
+        "targetSegments": [
+          [
+            "NAIS_Scene",
+            "Golden_Preset",
+            "Opening_Shot"
+          ],
+          [
+            "NAIS_Scene",
+            "Golden_Preset",
+            "Opening_Shot"
+          ]
+        ],
+        "generatedFileCount": 2,
+        "eventCount": 2
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 1,
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting",
+          "workflow": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddedInWrittenImage": true,
+        "embeddedMatchesPlanned": true
+      },
+      "finalState": {
+        "queueCount": 0,
+        "savedImageCount": 2,
+        "historyCount": 2,
+        "completedCount": 0,
+        "totalQueuedCount": 0,
+        "isGenerating": false,
+        "isCancelling": false,
+        "generatingMode": null
+      },
+      "callOrder": {
+        "crossWorkerCompletionOrder": "transport-race-dependent",
+        "eventCounts": {
+          "anlas:refresh-slot-1": 1,
+          "anlas:refresh-slot-2": 1,
+          "event:new-image": 2,
+          "images:ensure-loaded": 2,
+          "images:release": 1,
+          "output:exists": 2,
+          "output:mkdir": 2,
+          "output:write-image": 2,
+          "payload:adapt-params": 2,
+          "thumbnail:create": 2,
+          "transport:non-streaming": 2,
+          "wildcards:process": 10
+        }
+      }
+    },
+    {
+      "name": "api-failure-reinserts-queue-item",
+      "composition": {
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting"
+        },
+        "finalPositive": "main base, main additional, rainy rooftop, main detail",
+        "finalNegative": "main negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "hero, blue coat",
+            "negative": "hero negative",
+            "enabled": true
+          },
+          {
+            "name": null,
+            "positive": "guide",
+            "negative": "guide negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.25,
+            "y": 0.75
+          },
+          {
+            "x": 0.8,
+            "y": 0.2
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1088,
+          "steps": 28,
+          "cfg": 5.5,
+          "cfgRescale": 0.1,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 515151,
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.65,
+          "noise": 0.05,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "requestCount": 1,
+        "status": 400
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "main base, main additional, rainy rooftop, main detail, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1088,
+          "seed": 515151,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5.5,
+          "cfgRescale": 0.1,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, main negative",
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "hero, blue coat",
+              "uc": "hero negative",
+              "center": {
+                "x": 0.25,
+                "y": 0.75
+              },
+              "enabled": true
+            },
+            {
+              "prompt": "guide",
+              "uc": "guide negative",
+              "center": {
+                "x": 0.8,
+                "y": 0.2
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
+        "fileNames": [],
+        "targetSegments": [],
+        "generatedFileCount": 0,
+        "eventCount": 0
+      },
+      "metadata": {
+        "persisted": false
+      },
+      "finalState": {
+        "queueCount": 1,
+        "savedImageCount": 0,
+        "historyCount": 0,
+        "completedCount": 0,
+        "totalQueuedCount": 1,
+        "isGenerating": false,
+        "isCancelling": false,
+        "generatingMode": "scene"
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:non-streaming"
+      ]
+    },
+    {
+      "name": "session-cancel-after-dequeue-discards-without-reinsert",
+      "composition": {
+        "promptParts": {
+          "base": "main base\n# remove main note",
+          "additional": "main additional",
+          "detail": "main detail",
+          "negative": "main negative",
+          "inpainting": "main inpainting"
+        },
+        "finalPositive": "main base, main additional, rainy rooftop, main detail",
+        "finalNegative": "main negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "hero, blue coat",
+            "negative": "hero negative",
+            "enabled": true
+          },
+          {
+            "name": null,
+            "positive": "guide",
+            "negative": "guide negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.25,
+            "y": 0.75
+          },
+          {
+            "x": 0.8,
+            "y": 0.2
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1088,
+          "steps": 28,
+          "cfg": 5.5,
+          "cfgRescale": 0.1,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 515151,
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.65,
+          "noise": 0.05,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "requestCount": 1
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "main base, main additional, rainy rooftop, main detail, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1088,
+          "seed": 515151,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5.5,
+          "cfgRescale": 0.1,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page, main negative",
+          "qualityToggle": true,
+          "ucPreset": 1,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "hero, blue coat",
+              "uc": "hero negative",
+              "center": {
+                "x": 0.25,
+                "y": 0.75
+              },
+              "enabled": true
+            },
+            {
+              "prompt": "guide",
+              "uc": "guide negative",
+              "center": {
+                "x": 0.8,
+                "y": 0.2
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
+        "fileNames": [],
+        "targetSegments": [],
+        "generatedFileCount": 0,
+        "eventCount": 0
+      },
+      "metadata": {
+        "persisted": false
+      },
+      "finalState": {
+        "queueCount": 0,
+        "savedImageCount": 0,
+        "historyCount": 0,
+        "completedCount": 0,
+        "totalQueuedCount": 0,
+        "isGenerating": false,
+        "isCancelling": false,
+        "generatingMode": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "session:cancel-requested",
+        "images:release"
+      ]
+    }
+  ]
+}

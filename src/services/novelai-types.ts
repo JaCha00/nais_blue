@@ -1,5 +1,8 @@
 import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
 import type { MetadataMode } from '@/lib/generation-metadata'
+import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
+import type { PortablePathRef, RandomTraceEntry } from '@/domain/composition/types'
+import type { Nais2OutputPolicySummary } from '@/lib/nais2-png-meta'
 
 export class NovelAIHttpError extends Error {
     readonly status: number
@@ -47,6 +50,8 @@ export interface GenerationParams {
     vibeStrength?: number[]
     preEncodedVibes?: (string | null)[]
     characterPrompts?: {
+        /** Stable composition character ID when the v2 resolver supplied one. */
+        stableId?: string
         prompt: string
         negative: string
         enabled: boolean
@@ -60,6 +65,24 @@ export interface GenerationParams {
     imageFormat?: 'png' | 'webp'
     metadataMode?: MetadataMode
     assetModulePlan?: AssetModulePlan
+    compositionMode?: 'legacy' | 'shadow' | 'v2'
+    compositionPlanHash?: CompositionPlanHash
+    compositionPlanId?: string
+    compositionRecipeId?: string
+    compositionProvenanceSummary?: {
+        sourceCount: number
+        promptContributionCount: number
+        randomSelectionCount: number
+    }
+    /** Serializable resolver trace only; resource bytes and cache keys never belong here. */
+    compositionRandomTrace?: RandomTraceEntry[]
+    /** Metadata provenance fields; optional for legacy adapters. */
+    engineVersion?: string
+    sourceRevision?: number | null
+    /** Closed, credential-free summary. Never pass an OutputPolicy object here. */
+    outputPolicySummary?: Nais2OutputPolicySummary
+    /** Local platform materialization hint; the NAI request adapter never serializes it. */
+    portableOutputDirectory?: PortablePathRef
     qualityToggle?: boolean
     ucPreset?: number
     sentPayloadSummary?: string
@@ -69,6 +92,7 @@ export interface GenerationParams {
         detail?: string
         negative?: string
         inpainting?: string
+        workflow?: string
     }
 }
 
@@ -77,5 +101,6 @@ export interface GenerateImageResult {
     imageData?: string
     error?: string
     encodedVibes?: string[]
+    /** SHA-256 of the redacted transport payload; never the payload itself. */
     sentPayloadSummary?: string
 }

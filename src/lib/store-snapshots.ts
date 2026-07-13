@@ -8,12 +8,22 @@ import {
     registerIndexedDBWriteListener,
     type BackupStoreKey,
 } from '@/lib/indexed-db'
+import {
+    createBackupStoreManifestEntry,
+    prepareBackupRestore,
+    UnsupportedBackupSchemaError,
+    type BackupRestoreDryRunReport,
+    type BackupRestoreResult,
+    type PrepareBackupRestoreOptions,
+    type PreparedBackupRestore,
+} from '@/lib/auto-backup'
 import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 
 const BACKUP_ROOT = 'NAIS_Backup'
 const DEBOUNCE_MS = 5000
 const MAX_SNAPSHOTS_PER_STORE = 30
-const STORE_SNAPSHOT_VERSION = 'store-snapshot/1'
+const STORE_SNAPSHOT_VERSION = 'store-snapshot/2'
+const SUPPORTED_STORE_SNAPSHOT_VERSIONS = new Set(['store-snapshot/1', STORE_SNAPSHOT_VERSION])
 
 export interface StoreSnapshotEntry {
     storeKey: BackupStoreKey
@@ -123,6 +133,7 @@ async function writeStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapsh
         _version: STORE_SNAPSHOT_VERSION,
         _kind: 'store-snapshot',
         _storeKey: storeKey,
+        _manifest: createBackupStoreManifestEntry(storeKey, persistPayload),
         [storeKey]: persistPayload,
     }
     const timestamp = tsStamp()
@@ -229,22 +240,103 @@ export async function listStoreSnapshots(): Promise<StoreSnapshotGroup[]> {
 export async function restoreStoreSnapshot(
     storeKey: BackupStoreKey,
     fileRelPath: string,
-): Promise<{ success: string[]; failed: string[] }> {
+    options: PrepareBackupRestoreOptions = {},
+): Promise<BackupRestoreResult> {
     if (!isTauri()) {
         throw new Error('Store snapshot restore is only available in the Tauri app.')
     }
 
     const bytes = await readFile(fileRelPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-    const backup = JSON.parse(decoder.decode(bytes)) as Record<string, unknown>
-    if (!backup._exportedAt || !backup._version || !(storeKey in backup)) {
-        throw new Error('Store snapshot is missing NAIS2 export metadata or store payload.')
-    }
+    const backup = JSON.parse(decoder.decode(bytes)) as unknown
+    const prepared = prepareStoreSnapshotRestore(storeKey, backup, options)
+    if (!prepared.report.canRestore) throw new UnsupportedBackupSchemaError(prepared.report)
 
-    const result = await importAllData({
-        _exportedAt: backup._exportedAt,
-        _version: backup._version,
-        [storeKey]: backup[storeKey],
-    }, true)
+    const result = await importAllData(prepared.restorePayload, true)
     await flushAllPendingWrites()
-    return result
+    return { ...result, report: prepared.report }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Pure store-snapshot preflight. Only the explicitly selected registry key is
+ * projected into the generic restore payload; every other raw key is ignored.
+ */
+export function prepareStoreSnapshotRestore(
+    storeKey: BackupStoreKey,
+    backup: unknown,
+    options: PrepareBackupRestoreOptions = {},
+): PreparedBackupRestore {
+    const exportedAt = isRecord(backup) && typeof backup._exportedAt === 'string'
+        ? backup._exportedAt
+        : new Date(0).toISOString()
+    const safeBackup: Record<string, unknown> = {
+        _exportedAt: exportedAt,
+        _version: '2.3',
+    }
+    if (isRecord(backup) && storeKey in backup) safeBackup[storeKey] = backup[storeKey]
+
+    const prepared = prepareBackupRestore(safeBackup, options)
+    if (!isRecord(backup)) {
+        prepared.report.errors.push({ code: 'E_STORE_SNAPSHOT_NOT_OBJECT', message: 'Store snapshot must be a JSON object.' })
+    } else {
+        if (backup._kind !== 'store-snapshot'
+            || typeof backup._version !== 'string'
+            || !SUPPORTED_STORE_SNAPSHOT_VERSIONS.has(backup._version)) {
+            prepared.report.errors.push({
+                code: 'E_STORE_SNAPSHOT_VERSION_UNSUPPORTED',
+                message: `Store snapshot version ${String(backup._version)} is not supported.`,
+            })
+        }
+        if (backup._storeKey !== undefined && backup._storeKey !== storeKey) {
+            prepared.report.errors.push({
+                code: 'E_STORE_SNAPSHOT_KEY_MISMATCH',
+                key: storeKey,
+                message: `Snapshot belongs to ${String(backup._storeKey)}, not ${storeKey}.`,
+            })
+        }
+        if (!(storeKey in backup)) {
+            prepared.report.errors.push({
+                code: 'E_STORE_SNAPSHOT_PAYLOAD_MISSING',
+                key: storeKey,
+                message: 'Selected store payload is missing from the snapshot.',
+            })
+        }
+
+        if (backup._version === STORE_SNAPSHOT_VERSION) {
+            const actual = createBackupStoreManifestEntry(storeKey, backup[storeKey])
+            const manifest = backup._manifest
+            if (!isRecord(manifest)
+                || manifest.key !== actual.key
+                || manifest.schemaVersion !== actual.schemaVersion
+                || manifest.version !== actual.version
+                || manifest.count !== actual.count
+                || !isRecord(manifest.hash)
+                || manifest.hash.algorithm !== actual.hash.algorithm
+                || manifest.hash.canonicalization !== actual.hash.canonicalization
+                || manifest.hash.digest !== actual.hash.digest) {
+                prepared.report.errors.push({
+                    code: 'E_STORE_SNAPSHOT_MANIFEST_MISMATCH',
+                    key: storeKey,
+                    message: 'Store snapshot count, schema, or hash does not match its payload.',
+                })
+            } else {
+                prepared.report.manifestVerified = true
+            }
+        }
+    }
+    prepared.report.canRestore = prepared.report.errors.length === 0
+    return prepared
+}
+
+export async function dryRunStoreSnapshot(
+    storeKey: BackupStoreKey,
+    fileRelPath: string,
+    options: PrepareBackupRestoreOptions = {},
+): Promise<BackupRestoreDryRunReport> {
+    if (!isTauri()) throw new Error('Store snapshot restore is only available in the Tauri app.')
+    const bytes = await readFile(fileRelPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+    return prepareStoreSnapshotRestore(storeKey, JSON.parse(decoder.decode(bytes)) as unknown, options).report
 }

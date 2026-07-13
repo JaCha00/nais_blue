@@ -1,0 +1,24 @@
+{
+  "case": "both-present",
+  "description": "A committed v2 record takes precedence while the rollback copy remains.",
+  "input": {
+    "legacyRecord": {
+      "schemaVersion": 1,
+      "revision": 7,
+      "profileName": "synthetic-old-profile"
+    },
+    "v2Record": {
+      "schemaVersion": 2,
+      "revision": 8,
+      "profileName": "synthetic-v2-profile",
+      "commitState": "committed"
+    },
+    "writeState": "complete"
+  },
+  "expected": {
+    "readSource": "v2",
+    "writeTarget": "v2",
+    "legacyRetained": true,
+    "outcome": "primary-read"
+  }
+}

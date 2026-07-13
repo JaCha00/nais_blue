@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
 import {
+    dryRunStoreSnapshot,
     formatStoreSnapshotTimestamp,
     listStoreSnapshots,
     restoreStoreSnapshot,
@@ -26,7 +27,6 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
     const [selectedRelPath, setSelectedRelPath] = useState('')
     const [loading, setLoading] = useState(false)
     const [restoring, setRestoring] = useState(false)
-    const [pendingRestart, setPendingRestart] = useState(false)
 
     const selectedGroup = useMemo(
         () => groups.find((group) => group.storeKey === selectedStoreKey),
@@ -63,25 +63,51 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
         setSelectedRelPath(group?.entries[0]?.relPath ?? '')
     }
 
+    const restartAfterRestore = async () => {
+        try {
+            if (isTauri()) {
+                await relaunch()
+                return
+            }
+        } catch (error) {
+            console.error('[StoreSnapshot] Relaunch failed:', error)
+        }
+        window.location.reload()
+    }
+
     const handleRestore = async () => {
         if (!selectedGroup || !selectedRelPath) return
 
         const entry = selectedGroup.entries.find((item) => item.relPath === selectedRelPath)
         const label = entry ? formatStoreSnapshotTimestamp(entry.timestamp) : selectedRelPath
-        const confirmed = window.confirm(
-            `${t('settingsPage.backup.confirmRestoreDesc')}\n\n${selectedGroup.storeKey}\n${label}\n${t('settingsPage.backup.restoreWarning')}`
-        )
-        if (!confirmed) return
-
         setRestoring(true)
         try {
+            const dryRun = await dryRunStoreSnapshot(selectedGroup.storeKey, selectedRelPath)
+            if (!dryRun.canRestore) {
+                throw new Error(dryRun.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n'))
+            }
+            const confirmed = window.confirm([
+                t('settingsPage.backup.confirmRestoreDesc'),
+                '',
+                selectedGroup.storeKey,
+                label,
+                `Dry run: ${dryRun.restoreKeys.length} store(s) ready`,
+                t('settingsPage.backup.restoreWarning'),
+            ].join('\n'))
+            if (!confirmed) return
+
             const result = await restoreStoreSnapshot(selectedGroup.storeKey, selectedRelPath)
+            if (result.failed.length > 0) {
+                throw new Error(`Restore verification failed for: ${result.failed.join(', ')}`)
+            }
             toast({
                 title: t('settingsPage.backup.imported'),
                 description: t('settingsPage.backup.importedDesc', { success: result.success.length }),
                 variant: 'success',
             })
-            setPendingRestart(true)
+            // Keep the dialog locked until restart so hydrated pre-restore
+            // state cannot write over the verified snapshot.
+            await restartAfterRestore()
         } catch (error) {
             console.error('[StoreSnapshot] Store snapshot restore failed:', error)
             toast({
@@ -92,18 +118,6 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
         } finally {
             setRestoring(false)
         }
-    }
-
-    const handleRestart = async () => {
-        try {
-            if (isTauri()) {
-                await relaunch()
-                return
-            }
-        } catch (error) {
-            console.error('[StoreSnapshot] Relaunch failed:', error)
-        }
-        window.location.reload()
     }
 
     return (
@@ -179,30 +193,19 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
                     </div>
                 </div>
 
-                <DialogFooter className="sm:justify-between">
-                    {pendingRestart ? (
-                        <span className="text-xs text-yellow-600 dark:text-yellow-400">
-                            {t('settingsPage.backup.snapshotRestartRequired')}
-                        </span>
-                    ) : <span />}
+                <DialogFooter className="sm:justify-end">
                     <div className="flex gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)} disabled={restoring}>
                             {t('common.cancel', 'Close')}
                         </Button>
-                        {pendingRestart ? (
-                            <Button onClick={handleRestart}>
-                                {t('settingsPage.backup.restartNow')}
-                            </Button>
-                        ) : (
-                            <Button onClick={handleRestore} disabled={!selectedGroup || !selectedRelPath || restoring}>
-                                {restoring ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : (
-                                    <RotateCcw className="h-4 w-4 mr-2" />
-                                )}
-                                {t('settingsPage.backup.storeSnapshotRestore')}
-                            </Button>
-                        )}
+                        <Button onClick={handleRestore} disabled={!selectedGroup || !selectedRelPath || restoring}>
+                            {restoring ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                                <RotateCcw className="h-4 w-4 mr-2" />
+                            )}
+                            {t('settingsPage.backup.storeSnapshotRestore')}
+                        </Button>
                     </div>
                 </DialogFooter>
             </DialogContent>

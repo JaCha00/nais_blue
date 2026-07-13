@@ -1,0 +1,19 @@
+{
+  "case": "old-only",
+  "description": "A valid legacy record exists before the v2 single-write cutover.",
+  "input": {
+    "legacyRecord": {
+      "schemaVersion": 1,
+      "revision": 7,
+      "profileName": "synthetic-old-profile"
+    },
+    "v2Record": null,
+    "writeState": "idle"
+  },
+  "expected": {
+    "readSource": "legacy",
+    "writeTarget": "v2",
+    "legacyRetained": true,
+    "outcome": "fallback-read"
+  }
+}

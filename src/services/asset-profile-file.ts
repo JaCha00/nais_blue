@@ -1,5 +1,5 @@
 import { isTauri } from '@tauri-apps/api/core'
-import { BaseDirectory, exists, mkdir, readTextFile, rename, stat, writeTextFile } from '@tauri-apps/plugin-fs'
+import { BaseDirectory, exists, mkdir, readTextFile, remove, rename, stat, writeTextFile } from '@tauri-apps/plugin-fs'
 import {
     createDefaultAssetProfile,
     type AssetModuleProfile,
@@ -11,6 +11,10 @@ import {
     type AssetRecipe,
     type AssetRecipeStep,
 } from '@/types/asset-profile'
+import {
+    runtimeCapabilities,
+    UnsupportedRuntimeCapabilityError,
+} from '@/platform/capabilities'
 
 export const ASSET_PROFILE_BASE_DIR = BaseDirectory.AppData
 export const ASSET_PROFILE_DIRECTORY = 'asset-profiles'
@@ -24,6 +28,12 @@ export interface AssetProfileFileSnapshot {
     profile: AssetProfile
     mtimeMs: number | null
     size: number | null
+}
+
+export interface RawAssetProfileFileSnapshot {
+    exists: boolean
+    path: string
+    rawJson: string | null
 }
 
 export interface SaveAssetProfileFileOptions {
@@ -277,6 +287,105 @@ export async function loadAssetProfileFile(options: { path?: string; createIfMis
     return { exists: true, path, profile, ...info }
 }
 
+/** Raw migration reader: performs no ID/default/timestamp normalization. */
+export async function loadRawAssetProfileFile(
+    options: { path?: string } = {},
+): Promise<RawAssetProfileFileSnapshot> {
+    const path = options.path ?? ASSET_PROFILE_FILE_PATH
+    if (!isTauri()) return { exists: false, path, rawJson: null }
+    if (!(await exists(path, { baseDir: ASSET_PROFILE_BASE_DIR }))) {
+        return { exists: false, path, rawJson: null }
+    }
+    return {
+        exists: true,
+        path,
+        rawJson: await readTextFile(path, { baseDir: ASSET_PROFILE_BASE_DIR }),
+    }
+}
+
+/** Restores the exact allowlisted Asset Profile JSON without normalizing IDs or revisions. */
+export async function restoreRawAssetProfileFile(
+    rawJson: string,
+    options: { path?: string } = {},
+): Promise<void> {
+    if (!isTauri()) {
+        throw new Error('Asset profile files can only be restored inside the Tauri app.')
+    }
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(rawJson) as unknown
+    } catch (error) {
+        throw new Error(`Asset Profile backup JSON is invalid: ${String(error)}`)
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Asset Profile backup must contain a JSON object')
+    }
+    const schemaVersion = (parsed as Record<string, unknown>).schemaVersion
+    if (typeof schemaVersion === 'number' && schemaVersion > 2) {
+        throw new Error(`Unsupported Asset Profile schema ${schemaVersion}`)
+    }
+    // Validate legacy/current shape, but persist the original text verbatim so
+    // unknown settings and rollback metadata remain lossless.
+    normalizeAssetProfile(parsed)
+
+    const path = options.path ?? ASSET_PROFILE_FILE_PATH
+    await ensureParentDir(path)
+    const tmpPath = `${path}.restore-tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    await writeTextFile(tmpPath, rawJson, { baseDir: ASSET_PROFILE_BASE_DIR })
+    await rename(tmpPath, path, {
+        oldPathBaseDir: ASSET_PROFILE_BASE_DIR,
+        newPathBaseDir: ASSET_PROFILE_BASE_DIR,
+    })
+}
+
+export async function seedRawAssetProfileFileIfMissing(rawJson: string): Promise<boolean> {
+    if (!isTauri()) return false
+    if (await exists(ASSET_PROFILE_FILE_PATH, { baseDir: ASSET_PROFILE_BASE_DIR })) return false
+    await restoreRawAssetProfileFile(rawJson)
+    return true
+}
+
+export async function restoreRawAssetProfileFilePreimage(
+    snapshot: RawAssetProfileFileSnapshot,
+): Promise<void> {
+    if (!isTauri()) return
+    if (snapshot.exists && snapshot.rawJson !== null) {
+        await restoreRawAssetProfileFile(snapshot.rawJson, { path: snapshot.path })
+        return
+    }
+    if (await exists(snapshot.path, { baseDir: ASSET_PROFILE_BASE_DIR })) {
+        await remove(snapshot.path, { baseDir: ASSET_PROFILE_BASE_DIR })
+    }
+}
+
+/**
+ * Restores a raw preimage only while the file still contains the exact
+ * migration-written postimage. A concurrent writer's file is left untouched
+ * and reported to the caller as a lost compare-and-set.
+ */
+export async function restoreRawAssetProfileFilePreimageIfUnchanged(
+    snapshot: RawAssetProfileFileSnapshot,
+    expectedPostimage: RawAssetProfileFileSnapshot,
+): Promise<boolean> {
+    const current = await loadRawAssetProfileFile({ path: snapshot.path })
+    if (
+        current.path === snapshot.path
+        && current.exists === snapshot.exists
+        && current.rawJson === snapshot.rawJson
+    ) {
+        return true
+    }
+    if (
+        current.path !== expectedPostimage.path
+        || current.exists !== expectedPostimage.exists
+        || current.rawJson !== expectedPostimage.rawJson
+    ) {
+        return false
+    }
+    await restoreRawAssetProfileFilePreimage(snapshot)
+    return true
+}
+
 export async function saveAssetProfileFile(profile: AssetProfile, options: SaveAssetProfileFileOptions): Promise<SaveAssetProfileFileResult> {
     if (!isTauri()) {
         throw new Error('Asset profile files can only be saved inside the Tauri app.')
@@ -334,6 +443,13 @@ export function watchAssetProfileFile(
     options: WatchAssetProfileFileOptions = {},
 ): () => void {
     if (!isTauri()) return () => undefined
+    if (!runtimeCapabilities.externalProfileFileWatch.supported) {
+        options.onError?.(new UnsupportedRuntimeCapabilityError(
+            'externalProfileFileWatch',
+            runtimeCapabilities.externalProfileFileWatch,
+        ))
+        return () => undefined
+    }
 
     const path = options.path ?? ASSET_PROFILE_FILE_PATH
     const intervalMs = options.intervalMs ?? ASSET_PROFILE_POLL_INTERVAL_MS

@@ -41,10 +41,12 @@ const facade = read('src/services/novelai-api.ts')
 const metadata = read('src/lib/generation-metadata.ts')
 const rust = read('src-tauri/src/lib.rs')
 const sceneBuilder = read('src/lib/scene-generation/build-scene-params.ts')
+const legacySceneBuilder = read('src/lib/scene-generation/legacy-build-scene-params.ts')
 const sceneGeneration = read('src/hooks/useSceneGeneration.ts')
 const sceneSave = read('src/lib/scene-generation/save-scene-result.ts')
 const generationStore = read('src/stores/generation-store.ts')
 const styleLab = read('src/services/style-lab-generation.ts')
+const outputMetadataWriter = read('src/services/output/metadata-writer.ts')
 const types = read('src/services/novelai-types.ts')
 
 function loadTsCommonJs(path, deps = {}) {
@@ -216,6 +218,11 @@ check('refs normalize source dimensions and mask format', /normalizeSourceForNai
 check('refs normalize character references to NAI canvases', /1024/.test(refs) && /1536/.test(refs) && /1472/.test(refs))
 check('adapter maps old GenerationParams through split type boundary', /GenerationParams/.test(adapter) && /..\/novelai-types/.test(adapter) && /export async function adaptGenerationParams/.test(adapter))
 check('client uses shared payload builder', /buildGenerateImagePayload/.test(client))
+check(
+  'Tauri generation uses the capability-scoped HTTP plugin instead of WebView fetch',
+  /fetch as tauriFetch/.test(client) &&
+  /isTauri\(\)\s*\?\s*tauriFetch\s*:\s*window\.fetch\.bind\(window\)/s.test(client)
+)
 check('account endpoints stay Rust invoke primary', /invoke<.*verify_token/s.test(client) && /invoke<.*get_anlas_balance/s.test(client))
 check('facade delegates to nai client', /from '@\/services\/nai\/client'/.test(facade))
 check('metadata exposes sentPayload redaction', /export function redactSentPayloadForMetadata/.test(metadata))
@@ -223,8 +230,10 @@ check('client redacts sentPayload before returning metadata summary', /redactSen
 check('Rust no longer calls old subscription host', !/https:\/\/api\.novelai\.net\/user\/subscription/.test(rust))
 check(
   'scene generation passes quality and UC to GenerationParams',
-  /qualityToggle:\s*genState\.qualityToggle/.test(sceneBuilder) &&
-  /ucPreset:\s*genState\.ucPreset/.test(sceneBuilder)
+  /qualityToggle:\s*plan\.params\.qualityToggle/.test(sceneBuilder) &&
+  /ucPreset:\s*plan\.params\.ucPreset/.test(sceneBuilder) &&
+  /qualityToggle:\s*genState\.qualityToggle/.test(legacySceneBuilder) &&
+  /ucPreset:\s*genState\.ucPreset/.test(legacySceneBuilder)
 )
 check(
   'main scene and stylelab force source edit requests through zip',
@@ -237,12 +246,14 @@ check(
   /sentPayloadSummary\?: string/.test(types) &&
   /sentPayloadSummary: result\.sentPayloadSummary/.test(generationStore) &&
   /sentPayloadSummary: result\.sentPayloadSummary/.test(sceneGeneration) &&
-  /sentPayloadSummary: params\.sentPayloadSummary/.test(metadata) &&
+  /const redactedPayloadHash = params\.sentPayloadSummary/.test(metadata) &&
   /sentPayloadSummary: options\.sentPayloadSummary/.test(sceneSave)
 )
 check(
   'main webp writes compatibility sidecar',
-  /shouldWriteNais2Sidecar\(effectiveMetadataMode,\s*imageFormat,\s*true\)/.test(generationStore)
+  /includeWebpCompatibilitySidecar:\s*true/.test(generationStore) &&
+  /shouldWriteNais2Sidecar\(/.test(outputMetadataWriter) &&
+  /request\.includeWebpCompatibilitySidecar \?\? true/.test(outputMetadataWriter)
 )
 check(
   'V3 and Furry V3 surface an unverified parity warning',

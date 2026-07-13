@@ -1,0 +1,43 @@
+{
+  "request": {
+    "prompt": "1girl, silver hair\n# synthetic note removed\nblue eyes",
+    "negativePrompt": "lowres\n# synthetic note removed",
+    "model": "nai-diffusion-4-5-full",
+    "width": 832,
+    "height": 1216,
+    "steps": 28,
+    "cfgScale": 5,
+    "cfgRescale": 0,
+    "sampler": "k_euler_ancestral",
+    "noiseSchedule": "karras",
+    "seed": 1234567890,
+    "variety": true,
+    "qualityToggle": true,
+    "ucPreset": 0,
+    "characterPrompts": [
+      {
+        "prompt": "solo\n# synthetic note removed",
+        "negativePrompt": "bad hands",
+        "enabled": true,
+        "center": {
+          "x": 0.25,
+          "y": 0.75
+        }
+      },
+      {
+        "prompt": "ignored character",
+        "negativePrompt": "ignored negative",
+        "enabled": false,
+        "center": {
+          "x": 0.1,
+          "y": 0.9
+        }
+      }
+    ],
+    "useCoords": true
+  },
+  "options": {
+    "stream": "msgpack",
+    "imageFormat": "webp"
+  }
+}

@@ -56,12 +56,23 @@ import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { getVersion } from '@tauri-apps/api/app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
-import { exportAllData, importAllData, getStoreSizes } from '@/lib/indexed-db'
+import { importAllData, getStoreSizes } from '@/lib/indexed-db'
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
-import { createFullAutoBackup, DISK_AUTO_BACKUP_LAST_KEY } from '@/lib/auto-backup'
+import {
+    ASSET_PROFILE_FILE_RESTORE_KEY,
+    createCurrentBackupEnvelopeV3,
+    createFullAutoBackup,
+    DISK_AUTO_BACKUP_LAST_KEY,
+    prepareBackupRestore,
+} from '@/lib/auto-backup'
 import { isMobileRuntime } from '@/platform/runtime'
+import {
+    loadRawAssetProfileFile,
+    restoreRawAssetProfileFile,
+    restoreRawAssetProfileFilePreimage,
+} from '@/services/asset-profile-file'
 
 const LANGUAGES = [
     { code: 'ko', name: '한국어' },
@@ -313,8 +324,8 @@ export default function Settings() {
     const handleExportBackup = async () => {
         setIsExporting(true)
         try {
-            const backup = await exportAllData()
-            const storeCount = Object.keys(backup).filter(k => !k.startsWith('_')).length
+            const backup = await createCurrentBackupEnvelopeV3()
+            const storeCount = backup.storeManifest.storeCount
             
             // 파일 저장 다이얼로그
             const filePath = await save({
@@ -361,35 +372,57 @@ export default function Settings() {
             
             if (!filePath || typeof filePath !== 'string') return
             
-            // 확인 다이얼로그
-            const confirmed = window.confirm(
-                `${t('settingsPage.backup.confirmRestoreDesc')}\n\n${t('settingsPage.backup.restoreWarning')}`
-            )
-            if (!confirmed) return
-            
-            setIsImporting(true)
-            
             const content = await readTextFile(filePath)
-            const backup = JSON.parse(content)
-            
-            // 유효성 검증
-            if (!backup._exportedAt || !backup._version) {
+            const backup = JSON.parse(content) as unknown
+            const prepared = prepareBackupRestore(backup)
+
+            if (!prepared.report.canRestore) {
                 toast({
                     title: t('settingsPage.backup.importFailed'),
-                    description: t('settingsPage.backup.invalidFile'),
+                    description: prepared.report.errors
+                        .map(issue => `${issue.code}: ${issue.message}`)
+                        .join('\n') || t('settingsPage.backup.invalidFile'),
                     variant: 'destructive',
                 })
                 return
             }
-            
-            const result = await importAllData(backup, true)
-            
+
+            // Restore is only allowed after displaying the pure dry-run report.
+            const confirmed = window.confirm([
+                t('settingsPage.backup.confirmRestoreDesc'),
+                '',
+                `Dry run: ${prepared.report.restoreKeys.length} store(s) ready, ${prepared.report.ignoredKeys.length} ignored`,
+                ...prepared.report.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
+                prepared.report.ignoredKeys.length > 5
+                    ? `- +${prepared.report.ignoredKeys.length - 5} more`
+                    : '',
+                t('settingsPage.backup.restoreWarning'),
+            ].filter(Boolean).join('\n'))
+            if (!confirmed) return
+
+            setIsImporting(true)
+            const assetPreimage = prepared.assetProfileJson === undefined
+                ? undefined
+                : await loadRawAssetProfileFile()
+            const result = await importAllData(prepared.restorePayload, true, {
+                ...(prepared.assetProfileJson === undefined
+                    ? {}
+                    : {
+                        finalizeKey: ASSET_PROFILE_FILE_RESTORE_KEY,
+                        finalizeRestore: () => restoreRawAssetProfileFile(prepared.assetProfileJson!),
+                        rollbackFinalize: () => restoreRawAssetProfileFilePreimage(assetPreimage!),
+                    }),
+            })
+            if (result.failed.length > 0) {
+                throw new Error(`Restore verification failed for: ${result.failed.join(', ')}`)
+            }
+
             toast({
                 title: t('settingsPage.backup.imported'),
                 description: t('settingsPage.backup.importedDesc', { success: result.success.length }),
                 variant: 'success',
             })
-            
+
             // 앱 재시작
             setTimeout(() => {
                 relaunch()
