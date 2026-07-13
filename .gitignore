@@ -68,15 +68,8 @@ docs/*
 # Claude Code
 .claude/
 
-# Project-scoped Codex surfaces
-.codex/*
-!.codex/agents/
-!.codex/agents/**
-!.codex/skills/
-!.codex/skills/**
-.codex/skills/.system/**
-!.codex/prompts/
-!.codex/prompts/**
+# Project-scoped Codex surfaces are generated local tooling, not repository source.
+.codex/
 .omx/
 
 # Legacy source snapshots keep source only, not local build/runtime artifacts.

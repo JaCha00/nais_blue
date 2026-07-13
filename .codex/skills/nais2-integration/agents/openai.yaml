@@ -1,7 +1,0 @@
-interface:
-  display_name: "NAIS2 Integration"
-  short_description: "Use the local NAIS2 review scope."
-  default_prompt: "Use $nais2-integration to load the local project index, preserve B-only behavior, and handle the requested NAIS2 review task with verifier evidence."
-policy:
-  allow_implicit_invocation: true
-

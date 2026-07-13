@@ -41,14 +41,6 @@ const IGNORED_LEGACY_KEY_TEST_ALLOWLIST = [
     'tests/fixtures/legacy/**',
     'tests/migration/**',
 ]
-// Repository-local Codex agent/plugin instructions are developer tooling, not
-// application source. They use "marketplace" for Codex plugin distribution and
-// may retain historical planning language. Release contracts below ensure this
-// directory cannot enter the Vite/Tauri bundle or the staged source export.
-const NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST = [
-    '.codex/**',
-]
-
 function normalize(relativePath) {
     return relativePath.replaceAll('\\', '/')
 }
@@ -61,11 +53,6 @@ function isAllowlisted(relativePath) {
         || IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST.has(relativePath)
         || relativePath.startsWith('tests/fixtures/legacy/')
         || relativePath.startsWith('tests/migration/')
-        || isNonRuntimeDevelopmentTooling(relativePath)
-}
-
-function isNonRuntimeDevelopmentTooling(relativePath) {
-    return relativePath.startsWith('.codex/')
 }
 
 async function runGit(args, options = {}) {
@@ -145,7 +132,8 @@ for (const relativePath of repositoryFiles.paths) {
 
 const allowed = matches.filter(match => isAllowlisted(match.path))
 const forbidden = matches.filter(match => !isAllowlisted(match.path))
-const developmentToolingMatches = matches.filter(match => isNonRuntimeDevelopmentTooling(match.path))
+const trackedCodexToolingFiles = [...repositoryFiles.tracked]
+    .filter(relativePath => relativePath.startsWith('.codex/'))
 
 const tauriConfig = JSON.parse(await readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'))
 const releaseInputIsDistOnly = tauriConfig?.build?.frontendDist === '../dist'
@@ -161,8 +149,7 @@ console.log('Historical allowlist:', HISTORICAL_ALLOWLIST.join(', '))
 console.log('Documentation allowlist:', DOCUMENTATION_ALLOWLIST.join(', '))
 console.log('Ignored-key runtime allowlist:', [...IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST].join(', '))
 console.log('Ignored-key test/fixture allowlist:', IGNORED_LEGACY_KEY_TEST_ALLOWLIST.join(', '))
-console.log('Non-runtime development tooling allowlist:', NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST.join(', '))
-console.log(`Allowlisted development tooling matches: ${developmentToolingMatches.length}`)
+console.log(`Tracked project-local Codex tooling files: ${trackedCodexToolingFiles.length}`)
 console.log(`Allowlisted matches: ${allowed.length}`)
 console.log(`Release frontend input: ${tauriConfig?.build?.frontendDist ?? '(missing)'}`)
 
@@ -171,10 +158,11 @@ if (
     || !legacySourceIsNotPublicInput
     || !repositoryRootIsNotPublicInput
     || !publicSourceExcludesCodexTooling
+    || trackedCodexToolingFiles.length > 0
 ) {
     console.error(
         'Release input must remain ../dist, Vite publicDir must not expose the repository root or legacy/**, '
-        + 'and public source staging must exclude .codex/**.',
+        + 'public source staging must exclude .codex/**, and project-local Codex tooling must remain untracked.',
     )
     process.exit(1)
 }

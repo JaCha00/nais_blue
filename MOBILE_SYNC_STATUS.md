@@ -1,8 +1,9 @@
 # NAIS2 Mobile And Remote Sync Status
 
 This file is the public release boundary between the Android runtime work that
-ships in 2.8.0 and the cross-device sync system that does not ship yet. It must
-be read together with `src/platform/runtime.ts`, `src/platform/storage.ts`, and
+ships in the current 2.8.1 release and the cross-device sync system that does
+not ship yet. It must be read together with `src/platform/runtime.ts`,
+`src/platform/storage.ts`, and
 `scripts/verify-android-port-contract.mjs` when changing mobile behavior.
 
 ## Included in 2.8.0
@@ -19,7 +20,7 @@ do not transfer user data between devices.
 
 ## Remote sync verdict
 
-PC-to-mobile remote sync is **not implemented or enabled in 2.8.0**. There is no
+PC-to-mobile remote sync is **not implemented or enabled in the current 2.8.1 release**. There is no
 `src/sync` transport, pairing service, encrypted outbox, conflict resolver, or
 sanitized sync exporter in the released source. Consequently, this release
 must not advertise remote sync as available or proven stable.
