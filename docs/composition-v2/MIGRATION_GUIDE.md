@@ -15,6 +15,12 @@ Authority 선택 순서는 다음과 같다.
 
 따라서 현재 fresh install을 자동으로 v2로 승격한다는 근거는 없다. Main, Scene, Style Lab의 v2 adapter가 구현되어 있어도 authority가 `legacy`이면 공통 gate가 legacy path를 강제한다. 이 사실이 production legacy compatibility를 아직 삭제할 수 없는 주된 이유다.
 
+Diagnostics의 Composition Authority panel은 repository persisted authority, process runtime,
+revision/hash, migration/startup verification과 workflow별 requested/effective mode를 함께 표시한다.
+Panel의 rollback은 `applyCompositionAuthorityFeatureFlag('legacy')` 경계를 사용하고 committed v2
+document를 삭제하지 않는다. Panel은 v2 activation을 노출하지 않으며 local fixture 통과는 fresh
+default 승인과 동일하지 않다.
+
 ## Startup transaction
 
 Startup은 UI store hydration보다 먼저 다음 순서를 수행한다.

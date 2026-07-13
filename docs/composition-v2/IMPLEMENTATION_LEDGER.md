@@ -860,3 +860,152 @@ transport success와 섞지 않고 R-026으로 등록했다. `force-stop` 종료
 Phase 06 readiness는 user brief에 따라 BLOCKED다. Host mock과 emulator evidence는 최대한
 수집했지만 authenticated Android image output, physical device/network와 signed release gate를
 실행하지 못했으므로 READY로 과대 보고하지 않는다.
+
+## Phase 06 — Production v2 authority cutover gate
+
+기준 시각: 2026-07-13T21:48:55+09:00 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `fc25aa27687f45ad9b879b0825cb197d76933ad6` |
+| Branch | `main` (`public/main`보다 6 commits ahead at phase start) |
+| Initial working tree | ` M AGENTS.md` |
+| Dependency change | 없음; package/Cargo manifests와 lockfile 변경 없음 |
+| Generated tooling | `.codex/**`, `.omx/**` 추가 없음 |
+
+`AGENTS.md`는 Phase 시작 전부터 존재한 unrelated user change이며 읽기만 하고 수정·stage·commit하지
+않는다. Phase 05 resulting commit `fc25aa27687f45ad9b879b0825cb197d76933ad6`와 BLOCKED handoff를
+기준으로 진행했다. Payload builder, Scene orchestration, repository schema, OutputWriter와 portable
+capability boundary는 변경하지 않았다.
+
+### Cutover gate verdict
+
+| Gate | 판정 | 근거 |
+| --- | --- | --- |
+| fresh/canonical-v2/upgrade/both/old-backup/interrupted/corrupt/rollback-forward local fixture | PASS | actual repository/startup transaction 11/11 Phase 06 tests |
+| unexplained payload diff 0 | PASS | `test:payload-parity` 20/20; `payload.ts` unchanged |
+| host Main/Scene/Style Lab online matrix | NOT RUN | 이번 Phase의 명시적 NovelAI credential opt-in 없음 |
+| Android transport production gate | BLOCKED | source contract와 Rust mock 5/5는 PASS; authenticated Android image/output은 Phase 05부터 미실행 |
+| rollback export/restore drill | PARTIAL | synthetic v3/old-backup/rollback-forward tests PASS; signed artifact install/restore baseline 없음 |
+| fresh default authority change | NOT APPROVED | 위 online/Android/signed gates 미충족; default remains `legacy` |
+
+따라서 Phase 06은 authority panel과 tests만 production source에 추가하고 fresh default를 변경하지
+않는다. Legacy builder, shadow path, compatibility projection과 feature flag를 유지한다.
+
+### Behavior and contracts
+
+- Diagnostics launcher는 event 유무와 관계없이 접근 가능하다. Mobile에서는 command dock 위
+  safe-area 위치를 유지하고 `sm+`에서는 shell toolbar 안에 배치해 workspace CTA와 겹치지 않는다.
+- Composition Authority panel은 strict repository read에서 persisted authority, process runtime,
+  configured startup preference, repository revision/hash, migration status, startup verification과
+  last startup result를 표시한다. Main/Scene/Style Lab의 persisted requested mode와 authority가
+  강제한 effective mode를 같은 표에 표시한다.
+- One-action rollback은 `applyCompositionAuthorityFeatureFlag('legacy')`만 호출한다. Runtime을 먼저
+  legacy로 fail-close하고 repository write/readback과 feature flag persist를 수행하며 committed v2
+  document/hash와 migration archive를 삭제하지 않는다. Panel은 v2 activation button을 제공하지 않는다.
+- V2 activation helper는 기존 startup migration/repository verification 뒤 runtime document hash와
+  committed hash를 다시 비교한다. 최종 repository read가 실패하거나 authority/document/hash가
+  일치하지 않으면 runtime/feature flag를 legacy로 fail-close하고 activation을 reject한다.
+- Persisted v2지만 runtime install이 실패한 successful transaction도 더 이상 console-only silent
+  fallback이 아니다. Stable reason을 startup observation에 남기고 main startup이
+  `E_COMPOSITION_AUTHORITY_FALLBACK` redacted DiagnosticEvent로 기록한다.
+- Corrupted repository fixture는 원문을 덮어쓰거나 삭제하지 않고 `repository-invalid`/
+  `E_REPOSITORY_JSON_INVALID`로 inspect되며 process authority는 legacy다.
+- Fresh no-flag/no-repository fixture는 migration document를 준비해도 persisted/runtime authority가
+  legacy임을 고정한다. Default authority code는 변경하지 않았다.
+
+### Characterization and test-first evidence
+
+| 명령 | Exit | 관찰 |
+| --- | ---: | --- |
+| pre-change focused authority/repository/startup/Main/Scene/Style Lab/diagnostics | 0 | 7 files, 58/58 baseline |
+| new Phase 06 tests before runtime implementation | 1 expected | 2 files: 10 failed, 3 passed; missing inspection/panel/injected activation boundary를 정확히 노출 |
+| first implemented focused run | 1 | 21 passed/1 failed; specific fallback reason보다 generic mismatch가 우선됨 |
+| final focused Phase 06 run | 0 | 3 files, 23/23 |
+
+실패를 skip, assertion 완화, catch-ignore로 숨기지 않았다. Fallback reason 우선순위를 고치고,
+responsive CTA overlap은 launcher 배치를 수정한 뒤 같은 전체 gate를 재실행했다.
+
+### Verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | 392 packages; 393 audited | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; non-host optional dependency 표시는 expected |
+| `npm run lint` (final) | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` (final) | 0 | 2,363 modules | `tsc && vite build` PASS |
+| focused `npx --no-install tsc --noEmit` | 0 | TypeScript project | PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | payload/provenance PASS |
+| `npm run test:composition` | 0 | 85 passed, 1 skipped files; 670 passed, 3 skipped tests | aggregate PASS; live opt-in expected skip |
+| `npm run test:migration` | 0 | 15 files, 135/135 | production startup matrix, old backup, interruption, restore 포함 PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 26/26 | authority panel/fallback redaction contract 포함 PASS |
+| `npm run test:persistence` | 0 | 3 files, 13/13 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 3 files, 15/15 | PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 43/43 | Main/Scene/Style Lab behavior unchanged PASS |
+| `npm run test:nai-transport` | 0 | 2 files, 12/12 | PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | payload/transport/Scene source contract PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback line 포함 PASS |
+| responsive run 1 | 1 | reached 1536 Asset Modules | diagnostic launcher overlapped Prompt CTA; layout fixed |
+| responsive run 2 | 1 | reached 1536 Scene | opposite bottom placement overlapped Resolved Plan CTA; layout fixed |
+| `npm run test:responsive-layout` final | 0 | 39 route/viewport scenarios | desktop toolbar + mobile safe-area launcher PASS |
+| `npm run test:android-port` | 0 | 1 contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | 1 contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | authoritative search gate | allowlisted 313, forbidden 0, tracked tooling 0 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| `cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib` | 0 | 5/5 | fixed endpoint/body/cancel/timeout mock PASS |
+
+### Artifacts, gaps, and risk
+
+- Frontend build: `dist/index.html`, `dist/assets/**` (ignored generated output).
+- Phase fixture: `tests/fixtures/legacy/production-authority-startup.json`, registered in fixture README
+  and machine-readable provenance.
+- Phase tests: `tests/migration/composition-production-startup.test.ts`, startup and diagnostics contracts.
+- No screenshot, UI XML, prompt, image, token, Authorization header, signed URL or base64 artifact was saved.
+- In-app browser manual click-through: NOT RUN. Local Vite endpoint returned HTTP 200, but browser runtime
+  discovery returned no available in-app/Chrome backend; server/process tree was then stopped.
+- Live NovelAI/R2 and host online matrix: NOT RUN. No explicit credential opt-in; ignored env/vault secrets
+  were not read or used.
+- Authenticated Android generation/image OutputWriter: NOT RUN. Phase 05 mock/source/APK readiness does not
+  prove authenticated output; R-019 remains Watching.
+- Signed desktop/Android export→rollback install→restore→forward drill: NOT RUN. Protected signer,
+  immutable release baseline and release artifact authority are unavailable.
+- Physical device/network and R-026 Back-exit comparison: NOT RUN. Device and signed artifact unavailable.
+
+### HANDOFF REPORT
+
+- Phase: 06 — PRODUCTION V2 AUTHORITY CUTOVER
+- Base HEAD: `fc25aa27687f45ad9b879b0825cb197d76933ad6`
+- Resulting local commit: `SELF` (this Phase commit; resolve with `git rev-parse HEAD`)
+- Changed files: Composition startup inspection/observation and verified activation; diagnostics authority
+  panel/drawer/shell launcher; startup fallback event; production-like fixture/tests/provenance; composition-v2
+  status/decision/risk/limitation/verification/migration/rollback/ledger docs
+- Behavior added/changed: persisted/runtime/repository/migration/workflow authority visibility; one-action
+  non-destructive legacy rollback; verified forward activation contract; redacted silent-fallback evidence;
+  fresh/upgrade/recovery/rollback startup matrix. Fresh default remains legacy.
+- Preserved contracts: legacy builders/shadow/feature flag, CompositionEngine, repository schema/migration,
+  OutputWriter, portable capability, payload fixtures/builder, Scene worker/dual-token/streaming single-worker/
+  generationSessionId/cancel/stale/retry/requeue/rotation/image release, old backup/v1 importer/legacy metadata,
+  non-destructive user data and retired runtime removal
+- Tests and exit codes: final matrix above; all executable required gates exit 0. Expected test-first failures
+  and two responsive overlap failures were corrected without relaxing tests.
+- Artifact paths: `dist/**`, `tests/fixtures/legacy/production-authority-startup.json`, Phase source/tests/docs;
+  no live/sensitive/screenshot artifact
+- Not tested and exact reason: live host/Android online matrix lacked explicit credential opt-in; signed
+  rollback drill lacked protected signer and immutable release baseline; physical Android lacked device;
+  manual browser click-through lacked an available browser backend
+- Remaining risks: R-015 Open until production default evidence; R-016 Open for supported-model online
+  matrix; R-019 Watching for authenticated Android output; R-026 Open for Back-exit teardown; release/signing,
+  credential and existing R-005/R-006 risks remain
+- Rollback procedure: if runtime is v2, first use the panel or verified helper to apply legacy and confirm
+  persisted/runtime legacy; preserve unrelated `AGENTS.md`, repository/backup/vault/user data and generated
+  caches, then `git revert <phase-06-commit>` only. Do not reset/clean/delete data or alter payload/OutputWriter.
+- Next phase readiness: BLOCKED
+
+Phase 06 completion condition is not met because production-like default v2 startup is intentionally not
+enabled. The authority panel, local fixtures, rollback action and all executable regression gates are ready,
+but supported-model online evidence, authenticated Android output and signed restore drill are mandatory
+before a separate cutover approval can change the fresh default.

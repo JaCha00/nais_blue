@@ -4,7 +4,7 @@
 
 1. Fresh repository와 feature flag 부재의 authority 기본값은 `legacy`다. Production에서 legacy mode가 더 이상 필요 없다는 cutover evidence가 아직 없으므로 Main/Scene/Style Lab legacy builders, shadow path, retained store projections를 삭제할 수 없다.
 2. v2 adapter와 characterization tests가 존재하는 것과 모든 installed user가 v2 authority라는 것은 다르다. 실제 release population의 migration/fallback 관측 자료가 없다.
-3. Authority rollback은 internal repository/startup API로 지원되지만 end-user UI는 없다.
+3. Diagnostics의 Composition Authority panel은 end-user one-action legacy rollback을 제공한다. V2 activation UI는 의도적으로 제공하지 않으며, forward activation은 release gate와 repository verification을 통과한 build/operation에서만 수행한다.
 4. Android는 external Asset Profile watch, local tagger sidecar, R2 deploy tooling, raw absolute output path를 지원하지 않는다. UI는 이유와 대체 경로를 표시해야 하며 silent fallback은 금지한다.
 5. Desktop compatibility Asset Profile JSON은 canonical Composition repository와 별도 경계다. External file edit가 곧 canonical change-set commit을 의미하지 않는다.
 6. Emulator에서 token이 없는 경우 authenticated Main/Scene generation, cancel timing, 실제 image AppData output을 검증할 수 없다.
@@ -50,3 +50,10 @@
     재현됐다. Phase 05 transport request와는 분리된 teardown 현상이며 screenshot이나 user-data
     artifact는 만들지 않았다. Base artifact, physical device와 signed build 비교 전까지 data
     flush 영향과 원인은 미확정이다.
+23. Phase 06 local fixture는 fresh/canonical-v2/upgrade/both-present/old-backup/interrupted/
+    corrupted/rollback-forward startup을 검증하지만 NovelAI online matrix나 signed artifact drill이
+    아니다. 명시적 live credential opt-in, Android authenticated output, keystore와 immutable
+    rollback baseline이 없으므로 fresh default는 계속 `legacy`다.
+24. 이 세션에는 연결 가능한 in-app/Chrome browser backend가 없어 Composition Authority panel의
+    별도 수동 click-through screenshot을 만들지 않았다. Source/behavior contract와 39개
+    responsive route/viewport 자동 검증은 통과했으며 민감한 UI artifact는 보존하지 않았다.

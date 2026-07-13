@@ -8,6 +8,7 @@ import { AnimatedNavBar } from './AnimatedNavBar'
 import { CustomTitleBar } from './CustomTitleBar'
 import { LAYOUT_SHEET_EVENTS } from './layout-events'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
+import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
 import { useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { Tip } from '@/components/ui/tooltip'
@@ -325,6 +326,9 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
+                        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 z-40 shrink-0 sm:static sm:z-auto">
+                            <DiagnosticDrawer />
+                        </div>
                     </div>
 
                     {/* Page Content */}

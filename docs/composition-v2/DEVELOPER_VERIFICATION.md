@@ -33,6 +33,26 @@ cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 
 `test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
 
+## Phase 06 authority preflight
+
+Production-like authority fixture와 운영 panel contract는 다음 focused 명령으로 먼저 진단할 수 있다.
+
+```text
+npx --no-install vitest run tests/migration/composition-production-startup.test.ts tests/migration/composition-migration-startup.test.ts tests/diagnostics/diagnostics-ui.contract.test.ts
+```
+
+이 suite는 fresh default legacy 유지, canonical v2 restart, explicit verified upgrade,
+both-present, retired-key old backup sanitation, expired interruption cleanup, corrupted repository
+fail-closed, one-action rollback과 verified forward activation을 실제 repository/startup 경계로
+실행한다. Diagnostics panel은 persisted/runtime authority, revision/hash, migration status,
+startup verification과 workflow requested/effective mode를 표시해야 한다. Silent fallback은
+`E_COMPOSITION_AUTHORITY_FALLBACK` redacted event로 남아야 한다.
+
+이 local suite 통과만으로 production default를 바꾸지 않는다. Supported V4/V4.5 Main/Scene/
+Style Lab standard/stream, PNG/WebP, source edit, cancel matrix는 명시적 live credential opt-in과
+redacted evidence가 필요하다. Android authenticated image/output과 signed export→rollback
+install→restore→forward migration drill도 별도 release environment에서 실행한다.
+
 ## Android
 
 SDK/NDK/Rust target이 있으면 clean generated project에서 debug APK를 만든다.

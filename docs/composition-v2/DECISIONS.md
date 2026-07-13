@@ -261,3 +261,24 @@ bytes는 event나 Rust log에 넣지 않는다. Scene controller는 session/slot
 cancel 시 session을 먼저 무효화한 뒤 active HTTP request를 abort한다. Revert가 필요하면 이
 phase commit만 되돌리되 Android plugin hang인 R-019가 다시 노출되므로 Android authenticated
 generation을 성공 지원으로 표시해서는 안 된다.
+
+## D-024 — authority 운영 가시성은 production default 승인을 대체하지 않는다
+
+상태: Accepted
+
+Diagnostics의 Composition Authority panel은 strict repository read를 통해 persisted authority,
+process runtime authority, revision/hash, migration/startup verification, Main/Scene/Style Lab의
+requested/effective mode를 표시한다. Startup이 persisted v2를 process에 설치하지 못한 경우 raw
+Error를 console에 남기지 않고 stable fallback reason을 D-019 redacted diagnostic event로 기록한다.
+
+사용자 rollback은 한 동작으로 `applyCompositionAuthorityFeatureFlag('legacy')`를 호출한다. 이
+경계는 runtime을 먼저 fail-closed하고 repository `setAuthority('legacy')`의 write/readback 뒤
+feature flag를 기록하며 committed v2 document와 migration archive를 삭제하지 않는다. V2
+activation은 같은 public helper 안에서 startup migration, authoritative document re-read와
+committed hash 일치를 다시 검증한 경우에만 성공한다. Panel은 release gate를 우회하는 v2
+activation control을 노출하지 않는다.
+
+Fresh, canonical-v2-only, current legacy upgrade, both-present, retired-key old backup, interrupted
+migration, corrupted repository, rollback→forward fixture가 통과해도 supported-model online matrix,
+authenticated Android output, signed export/restore drill을 대신하지 않는다. 해당 외부 증거가
+없으므로 Phase 06은 fresh default를 `legacy`로 유지하고 BLOCKED handoff를 남긴다.

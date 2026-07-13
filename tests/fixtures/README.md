@@ -20,6 +20,7 @@ Phase 01 이후 engine 비교의 workflow source of truth는 각 workflow의 `cu
 | `legacy/interrupted-session.json` | D-006 synthetic migration state | 해당 없음 | 2026-07-11 | 아니오 | 예 |
 | `legacy/store-backup-roundtrip.json` | retained old-store + full backup/import round-trip contract; image bytes redacted | 해당 없음 | 2026-07-12 | 예 | 예 |
 | `legacy/old-backup-with-obsolete-remote-state.json` | ignored obsolete remote state + retained local backup restore contract; credentials redacted | 해당 없음 | 2026-07-13 | 예 | 예 |
+| `legacy/production-authority-startup.json` | Phase 06 production-like fresh/v2/upgrade/both/old-backup/interruption/corruption/rollback-forward matrix | 해당 없음 | 2026-07-13 | 아니오 | 예 |
 | `workflows/main/default-direct-prompt.json` | current Main direct-prompt path | `nai-diffusion-4-5-full` | 2026-07-11 | 예 | 예 |
 | `workflows/main/current-workflow.json` | current Main store → adapter → payload → output golden capture | V4/V4.5 | 2026-07-11 | 예 | 예 |
 | `workflows/scene/cancel-guards.json` | current Scene session guards | workflow-agnostic | 2026-07-11 | 예 | 예 |

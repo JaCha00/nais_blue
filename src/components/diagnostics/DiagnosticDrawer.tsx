@@ -13,6 +13,7 @@ import {
     downloadDiagnosticsExport,
 } from '@/services/diagnostics/exporter'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
+import { CompositionAuthorityPanel } from './CompositionAuthorityPanel'
 import { getDiagnosticDrawerTriggerProps } from './drawer-contract'
 
 function elapsed(event: { elapsedMs?: number }): string {
@@ -28,32 +29,29 @@ export function DiagnosticDrawer() {
     const selectEvent = useDiagnosticsStore(state => state.selectEvent)
     const [detailsExpanded, setDetailsExpanded] = useState(false)
     const selectedEvent = events.find(event => event.eventId === selectedEventId) ?? events[0]
-    const hasInteractiveDiagnostic = events.some(event => (
-        event.operation !== 'startup' && !event.operation.startsWith('startup.')
-    ))
-
     const open = () => openDrawer(selectedEvent?.eventId)
 
     return (
         <>
-            {hasInteractiveDiagnostic && (
-                <button
-                    {...getDiagnosticDrawerTriggerProps(open)}
-                    aria-haspopup="dialog"
-                    className="min-h-11 rounded-control border border-border px-3 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    aria-label="진단 로그 열기"
-                >
-                    <ListTree className="mr-1.5 inline h-4 w-4" aria-hidden="true" />
-                    진단
-                </button>
-            )}
+            <button
+                {...getDiagnosticDrawerTriggerProps(open)}
+                aria-haspopup="dialog"
+                className="min-h-11 rounded-control border border-border px-3 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                aria-label="진단 로그 열기"
+            >
+                <ListTree className="mr-1.5 inline h-4 w-4" aria-hidden="true" />
+                진단
+            </button>
             <Dialog open={drawerOpen} onOpenChange={openValue => (openValue ? open() : closeDrawer())}>
-                <DialogContent className="max-w-4xl overflow-hidden p-0">
+                <DialogContent className="max-h-[85dvh] max-w-4xl overflow-y-auto p-0">
                     <DialogHeader className="border-b border-border p-4 pr-14">
                         <DialogTitle>진단 로그</DialogTitle>
                         <DialogDescription>민감 정보가 제거된 최근 작업 진단입니다.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid max-h-[70dvh] min-h-[320px] md:grid-cols-[220px_minmax(0,1fr)]">
+                    <div className="border-b border-border p-4">
+                        <CompositionAuthorityPanel />
+                    </div>
+                    <div className="grid min-h-[320px] md:grid-cols-[220px_minmax(0,1fr)]">
                         <div className="overflow-y-auto border-b border-border p-2 md:border-b-0 md:border-r">
                             {events.length === 0 ? (
                                 <p className="p-2 text-sm text-muted-foreground">기록된 진단이 없습니다.</p>

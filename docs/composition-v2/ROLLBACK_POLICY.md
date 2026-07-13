@@ -52,7 +52,10 @@ rollback 과정에서 별도로 변경하지 않는다.
 
 Repository는 committed v2 document를 지우지 않고 authority만 `legacy`로 변경할 수 있다. Operational hotfix는 `applyCompositionAuthorityFeatureFlag('legacy')`와 repository `setAuthority('legacy')` 경계를 사용하며, 임의로 IndexedDB JSON을 수정하지 않는다. Startup hydration failure도 같은 fail-closed path를 사용한다.
 
-현재 end-user용 authority rollback UI는 없다. 따라서 이 절차는 release maintainer가 검증된 hotfix/build에서 수행하는 recovery boundary이지 일반 설정 안내가 아니다.
+Phase 06부터 Diagnostics의 Composition Authority panel이 end-user one-action legacy rollback을
+제공한다. 버튼은 직접 repository JSON을 수정하지 않고 `applyCompositionAuthorityFeatureFlag('legacy')`
+만 호출한다. V2 activation control은 panel에 없으며 release gate를 통과한 operation도 같은 helper의
+startup migration, authoritative document re-read와 committed hash 검증을 모두 통과해야 한다.
 
 Rollback 후 확인할 항목:
 
@@ -61,6 +64,12 @@ Rollback 후 확인할 항목:
 - v2 committed document와 migration archive가 재승격을 위해 남아 있는가
 - Scene cancel/session guard와 output commit ordering이 유지되는가
 - fresh restart에서 staging/expired lock cleanup이 성공하는가
+
+Phase 06 source rollback이 필요하면 현재 authority가 v2인 경우 먼저 panel 또는 검증된 helper로
+legacy rollback을 완료하고 persisted/runtime가 모두 legacy인지 확인한다. 그 뒤 unrelated
+working-tree와 user data를 보존한 채 Phase 06 local commit만 `git revert`한다. Phase 06은 fresh
+default나 repository schema를 바꾸지 않았으므로 reset/clean, repository/backup 삭제 또는
+destructive migration은 필요하지 않다.
 
 ## Stop conditions
 

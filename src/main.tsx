@@ -388,10 +388,14 @@ async function runStartupMigrations(): Promise<void> {
 
     try {
         setSplashStage('Migrating Composition data')
-        const { runStartupCompositionMigration } = await import('./lib/composition-migration-startup')
+        const {
+            getLastCompositionStartupObservation,
+            runStartupCompositionMigration,
+        } = await import('./lib/composition-migration-startup')
         const migration = await runStartupCompositionMigration(
             legacySourceCopyHealthy ? {} : { authority: 'legacy' },
         )
+        const authorityObservation = getLastCompositionStartupObservation()
         if (!legacySourceCopyHealthy) {
             reportDiagnostic(new Error('Composition v2 activation blocked because a retained source copy was not verified'), {
                 operation: 'startup.composition-migration',
@@ -406,6 +410,16 @@ async function runStartupMigrations(): Promise<void> {
                 operation: 'startup.composition-migration',
                 stage: 'migrate',
                 category: 'persistence',
+                severity: 'error',
+                recoverable: true,
+            })
+        } else if (authorityObservation?.fallbackReason !== null
+            && authorityObservation?.fallbackReason !== undefined) {
+            reportDiagnostic(new Error(`Composition authority fallback: ${authorityObservation.fallbackReason}`), {
+                operation: 'startup.composition-authority',
+                stage: 'verify',
+                category: 'persistence',
+                code: 'E_COMPOSITION_AUTHORITY_FALLBACK',
                 severity: 'error',
                 recoverable: true,
             })

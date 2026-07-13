@@ -4,7 +4,7 @@
 
 ## 결론
 
-Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. 그러나 **fresh production startup은 아직 v2 authority를 기본 활성화하지 않는다.** Main/Scene/Style Lab의 persisted mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup은 workflow 테스트를 위해 authority를 `v2`로 올리므로 테스트 통과만으로 production cutover를 선언할 수 없다.
+Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. Phase 06은 production-like startup matrix, 항상 접근 가능한 Composition Authority diagnostics panel, repository/hash 검증과 한 동작 legacy rollback을 추가했다. 그러나 **fresh production startup은 아직 v2 authority를 기본 활성화하지 않는다.** Main/Scene/Style Lab의 persisted mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup과 explicit fixture activation은 v2를 올릴 수 있으므로 local test 통과만으로 production cutover를 선언할 수 없다.
 
 따라서 이번 최종 정리에서는 caller search로 definition-only임이 확인된 작은 public alias만 제거했다. legacy request builder, shadow 비교, migration projection, authority feature flag와 recovery importer/parser는 삭제하지 않았다.
 
@@ -19,7 +19,7 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 | old backup import fixture가 CI에 존재 | 충족 | `tests/fixtures/legacy/old-backup-with-obsolete-remote-state.json`을 `test:migration`이 실행하며 PR/main source-contract에 연결했다. |
 | retired online catalog 제거 | 충족 | route/UI/auth/dependency/deep-link/CI env가 제거됐고 allowlist gate가 통과한다. 과거 backup key classifier와 historical source만 허용한다. |
 | rollback release/tag/export 정책 | 문서 충족 | `ROLLBACK_POLICY.md`, `BACKUP_RESTORE_GUIDE.md`, `RELEASING.md`가 tag, immutable artifact, backup/export, authority rollback 순서를 정의한다. 실제 signed release restore drill은 별도 환경이 필요하다. |
-| production legacy mode 불필요 근거 | **미충족** | fresh startup authority가 legacy이고 credential 기반 online smoke가 없다. legacy runtime compatibility 삭제 gate는 닫혀 있다. |
+| production legacy mode 불필요 근거 | **미충족** | Phase 06 fixture는 통과했지만 fresh default는 legacy이고 full supported-model online matrix, authenticated Android output, signed rollback drill이 없다. legacy runtime compatibility 삭제 gate는 닫혀 있다. |
 
 ## 최종 아키텍처
 
@@ -44,6 +44,8 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - 후속 hardening Phase 01~05: secret-safe backup projection, redacted diagnostic kernel,
   persistence correctness/rescue startup, Stronghold-backed Credential Vault/AuthState v3,
   Android fixed-endpoint NAI transport와 Scene network cancellation.
+- 후속 hardening Phase 06: production-like authority fixture matrix, repository/runtime/workflow
+  authority diagnostics, redacted fallback observation, one-action legacy rollback.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -71,7 +73,9 @@ Production authority cutover와 legacy builder retirement는 별도 release gate
 
 ## Verification
 
-실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 05 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 84 passed/1 skipped file과 658 passed/3 opt-in skipped test의 Vitest aggregate, payload/migration/characterization/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate, Cargo host/mock tests와 x86_64 debug APK를 포함한다.
+실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 06 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 85 passed/1 skipped file과 670 passed/3 opt-in skipped test의 Vitest aggregate, 8-case production-like startup fixture, payload/migration/characterization/diagnostics/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate와 Cargo host/mock tests를 포함한다.
+
+Phase 06에서 diagnostics launcher를 항상 보이게 한 첫 responsive run은 1536px Asset Modules의 Prompt CTA와 겹쳤고, 반대쪽 하단 배치는 Scene Resolved Plan CTA와 겹쳤다. 테스트를 완화하지 않고 desktop launcher를 shell toolbar로 이동하고 mobile만 safe-area 위에 유지한 뒤 전체 matrix가 통과했다. 연결 가능한 in-app/Chrome browser backend가 없어 별도 수동 click-through는 실행하지 못했다.
 
 Emulator에서 Asset Profile의 session 진단값 `lastLoadedAt`이 exact legacy source hash를 매번 바꾸는 문제가 발견됐다. 이 값은 persistence projection에서 제외했고, 기존 persisted 값이 한 번 정리된 뒤 연속 무변경 재시작이 `already-current; authority=legacy`로 안정됨을 확인했다.
 
@@ -95,7 +99,7 @@ mutex teardown log가 재현돼 R-026으로 분리했다.
 AbortSignal cancel이 통과했다. 해당 credential은 Phase 05에서 읽거나 재사용하지 않았다.
 Android image/output commit은 위 authenticated gate가 남아 있어 성공으로 선언하지 않는다.
 
-실제 NovelAI generation, Android signed release/update install과 390/768/1280/1536 실기기 전체 수동 회귀는 credential, keystore 또는 물리 device가 없어 완료로 선언하지 않는다. emulator는 startup/migration, navigation, sheets, capability explanation, process recreation과 AppData persistence를 검증하며 API token이 필요한 지점에서 중단한다.
+실제 NovelAI online matrix, Android authenticated image/output, signed release/update/rollback install과 390/768/1280/1536 실기기 전체 수동 회귀는 이번 Phase의 명시적 credential opt-in, keystore, immutable release baseline 또는 물리 device가 없어 완료로 선언하지 않는다. Phase 05 emulator evidence는 transport readiness 근거로 유지하지만 Phase 06 production cutover 승인으로 승격하지 않는다.
 
 ## 운영 문서
 
