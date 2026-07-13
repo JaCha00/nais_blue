@@ -235,7 +235,9 @@ check(
   /isAndroidRuntime\s*\?\s*androidRustTransport\s*:\s*tauriHttpTransport/.test(transport) &&
   /STANDARD_ENDPOINT:\s*&str\s*=\s*"https:\/\/image\.novelai\.net\/ai\/generate-image"/.test(rustTransport) &&
   /STREAM_ENDPOINT:\s*&str\s*=\s*"https:\/\/image\.novelai\.net\/ai\/generate-image-stream"/.test(rustTransport) &&
-  /Channel<Response>/.test(rustTransport) &&
+  /NaiTransportEvent::BodyChunk/.test(rustTransport) &&
+  /BASE64_STANDARD\.encode\(part\)/.test(rustTransport) &&
+  !/Channel<Response>/.test(rustTransport) &&
   /cancel_nai_request/.test(rustTransport)
 )
 check(

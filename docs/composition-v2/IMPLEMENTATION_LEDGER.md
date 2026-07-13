@@ -1009,3 +1009,128 @@ Phase 06 completion condition is not met because production-like default v2 star
 enabled. The authority panel, local fixtures, rollback action and all executable regression gates are ready,
 but supported-model online evidence, authenticated Android output and signed restore drill are mandatory
 before a separate cutover approval can change the fresh default.
+
+## Phase 06 continuation — physical Android transport evidence
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `64c061b3ef1d90118f4b77dc0cce9d9223260bb8` |
+| Initial working tree | ` M AGENTS.md` |
+| Credential authority | ignored `.env`의 `NAI_TOKEN` 사용을 user가 명시적으로 opt-in |
+| Physical testbed | Android API 34, arm64-v8a, model `M500_MIKU` |
+| Dependency change | 없음; 기존 direct `base64 = "0.22"` 재사용 |
+| Production authority | 변경 없음; fresh default `legacy` |
+
+`AGENTS.md`는 시작 전부터 존재한 unrelated user change이며 읽기만 하고 수정·stage·commit하지
+않는다. Token, Authorization header, prompt 전문, signed URL, response/image base64는 terminal,
+test artifact 또는 log에 남기지 않았다. Computer Use는 native Windows pipe가 없어 사용할 수
+없었고, embedded Android WebView는 adb와 redacted CDP inspection으로 조작했다.
+
+### Test-first physical diagnosis and implementation
+
+1. Subscription smoke는 Opus tier를 확인했고 raw endpoint 512×512/1-step PNG 및 host production
+   client standard PNG/metadata, msgpack stream final, AbortSignal cancel이 모두 통과했다.
+2. Existing Phase 06 arm64 APK를 fresh debug package에 설치하고 physical Stronghold vault를
+   만들었다. Ignored `.env` token은 UI input으로만 전달했으며 slot 1 remote verify/write/readback이
+   성공했다.
+3. Main standard와 stream은 response headers까지 도달했지만 각각 empty ZIP과 no-image stream으로
+   실패했다. Redacted diagnostics는 standard body length 0과 stream image absence만 보였고 output,
+   history 또는 image commit은 없었다.
+4. 새 behavior test는 mobile-safe body chunk가 headers/end와 같은 event channel에 있고 `onBody`가
+   없어야 한다고 고정했다. 구현 전 12개 중 해당 1개만 expected failure였고 나머지 11개는
+   통과했다.
+5. Rust raw `Channel<Response>`를 `NaiTransportEvent::BodyChunk { bytesBase64 }`로 교체했다. JS는
+   같은 ordered channel에서 chunk를 `Uint8Array`로 복원한다. Separate channel end race와 mobile
+   raw-body incompatibility를 함께 제거하며 payload/client/OutputWriter/Scene orchestration은
+   변경하지 않았다.
+6. JS adapter 12/12와 Rust loopback 5/5가 reconstructed bytes 및
+   headers→body-chunk→end order를 통과했다. NAI core/Android source contract, lint, build, arm64
+   cross-build, APK metadata와 overwrite install도 통과했다.
+
+### Physical post-fix blocker
+
+Overwrite install 뒤 M500_MIKU의 Google Play Services 26.20.31 persistent process가
+`ACCESS_BROADCAST_RESPONSE_STATS` permission denial `SecurityException`으로 1~2초마다 crash했다.
+Android exit-info는 NAIS2를 native crash가 아닌 FontsProvider `DEPENDENCY DIED`로 분류했다.
+Device reboot 후에도 같은 crash loop가 재현됐다. Agent는 privileged permission grant, GMS
+disable/data clear 또는 app-data clear를 수행하지 않았다. 따라서 post-fix standard/stream/cancel,
+Main/Scene/Style Lab과 OutputWriter physical evidence는 통과가 아니라 정확한 environment-blocked다.
+
+### Cutover gate verdict
+
+| Gate | 판정 | 근거 |
+| --- | --- | --- |
+| local production startup fixture | PASS | prior Phase 06 repository/startup matrix 유지, full baseline 재실행 |
+| host live smoke | PARTIAL PASS | raw endpoint와 production client standard/stream/cancel 통과; full workflow/model/format matrix 아님 |
+| Android transport source/host gate | PASS | JS 12/12, Rust 5/5, arm64 APK build/verify/install |
+| Android authenticated physical gate | BLOCKED | pre-fix empty body 확인; post-fix는 device-wide GMS crash로 app 생존 불가 |
+| signed rollback drill | NOT RUN | protected signer와 immutable release baseline 없음 |
+| fresh default authority | NOT APPROVED | full online/Android/signed gates 미충족; `legacy` 유지 |
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| regression test before implementation | 1 expected | 1 failed, 11 passed | mobile JSON body event contract가 기존 raw channel을 정확히 실패시킴 |
+| focused transport after implementation | 0 | 1 file, 12/12 | ordered body event PASS |
+| `npm ci` | 0 | 392 packages; 393 audited | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | host-excluded optional dependency만 표시 |
+| `npm run lint` | 0 | max warnings 0 | PASS |
+| `npm run build` | 0 | 2,363 modules | `tsc && vite build` PASS |
+| `npm run test:composition` | 0 | 85 passed/1 skipped files; 671 passed/3 skipped tests | aggregate PASS; live opt-in tests는 baseline에서 expected skip |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | unexplained payload diff 0 |
+| `npm run test:migration` | 0 | 15 files, 135/135 | production startup/old backup/interruption/rollback PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 26/26 | redaction/authority panel PASS |
+| `npm run test:persistence` | 0 | 3 files, 13/13 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 3 files, 15/15 | PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 43/43 | Main/Scene/Style Lab contracts PASS |
+| `npm run test:nai-core` | 0 | 50/50 | fixed endpoint/single-channel source contract PASS |
+| `npm run test:nai-transport` | 0 | 2 files, 13/13 | fetch/native/cancel/body PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | PASS; expected provider fallback line |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport scenarios | PASS |
+| `npm run test:android-port` | 0 | contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | bytes/order/socket cancel/timeout PASS |
+| subscription/raw endpoint/client live smoke | 0 | tier 3; PNG signature; client 3/3 | redacted opt-in PASS |
+| initial arm64 build without correct `SODIUM_LIB_DIR` | 1 environment | frontend passed; libsodium configure failed | R-025, no code regression |
+| corrected arm64 debug APK build | 0 | 1 universal APK | process-local official libsodium archive 사용 |
+| `test:android-debug` | 0 | package/version/minSdk/targetSdk/arm64/signer | PASS |
+| physical overwrite install/cold launch | 0 | M500_MIKU | install PASS; post-fix run later blocked by R-027 |
+| `git diff --check` | 0 | tracked Phase diff | PASS |
+
+### HANDOFF REPORT
+
+- Phase: 06 — PRODUCTION V2 AUTHORITY CUTOVER / Android evidence continuation
+- Base HEAD: `64c061b3ef1d90118f4b77dc0cce9d9223260bb8`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Android JS/Rust transport and regression/static contracts; composition-v2
+  status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: Android native body chunks use one ordered JSON/base64 event channel instead of
+  a separate raw response channel; browser/desktop transports and authority default are unchanged
+- Preserved contracts: CompositionEngine, repository/migration, OutputWriter, portable capability,
+  payload builder/fixtures, Scene worker count/dual-token/streaming limit/session/cancel/stale/retry/requeue/
+  rotation/image release, legacy builders/importers/readers, user data and Stronghold data
+- Tests and exit codes: final verification table above; all executable code gates exit 0. Expected
+  test-first and wrong local libsodium-path failures are separately classified and were not hidden
+- Artifact paths: `dist/**`; `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`;
+  ignored process-local libsodium build under `src-tauri/target/phase06-sodium-aarch64-v1/**`
+- Not tested and exact reason: post-fix physical matrix blocked by Google Play Services permission crash;
+  full host workflow/model/format matrix not provided by existing live smoke; signed restore drill lacks
+  protected signer and immutable release baseline
+- Remaining risks: R-015, R-016, R-019, R-026, R-027 and signed release/rollback evidence
+- Rollback procedure: preserve unrelated `AGENTS.md`, vault/app/user/output data and generated cache; revert
+  only this hardening commit. Revert restores the proven Android empty-body path, so disable Android
+  authenticated generation until a forward fix. Do not reset/clean/clear data or alter payload/OutputWriter.
+- Next phase readiness: BLOCKED
+
+Fresh production default는 계속 `legacy`다. 정상화된 physical device에서 post-fix Android matrix와
+full supported-model workflow online matrix, signed export/restore drill이 모두 통과하기 전 v2 default
+authority를 변경하지 않는다.

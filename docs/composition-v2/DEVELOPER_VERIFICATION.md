@@ -1,6 +1,6 @@
 # Developer verification guide
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 ## Reproducible baseline
 
@@ -65,6 +65,19 @@ npm run test:android-debug -- --apk src-tauri/gen/android/app/build/outputs/apk/
 ```
 
 Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다. UI 좌표는 `uiautomator` tree의 현재 bounds에서만 얻고 persisted prompt/image가 보일 수 있는 screenshot이나 raw XML은 evidence로 보존하지 않는다. Android transport 결과는 success 또는 typed timeout/cancel로 유한 시간 안에 끝나야 하며 cancel 뒤 Scene output/history/queue를 재확인한다.
+
+Android native response body는 raw `Channel<Response>`가 아니라 headers/body/end를 함께 운반하는
+single JSON event channel을 사용한다. Body chunk는 IPC에서만 base64로 직렬화하고 JS가 즉시
+`Uint8Array`로 복원한다. `test:nai-transport`는 `onBody`가 다시 생기지 않고 body event가 end 전에
+조립되는지 검증하며 Rust loopback test는 reconstructed bytes와 headers→body→end 순서를 검증한다.
+Token, payload, body/base64를 log나 artifact로 저장하지 않는다.
+
+Physical app이 요청 전에 종료되면 `dumpsys activity exit-info <package>`로 app crash와 dependency
+death를 먼저 구분한다. M500_MIKU에서 Google Play Services FontsProvider가
+`ACCESS_BROADCAST_RESPONSE_STATS` permission denial로 crash loop를 만들었던 환경은 Android
+transport 실패로 분류하지 않는다. 그러나 post-fix authenticated output gate도 통과한 것으로
+간주하지 않는다. 별도 authority 없이 Play Services privileged permission grant, component disable,
+data clear 또는 app-data clear로 testbed를 변형하지 않는다.
 
 Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix
 `configure`를 실행하지 못하면 code regression과 분리해 기록한다. Linux Android build host를

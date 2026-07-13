@@ -257,6 +257,7 @@ export type NaiNativeTransportEvent =
     | { type: 'dns-connect' }
     | { type: 'request-sent' }
     | { type: 'response-headers', status: number, contentType?: string | null }
+    | { type: 'body-chunk', bytesBase64: string }
     | { type: 'end' }
     | { type: 'cancelled' }
     | { type: 'timeout' }
@@ -283,8 +284,13 @@ function nativeRequestId(): string {
     return uuid ?? `nai-request-${Date.now()}-${++requestCounter}`
 }
 
-function asBodyChunk(value: ArrayBuffer | Uint8Array): Uint8Array {
-    return value instanceof Uint8Array ? value : new Uint8Array(value)
+function decodeNativeBodyChunk(value: string): Uint8Array {
+    const binary = globalThis.atob(value)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+    }
+    return bytes
 }
 
 export function createRustNaiTransport(
@@ -337,6 +343,15 @@ export function createRustNaiTransport(
                     }))
                     return
                 }
+                if (event.type === 'body-chunk') {
+                    if (nativeComplete || lifetime.failure) return
+                    try {
+                        bodyController?.enqueue(decodeNativeBodyChunk(event.bytesBase64))
+                    } catch {
+                        rejectNative(new NaiTransportNetworkError())
+                    }
+                    return
+                }
                 if (event.type === 'end') {
                     nativeComplete = true
                     if (!lifetime.failure) bodyController?.close()
@@ -355,10 +370,6 @@ export function createRustNaiTransport(
                 if (!responseResolved) rejectResponse(error)
                 lifetime.fail(error)
             })
-            const onBody = bindings.createChannel<ArrayBuffer | Uint8Array>(chunk => {
-                if (nativeComplete || lifetime.failure) return
-                bodyController?.enqueue(asBodyChunk(chunk))
-            })
             lifetime.onAbort(() => {
                 if (nativeComplete) return
                 void bindings.invoke<boolean>('cancel_nai_request', { requestId }).catch(() => undefined)
@@ -371,7 +382,6 @@ export function createRustNaiTransport(
                 payload: request.payload,
                 timeoutMs: request.timeoutMs,
                 onEvent,
-                onBody,
             }).catch(() => {
                 if (nativeComplete || lifetime.failure) return
                 const error = new NaiTransportNetworkError()

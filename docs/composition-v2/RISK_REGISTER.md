@@ -1,6 +1,6 @@
 # Composition Domain v2 위험 등록부
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 상태 값: `Open`, `Watching`, `Mitigated`. 심각도는 영향과 발생 가능성을 함께 반영한다.
 
@@ -24,7 +24,7 @@
 | R-016 | 실제 NovelAI 온라인 회귀가 credential에 의존한다 | emulator/local 자동 검증은 token 없이 API 직전까지만 진행 가능하다 | High | credential이 있는 격리 smoke에서 Main/Scene/Style Lab supported-model matrix를 실행하고 redacted artifact만 보존 | Open |
 | R-017 | Android release 서명/업데이트 검증이 CI secret에 의존한다 | 로컬 debug APK는 가능하지만 release keystore와 immutable baseline 다운로드는 별도 권한이 필요하다 | High | protected GitHub environment에서 signed-build, signed-install, checksum, update baseline gate 유지 | Watching |
 | R-018 | volatile store 진단값이 migration source hash를 흔들 수 있다 | Android 연속 재시작에서 Asset Profile `lastLoadedAt` 때문에 같은 target이 반복 commit됐다 | High | session-only timestamp를 persistence projection에서 제외하고 contract test 및 emulator `already-current` 재시작 검증 | Mitigated |
-| R-019 | Android native NAI transport가 live service/device에서 mock과 다르게 동작할 수 있다 | JS HTTP plugin의 standard/stream/abort 무한 대기 증거로 Android만 fixed-endpoint Rust reqwest/channel adapter로 교체했다. Host mock은 standard/stream body, socket cancel, total timeout을 통과했고 x86_64 APK 설치/Scene routing도 통과했지만 authenticated image output은 실행하지 않았다 | Critical | JS와 Rust 양쪽 120초 deadline, 15초 connect timeout, request-scoped cancel을 유지한다. 명시적 credential opt-in 실기기/별도 network에서 standard/stream/cancel/no-late-save를 통과하기 전 Android authenticated generation 완료 선언 금지 | Watching |
+| R-019 | Android native NAI transport가 live service/device에서 mock과 다르게 동작할 수 있다 | M500_MIKU authenticated run에서 raw `Channel<Response>`가 standard/stream headers와 end만 전달하고 body를 0 byte로 소실했다. Body를 ordered JSON/base64 event로 바꾼 뒤 JS 12/12와 Rust loopback 5/5는 통과했지만 post-fix physical app은 R-027로 실행되지 못했다 | Critical | JS/Rust 120초 deadline, 15초 connect timeout, request-scoped cancel과 single-channel order를 유지한다. 정상 기기에서 standard/stream/cancel/no-late-save/OutputWriter를 다시 통과하기 전 Android authenticated generation 완료 선언 금지 | Open |
 | R-020 | Phase 01 이전에 생성된 backup/snapshot 파일에 raw auth credential이 남아 있을 수 있다 | 새 export/restore 경로와 AuthState v3는 sanitize하지만 기존 사용자 disk 파일은 동의 없이 삭제·수정하지 않는다 | Critical | restore preflight는 secret을 저장하지 않고 재입력 경고를 표시; vault UI의 별도 destructive confirmation 뒤 managed local/full/snapshot artifact를 값 노출 없이 scan하고 credential-bearing artifact 전체만 삭제 | Watching |
 | R-021 | 새 provider 또는 caller가 diagnostic redactor를 우회할 수 있다 | 이 phase는 NovelAI, OutputWriter, startup migration/recovery, R2를 우선 연결하지만 모든 future service error를 자동 변환하지는 않는다 | High | category fixture, token/path/prompt/signed-URL canary, redacted export/clipboard test, Rust structured-log gate를 유지하고 새 provider wiring 시 같은 gate를 추가 | Watching |
 | R-022 | critical Zustand store의 immediate commit/readback이 write pressure를 높일 수 있다 | Scene, generation, character 등 사용자 데이터는 debounce 성공 응답 대신 durability를 우선한다 | Medium | UI preference만 명시적 debounce allowlist로 유지하고 per-key write serialization, targeted fault tests, responsive/characterization gate를 관찰; 데이터 계약 없이 다시 debounce하지 않음 | Watching |
@@ -32,6 +32,7 @@
 | R-024 | Android/desktop native Stronghold runtime 동작이 host-only source contract보다 다를 수 있다 | unit tests는 migration/backend contract를 검증하지만 authenticated generation은 native app data 및 opt-in credential이 필요하다 | Critical | exact mobile capability, Argon2 registration, cargo check/Android contract와 emulator vault create/lock을 통과; process-restart re-unlock과 live dual-token generation은 release gate로 유지 | Watching |
 | R-025 | Windows host의 fresh Android cross-build가 Stronghold의 transitive libsodium build script에서 실패할 수 있다 | 공식 crate의 Unix `configure`를 Windows가 직접 실행하지 못하며 rustup shim보다 standalone Rust가 먼저 선택될 수도 있다 | High | Linux Android build host를 우선 사용하거나 공식 archive로 target static library를 준비해 documented `SODIUM_LIB_DIR`를 process-local로 지정; prebuilt binary는 tracked source에 추가하지 않음 | Watching |
 | R-026 | Android debug app의 정상 Back 종료가 native mutex teardown fatal log를 남긴다 | API 35 x86_64 emulator에서 NAI request를 시작하지 않은 Main 종료를 두 번 재현했고 process는 종료됐지만 crash buffer에 `pthread_mutex_lock called on a destroyed mutex`가 기록됐다 | Medium | transport 요청과 분리된 종료-only 현상으로 기록한다. Phase 05 base artifact와 physical device/signed build에서 재현 비교하고 shutdown data flush 손실이 없음을 확인하기 전 원인을 단정하지 않는다 | Open |
+| R-027 | 지정 physical testbed의 system service crash가 app 검증을 중단한다 | M500_MIKU API 34에서 Google Play Services 26.20.31 persistent process가 ROM에 없는 `ACCESS_BROADCAST_RESPONSE_STATS` 호출로 `SecurityException` crash loop에 빠졌다. Android는 FontsProvider dependency가 죽을 때 NAIS2를 `DEPENDENCY DIED`로 종료했다. Reboot 후에도 재현됐으며 NAIS2 native crash가 아니다 | High | 기기 image/Play Services compatibility를 정상화하거나 다른 승인 physical device를 사용한다. Agent가 임의로 privileged permission grant, Play Services data clear/disable 또는 user data reset을 하지 않는다. 정상화 뒤 같은 APK로 R-019 matrix 재실행 | Open |
 
 ## 공통 stop 조건
 

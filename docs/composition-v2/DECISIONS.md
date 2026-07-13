@@ -248,19 +248,28 @@ generation 두 endpoint만 Rust command adapter로 교체한다. Source edit은 
 endpoint를 사용하며 payload는 기존 `buildGenerateImagePayload()` 결과를 그대로 전달한다.
 
 Command는 caller URL을 받지 않고 `standard | stream` enum을 NovelAI의 두 고정 URL에만
-매핑한다. 기존 `reqwest`, `tokio`, Tauri `Channel` dependency를 재사용해 dependency/lockfile
-변경은 없다. Connect deadline은 15초, request/body total deadline은 120초이며 JS adapter도
-동일한 유한 deadline으로 IPC/fetch와 body consumption을 race한다. Request ID별 oneshot과
-`tokio::select!`가 header wait 및 body chunk wait를 실제 socket cancellation에 연결한다.
-Tauri가 streaming data에 권장하는 channel을 사용하고, reqwest total timeout은 response body
-완료까지 적용되는 공식 경계를 따른다.
+매핑한다. 기존 `reqwest`, `tokio`, Tauri `Channel`, `base64` dependency를 재사용해
+dependency/lockfile 변경은 없다. Connect deadline은 15초, request/body total deadline은
+120초이며 JS adapter도 동일한 유한 deadline으로 IPC/fetch와 body consumption을 race한다.
+Request ID별 oneshot과 `tokio::select!`가 header wait 및 body chunk wait를 실제 socket
+cancellation에 연결한다.
+
+2026-07-14 M500_MIKU physical run에서 desktop IPC용 raw `Channel<Response>`는 headers와 end는
+전달했지만 Android mobile channel에서 standard/stream body를 모두 0 byte로 만들었다. Mobile
+plugin channel은 JSON message 경계이므로 body를 별도 raw channel에 두지 않는다. Rust는 각
+64 KiB 이하 chunk를 `BodyChunk { bytesBase64 }` JSON event로 보내고 JS는 같은 channel에서
+decode한다. Headers, body chunks, end가 한 channel의 순서를 공유하므로 별도 channel 간 end race도
+제거한다. Base64는 mobile IPC encoding일 뿐 persistence, diagnostic 또는 log format이 아니다.
 
 Diagnostic event에는 DNS/connect 시작, request sent, response headers, body first byte,
-heartbeat, decode stage만 전달한다. Token, Authorization header, payload, response body와 image
-bytes는 event나 Rust log에 넣지 않는다. Scene controller는 session/slot/request별로 소유하고
+heartbeat, decode stage만 전달한다. Native IPC의 body event는 diagnostic kernel에 연결하지
+않는다. Token, Authorization header, payload, response body와 image bytes는 diagnostic이나
+Rust/JS log에 넣지 않는다. Scene controller는 session/slot/request별로 소유하고
 cancel 시 session을 먼저 무효화한 뒤 active HTTP request를 abort한다. Revert가 필요하면 이
-phase commit만 되돌리되 Android plugin hang인 R-019가 다시 노출되므로 Android authenticated
-generation을 성공 지원으로 표시해서는 안 된다.
+transport hardening commit만 되돌려도 Android empty-body failure가 다시 노출되고, Phase 05
+commit까지 되돌리면 plugin hang이 다시 노출된다. 어느 경우든 Android authenticated generation을
+성공 지원으로 표시해서는 안 된다. Post-fix physical rerun은 R-027 device environment가
+정상화되기 전까지 R-019의 열린 release gate로 유지한다.
 
 ## D-024 — authority 운영 가시성은 production default 승인을 대체하지 않는다
 

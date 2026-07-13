@@ -1,6 +1,6 @@
 # Release, data export, and rollback policy
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 ## Release rollback
 
@@ -47,6 +47,14 @@ response/abort 무한 대기가 관찰된 JS HTTP plugin으로 돌아간다. 따
 별도 검증 전 Android authenticated generation을 지원 완료로 표시하지 않는다. Payload builder,
 source-edit ZIP, Scene worker/dual-token/streaming 제한, session/stale guard와 OutputWriter를
 rollback 과정에서 별도로 변경하지 않는다.
+
+2026-07-14 mobile body hardening은 schema, payload, output 또는 user data를 migration하지 않고
+raw `Channel<Response>`를 같은 ordered JSON event channel의 base64 body chunk로 바꿨다. 이
+hardening commit만 revert하면 browser/desktop은 유지되지만 M500_MIKU에서 관찰한 Android 0-byte
+standard/stream failure가 다시 생긴다. Phase 05 commit까지 함께 revert하지 않으며, 어느 revert도
+Stronghold snapshot, app data, output 또는 generated cache 삭제를 요구하지 않는다. Post-fix physical
+gate가 불완전하더라도 device system service를 임의로 grant/disable/clear하여 rollback evidence를
+만들지 않는다.
 
 ## Authority rollback
 

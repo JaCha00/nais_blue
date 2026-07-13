@@ -160,6 +160,29 @@ class FakeChannel<T> {
 }
 
 describe('NaiTransport Android Rust adapter', () => {
+    it('consumes JSON body chunks on the ordered mobile event channel before end', async () => {
+        const bindings: RustNaiTransportBindings = {
+            createChannel: onmessage => new FakeChannel(onmessage),
+            invoke: async (command, args) => {
+                if (command !== 'nai_generate_request') return false as never
+                expect(args).not.toHaveProperty('onBody')
+                const event = args.onEvent as FakeChannel<NaiNativeTransportEvent>
+                event.emit({ type: 'response-headers', status: 200, contentType: 'application/zip' })
+                event.emit({
+                    type: 'body-chunk',
+                    bytesBase64: 'AQID',
+                })
+                event.emit({ type: 'end' })
+                return undefined as never
+            },
+        }
+        const transport = createRustNaiTransport(bindings)
+
+        const response = await transport.request(request())
+
+        expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
+    })
+
     it.each(['standard', 'stream'] as const)(
         'assembles a %s channel response without exposing a general URL',
         async endpoint => {
@@ -172,13 +195,13 @@ describe('NaiTransport Android Rust adapter', () => {
                     if (command !== 'nai_generate_request') return false as never
                     endpointArguments.push(args.endpoint)
                     expect(args).not.toHaveProperty('url')
+                    expect(args).not.toHaveProperty('onBody')
                     const event = args.onEvent as FakeChannel<NaiNativeTransportEvent>
-                    const body = args.onBody as FakeChannel<ArrayBuffer>
                     event.emit({ type: 'dns-connect' })
                     event.emit({ type: 'request-sent' })
                     event.emit({ type: 'response-headers', status: 200, contentType: 'application/zip' })
-                    body.emit(new Uint8Array([1, 2]).buffer)
-                    body.emit(new Uint8Array([3]).buffer)
+                    event.emit({ type: 'body-chunk', bytesBase64: 'AQI=' })
+                    event.emit({ type: 'body-chunk', bytesBase64: 'Aw==' })
                     event.emit({ type: 'end' })
                     return undefined as never
                 },

@@ -1,6 +1,6 @@
 # Known limitations
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 1. Fresh repository와 feature flag 부재의 authority 기본값은 `legacy`다. Production에서 legacy mode가 더 이상 필요 없다는 cutover evidence가 아직 없으므로 Main/Scene/Style Lab legacy builders, shadow path, retained store projections를 삭제할 수 없다.
 2. v2 adapter와 characterization tests가 존재하는 것과 모든 installed user가 v2 authority라는 것은 다르다. 실제 release population의 migration/fallback 관측 자료가 없다.
@@ -12,7 +12,14 @@
 8. Retired remote catalog 문자열은 ignored-key compatibility classifier, tests/fixtures, `legacy/**` historical source와 전용 removal note에 의도적으로 남는다. Runtime residue gate의 allowlist 밖에서는 허용하지 않는다.
 9. `test:composition`이 전체 Vitest suite라 category scripts와 실행 범위가 중복된다. 향후 suite가 커지면 explicit all/unit category를 분리할 수 있다.
 10. CI는 migration/old-backup와 remote-removal gate를 Android source-contract에서 실행한다. Desktop tag job은 Android reusable workflow가 뒤따르지만, desktop build 이전에 같은 data gate를 독립적으로 요구하려면 별도 common preflight job이 필요하다.
-11. Host production-client live smoke는 T2I, streaming final, Metadata v2와 AbortSignal cancel을 통과했다. Phase 04 Android JS HTTP plugin은 standard/stream/abort를 유한 시간에 완료하지 못해 Phase 05에서 Android generation만 fixed-endpoint Rust reqwest/channel adapter로 교체했다. Host mock은 standard/stream bytes, active socket cancel과 total timeout을 통과했고 x86_64 debug APK 설치·startup·Scene routing도 통과했다. 명시적 credential opt-in이 없어 emulator authenticated image/output은 실행하지 않았으므로 live Android 성공으로 간주하지 않는다.
+11. Host production-client live smoke는 T2I, streaming final, Metadata v2와 AbortSignal cancel을
+    통과했다. Phase 04 Android JS HTTP plugin은 standard/stream/abort를 유한 시간에 완료하지
+    못해 Phase 05에서 Android generation만 fixed-endpoint Rust reqwest/channel adapter로
+    교체했다. 2026-07-14 명시적 credential opt-in M500_MIKU run은 vault token verify까지
+    통과했지만 raw body channel이 standard/stream 응답을 0 byte로 전달함을 발견했다. Body를
+    single ordered JSON/base64 event channel로 고친 뒤 JS/Rust tests와 arm64 APK build/install은
+    통과했다. Post-fix authenticated output은 item 25의 device-wide blocker로 아직 통과하지
+    못했으므로 live Android 성공으로 간주하지 않는다.
 12. Standard와 streaming transport는 120초 total deadline을 가지며 Scene cancel은 session/slot/request controller를 실제 HTTP request에 전달한다. Cancel 뒤 sequence proposal, OutputWriter, history/image 저장과 queue resurrection이 없고 worker 종료 시 button lock이 풀리는 behavior test가 있다. 이미 provider가 수신한 request의 과금/서버 측 작업 중단 여부까지 client가 보장하는 것은 아니다.
 13. Character reference와 uncached vibe는 base generation이 무료여도 별도 Anlas 비용 가능성이 있으므로 이번 live smoke에서 제외했다.
 14. Phase 01 이전에 생성된 manual/auto backup과 per-store snapshot은 raw `nais2-auth`
@@ -52,8 +59,15 @@
     flush 영향과 원인은 미확정이다.
 23. Phase 06 local fixture는 fresh/canonical-v2/upgrade/both-present/old-backup/interrupted/
     corrupted/rollback-forward startup을 검증하지만 NovelAI online matrix나 signed artifact drill이
-    아니다. 명시적 live credential opt-in, Android authenticated output, keystore와 immutable
-    rollback baseline이 없으므로 fresh default는 계속 `legacy`다.
-24. 이 세션에는 연결 가능한 in-app/Chrome browser backend가 없어 Composition Authority panel의
-    별도 수동 click-through screenshot을 만들지 않았다. Source/behavior contract와 39개
-    responsive route/viewport 자동 검증은 통과했으며 민감한 UI artifact는 보존하지 않았다.
+    아니다. Live credential opt-in으로 host client와 Android pre-fix failure evidence는 얻었지만
+    full Main/Scene/Style Lab supported-model matrix, post-fix Android output, keystore와 immutable
+    rollback baseline은 없다. 따라서 fresh default는 계속 `legacy`다.
+24. Computer Use setup은 native Windows pipe가 없어 연결되지 않았다. Android embedded WebView는
+    adb forward와 redacted CDP inspection으로 대신 조작했으며 screenshot, UI XML, prompt, image,
+    token 또는 response body artifact를 보존하지 않았다. Source/behavior contract와 responsive
+    route/viewport 자동 검증이 manual UI evidence를 대체하지는 않는다.
+25. M500_MIKU API 34 testbed의 Google Play Services 26.20.31 persistent process가
+    `ACCESS_BROADCAST_RESPONSE_STATS` permission denial로 crash loop에 빠진다. Android는 해당
+    FontsProvider dependency와 함께 NAIS2를 `DEPENDENCY DIED`로 종료하며 reboot 후에도 재현됐다.
+    이는 NAIS2 crash가 아니지만 post-fix physical matrix를 막는다. Privileged permission grant,
+    Play Services disable/data clear 또는 app-data clear는 별도 authority 없이 수행하지 않는다.

@@ -1,6 +1,6 @@
 # Composition Domain v2 최종 상태
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 ## 결론
 
@@ -73,7 +73,7 @@ Production authority cutover와 legacy builder retirement는 별도 release gate
 
 ## Verification
 
-실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 06 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 85 passed/1 skipped file과 670 passed/3 opt-in skipped test의 Vitest aggregate, 8-case production-like startup fixture, payload/migration/characterization/diagnostics/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate와 Cargo host/mock tests를 포함한다.
+실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 06 transport continuation 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 85 passed/1 skipped file과 671 passed/3 opt-in skipped test의 Vitest aggregate, 8-case production-like startup fixture, payload/migration/characterization/diagnostics/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate와 Cargo host/mock tests를 포함한다.
 
 Phase 06에서 diagnostics launcher를 항상 보이게 한 첫 responsive run은 1536px Asset Modules의 Prompt CTA와 겹쳤고, 반대쪽 하단 배치는 Scene Resolved Plan CTA와 겹쳤다. 테스트를 완화하지 않고 desktop launcher를 shell toolbar로 이동하고 mobile만 safe-area 위에 유지한 뒤 전체 matrix가 통과했다. 연결 가능한 in-app/Chrome browser backend가 없어 별도 수동 click-through는 실행하지 못했다.
 
@@ -94,12 +94,26 @@ startup, Scene routing은 통과했다. Credential opt-in이 없어 Android auth
 실행하지 않았고 R-019를 Watching으로 유지한다. Request 전 Main Back 종료에서 별도 native
 mutex teardown log가 재현돼 R-026으로 분리했다.
 
-이전 opt-in host smoke에서는 실제 NovelAI raw endpoint 512×512/1 step PNG와 production client
-512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash,
-AbortSignal cancel이 통과했다. 해당 credential은 Phase 05에서 읽거나 재사용하지 않았다.
-Android image/output commit은 위 authenticated gate가 남아 있어 성공으로 선언하지 않는다.
+2026-07-14 opt-in physical M500_MIKU run은 Stronghold vault create, token remote verification과
+Main standard/stream request headers까지 도달했지만 raw `Channel<Response>` body가 mobile IPC에서
+0 byte가 되어 ZIP/msgpack decode가 실패했다. Body를 headers/end와 같은 ordered JSON/base64
+event channel로 바꿨고 JS adapter 12/12, Rust loopback 5/5, arm64 APK build/metadata/install은
+통과했다. Post-fix app launch 시 testbed의 Google Play Services FontsProvider가 ROM permission
+mismatch로 crash loop에 빠져 Android가 NAIS2를 dependency-died로 종료했다. 이 system blocker는
+R-027로 분리하며 post-fix authenticated output을 통과한 것으로 간주하지 않는다. 따라서 R-019는
+Open이고 Android release gate는 계속 닫혀 있다.
 
-실제 NovelAI online matrix, Android authenticated image/output, signed release/update/rollback install과 390/768/1280/1536 실기기 전체 수동 회귀는 이번 Phase의 명시적 credential opt-in, keystore, immutable release baseline 또는 물리 device가 없어 완료로 선언하지 않는다. Phase 05 emulator evidence는 transport readiness 근거로 유지하지만 Phase 06 production cutover 승인으로 승격하지 않는다.
+이번 opt-in host smoke에서는 실제 NovelAI raw endpoint 512×512/1 step PNG와 production client
+512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash,
+AbortSignal cancel이 통과했다. Token은 ignored `.env`에서 process-local로만 읽었고 값, Authorization
+header, payload 전문, image base64 또는 response body를 출력·보존하지 않았다. Android
+image/output commit은 위 authenticated gate가 남아 있어 성공으로 선언하지 않는다.
+
+Host production-client smoke는 통과했지만 Main/Scene/Style Lab 전체 supported-model·format·source-edit
+online matrix는 아니다. Android pre-fix failure는 확보했지만 post-fix authenticated image/output과
+cancel/no-late-save는 R-027로 미실행이다. Signed release/update/rollback install은 protected keystore와
+immutable release baseline이 없어 실행하지 않았다. 따라서 Phase 05 emulator와 이번 physical
+evidence를 Phase 06 production cutover 승인으로 승격하지 않는다.
 
 ## 운영 문서
 

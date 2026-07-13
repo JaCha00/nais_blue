@@ -172,10 +172,12 @@ assert.ok(
     'Android NAI transport must map an endpoint enum to fixed NovelAI URLs instead of accepting arbitrary URLs',
 )
 assert.ok(
-    nativeNaiTransport.includes('Channel<Response>') &&
+    nativeNaiTransport.includes('NaiTransportEvent::BodyChunk') &&
+        nativeNaiTransport.includes('BASE64_STANDARD.encode(part)') &&
+        !nativeNaiTransport.includes('Channel<Response>') &&
         nativeNaiTransport.includes('tokio::select!') &&
         nativeNaiTransport.includes('NaiTransportEvent::Cancelled'),
-    'Android NAI transport must stream body chunks and interrupt reqwest work on cancellation',
+    'Android NAI transport must serialize ordered mobile body chunks and interrupt reqwest work on cancellation',
 )
 
 const generatedManifestPath = join(root, 'src-tauri/gen/android/app/src/main/AndroidManifest.xml')

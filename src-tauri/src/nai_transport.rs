@@ -1,9 +1,7 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Mutex, time::Duration};
-use tauri::{
-    ipc::{Channel, Response},
-    State,
-};
+use tauri::{ipc::Channel, State};
 use tokio::sync::oneshot;
 
 const STANDARD_ENDPOINT: &str = "https://image.novelai.net/ai/generate-image";
@@ -45,6 +43,10 @@ pub enum NaiTransportEvent {
         status: u16,
         #[serde(rename = "contentType")]
         content_type: Option<String>,
+    },
+    BodyChunk {
+        #[serde(rename = "bytesBase64")]
+        bytes_base64: String,
     },
     End,
     Cancelled,
@@ -152,7 +154,6 @@ async fn run_request(
     timeout_ms: u64,
     mut cancelled: oneshot::Receiver<()>,
     on_event: Channel<NaiTransportEvent>,
-    on_body: Channel<Response>,
 ) -> Result<(), String> {
     let total_timeout = Duration::from_millis(timeout_ms);
     let client = reqwest::Client::builder()
@@ -214,9 +215,12 @@ async fn run_request(
         match next {
             Ok(Some(chunk)) => {
                 for part in chunk.chunks(IPC_CHUNK_BYTES) {
-                    on_body
-                        .send(Response::new(part.to_vec()))
-                        .map_err(|_| "Native transport body channel is unavailable".to_string())?;
+                    send_event(
+                        &on_event,
+                        NaiTransportEvent::BodyChunk {
+                            bytes_base64: BASE64_STANDARD.encode(part),
+                        },
+                    )?;
                 }
             }
             Ok(None) => {
@@ -239,7 +243,6 @@ pub async fn nai_generate_request(
     payload: String,
     timeout_ms: u64,
     on_event: Channel<NaiTransportEvent>,
-    on_body: Channel<Response>,
     state: State<'_, NaiTransportState>,
 ) -> Result<(), String> {
     validate_request(&request_id, &token, &payload, timeout_ms)?;
@@ -254,7 +257,6 @@ pub async fn nai_generate_request(
         timeout_ms,
         cancelled,
         on_event,
-        on_body,
     )
     .await;
     state.release(&request_id);
@@ -279,12 +281,13 @@ mod tests {
 
     fn capture_channels() -> (
         Channel<NaiTransportEvent>,
-        Channel<Response>,
         Arc<Mutex<Vec<String>>>,
         Arc<Mutex<Vec<u8>>>,
     ) {
         let events = Arc::new(Mutex::new(Vec::new()));
         let event_capture = Arc::clone(&events);
+        let body = Arc::new(Mutex::new(Vec::new()));
+        let body_capture = Arc::clone(&body);
         let event_channel = Channel::new(move |message| {
             if let InvokeResponseBody::Json(json) = message {
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json) {
@@ -292,24 +295,24 @@ mod tests {
                         if let Ok(mut captured) = event_capture.lock() {
                             captured.push(event_type.to_string());
                         }
+                        if event_type == "body-chunk" {
+                            if let Some(encoded) =
+                                value.get("bytesBase64").and_then(|value| value.as_str())
+                            {
+                                if let Ok(bytes) = BASE64_STANDARD.decode(encoded) {
+                                    if let Ok(mut captured) = body_capture.lock() {
+                                        captured.extend(bytes);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             Ok(())
         });
 
-        let body = Arc::new(Mutex::new(Vec::new()));
-        let body_capture = Arc::clone(&body);
-        let body_channel = Channel::new(move |message| {
-            if let InvokeResponseBody::Raw(bytes) = message {
-                if let Ok(mut captured) = body_capture.lock() {
-                    captured.extend(bytes);
-                }
-            }
-            Ok(())
-        });
-
-        (event_channel, body_channel, events, body)
+        (event_channel, events, body)
     }
 
     async fn wait_for_event(events: &Arc<Mutex<Vec<String>>>, expected: &str) {
@@ -388,7 +391,7 @@ mod tests {
             accepts_msgpack
         });
         let (_cancel_sender, cancel_receiver) = oneshot::channel();
-        let (events_channel, body_channel, events, body) = capture_channels();
+        let (events_channel, events, body) = capture_channels();
 
         run_request(
             format!("http://{address}"),
@@ -398,7 +401,6 @@ mod tests {
             1_000,
             cancel_receiver,
             events_channel,
-            body_channel,
         )
         .await
         .expect("native mock request should complete");
@@ -409,10 +411,21 @@ mod tests {
             vec![1, 2, 3]
         );
         let events = events.lock().expect("event capture should lock");
+        let headers = events
+            .iter()
+            .position(|event| event == "response-headers")
+            .expect("headers event should be captured");
+        let body = events
+            .iter()
+            .position(|event| event == "body-chunk")
+            .expect("body event should be captured");
+        let end = events
+            .iter()
+            .position(|event| event == "end")
+            .expect("end event should be captured");
         assert!(events.iter().any(|event| event == "dns-connect"));
         assert!(events.iter().any(|event| event == "request-sent"));
-        assert!(events.iter().any(|event| event == "response-headers"));
-        assert!(events.iter().any(|event| event == "end"));
+        assert!(headers < body && body < end);
     }
 
     #[tokio::test]
@@ -444,7 +457,7 @@ mod tests {
             )
         });
         let (cancel_sender, cancel_receiver) = oneshot::channel();
-        let (events_channel, body_channel, events, _body) = capture_channels();
+        let (events_channel, events, _body) = capture_channels();
         let request = tokio::spawn(run_request(
             format!("http://{address}"),
             true,
@@ -453,7 +466,6 @@ mod tests {
             1_000,
             cancel_receiver,
             events_channel,
-            body_channel,
         ));
 
         wait_for_event(&events, "response-headers").await;
@@ -492,7 +504,7 @@ mod tests {
             sleep(Duration::from_millis(250)).await;
         });
         let (_cancel_sender, cancel_receiver) = oneshot::channel();
-        let (events_channel, body_channel, events, _body) = capture_channels();
+        let (events_channel, events, _body) = capture_channels();
 
         run_request(
             format!("http://{address}"),
@@ -502,7 +514,6 @@ mod tests {
             30,
             cancel_receiver,
             events_channel,
-            body_channel,
         )
         .await
         .expect("native timeout should use a typed event");
