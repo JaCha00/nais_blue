@@ -9,6 +9,7 @@ import { generateImage, generateImageStream, NovelAIHttpError } from '@/services
 import { useCharacterStore } from '@/stores/character-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
+import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
 import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 
@@ -28,7 +29,7 @@ interface SceneWorkerContext {
     rotationCharacterFolderName?: string
 }
 
-type SceneProcessStatus = 'success' | 'retryable' | 'fatal' | 'cancelled'
+type SceneProcessStatus = 'success' | 'retryable' | 'fatal' | 'invalid' | 'cancelled'
 
 interface SceneProcessResult {
     status: SceneProcessStatus
@@ -111,10 +112,40 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
     if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
     useSceneStore.getState().setStreamingData(scene.id, null, 0)
+    let sequenceLease: ReturnType<typeof reserveSceneFragmentSequenceProposal> = null
 
     try {
-        const { params, finalPrompt, mimeType } = await buildSceneGenerationParams(scene)
+        const resolveStartedAt = Date.now()
+        const built = await buildSceneGenerationParams(scene, {
+            sessionId: ctx.sessionId,
+            requestId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+            now: new Date(resolveStartedAt),
+        })
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
+
+        useSceneStore.getState().recordSceneCompositionResult(scene.id, {
+            mode: built.mode,
+            ...(built.planHash === null ? {} : { planHash: built.planHash }),
+            warnings: built.warnings,
+            errors: built.errors,
+        })
+        if (!built.success) {
+            return {
+                status: 'invalid',
+                reason: built.errors.map(issue => issue.code).join(', ') || 'Invalid composition plan',
+            }
+        }
+
+        sequenceLease = built.sequenceCommitProposal === null
+            ? null
+            : reserveSceneFragmentSequenceProposal(built.sequenceCommitProposal)
+        if (built.sequenceCommitProposal !== null && sequenceLease === null) {
+            const failure = { status: 'retryable', reason: 'Fragment sequence changed before reservation' } as const
+            reportSceneFailure(slot, failure, ctx)
+            return failure
+        }
+
+        const { params, finalPrompt, mimeType } = built
 
         // Keep i2i/inpaint on ZIP until stream-final output is proven identical
         // to the server-composited archive result.
@@ -141,12 +172,30 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         }
 
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
-
+        let sequenceConflict = false
+        const activeSequenceLease = sequenceLease
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
             canSave: () => isSessionAlive(ctx.sessionId),
             sentPayloadSummary: result.sentPayloadSummary,
+            ...(activeSequenceLease === null
+                ? {}
+                : {
+                    beforeFinalize: () => {
+                        if (!isSessionAlive(ctx.sessionId)) return false
+                        const committed = activeSequenceLease.commit()
+                        sequenceConflict = !committed
+                        return committed
+                    },
+                }),
         })
-        if (!saved || !isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
+        if (!saved || !isSessionAlive(ctx.sessionId)) {
+            if (sequenceConflict) {
+                const failure = { status: 'retryable', reason: 'Fragment sequence changed before commit' } as const
+                reportSceneFailure(slot, failure, ctx)
+                return failure
+            }
+            return { status: 'cancelled' }
+        }
 
         useAuthStore.getState().refreshAnlas(slot)
 
@@ -157,6 +206,8 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         const failure = classifyProcessError(error)
         reportSceneFailure(slot, failure, ctx)
         return failure
+    } finally {
+        sequenceLease?.release()
     }
 }
 
@@ -202,6 +253,11 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
 
             const result = await processSceneWithSlot(slot, token, scene, ctx)
             if (result.status === 'cancelled') return
+
+            if (result.status === 'invalid') {
+                useSceneStore.getState().setStreamingData(null, null, 0)
+                continue
+            }
 
             if (result.status === 'retryable' || result.status === 'fatal') {
                 useSceneStore.getState().setStreamingData(null, null, 0)
@@ -360,4 +416,14 @@ export function useSceneGeneration() {
     return {
         isGenerating,
     }
+}
+
+// Characterization tests need to exercise the real worker/session control flow
+// without mounting the React hook. Exporting the existing functions does not
+// alter production behavior; it only exposes the current orchestration seam.
+export const __sceneGenerationTest = {
+    isSessionAlive,
+    classifyProcessError,
+    processSceneWithSlot,
+    workerLoop,
 }

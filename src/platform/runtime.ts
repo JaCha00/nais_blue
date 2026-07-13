@@ -1,4 +1,6 @@
-export type NaisRuntimePlatform = 'android' | 'ios' | 'windows' | 'macos' | 'linux' | 'unknown'
+import type { RuntimePlatform } from './capabilities'
+
+export type NaisRuntimePlatform = Exclude<RuntimePlatform, 'desktop' | 'web'>
 
 declare const __NAIS2_TAURI_PLATFORM__: string | undefined
 
@@ -25,8 +27,13 @@ export const runtimePlatform = normalizePlatform(buildPlatform)
 export const isAndroidRuntime = runtimePlatform === 'android'
 export const isMobileRuntime = runtimePlatform === 'android' || runtimePlatform === 'ios'
 
-export const supportsEmbeddedBrowser = !isMobileRuntime
-export const supportsLocalTaggerSidecar = !isMobileRuntime
+// Compatibility exports for call sites that only need a boolean. New UI should
+// consume the full capability object so unsupported reasons are visible.
+export { runtimeCapabilities } from './capabilities'
+import { runtimeCapabilities } from './capabilities'
+
+export const supportsEmbeddedBrowser = runtimeCapabilities.embeddedBrowser.supported
+export const supportsLocalTaggerSidecar = runtimeCapabilities.localTaggerSidecar.supported
 export const supportsKeyboardShortcuts = !isMobileRuntime
 
 export function getRuntimePlatform(): NaisRuntimePlatform {

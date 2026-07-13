@@ -43,12 +43,6 @@
         "https://github.com/JaCha00/nais2-integration-complete/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMUFGMDgxMDY4NEYyRTEKUldUaDhvUUdnZkFhb0RqeVMyOWZ4QXlJVnFyVlZiVDVibHd0bDRUbTRFeTU2TVBGYzdPK0t3UXUK"
-    },
-    "deep-link": {
-      "mobile": [],
-      "desktop": {
-        "schemes": ["nais2"]
-      }
     }
   },
   "bundle": {

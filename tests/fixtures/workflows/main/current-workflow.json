@@ -1,0 +1,935 @@
+{
+  "workflow": "main",
+  "captureDate": "2026-07-11",
+  "guards": [
+    "batch-loop entry: isCancelled or generationSessionId mismatch stops before composition/transport",
+    "composition, source-dimension and reference awaits are followed by session guards before transport",
+    "streaming preview callback ignores stale/cancelled sessions",
+    "after transport: stale/cancelled result is discarded before thumbnail/output/history",
+    "after thumbnail: stale/cancelled result is discarded before sequence/output/history side effects"
+  ],
+  "nondeterminism": [
+    "Date.now controls session, timing, history IDs and default filenames.",
+    "Math.random controls initial/unlocked/zero seed and every wildcard selection.",
+    "Fixed generation seed does not seed wildcard selection or filenames.",
+    "Unlocked generation advances the next seed before wildcard processing."
+  ],
+  "scenarios": [
+    {
+      "name": "base-only-non-streaming-fixed-seed",
+      "composition": {
+        "promptParts": {
+          "base": "1girl, silver hair",
+          "additional": "",
+          "detail": "",
+          "negative": "",
+          "inpainting": ""
+        },
+        "finalPositive": "1girl, silver hair",
+        "finalNegative": "",
+        "characterPrompts": [],
+        "positions": [],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 832,
+          "height": 1216,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": false
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "1girl, silver hair, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 832,
+          "height": 1216,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": false,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "1girl, silver hair",
+          "additional": "",
+          "detail": "",
+          "negative": "",
+          "inpainting": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "base-additional-detail-negative-streaming",
+      "composition": {
+        "promptParts": {
+          "base": "1girl",
+          "additional": "soft light",
+          "detail": "detailed eyes",
+          "negative": "lowres\n# removed negative note",
+          "inpainting": ""
+        },
+        "finalPositive": "1girl, soft light, detailed eyes",
+        "finalNegative": "lowres",
+        "characterPrompts": [],
+        "positions": [],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 832,
+          "height": 1216,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": false
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image-stream"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "1girl, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 832,
+          "height": 1216,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": false,
+          "imageFormat": "png",
+          "stream": "msgpack",
+          "characterPrompts": [],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "1girl",
+          "additional": "soft light",
+          "detail": "detailed eyes",
+          "negative": "lowres\n# removed negative note",
+          "inpainting": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "inpainting-source-forces-non-streaming",
+      "composition": {
+        "promptParts": {
+          "base": "portrait",
+          "additional": "",
+          "detail": "",
+          "negative": "bad hands",
+          "inpainting": "repair hands"
+        },
+        "finalPositive": "portrait, repair hands",
+        "finalNegative": "bad hands",
+        "characterPrompts": [],
+        "positions": [],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 768,
+          "height": 1024,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": false
+        },
+        "sourceEdit": {
+          "imagePresent": true,
+          "maskPresent": true,
+          "strength": 0.55,
+          "noise": 0.12,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "infill",
+        "input": "portrait, repair hands, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full-inpainting",
+        "parameters": {
+          "width": 768,
+          "height": 1024,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, bad hands",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": false,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [],
+          "sourceEdit": {
+            "imagePresent": true,
+            "maskPresent": true,
+            "imageValue": "[REDACTED:BASE64]",
+            "maskValue": "[REDACTED:BASE64]",
+            "strength": 0.55,
+            "noise": 0.12
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "portrait",
+          "additional": "",
+          "detail": "",
+          "negative": "bad hands",
+          "inpainting": "repair hands"
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "wildcards-character-positive-negative-manual-position",
+      "composition": {
+        "promptParts": {
+          "base": "1girl, <red hair|blue hair>",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": ""
+        },
+        "finalPositive": "1girl, blue hair",
+        "finalNegative": "<bad anatomy|lowres>",
+        "characterPrompts": [
+          {
+            "name": "Hero",
+            "positive": "amber eyes",
+            "negative": "glasses",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.2,
+            "y": 0.8
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 832,
+          "height": 1216,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image-stream"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "1girl, blue hair, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 832,
+          "height": 1216,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, <bad anatomy|lowres>",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": "msgpack",
+          "characterPrompts": [
+            {
+              "prompt": "amber eyes",
+              "uc": "glasses",
+              "center": {
+                "x": 0.2,
+                "y": 0.8
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "1girl, <red hair|blue hair>",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "wildcards:process",
+        "wildcards:process",
+        "payload:adapt-params",
+        "transport:streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "generation-preset-applied",
+      "composition": {
+        "promptParts": {
+          "base": "preset base",
+          "additional": "preset additional",
+          "detail": "preset detail",
+          "negative": "preset negative",
+          "inpainting": "preserved inpainting prompt"
+        },
+        "finalPositive": "preset base, preserved inpainting prompt, preset additional, preset detail",
+        "finalNegative": "preset negative",
+        "characterPrompts": [],
+        "positions": [],
+        "parameters": {
+          "model": "nai-diffusion-4-curated-preview",
+          "width": 960,
+          "height": 1024,
+          "steps": 31,
+          "cfg": 6.2,
+          "cfgRescale": 0.25,
+          "sampler": "k_dpmpp_2m",
+          "scheduler": "exponential",
+          "smea": false,
+          "smeaDyn": false,
+          "variety": true,
+          "seed": 424242,
+          "qualityToggle": false,
+          "ucPreset": 2,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": false
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "preset base, preserved inpainting prompt, preset additional, preset detail",
+        "model": "nai-diffusion-4-curated-preview",
+        "parameters": {
+          "width": 960,
+          "height": 1024,
+          "seed": 424242,
+          "sampler": "k_dpmpp_2m",
+          "steps": 31,
+          "scale": 6.2,
+          "cfgRescale": 0.25,
+          "noiseSchedule": "exponential",
+          "negativePrompt": "preset negative",
+          "qualityToggle": false,
+          "ucPreset": 2,
+          "useCoords": false,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": false,
+        "ucPreset": 2,
+        "promptParts": {
+          "base": "preset base",
+          "additional": "preset additional",
+          "detail": "preset detail",
+          "negative": "preset negative",
+          "inpainting": "preserved inpainting prompt"
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "asset-module-recipe-active",
+      "composition": {
+        "promptParts": {
+          "base": "module subject, module lighting",
+          "additional": "",
+          "detail": "",
+          "negative": "module negative",
+          "inpainting": ""
+        },
+        "finalPositive": "module subject, module lighting",
+        "finalNegative": "module negative",
+        "characterPrompts": [
+          {
+            "name": null,
+            "positive": "module character",
+            "negative": "module character negative",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.5,
+            "y": 0.5
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 832,
+          "height": 1216,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "sidecar-only",
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": {
+          "recipeId": "golden-recipe",
+          "promptGroups": {
+            "main.base": "module subject, module lighting",
+            "main.negative": "module negative",
+            "v4.char.0.positive": "module character",
+            "v4.char.0.negative": "module character negative"
+          },
+          "fileName": "module_424242.png",
+          "outputTargetPolicy": "Module_Output",
+          "warnings": []
+        }
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "module subject, module lighting, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 832,
+          "height": 1216,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, module negative",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "module character",
+              "uc": "module character negative",
+              "center": {
+                "x": 0.5,
+                "y": 0.5
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "filesystem",
+        "fileName": "module_424242.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": false,
+        "historyCount": 1,
+        "targetSegments": [
+          "Module_Output"
+        ],
+        "baseDirectoryUsed": true,
+        "generatedFileCount": 1,
+        "sidecarFileCount": 1,
+        "resolvedPathMatchesMockPlatformRoot": true
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "module subject, module lighting",
+          "additional": "",
+          "detail": "",
+          "negative": "module negative",
+          "inpainting": ""
+        },
+        "assetModulePlan": {
+          "recipeId": "golden-recipe",
+          "fileName": "module_424242.png",
+          "outputPath": "[REDACTED:PATH]",
+          "promptGroups": {
+            "main.base": "module subject, module lighting",
+            "main.negative": "module negative",
+            "v4.char.0.positive": "module character",
+            "v4.char.0.negative": "module character negative"
+          },
+          "warnings": [],
+          "modules": [
+            {
+              "id": "subject",
+              "kind": "prompt",
+              "label": "Golden Subject",
+              "stepEnabled": true
+            }
+          ]
+        },
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": false,
+        "embeddedInOutput": false,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": true,
+        "sidecarMatchesPlanned": true
+      },
+      "callOrder": [
+        "asset-plan:resolve",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "thumbnail:create",
+        "file:write-image",
+        "file:write-sidecar",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    },
+    {
+      "name": "asset-module-missing-falls-back-to-direct",
+      "composition": {
+        "promptParts": {
+          "base": "fallback base",
+          "additional": "fallback additional",
+          "detail": "",
+          "negative": "fallback negative",
+          "inpainting": ""
+        },
+        "finalPositive": "fallback base, fallback additional",
+        "finalNegative": "fallback negative",
+        "characterPrompts": [],
+        "positions": [],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 832,
+          "height": 1216,
+          "steps": 28,
+          "cfg": 5,
+          "cfgRescale": 0,
+          "sampler": "k_euler_ancestral",
+          "scheduler": "karras",
+          "smea": true,
+          "smeaDyn": true,
+          "variety": false,
+          "seed": 424242,
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "imageFormat": "png",
+          "metadataMode": "embedded",
+          "characterPositionEnabled": false
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.7,
+          "noise": 0,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "fallback base, fallback additional, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 832,
+          "height": 1216,
+          "seed": 424242,
+          "sampler": "k_euler_ancestral",
+          "steps": 28,
+          "scale": 5,
+          "cfgRescale": 0,
+          "noiseSchedule": "karras",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, fallback negative",
+          "qualityToggle": true,
+          "ucPreset": 0,
+          "useCoords": false,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "eventIncludesImageData": true,
+        "historyCount": 1
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 0,
+        "promptParts": {
+          "base": "fallback base",
+          "additional": "fallback additional",
+          "detail": "",
+          "negative": "fallback negative",
+          "inpainting": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "embeddingExpected": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesExpectedMode": true,
+        "sidecarWritten": false,
+        "sidecarMatchesPlanned": null
+      },
+      "callOrder": [
+        "asset-plan:resolve",
+        "wildcards:process",
+        "images:ensure-loaded",
+        "payload:adapt-params",
+        "transport:non-streaming",
+        "thumbnail:create",
+        "event:new-image",
+        "anlas:refresh-slot-1",
+        "images:release"
+      ]
+    }
+  ]
+}

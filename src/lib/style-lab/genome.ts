@@ -54,16 +54,6 @@ export function randomWeight(minWeight: number, maxWeight: number): number {
     return Math.round((min + Math.random() * (max - min)) * 10) / 10
 }
 
-export function artistSetSignature(tags: WeightedPromptTag[]): string {
-    return tags
-        .map(normalizePromptTag)
-        .filter(tag => tag.kind === 'artist')
-        .map(tag => tag.tag.trim().toLowerCase())
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .join('|')
-}
-
 export function genomeSignature(tags: WeightedPromptTag[]): string {
     return tags
         .map(rawTag => {
@@ -74,10 +64,6 @@ export function genomeSignature(tags: WeightedPromptTag[]): string {
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b))
         .join('|')
-}
-
-export function getCombinationSignature(tags: WeightedPromptTag[]): string {
-    return artistSetSignature(tags)
 }
 
 export function createRandomWeightedTags(

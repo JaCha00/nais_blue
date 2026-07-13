@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { isTauri } from '@tauri-apps/api/core'
 import { appDataDir, join } from '@tauri-apps/api/path'
 import {
@@ -14,6 +15,8 @@ import {
     Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CompositionStudioV2 } from '@/components/asset-module-studio/CompositionStudioV2'
+import { CapabilityNotice } from '@/components/platform/CapabilityBadge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -34,7 +37,8 @@ import { previewAssetPlanFromDisk, type AssetPlanPreviewResponse } from '@/servi
 import { verifyPromptTagsWithDanbooru, type DanbooruTagResult } from '@/services/danbooru-tag-verifier'
 import { checkR2DeployScope, startR2DeployJob, type R2DeployJobResponse, type R2ScopeCheckResponse } from '@/services/r2-deploy-service'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
-import { supportsLocalTaggerSidecar } from '@/platform/runtime'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { useCompositionStudioSession } from '@/hooks/useCompositionStudioSession'
 import type {
     AssetModuleProfile,
     AssetProfile,
@@ -769,7 +773,52 @@ function danbooruWarningsFromResults(results: DanbooruTagResult[]): string[] {
         })
 }
 
-export default function AssetModuleStudio() {
+function StudioCapabilityStrip() {
+    const { t } = useTranslation()
+    const labels = {
+        available: t('assetModuleStudioV2.capabilities.available'),
+        unavailable: t('assetModuleStudioV2.capabilities.unavailable'),
+        alternative: t('assetModuleStudioV2.capabilities.alternative'),
+    }
+    return (
+        <section
+            className="min-w-0 border-y border-border py-2"
+            aria-label={t('assetModuleStudioV2.capabilities.title')}
+            data-testid="asset-studio-capabilities"
+            data-runtime-platform={runtimeCapabilities.platform}
+        >
+            <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-2 px-3">
+                <h2 className="text-sm font-semibold">{t('assetModuleStudioV2.capabilities.title')}</h2>
+                <span className="break-all font-mono text-xs text-muted-foreground">{runtimeCapabilities.platform}</span>
+            </div>
+            <div className="grid min-w-0 gap-1 md:grid-cols-3">
+                <CapabilityNotice
+                    label={t('assetModuleStudioV2.capabilities.externalWatch')}
+                    capability={runtimeCapabilities.externalProfileFileWatch}
+                    labels={labels}
+                    reason={t('assetModuleStudioV2.capabilities.externalWatchReason', runtimeCapabilities.externalProfileFileWatch.reason ?? '')}
+                    alternative={t('assetModuleStudioV2.capabilities.externalWatchAlternative', runtimeCapabilities.externalProfileFileWatch.alternative ?? '')}
+                />
+                <CapabilityNotice
+                    label={t('assetModuleStudioV2.capabilities.localTagger')}
+                    capability={runtimeCapabilities.localTaggerSidecar}
+                    labels={labels}
+                    reason={t('assetModuleStudioV2.capabilities.localTaggerReason', runtimeCapabilities.localTaggerSidecar.reason ?? '')}
+                    alternative={t('assetModuleStudioV2.capabilities.localTaggerAlternative', runtimeCapabilities.localTaggerSidecar.alternative ?? '')}
+                />
+                <CapabilityNotice
+                    label={t('assetModuleStudioV2.capabilities.r2Deploy')}
+                    capability={runtimeCapabilities.r2DeployTooling}
+                    labels={labels}
+                    reason={t('assetModuleStudioV2.capabilities.r2DeployReason', runtimeCapabilities.r2DeployTooling.reason ?? '')}
+                    alternative={t('assetModuleStudioV2.capabilities.r2DeployAlternative', runtimeCapabilities.r2DeployTooling.alternative ?? '')}
+                />
+            </div>
+        </section>
+    )
+}
+
+function LegacyAssetModuleStudio() {
     const profile = useAssetModuleStore(state => state.profile)
     const sourcePath = useAssetModuleStore(state => state.sourcePath)
     const isLoading = useAssetModuleStore(state => state.isLoading)
@@ -790,7 +839,7 @@ export default function AssetModuleStudio() {
     const [pythonPreview, setPythonPreview] = useState<AssetPlanPreviewResponse | null>(null)
     const [pythonPreviewPath, setPythonPreviewPath] = useState('')
     const [isRunningPythonPreview, setIsRunningPythonPreview] = useState(false)
-    const canUseLocalTagger = supportsLocalTaggerSidecar
+    const canUseLocalTagger = runtimeCapabilities.localTaggerSidecar.supported
 
     useEffect(() => {
         if (!selectedModuleId && modules[0]) setSelectedModuleId(modules[0].id)
@@ -936,6 +985,81 @@ export default function AssetModuleStudio() {
                     />
                 </div>
             </div>
+        </div>
+    )
+}
+
+/** Composition v2 is the authoring authority; legacy tools remain opt-in compatibility utilities. */
+export default function AssetModuleStudio() {
+    const { t } = useTranslation()
+    const studio = useCompositionStudioSession()
+    const [showLegacyTools, setShowLegacyTools] = useState(false)
+
+    if (showLegacyTools) {
+        return (
+            <div className="mx-auto flex w-full max-w-[1600px] min-w-0 flex-col gap-4 overflow-x-hidden">
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border px-1 pb-3">
+                    <div className="min-w-0">
+                        <h1 className="break-words text-lg font-semibold">{t('assetModuleStudioV2.wrapper.legacyTitle')}</h1>
+                        <p className="text-sm text-muted-foreground">
+                            {t('assetModuleStudioV2.wrapper.legacyDescription')}
+                        </p>
+                    </div>
+                    <Button className="min-h-11" variant="outline" onClick={() => setShowLegacyTools(false)}>
+                        {t('assetModuleStudioV2.wrapper.backToV2')}
+                    </Button>
+                </div>
+                <StudioCapabilityStrip />
+                <LegacyAssetModuleStudio />
+            </div>
+        )
+    }
+
+    return (
+        <div className="mx-auto flex w-full max-w-[1800px] min-w-0 flex-col gap-3 overflow-x-hidden">
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-border px-1 pb-3">
+                <div className="min-w-0">
+                    <p className="break-words text-sm text-muted-foreground">
+                        {t('assetModuleStudioV2.wrapper.authorityCaption')}
+                    </p>
+                </div>
+                <Button className="min-h-11" variant="outline" onClick={() => setShowLegacyTools(true)}>
+                    {t('assetModuleStudioV2.wrapper.openLegacy')}
+                </Button>
+            </div>
+
+            <StudioCapabilityStrip />
+
+            {studio.document === null ? (
+                <section className="min-w-0 border border-border bg-card p-4" aria-live="polite">
+                    <h1 className="text-xl font-semibold">{t('assetModuleStudioV2.wrapper.pageTitle')}</h1>
+                    <p className="mt-2 break-words text-sm text-muted-foreground">
+                        {studio.state.status === 'loading'
+                            ? t('assetModuleStudioV2.wrapper.loading')
+                            : studio.state.lastError ?? t('assetModuleStudioV2.wrapper.unavailable')}
+                    </p>
+                    <Button className="mt-4 min-h-11" variant="outline" onClick={() => void studio.reload()}>
+                        {t('assetModuleStudioV2.wrapper.retry')}
+                    </Button>
+                </section>
+            ) : (
+                <CompositionStudioV2
+                    document={studio.document}
+                    issues={studio.issues}
+                    dirty={studio.state.dirty}
+                    saving={studio.state.status === 'committing'}
+                    error={studio.state.lastError}
+                    externalDocument={studio.externalDocument}
+                    conflicts={studio.conflicts}
+                    preview={studio.preview}
+                    previewErrors={studio.previewErrors}
+                    onDraftDocument={studio.updateDraft}
+                    onCommit={studio.commit}
+                    onUndo={studio.undo}
+                    onReloadExternal={() => void studio.reloadExternal()}
+                    onResolveConflict={studio.resolveConflict}
+                />
+            )}
         </div>
     )
 }

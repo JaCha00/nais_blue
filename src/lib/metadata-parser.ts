@@ -8,7 +8,11 @@
  * This parser extracts metadata from both sources.
  */
 
-import { readNais2Params } from '@/lib/nais2-png-meta'
+import {
+    readNais2Params,
+    readNais2Sidecar,
+    type Nais2Params,
+} from '@/lib/nais2-png-meta'
 
 /**
  * Decompress gzip data using native Web API or fallback
@@ -56,6 +60,9 @@ async function decompressGzip(data: Uint8Array): Promise<string> {
 }
 
 export interface NAIMetadata {
+    /** Parsed NAIS2 contract. `version: 2` selects repository change-set apply. */
+    nais2?: Nais2Params
+    metadataVersion?: 1 | 2
     // Basic params
     prompt?: string
     negativePrompt?: string  // "uc" in NAI format
@@ -133,6 +140,7 @@ export interface NAIMetadata {
         detail: string
         negative?: string
         inpainting?: string
+        workflow?: string
     }
 }
 
@@ -470,6 +478,77 @@ function extractWebpExifMetadata(bytes: Uint8Array): NAIMetadata | null {
     return null
 }
 
+function applyNais2Overlay(metadata: NAIMetadata, nais2: Nais2Params): NAIMetadata {
+    metadata.nais2 = nais2
+    metadata.metadataVersion = nais2.version === 2 ? 2 : 1
+    if (typeof nais2.qualityToggle === 'boolean') metadata.qualityToggle = nais2.qualityToggle
+    if (typeof nais2.ucPreset === 'number') metadata.ucPreset = nais2.ucPreset
+
+    if (nais2.promptParts) {
+        metadata.promptParts = {
+            base: nais2.promptParts.base ?? '',
+            additional: nais2.promptParts.additional ?? '',
+            detail: nais2.promptParts.detail ?? '',
+            negative: nais2.promptParts.negative,
+            inpainting: nais2.promptParts.inpainting,
+            workflow: nais2.promptParts.workflow,
+        }
+        metadata.prompt = nais2.promptParts.base
+        if (nais2.promptParts.negative !== undefined) {
+            metadata.negativePrompt = nais2.promptParts.negative
+        }
+    }
+
+    if (nais2.version === 2) {
+        const resolved = nais2.resolvedParams
+        metadata.model = resolved.model
+        metadata.width = resolved.width
+        metadata.height = resolved.height
+        metadata.steps = resolved.steps
+        metadata.cfgScale = resolved.cfgScale
+        metadata.cfgRescale = resolved.cfgRescale
+        metadata.sampler = resolved.sampler
+        metadata.scheduler = resolved.scheduler
+        metadata.smea = resolved.smea
+        metadata.smeaDyn = resolved.smeaDyn
+        metadata.variety = resolved.variety
+        metadata.seed = resolved.seed
+        if (typeof resolved.qualityToggle === 'boolean') metadata.qualityToggle = resolved.qualityToggle
+        if (typeof resolved.ucPreset === 'number') metadata.ucPreset = resolved.ucPreset
+
+        if (nais2.characters.length > 0) {
+            metadata.v4_prompt = {
+                caption: {
+                    base_caption: nais2.promptParts.base,
+                    char_captions: nais2.characters.map(character => ({
+                        char_caption: character.prompt,
+                        centers: character.positions.map(position => ({ ...position })),
+                    })),
+                },
+            }
+            metadata.v4_negative_prompt = {
+                caption: {
+                    base_caption: nais2.promptParts.negative ?? '',
+                    char_captions: nais2.characters.map(character => ({
+                        char_caption: character.negative,
+                        centers: character.positions.map(position => ({ ...position })),
+                    })),
+                },
+            }
+        }
+    }
+    return metadata
+}
+
+function metadataFromNais2(nais2: Nais2Params): NAIMetadata {
+    return applyNais2Overlay({}, nais2)
+}
+
+export function parseNais2SidecarMetadata(sidecar: Uint8Array | string): NAIMetadata | null {
+    const nais2 = readNais2Sidecar(sidecar)
+    return nais2 ? metadataFromNais2(nais2) : null
+}
+
 /**
  * Extract metadata from PNG tEXt chunks
  */
@@ -534,23 +613,10 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
         metadata.model = modelSource
     }
 
-    // If this image was produced by NAIS2, trust our own nais2-params chunk
-    // (qualityToggle / ucPreset / promptParts as we sent them) over any heuristic.
-    const nais2 = metadata ? readNais2Params(bytes) : null
-    if (metadata && nais2) {
-        if (typeof nais2.qualityToggle === 'boolean') metadata.qualityToggle = nais2.qualityToggle
-        if (typeof nais2.ucPreset === 'number') metadata.ucPreset = nais2.ucPreset
-        if (nais2.promptParts && typeof nais2.promptParts === 'object') {
-            const pp = nais2.promptParts
-            metadata.promptParts = {
-                base: pp.base ?? '',
-                additional: pp.additional ?? '',
-                detail: pp.detail ?? '',
-                negative: pp.negative,
-                inpainting: pp.inpainting,
-            }
-        }
-    }
+    // NAIS2 metadata is authoritative and may be the only metadata chunk when
+    // image metadata stripping is combined with a later re-embed operation.
+    const nais2 = readNais2Params(bytes)
+    if (nais2) metadata = applyNais2Overlay(metadata ?? {}, nais2)
 
     // Heuristically recover qualityToggle / ucPreset from prompt/uc text only
     // when the nais2-params chunk did not supply them (images from NAI web,
@@ -842,6 +908,9 @@ function parseA1111Format(text: string): NAIMetadata | null {
  */
 export async function parseMetadataFromFile(file: File): Promise<NAIMetadata | null> {
     const buffer = await file.arrayBuffer()
+    if (file.name.toLowerCase().endsWith('.nais2.json') || file.type === 'application/json') {
+        return parseNais2SidecarMetadata(new Uint8Array(buffer))
+    }
     return parseNAIMetadata(buffer)
 }
 

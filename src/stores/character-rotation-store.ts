@@ -7,9 +7,17 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { toast } from '@/components/ui/use-toast'
 
-export type RotationStatus = 'idle' | 'arming_pass' | 'generating_pass' | 'paused' | 'resting' | 'completed'
+export {
+    createRuntimeCharacterOverrides,
+    getRuntimeSelection,
+    type CharacterRotationRuntimeSelection,
+    type CharacterRotationRuntimeState,
+} from '@/lib/character-rotation-runtime'
 
-interface RotationSnapshot {
+export type RotationStatus = 'idle' | 'arming_pass' | 'generating_pass' | 'paused' | 'resting' | 'completed'
+export const CHARACTER_ROTATION_STORE_VERSION = 2 as const
+
+export interface RotationSnapshot {
     presetId: string
     queueCounts: Record<string, number>
     enabledStates: Record<string, boolean>
@@ -29,7 +37,7 @@ interface RotationRuntimeFlags {
     resting: boolean
 }
 
-interface RotationState extends RotationRuntimeFlags {
+export interface RotationState extends RotationRuntimeFlags {
     status: RotationStatus
     characterIds: string[]
     pinnedCharacterIds: string[]
@@ -62,6 +70,114 @@ interface RotationState extends RotationRuntimeFlags {
     onPassComplete: () => void
     pauseForInterruption: (reason: string, userMessage?: string) => void
     _enterRestIfDue: () => boolean
+}
+
+export type RotationPersistedState = Pick<RotationState,
+    | 'status'
+    | 'characterIds'
+    | 'pinnedCharacterIds'
+    | 'repeats'
+    | 'restEnabled'
+    | 'workMinutes'
+    | 'workJitterMinutes'
+    | 'restMinutes'
+    | 'restJitterMinutes'
+    | 'restUntil'
+    | 'currentIndex'
+    | 'currentRepeat'
+    | 'snapshot'
+>
+
+const ROTATION_STATUSES = new Set<RotationStatus>([
+    'idle',
+    'arming_pass',
+    'generating_pass',
+    'paused',
+    'resting',
+    'completed',
+])
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeStringIds(value: unknown): string[] {
+    if (!Array.isArray(value)) return []
+    return value.filter((id): id is string => typeof id === 'string' && id.length > 0)
+}
+
+function normalizeInteger(value: unknown, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+    return Math.max(min, Math.min(max, Math.floor(value)))
+}
+
+function normalizeRotationStatus(value: unknown, legacy: Record<string, unknown>): RotationStatus {
+    if (typeof value === 'string' && ROTATION_STATUSES.has(value as RotationStatus)) {
+        return value as RotationStatus
+    }
+    if (legacy.resting === true) return 'resting'
+    if (legacy.paused === true) return 'paused'
+    if (legacy.awaitingWorker === true) return 'arming_pass'
+    if (legacy.active === true) return 'generating_pass'
+    return 'idle'
+}
+
+function normalizeRotationSnapshot(value: unknown): RotationSnapshot | null {
+    if (!isRecord(value) || typeof value.presetId !== 'string' || value.presetId.length === 0) return null
+
+    const queueCounts: Record<string, number> = {}
+    if (isRecord(value.queueCounts)) {
+        for (const [sceneId, count] of Object.entries(value.queueCounts)) {
+            if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
+                const normalized = Math.floor(count)
+                if (normalized > 0) queueCounts[sceneId] = normalized
+            }
+        }
+    }
+
+    const enabledStates: Record<string, boolean> = {}
+    if (isRecord(value.enabledStates)) {
+        for (const [characterId, enabled] of Object.entries(value.enabledStates)) {
+            if (typeof enabled === 'boolean') enabledStates[characterId] = enabled
+        }
+    }
+
+    return {
+        presetId: value.presetId,
+        queueCounts,
+        enabledStates,
+    }
+}
+
+/**
+ * Normalizes pre-versioned rotation payloads without starting work on hydrate.
+ * Legacy runtime flags are accepted as a fallback source for status, while the
+ * on-rehydrate guard below still forces all live flags idle until explicit resume.
+ */
+export function migrateRotationPersistedState(persistedState: unknown): RotationPersistedState {
+    const legacy = isRecord(persistedState) ? persistedState : {}
+    const characterIds = normalizeStringIds(legacy.characterIds)
+    const pinnedCharacterIds = normalizeStringIds(legacy.pinnedCharacterIds)
+    const repeats = normalizeInteger(legacy.repeats, 1, 1, 100)
+    const maxIndex = Math.max(0, characterIds.length - 1)
+
+    return {
+        status: normalizeRotationStatus(legacy.status, legacy),
+        characterIds,
+        pinnedCharacterIds,
+        repeats,
+        restEnabled: typeof legacy.restEnabled === 'boolean' ? legacy.restEnabled : false,
+        workMinutes: normalizeInteger(legacy.workMinutes, 480, 1),
+        workJitterMinutes: normalizeInteger(legacy.workJitterMinutes, 30, 0),
+        restMinutes: normalizeInteger(legacy.restMinutes, 300, 1),
+        restJitterMinutes: normalizeInteger(legacy.restJitterMinutes, 30, 0),
+        restUntil: typeof legacy.restUntil === 'number' && Number.isFinite(legacy.restUntil)
+            ? legacy.restUntil
+            : null,
+        currentIndex: normalizeInteger(legacy.currentIndex, 0, 0, maxIndex),
+        currentRepeat: normalizeInteger(legacy.currentRepeat, 0, 0, Math.max(0, repeats - 1)),
+        snapshot: normalizeRotationSnapshot(legacy.snapshot),
+    }
 }
 
 let enforcingCharacterState = false
@@ -388,6 +504,10 @@ export const useRotationStore = create<RotationState>()(
         {
             name: 'nais2-character-rotation',
             storage: createJSONStorage(() => indexedDBStorage),
+            version: CHARACTER_ROTATION_STORE_VERSION,
+            migrate: (persistedState) => (
+                migrateRotationPersistedState(persistedState) as unknown as RotationState
+            ),
             partialize: (state) => ({
                 status: state.status,
                 characterIds: state.characterIds,
@@ -405,10 +525,10 @@ export const useRotationStore = create<RotationState>()(
             }),
             onRehydrateStorage: () => (state) => {
                 if (!state) return
-                const hydratedStatus = state.status ?? 'idle'
-                const snapshot = state.snapshot
+                const hydrated = migrateRotationPersistedState(state)
+                const snapshot = hydrated.snapshot
                 Object.assign(state, {
-                    status: hydratedStatus,
+                    ...hydrated,
                     ...flagsForStatus('idle'),
                     workStartedAt: null,
                     nextWorkTargetMs: null,

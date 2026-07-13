@@ -1,4 +1,4 @@
-// Compatibility export: Phase 6 moved the rotation state machine into
-// src/stores/character-rotation-store.ts so scene generation, UI, and backup
-// registry all share one persisted store implementation.
+// Compatibility facade: legacy callers can still import the persisted store,
+// while Composition adapters consume the mutation-free runtime projection.
+export * from '@/lib/character-rotation-runtime'
 export * from '@/stores/character-rotation-store'

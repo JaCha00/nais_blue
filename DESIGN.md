@@ -123,6 +123,50 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
 - **Icons:** Lucide only except existing product logos. Every icon-only action has
   an accessible name and tooltip where hover exists.
 
+### Composition workspace contract
+
+- **Composition command bar:** Main and Scene expose mode, recipe, validation,
+  estimated cost, seed, resolved-plan access, and generate/cancel in one command
+  region. At `1536px+` it sits above the three-column workspace. Between
+  `768–1535px` it wraps without horizontal scrolling and opens Module Stack and
+  Inspector sheets. Generate/cancel is never placed in an overflow menu.
+- **Module Stack row anatomy:** Each fixed-height row has enable state, an
+  unabridged accessible module name, visible kind/summary, validation state,
+  edit entry, and ordering affordances. The visual name may truncate to protect
+  the canvas, but its `title`/accessible name preserves long Korean, English, and
+  Japanese values. Reordering always supports `Alt+Arrow` and explicit up/down
+  actions; drag may supplement but never replace those controls.
+- **Inspector and sheet behavior:** The Context Inspector shows selection identity,
+  recipe context, typed controls, override diff, validation, and conflict status.
+  At `1536px+` it is a right rail; compact widths use a modal sheet. Mobile
+  Inspector is a second-level sheet opened from Modules or the command dock.
+  Sheets trap focus, close with Escape, restore focus to the launch control, use
+  44px close targets, and apply all four `env(safe-area-inset-*)` values.
+- **Resolved Plan:** Resolved Plan is one action away on desktop and one dock tap
+  away on mobile. Its dedicated surface groups positive/negative prompts, prompt
+  slots, characters and positions, winning parameter sources, output policy,
+  warnings/errors, random trace, provenance, and plan hash. Dense sections may
+  collapse; blocking errors and repair actions remain first in reading order.
+- **Conflict severity:** Warnings use `--warning` and preserve generation when the
+  domain says they are non-blocking. Errors and stale/external revision conflicts
+  use `--destructive`, `role="alert"`, and block unsafe commits or generation.
+  Color never carries severity alone; every state includes an icon and text.
+- **Long text:** Module names, recipe names, paths, prompt text, hashes, and error
+  messages must stay inside `min-width: 0` regions. Human text wraps; machine IDs
+  and paths use `break-all`. Truncation is allowed only when the full value remains
+  available through an accessible name, adjacent detail, or `title`. The contract
+  holds at 200% text zoom without page-level horizontal scrolling.
+- **Virtualization:** Module collections use a measured viewport, fixed row
+  anatomy, bounded overscan, and an end-exclusive visible range once lists can
+  grow into the hundreds. Filtering or external edits clamp stale scroll ranges.
+  Virtual rows preserve list/listbox semantics, stable IDs, keyboard focus, and
+  total scroll height for at least 500 modules.
+- **Mobile command dock:** Below `768px`, the canvas or Scene grid remains primary
+  above a fixed safe-area-aware dock. Modules, Inspector, Resolved Plan, and
+  Generate/Cancel are direct controls with accessible names. The dock never
+  copies generation rules, never hides the active Cancel action, and the workspace
+  reserves its height plus `env(safe-area-inset-bottom)` so content is not covered.
+
 ## 6. Motion
 
 - Fast feedback: `120ms`; standard state transition: `180ms`; overlays: `240ms`.
@@ -151,3 +195,12 @@ decorative shadow ladder.
 - Do not use purple, amber/orange action gradients, nested decorative cards,
   oversized empty-state art, excessive pills, or hidden functionality.
 - Do not solve responsive failures with page-level horizontal scrolling.
+
+## 8. Platform capability and data-scale contract
+
+- Desktop and Android consume the same Composition document. Platform-only actions are represented by a capability adapter; shared UI does not infer support from viewport width.
+- An unsupported capability stays visible with a capability badge, a concrete reason, and a safe alternative workflow. Disabled controls must not silently fall back to a different output path or operation.
+- Asset Module Studio exposes external profile watching, local tagger sidecar, and R2 deploy capabilities on the canonical v2 surface as well as compatibility tools.
+- Repairable resolved-plan issues keep their `actionId` and stable entity reference. The repair action opens the canonical repository editor before generation.
+- Module lists window 500 rows, character layout editors window 200 rows, and Scene grids window 1,000 items using deterministic overscanned ranges. A 20,000-character prompt remains complete and wraps inside its intentional editor/plan scroll region.
+- Virtualized rows retain keyboard focus styling, accessible names, 44px coarse-pointer controls, and explicit Up/Down controls as the non-drag ordering path.

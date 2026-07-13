@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { supportsEmbeddedBrowser } from '@/platform/runtime'
+import { runtimeCapabilities } from '@/platform/capabilities'
+
+const supportsEmbeddedBrowser = runtimeCapabilities.embeddedBrowser.supported
 
 export interface BrowserRect {
     x: number

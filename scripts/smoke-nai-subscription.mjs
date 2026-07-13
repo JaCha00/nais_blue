@@ -26,8 +26,7 @@ const response = await fetch(endpoint, {
 })
 
 if (!response.ok) {
-  const text = await response.text().catch(() => '')
-  throw new Error(`subscription smoke failed ${response.status}: ${text.slice(0, 300)}`)
+  throw new Error(`subscription smoke failed with HTTP ${response.status}`)
 }
 
 const data = await response.json()

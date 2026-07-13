@@ -11,11 +11,6 @@ on:
       release:
         required: true
         type: boolean
-    secrets:
-      VITE_SUPABASE_URL:
-        required: false
-      VITE_SUPABASE_ANON_KEY:
-        required: false
 
 permissions:
   contents: read
@@ -55,6 +50,17 @@ jobs:
           npm run test:release-version
           npm run test:android-port
           npm run test:android-release-contract
+
+      - name: Verify Composition v2, migration, and compatibility contracts
+        run: |
+          npm run test:unit
+          npm run test:payload-parity
+          npm run test:characterization
+          npm run test:composition
+          npm run test:migration
+          npm run test:nai-core
+          npm run test:smart-tools
+          npm run test:remote-runtime-removal
 
       - name: Verify production and responsive UI contracts
         run: |
@@ -205,8 +211,6 @@ jobs:
       - name: Build signed universal APK
         env:
           ANDROID_KEY_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run tauri:android:build:apk -- --ci
 
       - name: Verify release APK

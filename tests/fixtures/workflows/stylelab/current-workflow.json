@@ -1,0 +1,418 @@
+{
+  "workflow": "style-lab",
+  "captureDate": "2026-07-11",
+  "guards": [
+    "loop entry before combination lookup",
+    "after builder before transport",
+    "inside streaming callback when streaming is enabled",
+    "after transport before result validation",
+    "catch path before preview error update",
+    "after inter-preview delay before the next loop iteration",
+    "no session-id guard and no guard between thumbnail/save awaits"
+  ],
+  "nondeterminism": [
+    "Date.now and Math.random create combination IDs; injected fixture IDs avoid that path.",
+    "Random combination selection, tag ordering, weights, evolution and generation seed use Math.random.",
+    "Wildcard selection is independent of the fixed generation seed.",
+    "Locked nonzero seed is reused for every preview; locked zero is rerolled.",
+    "A frozen Date.now gives multiple previews the same default memory filename.",
+    "Date.now supplies generationSessionId, saved history id, and combination update timestamps; new Date supplies the history timestamp.",
+    "Each preview rereads live Main/character/settings stores, so mid-queue edits affect later requests."
+  ],
+  "outputPolicy": {
+    "autoSaveOff": "memory://NAIS_STYLELAB_<Date.now()>.<format>",
+    "autoSaveOn": "configured style root or nais-style / NAIS_STYLELAB_<Date.now()>.<format>",
+    "memoryEventsIncludeImageData": true,
+    "memoryOutputAddsHistory": false,
+    "capturedEventCount": 2,
+    "frozenClockCollisionObserved": true
+  },
+  "previews": [
+    {
+      "name": "single artist combination",
+      "artistTags": [
+        {
+          "tag": "Synthetic One",
+          "kind": "artist",
+          "weight": 1,
+          "artist": "Synthetic One"
+        }
+      ],
+      "composition": {
+        "promptParts": {
+          "base": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": ""
+        },
+        "finalPositive": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes",
+        "finalNegative": "<bad anatomy|lowres>",
+        "characterPrompts": [
+          {
+            "name": "Muse",
+            "positive": "serious, silver hair",
+            "negative": "glasses",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.35,
+            "y": 0.65
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1024,
+          "steps": 30,
+          "cfg": 6,
+          "cfgRescale": 0.2,
+          "sampler": "k_dpmpp_2m",
+          "scheduler": "exponential",
+          "smea": false,
+          "smeaDyn": true,
+          "variety": true,
+          "seed": 616161,
+          "qualityToggle": true,
+          "ucPreset": 3,
+          "imageFormat": "png",
+          "metadataMode": null,
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.72,
+          "noise": 0.08,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1024,
+          "seed": 616161,
+          "sampler": "k_dpmpp_2m",
+          "steps": 30,
+          "scale": 6,
+          "cfgRescale": 0.2,
+          "noiseSchedule": "exponential",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
+          "qualityToggle": true,
+          "ucPreset": 3,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "serious, silver hair",
+              "uc": "glasses",
+              "center": {
+                "x": 0.35,
+                "y": 0.65
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_STYLELAB_1783728000000.png",
+        "eventIncludesImageData": true
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 3,
+        "promptParts": {
+          "base": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": "",
+          "workflow": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "configuredMetadataModeIgnoredByStyleParams": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesPlanned": true
+      },
+      "finalPreviewState": {
+        "previewLocation": "memory://NAIS_STYLELAB_1783728000000.png",
+        "previewImagePresent": true,
+        "previewThumbnailPresent": true,
+        "previewSeed": 616161,
+        "previewPrompt": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes",
+        "previewProgress": 0,
+        "isPreviewing": false,
+        "previewError": null
+      }
+    },
+    {
+      "name": "multiple artist combination",
+      "artistTags": [
+        {
+          "tag": "Synthetic One",
+          "kind": "artist",
+          "weight": 1.2,
+          "artist": "Synthetic One"
+        },
+        {
+          "tag": "Synthetic Two",
+          "kind": "artist",
+          "weight": 0.8,
+          "artist": "Synthetic Two"
+        }
+      ],
+      "composition": {
+        "promptParts": {
+          "base": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": ""
+        },
+        "finalPositive": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes",
+        "finalNegative": "<bad anatomy|lowres>",
+        "characterPrompts": [
+          {
+            "name": "Muse",
+            "positive": "serious, silver hair",
+            "negative": "glasses",
+            "enabled": true
+          }
+        ],
+        "positions": [
+          {
+            "x": 0.35,
+            "y": 0.65
+          }
+        ],
+        "parameters": {
+          "model": "nai-diffusion-4-5-full",
+          "width": 896,
+          "height": 1024,
+          "steps": 30,
+          "cfg": 6,
+          "cfgRescale": 0.2,
+          "sampler": "k_dpmpp_2m",
+          "scheduler": "exponential",
+          "smea": false,
+          "smeaDyn": true,
+          "variety": true,
+          "seed": 616161,
+          "qualityToggle": true,
+          "ucPreset": 3,
+          "imageFormat": "png",
+          "metadataMode": null,
+          "characterPositionEnabled": true
+        },
+        "sourceEdit": {
+          "imagePresent": false,
+          "maskPresent": false,
+          "strength": 0.72,
+          "noise": 0.08,
+          "characterReferenceCount": 0,
+          "vibeReferenceCount": 0
+        },
+        "assetModule": null
+      },
+      "transport": {
+        "mode": "non-streaming",
+        "endpoint": "https://image.novelai.net/ai/generate-image"
+      },
+      "payloadRedactedSummary": {
+        "action": "generate",
+        "input": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "model": "nai-diffusion-4-5-full",
+        "parameters": {
+          "width": 896,
+          "height": 1024,
+          "seed": 616161,
+          "sampler": "k_dpmpp_2m",
+          "steps": 30,
+          "scale": 6,
+          "cfgRescale": 0.2,
+          "noiseSchedule": "exponential",
+          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
+          "qualityToggle": true,
+          "ucPreset": 3,
+          "useCoords": true,
+          "imageFormat": "png",
+          "stream": null,
+          "characterPrompts": [
+            {
+              "prompt": "serious, silver hair",
+              "uc": "glasses",
+              "center": {
+                "x": 0.35,
+                "y": 0.65
+              },
+              "enabled": true
+            }
+          ],
+          "sourceEdit": {
+            "imagePresent": false,
+            "maskPresent": false,
+            "imageValue": null,
+            "maskValue": null,
+            "strength": 1,
+            "noise": null
+          },
+          "references": {
+            "characterInlineCount": 0,
+            "characterCachedCount": 0,
+            "vibeCount": 0
+          }
+        }
+      },
+      "output": {
+        "policy": "memory",
+        "fileName": "NAIS_STYLELAB_1783728000000.png",
+        "eventIncludesImageData": true
+      },
+      "metadata": {
+        "qualityToggle": true,
+        "ucPreset": 3,
+        "promptParts": {
+          "base": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes",
+          "additional": "",
+          "detail": "",
+          "negative": "<bad anatomy|lowres>",
+          "inpainting": "",
+          "workflow": ""
+        },
+        "assetModulePlan": null,
+        "sentPayloadMatchesTransport": true,
+        "configuredMetadataModeIgnoredByStyleParams": true,
+        "embeddedInOutput": true,
+        "embeddedMatchesPlanned": true
+      },
+      "finalPreviewState": {
+        "previewLocation": "memory://NAIS_STYLELAB_1783728000000.png",
+        "previewImagePresent": true,
+        "previewThumbnailPresent": true,
+        "previewSeed": 616161,
+        "previewPrompt": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes",
+        "previewProgress": 0,
+        "isPreviewing": false,
+        "previewError": null
+      }
+    }
+  ],
+  "filesystemOutput": {
+    "policy": "platform media root / configured style root",
+    "fileName": "NAIS_STYLELAB_1783728000000.png",
+    "targetSegments": [
+      "nais-style"
+    ],
+    "baseDirectoryUsed": true,
+    "generatedFileCount": 1,
+    "sidecarFileCount": 1,
+    "eventIncludesImageData": false,
+    "resolvedPathMatchesMockPlatformRoot": true,
+    "historyUrlMatchesEvent": true,
+    "historyCount": 1,
+    "metadata": {
+      "qualityToggle": true,
+      "ucPreset": 3,
+      "promptParts": {
+        "base": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes",
+        "additional": "",
+        "detail": "",
+        "negative": "<bad anatomy|lowres>",
+        "inpainting": "",
+        "workflow": ""
+      },
+      "sentPayloadMatchesTransport": true,
+      "configuredMetadataModeIgnoredByStyleParams": true,
+      "embeddedInWrittenImage": true,
+      "embeddedMatchesPlanned": true
+    },
+    "callOrder": [
+      "preview-queue:running:1:0",
+      "preview-update:single-artist:isPreviewing+previewError+previewProgress",
+      "wildcards:process",
+      "images:ensure-loaded",
+      "wildcards:process",
+      "wildcards:process",
+      "payload:adapt-params",
+      "transport:non-streaming",
+      "output:exists",
+      "output:mkdir",
+      "output:write-image",
+      "output:write-image",
+      "thumbnail:create",
+      "preview-update:single-artist:isPreviewing+previewImage+previewPath+previewProgress+previewPrompt+previewSeed+previewThumbnail",
+      "event:new-image",
+      "anlas:refresh-slot-1",
+      "preview-queue:running:1:1",
+      "preview-queue:stopped:0:0",
+      "preview-runtime:clear",
+      "images:release"
+    ]
+  },
+  "finalQueueState": {
+    "isPreviewQueueRunning": false,
+    "previewQueueTotal": 0,
+    "previewQueueDone": 0,
+    "generatingMode": null,
+    "isGenerating": false,
+    "historyCount": 0
+  },
+  "callOrder": [
+    "preview-queue:running:2:0",
+    "preview-update:single-artist:isPreviewing+previewError+previewProgress",
+    "wildcards:process",
+    "images:ensure-loaded",
+    "wildcards:process",
+    "wildcards:process",
+    "payload:adapt-params",
+    "transport:non-streaming",
+    "thumbnail:create",
+    "preview-update:single-artist:isPreviewing+previewImage+previewPath+previewProgress+previewPrompt+previewSeed+previewThumbnail",
+    "event:new-image",
+    "anlas:refresh-slot-1",
+    "preview-queue:running:2:1",
+    "preview-update:multi-artist:isPreviewing+previewError+previewProgress",
+    "wildcards:process",
+    "images:ensure-loaded",
+    "wildcards:process",
+    "wildcards:process",
+    "payload:adapt-params",
+    "transport:non-streaming",
+    "thumbnail:create",
+    "preview-update:multi-artist:isPreviewing+previewImage+previewPath+previewProgress+previewPrompt+previewSeed+previewThumbnail",
+    "event:new-image",
+    "anlas:refresh-slot-1",
+    "preview-queue:running:2:2",
+    "preview-queue:stopped:0:0",
+    "preview-runtime:clear",
+    "images:release"
+  ]
+}

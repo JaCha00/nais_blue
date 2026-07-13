@@ -12,7 +12,7 @@ export interface ActiveTokenEntry {
 
 interface AuthState {
     // Slot 1 keeps B's original field names so existing generation,
-    // marketplace, and backup/import flows continue to read the primary token.
+    // backup/import flows continue to read the primary token.
     token: string
     isVerified: boolean
     tier: string | null

@@ -10,6 +10,7 @@ const check = (name, passed, detail = '') => {
 }
 
 const exists = (relativePath) => existsSync(join(root, relativePath))
+const removedCatalogPath = `/${['market', 'place'].join('')}`
 
 check('PromptEditor page exists', exists('src/pages/PromptEditor.tsx'))
 check('prompt library store exists', exists('src/stores/prompt-library-store.ts'))
@@ -19,7 +20,7 @@ if (exists('src/App.tsx')) {
     check('PromptEditor is lazy-loaded', /const\s+PromptEditor\s*=\s*lazy\(\(\)\s*=>\s*import\('@\/pages\/PromptEditor'\)\)/.test(app))
     check('/prompts route is registered', /<Route\s+path="\/prompts"\s+element=\{<PromptEditor\s*\/>\}/.test(app))
     check('StyleLab route preserved', /path="\/style-lab"/.test(app))
-    check('Marketplace route preserved', /path="\/marketplace"/.test(app) && /path="\/marketplace\/:id"/.test(app))
+    check('removed remote catalog routes stay unregistered', !app.includes(`path="${removedCatalogPath}`))
 }
 
 if (exists('src/components/layout/ThreeColumnLayout.tsx')) {
@@ -27,7 +28,7 @@ if (exists('src/components/layout/ThreeColumnLayout.tsx')) {
     check('Prompt Editor nav item exists', /path:\s*'\/prompts'[\s\S]*labelKey:\s*'nav\.promptEditor'/.test(layout))
     check('Prompt Editor nav icon is imported', /NotebookPen/.test(layout))
     check('StyleLab nav item preserved', /path:\s*'\/style-lab'/.test(layout))
-    check('Marketplace nav item preserved', /path:\s*'\/marketplace'/.test(layout))
+    check('removed remote catalog destination stays out of navigation', !layout.includes(`path: '${removedCatalogPath}'`))
 }
 
 if (exists('src/stores/prompt-library-store.ts')) {

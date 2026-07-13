@@ -37,6 +37,20 @@ export default [
         },
     },
     {
+        files: ['tests/**/*.ts', 'vitest.config.ts'],
+        languageOptions: {
+            parser: tsParser,
+            parserOptions: {
+                ecmaVersion: 'latest',
+                sourceType: 'module',
+            },
+            globals: {
+                ...globals.es2020,
+                ...globals.node,
+            },
+        },
+    },
+    {
         files: ['scripts/**/*.mjs', 'eslint.config.js'],
         languageOptions: {
             ecmaVersion: 'latest',

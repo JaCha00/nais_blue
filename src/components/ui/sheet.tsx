@@ -52,12 +52,14 @@ const sheetVariants = cva(
 
 interface SheetContentProps
     extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> { }
+    VariantProps<typeof sheetVariants> {
+    closeLabel?: string
+}
 
 const SheetContent = React.forwardRef<
     React.ElementRef<typeof SheetPrimitive.Content>,
     SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, closeLabel = "Close", ...props }, ref) => (
     <SheetPortal>
         <SheetOverlay />
         <SheetPrimitive.Content
@@ -66,11 +68,11 @@ const SheetContent = React.forwardRef<
             {...props}
         >
             <SheetPrimitive.Close
-                aria-label="Close"
+                aria-label={closeLabel}
                 className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-10 inline-flex h-11 w-11 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-50"
             >
                 <X className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Close</span>
+                <span className="sr-only">{closeLabel}</span>
             </SheetPrimitive.Close>
             {children}
         </SheetPrimitive.Content>

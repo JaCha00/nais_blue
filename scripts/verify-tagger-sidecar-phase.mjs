@@ -14,6 +14,8 @@ const libRs = read('src-tauri/src/lib.rs')
 const tauriConfig = JSON.parse(read('src-tauri/tauri.conf.json'))
 const defaultCapability = JSON.parse(read('src-tauri/capabilities/default.json'))
 const releaseScript = read('scripts/create-public-release.ps1')
+const retiredUrlPluginKey = ['deep', 'link'].join('-')
+const retiredUrlPluginRustModule = ['tauri', 'plugin', 'deep', 'link'].join('_')
 
 check('tagger state tracks exactly one Tauri sidecar child', includesAll(libRs, [
   'use std::sync::{Arc, Mutex};',
@@ -52,24 +54,24 @@ check('B Tauri plugin chain is preserved', includesAll(libRs, [
   'tauri_plugin_single_instance::init',
   'tauri_plugin_updater::Builder::new().build()',
   'tauri_plugin_process::init()',
-  'tauri_plugin_deep_link::init()',
-]))
+]) && !libRs.includes(retiredUrlPluginRustModule))
 
 check('Tauri bundle declares the tagger sidecar binary', Array.isArray(tauriConfig.bundle?.externalBin) &&
   tauriConfig.bundle.externalBin.includes('binaries/tagger-server'))
 check('Tauri sidecar executable exists for Windows cargo checks', existsSync(join(root,
   'src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe',
 )))
-check('Tauri updater and deep-link config are preserved', includesAll(JSON.stringify(tauriConfig), [
-  'https://github.com/JaCha00/nais2-integration-complete/releases/latest/download/latest.json',
-  'nais2',
-]))
+check('Tauri updater is preserved without the retired URL callback config',
+  JSON.stringify(tauriConfig).includes(
+    'https://github.com/JaCha00/nais2-integration-complete/releases/latest/download/latest.json',
+  ) && tauriConfig.plugins?.[retiredUrlPluginKey] === undefined)
 
 const permissions = defaultCapability.permissions ?? []
 const shellExecute = permissions.find((permission) => permission?.identifier === 'shell:allow-execute')
 check('capabilities rely on externalBin sidecar without shell execute permission', !shellExecute &&
   tauriConfig.bundle?.externalBin?.includes('binaries/tagger-server'))
-check('B deep-link capability is preserved', permissions.includes('deep-link:default'))
+check('retired URL callback capability is absent',
+  !permissions.includes(`${retiredUrlPluginKey}:default`))
 
 check('release script verifies tagger-server.exe in release build output', includesAll(releaseScript, [
   "$taggerServerExe = Join-Path $buildRelease 'tagger-server.exe'",

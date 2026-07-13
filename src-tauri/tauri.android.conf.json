@@ -9,15 +9,5 @@
     },
     "externalBin": [],
     "createUpdaterArtifacts": false
-  },
-  "plugins": {
-    "deep-link": {
-      "mobile": [
-        {
-          "scheme": ["nais2"],
-          "appLink": false
-        }
-      ]
-    }
   }
 }

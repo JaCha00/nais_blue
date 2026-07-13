@@ -1,11 +1,11 @@
-import { exists, mkdir, writeFile } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
-import { buildStyleLabPrompt, formatWeightedPromptTags } from '@/lib/style-lab'
-import { processWildcards } from '@/lib/fragment-processor'
+import {
+    reserveWildcardSequenceProposal,
+} from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
-import { GenerationParams, generateImage, generateImageStream } from '@/services/novelai-api'
+import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
+import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
+import { getRuntimeOutputWriter, OutputWriterError } from '@/services/output/output-writer'
 import { useAuthStore } from '@/stores/auth-store'
-import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore, warnIfUnverifiedPayloadParityModel } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -13,10 +13,9 @@ import { StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
 import { toast } from '@/components/ui/use-toast'
 import i18n from '@/i18n'
 import {
-    getMediaStorageRoot,
-    MEDIA_STORAGE_BASE_DIRECTORY,
-    shouldUseAbsoluteMediaPath,
-} from '@/platform/storage'
+    buildStyleLabGenerationParams,
+    formatStyleLabCompositionErrors,
+} from '@/lib/style-lab/build-style-lab-params'
 
 let styleLabGenerationLock = false
 const STREAM_PREVIEW_UPDATE_INTERVAL_MS = 250
@@ -43,31 +42,28 @@ function waitForPreviewDelay(ms: number, signal: AbortSignal): Promise<boolean> 
     })
 }
 
-function removeComments(text: string): string {
-    return text
-        .split('\n')
-        .filter(line => !line.trimStart().startsWith('#'))
-        .join('\n')
+interface StyleLabPublishedOutput {
+    path: string
+    thumbnail?: string
 }
 
-function roundTo64(value: number): number {
-    return Math.round(value / 64) * 64
-}
-
-function getImageDimensions(base64: string): Promise<{ width: number; height: number }> {
-    return new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-            const size = { width: img.width, height: img.height }
-            img.src = ''
-            resolve(size)
-        }
-        img.onerror = () => {
-            img.src = ''
-            reject(new Error('Failed to load source image'))
-        }
-        img.src = base64
-    })
+function resolveStyleLabFileName(
+    params: GenerationParams,
+    seed: number,
+    filenameTemplate = params.outputPolicySummary?.filenameTemplateId,
+    now = new Date(Date.now()),
+): string {
+    const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
+    const fallback = `NAIS_STYLELAB_${now.getTime()}`
+    const rendered = filenameTemplate
+        ? renderFilenameTemplate({
+            template: filenameTemplate,
+            context: { seed },
+            now,
+            fallback,
+        })
+        : fallback
+    return ensureImageFileExtension(rendered, fileExt) ?? `${fallback}.${fileExt}`
 }
 
 async function saveStyleLabImage(
@@ -75,18 +71,44 @@ async function saveStyleLabImage(
     imageUrl: string,
     finalPrompt: string,
     seed: number,
-    thumbnail?: string,
+    params: GenerationParams,
+    fileName: string,
     sentPayloadSummary?: string,
-): Promise<string> {
-    const { styleLabSavePath, autoSave, useAbsoluteStyleLabPath, imageFormat } = useSettingsStore.getState()
+    canCommit: () => boolean = () => true,
+    beforeFinalize?: () => boolean,
+    publishPreview?: (output: StyleLabPublishedOutput) => void,
+    rollbackPreview?: () => void,
+): Promise<StyleLabPublishedOutput | null> {
+    const settings = useSettingsStore.getState()
+    const { styleLabSavePath, autoSave, useAbsoluteStyleLabPath } = settings
+    const imageFormat = params.imageFormat ?? settings.imageFormat
+    const metadataMode = params.metadataMode ?? settings.metadataMode
     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
 
     if (!autoSave) {
-        const memoryPath = `memory://NAIS_STYLELAB_${Date.now()}.${fileExt}`
-        window.dispatchEvent(new CustomEvent('newImageGenerated', {
-            detail: { path: memoryPath, data: imageUrl }
-        }))
-        return memoryPath
+        let thumbnail: string | undefined
+        try {
+            thumbnail = await createThumbnail(imageUrl)
+        } catch (thumbnailError) {
+            console.warn('[StyleLab] Failed to create preview thumbnail:', thumbnailError)
+        }
+        if (!canCommit()) return null
+        const memoryPath = `memory://${fileName}`
+        if (beforeFinalize !== undefined && !beforeFinalize()) return null
+        try {
+            publishPreview?.({ path: memoryPath, thumbnail })
+        } catch (error) {
+            rollbackPreview?.()
+            throw error
+        }
+        try {
+            window.dispatchEvent(new CustomEvent('newImageGenerated', {
+                detail: { path: memoryPath, data: imageUrl }
+            }))
+        } catch (error) {
+            console.warn('[StyleLab] Preview completed but the memory result event failed.', error)
+        }
+        return { path: memoryPath, thumbnail }
     }
 
     const binaryString = atob(imageData.replace(/^data:image\/(png|webp);base64,/, ''))
@@ -95,131 +117,102 @@ async function saveStyleLabImage(
         bytes[i] = binaryString.charCodeAt(i)
     }
 
-    const fileName = `NAIS_STYLELAB_${Date.now()}.${fileExt}`
-    const outputDir = styleLabSavePath || 'nais-style'
-    const useAbsoluteOutputPath = shouldUseAbsoluteMediaPath(useAbsoluteStyleLabPath)
-    let fullPath: string
-
-    if (useAbsoluteOutputPath) {
-        if (!(await exists(outputDir))) {
-            await mkdir(outputDir, { recursive: true })
-        }
-        fullPath = await join(outputDir, fileName)
-        await writeFile(fullPath, bytes)
-    } else {
-        if (!(await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
-            await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-        }
-        await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-        fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
-    }
-
-    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-        detail: { path: fullPath }
-    }))
-
-    useGenerationStore.getState().addToHistory({
-        id: Date.now().toString(),
-        url: fullPath,
-        thumbnail,
-        prompt: finalPrompt,
-        seed,
-        timestamp: new Date(),
-        sentPayloadSummary,
-    })
-
-    return fullPath
-}
-
-async function buildGenerationParams(combo: StyleCombination): Promise<{ params: GenerationParams; prompt: string; seed: number }> {
-    const genState = useGenerationStore.getState()
-    const styleState = useStyleLabStore.getState()
-
-    const artistTags = formatWeightedPromptTags(combo.tags)
-    const templatedPrompt = buildStyleLabPrompt(styleState.settings.promptTemplate, artistTags, {
-        basePrompt: removeComments(genState.basePrompt),
-        additionalPrompt: removeComments(genState.additionalPrompt),
-        detailPrompt: removeComments(genState.detailPrompt),
-        inpaintingPrompt: genState.i2iMode === 'inpaint' ? removeComments(genState.inpaintingPrompt) : '',
-    })
-    const finalPrompt = await processWildcards(templatedPrompt)
-
-    let seed = genState.seedLocked ? genState.seed : Math.floor(Math.random() * 4294967295)
-    if (seed === 0) seed = Math.floor(Math.random() * 4294967295)
-
-    await useCharacterStore.getState().ensureImagesLoaded()
-    const characterState = useCharacterStore.getState()
-    const characterImages = characterState.characterImages.filter(img => img.enabled !== false && img.base64)
-    const vibeImages = characterState.vibeImages.filter(img => img.enabled !== false && img.base64)
-
-    const { characters, positionEnabled } = useCharacterPromptStore.getState()
-    const processedCharacterPrompts = await Promise.all(
-        characters.filter(character => character.enabled).map(async character => ({
-            ...character,
-            prompt: await processWildcards(character.prompt),
-            negative: await processWildcards(character.negative),
-        }))
-    )
-
-    let width = roundTo64(genState.selectedResolution.width)
-    let height = roundTo64(genState.selectedResolution.height)
-
-    if (genState.sourceImage) {
-        try {
-            const dimensions = await getImageDimensions(genState.sourceImage)
-            width = roundTo64(dimensions.width)
-            height = roundTo64(dimensions.height)
-        } catch (error) {
-            console.warn('[StyleLab] Failed to read source image dimensions:', error)
-        }
-    }
-
-    const { imageFormat } = useSettingsStore.getState()
-
-    return {
-        prompt: finalPrompt,
-        seed,
-        params: {
-            prompt: finalPrompt,
-            negative_prompt: removeComments(genState.negativePrompt),
-            model: genState.model,
-            width,
-            height,
-            steps: genState.steps,
-            cfg_scale: genState.cfgScale,
-            cfg_rescale: genState.cfgRescale,
-            sampler: genState.sampler,
-            scheduler: genState.scheduler,
-            smea: genState.smea,
-            smea_dyn: genState.smeaDyn,
-            variety: genState.variety,
-            seed,
-            sourceImage: genState.sourceImage || undefined,
-            strength: genState.strength,
-            noise: genState.noise,
-            mask: genState.mask || undefined,
-            charImages: characterImages.map(img => img.base64!),
-            charStrength: characterImages.map(img => img.strength),
-            charFidelity: characterImages.map(img => img.fidelity ?? 0.6),
-            charReferenceType: characterImages.map(img => img.referenceType ?? 'character&style'),
-            charCacheKeys: characterImages.map(img => img.cacheKey || null),
-            vibeImages: vibeImages.map(img => img.base64!),
-            vibeInfo: vibeImages.map(img => img.informationExtracted),
-            vibeStrength: vibeImages.map(img => img.strength),
-            preEncodedVibes: vibeImages.map(img => img.encodedVibe || null),
-            characterPrompts: processedCharacterPrompts,
-            characterPositionEnabled: positionEnabled,
-            imageFormat,
-            qualityToggle: genState.qualityToggle,
-            ucPreset: genState.ucPreset,
-            promptParts: {
-                base: finalPrompt,
-                additional: '',
-                detail: '',
-                negative: genState.negativePrompt,
-                inpainting: genState.i2iMode === 'inpaint' ? genState.inpaintingPrompt : '',
+    let sessionInvalid = false
+    let finalizeRejected = false
+    let historyId: string | null = null
+    let publishedOutput: StyleLabPublishedOutput | null = null
+    let workflowCommitted = false
+    try {
+        const output = await getRuntimeOutputWriter().write({
+            destination: {
+                ...(params.portableOutputDirectory === undefined
+                    ? {}
+                    : { portableDirectory: params.portableOutputDirectory }),
+                directory: styleLabSavePath || 'nais-style',
+                useAbsolutePath: useAbsoluteStyleLabPath,
+                capabilityFallbackDirectory: 'nais-style',
+                workflowDefaultDirectory: 'nais-style',
+                fileName,
+                extension: fileExt,
+                collisionPolicy: params.outputPolicySummary?.collisionPolicy ?? 'unique',
             },
-        },
+            imageBytes: bytes,
+            imageDataUrl: imageUrl,
+            metadata: {
+                params: { ...params, sentPayloadSummary },
+                imageFormat,
+                metadataMode,
+                includeWebpCompatibilitySidecar: true,
+            },
+            generateThumbnail: createThumbnail,
+            canCommit,
+            commitWorkflow: outputResult => {
+                if (!canCommit()) {
+                    sessionInvalid = true
+                    throw new Error('Style Lab generation session changed before output publication')
+                }
+                if (beforeFinalize !== undefined && !beforeFinalize()) {
+                    finalizeRejected = true
+                    throw new Error('Fragment sequence changed before Style Lab output commit')
+                }
+
+                historyId = Date.now().toString()
+                useGenerationStore.getState().addToHistory({
+                    id: historyId,
+                    url: outputResult.path,
+                    thumbnail: outputResult.thumbnailDataUrl,
+                    prompt: finalPrompt,
+                    seed,
+                    timestamp: new Date(),
+                    sentPayloadSummary,
+                })
+                publishPreview?.({ path: outputResult.path, thumbnail: outputResult.thumbnailDataUrl })
+                publishedOutput = { path: outputResult.path, thumbnail: outputResult.thumbnailDataUrl }
+                try {
+                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
+                        detail: { path: outputResult.path },
+                    }))
+                } catch (eventError) {
+                    console.warn('[StyleLab] Failed to publish the committed output event.', eventError)
+                }
+                workflowCommitted = true
+            },
+            rollbackWorkflow: () => {
+                workflowCommitted = false
+                publishedOutput = null
+                if (historyId !== null) {
+                    useGenerationStore.setState(state => ({
+                        history: state.history.filter(item => item.id !== historyId),
+                    }))
+                }
+                rollbackPreview?.()
+            },
+        })
+        if (output.status === 'cancelled') return null
+        if (output.result.capabilityFallbackUsed) {
+            toast({
+                title: i18n.t(
+                    'composition.outputCapabilityFallbackTitle',
+                    'Output destination changed for this platform',
+                ),
+                description: i18n.t(
+                    'composition.outputCapabilityFallbackDescription',
+                    '{{reason}} Alternative: {{alternative}}',
+                    {
+                        reason: output.result.capabilityFallbackReason ?? '',
+                        alternative: output.result.capabilityFallbackAlternative ?? '',
+                    },
+                ),
+            })
+        }
+        return { path: output.result.path, thumbnail: output.result.thumbnailDataUrl }
+    } catch (error) {
+        if (workflowCommitted && publishedOutput !== null) {
+            console.warn('[StyleLab] Output committed; recovery cleanup remains pending.', error)
+            return publishedOutput
+        }
+        if (sessionInvalid || finalizeRejected || !canCommit()) return null
+        throw error
     }
 }
 
@@ -277,9 +270,22 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                 previewError: undefined,
             })
 
+            let sequenceLease: ReturnType<typeof reserveWildcardSequenceProposal> = null
             try {
-                const { params, prompt, seed } = await buildGenerationParams(combo)
+                const built = await buildStyleLabGenerationParams(combo, {
+                    requestId: `style-lab:${sessionId}:${id}:${index}`,
+                })
                 if (isStyleLabSessionCancelled(abortController.signal)) break
+                if (!built.success) {
+                    throw new Error(formatStyleLabCompositionErrors(built.errors))
+                }
+                const { params, prompt, seed, plan, sequenceCommitProposal } = built
+                sequenceLease = sequenceCommitProposal === null
+                    ? null
+                    : reserveWildcardSequenceProposal(sequenceCommitProposal)
+                if (sequenceCommitProposal !== null && sequenceLease === null) {
+                    throw new Error('Fragment sequence changed before Style Lab reservation')
+                }
 
                 const { useStreaming, imageFormat } = useSettingsStore.getState()
                 const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
@@ -324,41 +330,97 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                 }
 
                 const imageUrl = `data:${mimeType};base64,${result.imageData}`
+                const previewFileName = resolveStyleLabFileName(params, seed, plan?.outputPolicy.filenameTemplate)
                 let previewThumbnail: string | undefined
-                try {
-                    previewThumbnail = await createThumbnail(imageUrl)
-                } catch (thumbnailError) {
-                    console.warn('[StyleLab] Failed to create preview thumbnail:', thumbnailError)
+                let sequenceCommitted = sequenceLease === null
+                const activeSequenceLease = sequenceLease
+                const previewBeforePublish = useStyleLabStore.getState().combinations.find(item => item.id === id)
+                let previewPublished = false
+                const publishPreview = (published: StyleLabPublishedOutput): void => {
+                    previewPublished = true
+                    useStyleLabStore.getState().updateCombinationPreview(id, {
+                        previewImage: published.path.startsWith('memory://') ? imageUrl : undefined,
+                        previewPath: published.path,
+                        previewThumbnail: published.thumbnail,
+                        previewSeed: seed,
+                        previewPrompt: prompt,
+                        previewProgress: 1,
+                        isPreviewing: false,
+                    })
                 }
-
-                let previewPath: string | undefined
+                const rollbackPreview = (): void => {
+                    if (!previewPublished || previewBeforePublish === undefined) return
+                    previewPublished = false
+                    useStyleLabStore.getState().updateCombinationPreview(id, {
+                        previewImage: previewBeforePublish.previewImage,
+                        previewPath: previewBeforePublish.previewPath,
+                        previewThumbnail: previewBeforePublish.previewThumbnail,
+                        previewSeed: previewBeforePublish.previewSeed,
+                        previewPrompt: previewBeforePublish.previewPrompt,
+                        previewProgress: previewBeforePublish.previewProgress,
+                        isPreviewing: previewBeforePublish.isPreviewing,
+                        previewError: previewBeforePublish.previewError,
+                    })
+                }
+                const canCommitPreview = (): boolean => {
+                    const generationState = useGenerationStore.getState()
+                    return generationState.generationSessionId === sessionId
+                        && !isStyleLabSessionCancelled(abortController.signal)
+                }
+                const finalizePreview = (): boolean => {
+                    if (sequenceCommitted) return true
+                    if (!canCommitPreview()) return false
+                    if (activeSequenceLease === null) return true
+                    const committed = activeSequenceLease.commit()
+                    sequenceCommitted = committed
+                    return committed
+                }
                 try {
-                    previewPath = await saveStyleLabImage(
+                    const savedPath = await saveStyleLabImage(
                         result.imageData,
                         imageUrl,
                         prompt,
                         seed,
-                        previewThumbnail,
+                        params,
+                        previewFileName,
                         result.sentPayloadSummary,
+                        canCommitPreview,
+                        finalizePreview,
+                        publishPreview,
+                        rollbackPreview,
                     )
+                    if (savedPath === null) {
+                        if (!canCommitPreview()) break
+                        throw new Error('Fragment sequence changed before Style Lab preview commit')
+                    }
+                    previewThumbnail = savedPath.thumbnail
                 } catch (saveError) {
                     console.warn('[StyleLab] Failed to save preview image:', saveError)
-                    const memoryPath = `memory://NAIS_STYLELAB_${Date.now()}.${imageFormat}`
-                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                        detail: { path: memoryPath, data: imageUrl }
-                    }))
-                    previewPath = memoryPath
+                    if (!canCommitPreview()) break
+                    if (saveError instanceof OutputWriterError
+                        && saveError.message.includes('rollback is pending')) {
+                        throw saveError
+                    }
+                    if (!finalizePreview()) {
+                        throw new Error('Fragment sequence changed before Style Lab preview commit')
+                    }
+                    if (previewThumbnail === undefined) {
+                        try {
+                            previewThumbnail = await createThumbnail(imageUrl)
+                        } catch (thumbnailError) {
+                            console.warn('[StyleLab] Failed to create fallback preview thumbnail:', thumbnailError)
+                        }
+                    }
+                    const memoryPath = `memory://${previewFileName}`
+                    publishPreview({ path: memoryPath, thumbnail: previewThumbnail })
+                    try {
+                        window.dispatchEvent(new CustomEvent('newImageGenerated', {
+                            detail: { path: memoryPath, data: imageUrl }
+                        }))
+                    } catch (eventError) {
+                        console.warn('[StyleLab] Preview completed but the fallback result event failed.', eventError)
+                    }
                 }
-
-                useStyleLabStore.getState().updateCombinationPreview(id, {
-                    previewImage: previewPath?.startsWith('memory://') ? imageUrl : undefined,
-                    previewPath,
-                    previewThumbnail,
-                    previewSeed: seed,
-                    previewPrompt: prompt,
-                    previewProgress: 1,
-                    isPreviewing: false,
-                })
 
                 if (result.encodedVibes && result.encodedVibes.length > 0) {
                     const { vibeImages, updateVibeImage } = useCharacterStore.getState()
@@ -392,6 +454,8 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                     description: String(error),
                     variant: 'destructive',
                 })
+            } finally {
+                sequenceLease?.release()
             }
 
             useStyleLabStore.getState().setPreviewQueueState(true, uniqueIds.length, index + 1)

@@ -1,0 +1,43 @@
+{
+  "workflow": "stylelab",
+  "case": "prompt-template",
+  "description": "Characterizes weighted Style Lab tags rendered into the current prompt template.",
+  "input": {
+    "model": "nai-diffusion-4-5-full",
+    "template": "{{basePrompt}}, {{artist_tags}}, {{additionalPrompt}}, {{detailPrompt}}",
+    "tags": [
+      {
+        "tag": "Synthetic Artist",
+        "kind": "artist",
+        "weight": 1.2,
+        "artist": "Synthetic Artist"
+      },
+      {
+        "tag": "watercolor",
+        "kind": "style",
+        "weight": 0.8
+      }
+    ],
+    "parts": {
+      "basePrompt": "1girl, silver hair",
+      "additionalPrompt": "soft light",
+      "detailPrompt": "detailed eyes",
+      "inpaintingPrompt": ""
+    }
+  },
+  "determinism": {
+    "seed": 424242,
+    "date": "2026-07-11T00:00:00.000Z",
+    "wildcardSelections": []
+  },
+  "expected": {
+    "formattedTags": "1.2::artist:Synthetic Artist ::, 0.8::watercolor ::",
+    "prompt": "1girl, silver hair, 1.2::artist:Synthetic Artist ::, 0.8::watercolor ::, soft light, detailed eyes",
+    "artistPlaceholderConsumed": true
+  },
+  "invariants": [
+    "Style Lab formatting does not require an API token.",
+    "Empty prompt parts are compacted without duplicate commas.",
+    "Weighted tags retain one decimal place."
+  ]
+}

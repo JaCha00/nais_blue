@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "case": "comment-only-character-prompt",
+  "classification": "target-bug-possibility",
+  "request": {
+    "prompt": "1girl, blue eyes",
+    "negativePrompt": "lowres",
+    "model": "nai-diffusion-4-5-full",
+    "width": 832,
+    "height": 1216,
+    "steps": 28,
+    "cfgScale": 5,
+    "cfgRescale": 0,
+    "sampler": "k_euler_ancestral",
+    "noiseSchedule": "karras",
+    "seed": 13579,
+    "variety": false,
+    "qualityToggle": false,
+    "ucPreset": 2,
+    "characterPrompts": [
+      {
+        "prompt": "   # comment-only character",
+        "negativePrompt": "character negative should be filtered with the character",
+        "enabled": true,
+        "center": {
+          "x": 0.3,
+          "y": 0.7
+        }
+      }
+    ],
+    "useCoords": true
+  },
+  "options": {
+    "stream": "msgpack",
+    "imageFormat": "png"
+  },
+  "expected": {
+    "action": "generate",
+    "input": "1girl, blue eyes",
+    "model": "nai-diffusion-4-5-full",
+    "parameters": {
+      "params_version": 3,
+      "width": 832,
+      "height": 1216,
+      "n_samples": 1,
+      "seed": 13579,
+      "sampler": "k_euler_ancestral",
+      "steps": 28,
+      "scale": 5,
+      "negative_prompt": "lowres",
+      "cfg_rescale": 0,
+      "noise_schedule": "karras",
+      "legacy": false,
+      "legacy_v3_extend": false,
+      "dynamic_thresholding": false,
+      "skip_cfg_above_sigma": null,
+      "add_original_image": true,
+      "prefer_brownian": true,
+      "ucPreset": 2,
+      "use_coords": true,
+      "qualityToggle": false,
+      "autoSmea": false,
+      "controlnet_strength": 1,
+      "normalize_reference_strength_multiple": true,
+      "inpaintImg2ImgStrength": 1,
+      "deliberate_euler_ancestral_bug": false,
+      "image_format": "png",
+      "stream": "msgpack",
+      "v4_prompt": {
+        "caption": {
+          "base_caption": "1girl, blue eyes",
+          "char_captions": []
+        },
+        "use_coords": true,
+        "use_order": true
+      },
+      "v4_negative_prompt": {
+        "caption": {
+          "base_caption": "lowres",
+          "char_captions": []
+        }
+      },
+      "characterPrompts": []
+    }
+  },
+  "actual": {
+    "action": "generate",
+    "input": "1girl, blue eyes",
+    "model": "nai-diffusion-4-5-full",
+    "parameters": {
+      "params_version": 3,
+      "width": 832,
+      "height": 1216,
+      "n_samples": 1,
+      "seed": 13579,
+      "sampler": "k_euler_ancestral",
+      "steps": 28,
+      "scale": 5,
+      "negative_prompt": "lowres",
+      "cfg_rescale": 0,
+      "noise_schedule": "karras",
+      "legacy": false,
+      "legacy_v3_extend": false,
+      "dynamic_thresholding": false,
+      "skip_cfg_above_sigma": null,
+      "add_original_image": true,
+      "prefer_brownian": true,
+      "ucPreset": 2,
+      "use_coords": true,
+      "qualityToggle": false,
+      "autoSmea": false,
+      "controlnet_strength": 1,
+      "normalize_reference_strength_multiple": true,
+      "inpaintImg2ImgStrength": 1,
+      "deliberate_euler_ancestral_bug": false,
+      "image_format": "png",
+      "stream": "msgpack",
+      "v4_prompt": {
+        "caption": {
+          "base_caption": "1girl, blue eyes",
+          "char_captions": [
+            {
+              "char_caption": "",
+              "centers": [
+                {
+                  "x": 0.3,
+                  "y": 0.7
+                }
+              ]
+            }
+          ]
+        },
+        "use_coords": true,
+        "use_order": true
+      },
+      "v4_negative_prompt": {
+        "caption": {
+          "base_caption": "lowres",
+          "char_captions": [
+            {
+              "char_caption": "character negative should be filtered with the character",
+              "centers": [
+                {
+                  "x": 0.3,
+                  "y": 0.7
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "characterPrompts": [
+        {
+          "prompt": "",
+          "uc": "character negative should be filtered with the character",
+          "center": {
+            "x": 0.3,
+            "y": 0.7
+          },
+          "enabled": true
+        }
+      ]
+    }
+  },
+  "differences": [
+    {
+      "path": "$.parameters.characterPrompts",
+      "kind": "array-length",
+      "actual": 1,
+      "expected": 0
+    },
+    {
+      "path": "$.parameters.characterPrompts[0]",
+      "kind": "unexpected",
+      "actual": {
+        "prompt": "",
+        "uc": "character negative should be filtered with the character",
+        "center": {
+          "x": 0.3,
+          "y": 0.7
+        },
+        "enabled": true
+      }
+    },
+    {
+      "path": "$.parameters.v4_negative_prompt.caption.char_captions",
+      "kind": "array-length",
+      "actual": 1,
+      "expected": 0
+    },
+    {
+      "path": "$.parameters.v4_negative_prompt.caption.char_captions[0]",
+      "kind": "unexpected",
+      "actual": {
+        "char_caption": "character negative should be filtered with the character",
+        "centers": [
+          {
+            "x": 0.3,
+            "y": 0.7
+          }
+        ]
+      }
+    },
+    {
+      "path": "$.parameters.v4_prompt.caption.char_captions",
+      "kind": "array-length",
+      "actual": 1,
+      "expected": 0
+    },
+    {
+      "path": "$.parameters.v4_prompt.caption.char_captions[0]",
+      "kind": "unexpected",
+      "actual": {
+        "char_caption": "",
+        "centers": [
+          {
+            "x": 0.3,
+            "y": 0.7
+          }
+        ]
+      }
+    }
+  ],
+  "provenance": {
+    "repository": "https://github.com/sunanakgo/NAIS3.git",
+    "pinnedCommit": "5c65aa6b00b1d3ecbeaf3787e5ab510e2464f464",
+    "sourcePath": "src/main/nai/payload.ts",
+    "sourceBlob": "b7f1950c7ed539bd069746f06f736128799477d0",
+    "license": "GPL-3.0",
+    "reconstructedAt": "2026-07-11",
+    "webCapture": false,
+    "transformation": "Expected payload reconstructed from the pinned NAIS3 removeComments-before-filter behavior; actual payload captured from the current target builder."
+  }
+}

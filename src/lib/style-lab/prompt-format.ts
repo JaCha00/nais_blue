@@ -7,8 +7,6 @@ export interface WeightedPromptTag {
     artist?: string
 }
 
-export type WeightedArtistTag = WeightedPromptTag
-
 export interface StyleLabPromptParts {
     basePrompt: string
     additionalPrompt: string
@@ -85,12 +83,6 @@ function detectPromptTagKind(tag: Partial<WeightedPromptTag> & { artist?: string
     return tag.artist || /^(?:\d+(?:\.\d+)?::\s*)?artist:/i.test(raw) ? 'artist' : 'plain'
 }
 
-export function getPromptTagText(tag: Partial<WeightedPromptTag> & { artist?: string }): string {
-    return tag.kind === 'artist' || (!tag.kind && tag.artist)
-        ? normalizeArtistName(String(tag.tag ?? tag.artist ?? ''))
-        : normalizePlainTag(String(tag.tag ?? tag.artist ?? ''))
-}
-
 export function normalizePromptTag(tag: Partial<WeightedPromptTag> & { artist?: string }): WeightedPromptTag {
     const kind = detectPromptTagKind(tag)
     const text = kind === 'artist'
@@ -120,14 +112,6 @@ export function formatWeightedPromptTag(tag: WeightedPromptTag): string {
 
 export function formatWeightedPromptTags(tags: WeightedPromptTag[]): string {
     return tags.map(formatWeightedPromptTag).filter(Boolean).join(', ')
-}
-
-export function formatWeightedArtistTag(tag: WeightedPromptTag): string {
-    return formatWeightedPromptTag(tag)
-}
-
-export function formatWeightedArtistTags(tags: WeightedPromptTag[]): string {
-    return formatWeightedPromptTags(tags)
 }
 
 export function buildStyleLabPrompt(

@@ -25,12 +25,12 @@ const settings = read('src/pages/Settings.tsx')
 check('BACKUP_STORE_KEYS is exported', /export const BACKUP_STORE_KEYS/.test(indexedDb))
 check('BACKUP_STORE_KEYS includes prompt library', /BACKUP_STORE_KEYS[\s\S]*'nais2-prompt-library'/.test(indexedDb))
 check('BACKUP_STORE_KEYS includes character rotation', /BACKUP_STORE_KEYS[\s\S]*'nais2-character-rotation'/.test(indexedDb))
-check('exportAllData uses BACKUP_STORE_KEYS', /for\s*\(\s*const key of BACKUP_STORE_KEYS\s*\)/.test(indexedDb))
-check('getStoreSizes uses BACKUP_STORE_KEYS', /getStoreSizes[\s\S]*for\s*\(\s*const key of BACKUP_STORE_KEYS\s*\)/.test(indexedDb))
+check('exportAllData uses the full backup registry', /exportAllData[\s\S]*exportBackupFromStorage/.test(indexedDb) && /options\.storeKeys \?\? FULL_BACKUP_STORE_KEYS/.test(indexedDb))
+check('getStoreSizes uses the full backup registry', /getStoreSizes[\s\S]*for\s*\(\s*const key of FULL_BACKUP_STORE_KEYS\s*\)/.test(indexedDb))
 
 check('store snapshot scheduler exports start function', /export function startStoreSnapshotScheduler/.test(snapshots))
 check('store snapshot scheduler is Tauri guarded', /isTauri\(\)/.test(snapshots))
-check('store snapshots use Pictures NAIS_Backup', /BaseDirectory\.Picture/.test(snapshots) && /NAIS_Backup/.test(snapshots))
+check('store snapshots use the media root NAIS_Backup', /MEDIA_STORAGE_BASE_DIRECTORY/.test(snapshots) && /NAIS_Backup/.test(snapshots))
 check('store snapshots are debounced 5s', /DEBOUNCE_MS\s*=\s*5000/.test(snapshots))
 check('store snapshots keep max 30 per store', /MAX_SNAPSHOTS_PER_STORE\s*=\s*30/.test(snapshots))
 check('store snapshots subscribe to IndexedDB writes', /registerIndexedDBWriteListener/.test(snapshots))
@@ -49,7 +49,11 @@ check(
 const mainCallIndex = main.indexOf('startStoreSnapshotScheduler()')
 const postRenderIndex = main.indexOf('function runPostRenderStartupTasks()')
 const scheduleIndex = main.indexOf('function schedulePostRenderStartupTasks()')
-check('main imports store snapshot scheduler', /import \{ startStoreSnapshotScheduler \} from '\.\/lib\/store-snapshots'/.test(main))
+check(
+  'main imports store snapshot scheduler',
+  /import \{ startStoreSnapshotScheduler \} from '\.\/lib\/store-snapshots'/.test(main)
+    || /import\('\.\/lib\/store-snapshots'\)/.test(main),
+)
 check(
   'main starts scheduler only inside runPostRenderStartupTasks',
   mainCallIndex > postRenderIndex && mainCallIndex < scheduleIndex && (main.match(/startStoreSnapshotScheduler\(\)/g) || []).length === 1,

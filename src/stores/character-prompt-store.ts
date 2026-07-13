@@ -1,25 +1,18 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
-
-export interface CharacterPrompt {
-    id: string
-    name?: string         // Character name (optional)
-    prompt: string        // Character-specific tags
-    negative: string      // Character-specific negative tags
-    enabled: boolean
-    position: { x: number, y: number }  // 0-1 coordinates (0,0 = top-left, 1,1 = bottom-right)
-}
-
-interface CharacterPromptState {
-    characters: CharacterPrompt[]
-    addCharacter: (initialData?: Partial<CharacterPrompt>) => void
-    updateCharacter: (id: string, data: Partial<CharacterPrompt>) => void
-    removeCharacter: (id: string) => void
-    setPosition: (id: string, x: number, y: number) => void
-    toggleEnabled: (id: string) => void
-    clearAll: () => void
-}
+import {
+    migrateCharacterPromptPersistedState,
+} from '@/lib/composition/character-prompt-migration'
+export {
+    migrateCharacterPromptIds,
+    migrateCharacterPromptPersistedState,
+} from '@/lib/composition/character-prompt-migration'
+export type {
+    CharacterIdMigrationEntry,
+    CharacterIdMigrationResult,
+    MigratedCharacterPromptPersistedState as CharacterPromptPersistedState,
+} from '@/lib/composition/character-prompt-migration'
 
 // Color palette for character markers (up to 6 characters)
 export const CHARACTER_COLORS = [
@@ -344,7 +337,10 @@ export const useCharacterPromptStore = create<CharacterPromptState>()(
         {
             name: 'nais2-character-prompts',
             storage: createJSONStorage(() => indexedDBStorage),
-            version: 1,
+            version: 2,
+            migrate: (persistedState) => (
+                migrateCharacterPromptPersistedState(persistedState) as unknown as CharacterPromptState
+            ),
             // 데이터 보호: hydration 후 검증
             onRehydrateStorage: () => (state, error) => {
                 if (error) {
@@ -353,6 +349,12 @@ export const useCharacterPromptStore = create<CharacterPromptState>()(
                 }
                 
                 if (state) {
+                    const migrated = migrateCharacterPromptPersistedState(state)
+                    state.characters = migrated.characters as CharacterPrompt[]
+                    state.presets = migrated.presets as CharacterPreset[]
+                    state.groups = migrated.groups as CharacterGroup[]
+                    state.positionEnabled = migrated.positionEnabled
+
                     // 정상 복원 로그
                     const presetCount = state.presets?.length || 0
                     const charCount = state.characters?.length || 0

@@ -16,9 +16,13 @@ function listSourceFiles(directory) {
 const pkg = readJson('package.json')
 const rust = read('src-tauri/src/lib.rs')
 const cargoToml = read('src-tauri/Cargo.toml')
+const tauriConfig = readJson('src-tauri/tauri.conf.json')
 const desktopCapabilities = readJson('src-tauri/capabilities/default.json')
 const viteConfig = read('vite.config.ts')
 const indexHtml = read('index.html')
+const retiredUrlPluginKey = ['deep', 'link'].join('-')
+const retiredUrlPluginCrate = ['tauri', 'plugin', 'deep', 'link'].join('-')
+const retiredUrlPluginRustModule = ['tauri', 'plugin', 'deep', 'link'].join('_')
 
 const baseCargoDependencies = cargoToml.match(
     /\[dependencies\]([\s\S]*?)(?=\r?\n\[)/,
@@ -78,12 +82,10 @@ assert.equal(androidConfig.build?.beforeDevCommand, 'npm run dev:mobile')
 assert.equal(androidConfig.bundle?.android?.minSdkVersion, 24)
 assert.deepEqual(androidConfig.bundle?.externalBin, [])
 assert.equal(androidConfig.bundle?.createUpdaterArtifacts, false)
-assert.deepEqual(androidConfig.plugins?.['deep-link']?.mobile, [
-    {
-        scheme: ['nais2'],
-        appLink: false,
-    },
-])
+assert.equal(androidConfig.plugins?.[retiredUrlPluginKey], undefined)
+assert.equal(tauriConfig.plugins?.[retiredUrlPluginKey], undefined)
+assert.ok(!cargoToml.includes(retiredUrlPluginCrate))
+assert.ok(!rust.includes(retiredUrlPluginRustModule))
 
 assert.ok(
     existsSync(join(root, 'src-tauri/capabilities/mobile.json')),
@@ -91,6 +93,7 @@ assert.ok(
 )
 const mobileCapabilities = readJson('src-tauri/capabilities/mobile.json')
 const mobilePermissions = JSON.stringify(mobileCapabilities.permissions)
+const desktopPermissions = JSON.stringify(desktopCapabilities.permissions)
 
 assert.deepEqual(desktopCapabilities.platforms, ['windows', 'linux', 'macOS'])
 assert.deepEqual(mobileCapabilities.platforms, ['android', 'iOS'])
@@ -121,6 +124,15 @@ assert.ok(
     'Asset profile JSON reads require the text-file command on mobile',
 )
 assert.ok(!mobilePermissions.includes('updater:'), 'mobile capability must not expose updater IPC')
+assert.ok(!mobilePermissions.includes(`${retiredUrlPluginKey}:`), 'mobile capability must not expose retired URL callback IPC')
+assert.ok(!desktopPermissions.includes(`${retiredUrlPluginKey}:`), 'desktop capability must not expose retired URL callback IPC')
+
+const generatedManifestPath = join(root, 'src-tauri/gen/android/app/src/main/AndroidManifest.xml')
+if (existsSync(generatedManifestPath)) {
+    const generatedManifest = readFileSync(generatedManifestPath, 'utf8')
+    assert.ok(!generatedManifest.includes('android.intent.action.VIEW'))
+    assert.ok(!generatedManifest.includes('android.intent.category.BROWSABLE'))
+}
 for (const desktopWindowPermission of [
     'core:window:allow-minimize',
     'core:window:allow-toggle-maximize',
@@ -189,10 +201,14 @@ assert.ok(
 assert.ok(existsSync(join(root, 'src/platform/runtime.ts')), 'src/platform/runtime.ts must exist')
 assert.ok(existsSync(join(root, 'src/platform/browser.ts')), 'src/platform/browser.ts must exist')
 assert.ok(existsSync(join(root, 'src/platform/storage.ts')), 'src/platform/storage.ts must exist')
+assert.ok(existsSync(join(root, 'src/platform/capabilities.ts')), 'src/platform/capabilities.ts must exist')
+assert.ok(existsSync(join(root, 'src/platform/portable-resources.ts')), 'src/platform/portable-resources.ts must exist')
 
 const runtime = read('src/platform/runtime.ts')
 const browser = read('src/platform/browser.ts')
 const storage = read('src/platform/storage.ts')
+const capabilities = read('src/platform/capabilities.ts')
+const portableResources = read('src/platform/portable-resources.ts')
 const webView = read('src/pages/WebView.tsx')
 const mainMode = read('src/pages/MainMode.tsx')
 const historyPanel = read('src/components/layout/HistoryPanel.tsx')
@@ -216,6 +232,32 @@ for (const symbol of [
 ]) {
     assert.ok(runtime.includes(`export const ${symbol}`), `runtime.ts must export ${symbol}`)
 }
+
+for (const capability of [
+    'platform',
+    'absoluteOutputPath',
+    'externalProfileFileWatch',
+    'localTaggerSidecar',
+    'embeddedBrowser',
+    'r2DeployTooling',
+    'embeddedPngMetadataWrite',
+    'supportedImageFormats',
+]) {
+    assert.ok(capabilities.includes(capability), `RuntimeCapabilities must expose ${capability}`)
+}
+assert.ok(
+    capabilities.includes("platform === 'android'") &&
+        capabilities.includes('reason') &&
+        capabilities.includes('alternative'),
+    'Android capability entries must provide explicit reasons and alternative workflows',
+)
+assert.ok(
+    portableResources.includes('readyForGeneration') &&
+        portableResources.includes('repairAction') &&
+        portableResources.includes('exportIncludesOpaqueTokens: false') &&
+        portableResources.includes('syncIncludesOpaqueTokens: false'),
+    'portable resources must remain loadable, block unresolved generation, and redact platform tokens',
+)
 
 assert.ok(
     indexHtml.includes('viewport-fit=cover'),
@@ -312,7 +354,7 @@ assert.ok(
     'Danbooru verifier UI must be disabled when the local tagger sidecar is unsupported',
 )
 assert.ok(
-    assetModuleStudio.includes('supportsLocalTaggerSidecar') &&
+    assetModuleStudio.includes('runtimeCapabilities.localTaggerSidecar.supported') &&
         assetModuleStudio.includes('canUseLocalTagger'),
     'Asset module auto-verification must skip local tagger calls on mobile',
 )

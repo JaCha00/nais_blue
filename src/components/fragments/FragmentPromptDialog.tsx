@@ -65,11 +65,9 @@ import {
     Download,
     MoreHorizontal,
     GripVertical,
-    Store,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
-import { UploadFragmentDialog } from '@/components/marketplace/UploadFragmentDialog'
 
 interface FragmentPromptDialogProps {
     open: boolean
@@ -103,7 +101,6 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
     const [isCreatingFolder, setIsCreatingFolder] = useState(false)
     const [hasChanges, setHasChanges] = useState(false)
     const [tooltipEnabled, setTooltipEnabled] = useState(false)
-    const [showUploadDialog, setShowUploadDialog] = useState(false)
 
     // Dialog 열릴 때 Tooltip 비활성화 후 500ms 뒤 활성화
     useEffect(() => {
@@ -480,15 +477,6 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                         <Download className="h-4 w-4 mr-2" />
                                         {t('fragment.exportAll', '전체 내보내기 (JSON)')}
                                     </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                        onClick={() => setShowUploadDialog(true)}
-                                        disabled={!selectedFile}
-                                        title={!selectedFile ? t('marketplace.selectFileFirst', '공유할 파일을 먼저 선택하세요') : undefined}
-                                    >
-                                        <Store className="h-4 w-4 mr-2" />
-                                        {t('marketplace.shareFragment', '마켓에 공유')}
-                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
@@ -655,11 +643,6 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                 </div>
             </DialogContent>
 
-            <UploadFragmentDialog
-                open={showUploadDialog}
-                onOpenChange={setShowUploadDialog}
-                fileId={selectedFileId}
-            />
         </Dialog>
     )
 }

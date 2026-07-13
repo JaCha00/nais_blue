@@ -89,7 +89,8 @@ check('scene generation freezes rotation character into worker context', include
 check('scene generation no longer mutates awaitingWorker directly', !sceneGeneration.includes("useRotationStore.setState({ awaitingWorker: false })"))
 
 check('scene params exclude pinned prompts per scene', includesAll(buildSceneParams, [
-  "import { useRotationStore } from '@/stores/character-rotation-store'",
+  "from '@/stores/character-rotation-store'",
+  'useRotationStore',
   'scene.excludePinned',
   'excludedPinnedIds',
   'pinnedCharacterIds',
@@ -98,9 +99,10 @@ check('scene params exclude pinned prompts per scene', includesAll(buildScenePar
 check('scene output path helper owns normal and rotation directories', includesAll(sceneOutputPath, [
   'resolveSceneOutputPath',
   'getRotationCharacterFolderName',
-  "['NAIS_Scene', safePresetName",
+  "request.sceneSavePath || 'NAIS_Scene'",
+  'const pathSegments = [sceneRoot, safePresetName',
   'safeCharacterName ? [safeCharacterName] : []',
-  'BaseDirectory.Picture',
+  'MEDIA_STORAGE_BASE_DIRECTORY',
 ]))
 check('scene output path uses explicit rotation request fields', includesAll(sceneOutputPath, [
   'rotationCharacterId?: string',

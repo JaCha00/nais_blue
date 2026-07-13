@@ -1,0 +1,60 @@
+{
+  "workflow": "scene",
+  "case": "cancel-guards",
+  "description": "Characterizes the three session guard boundaries around a Scene API call and result save.",
+  "sessionId": 42,
+  "initialState": {
+    "isGenerating": true,
+    "isCancelling": false,
+    "generationSessionId": 42
+  },
+  "scenarios": [
+    {
+      "name": "cancel-before-api-call",
+      "stateAtGuard": {
+        "isGenerating": true,
+        "isCancelling": true,
+        "generationSessionId": 42
+      },
+      "expected": {
+        "status": "cancelled",
+        "apiCallCount": 0,
+        "saveCallCount": 0,
+        "requeueCount": 0
+      }
+    },
+    {
+      "name": "cancel-after-api-call",
+      "stateAtGuard": {
+        "isGenerating": false,
+        "isCancelling": true,
+        "generationSessionId": 43
+      },
+      "expected": {
+        "status": "cancelled",
+        "apiCallCount": 1,
+        "saveCallCount": 0,
+        "requeueCount": 0
+      }
+    },
+    {
+      "name": "cancel-before-save",
+      "stateAtGuard": {
+        "isGenerating": true,
+        "isCancelling": false,
+        "generationSessionId": 43
+      },
+      "expected": {
+        "status": "cancelled",
+        "apiCallCount": 1,
+        "saveCallCount": 0,
+        "requeueCount": 0
+      }
+    }
+  ],
+  "invariants": [
+    "A stale or cancelling session cannot start another API call.",
+    "A result from a stale session is never persisted.",
+    "Character and vibe image release remains a once-per-session worker-finalization concern."
+  ]
+}

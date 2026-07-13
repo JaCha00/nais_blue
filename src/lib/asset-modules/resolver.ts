@@ -1,4 +1,3 @@
-import { processWildcards } from '@/lib/fragment-processor'
 import type {
     AssetModuleProfile,
     AssetProfile,
@@ -368,7 +367,16 @@ export async function resolveAssetModulePlan(params: ResolveParams): Promise<Ass
 
     const promptGroups = await resolvePromptGroups(
         contributions,
-        params.wildcardProcessor ?? processWildcards,
+        params.wildcardProcessor ?? (async prompt => {
+            // Keep the pure Asset resolver import-safe during startup
+            // migration. The compatibility facade owns the persisted
+            // FragmentStore and is loaded only for a real legacy call.
+            const { processWildcards } = await import('@/lib/fragment-processor')
+            return processWildcards(prompt, {
+                mode: 'preview',
+                commitSequence: false,
+            })
+        }),
         warnings,
     )
     const generationParams = buildGenerationParams(params.baseParams ?? {}, promptGroups, seed)

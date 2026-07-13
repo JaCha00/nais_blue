@@ -1,0 +1,10 @@
+{
+  "case": "deterministic-inline-selection",
+  "description": "Select the second of three inline fragment options with an injected Math.random result.",
+  "input": "portrait, <silver hair|blue hair|pink hair>, soft light",
+  "randomSequence": [
+    0.5
+  ],
+  "expectedRandomCalls": 1,
+  "expected": "portrait, blue hair, soft light"
+}

@@ -2,6 +2,10 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import {
+    runtimeCapabilities,
+    UnsupportedRuntimeCapabilityError,
+} from '@/platform/capabilities'
+import {
     ASSET_PROFILE_FILE_PATH,
     loadAssetProfileFile,
     saveAssetProfileFile,
@@ -194,6 +198,16 @@ export const useAssetModuleStore = create<AssetModuleStoreState>()(
 
             startDiskWatcher: () => {
                 if (stopAssetProfileWatcher) return
+                if (!runtimeCapabilities.externalProfileFileWatch.supported) {
+                    set({
+                        isWatchingDisk: false,
+                        lastError: new UnsupportedRuntimeCapabilityError(
+                            'externalProfileFileWatch',
+                            runtimeCapabilities.externalProfileFileWatch,
+                        ).message,
+                    })
+                    return
+                }
 
                 stopAssetProfileWatcher = watchAssetProfileFile(
                     async () => {
@@ -219,7 +233,9 @@ export const useAssetModuleStore = create<AssetModuleStoreState>()(
             partialize: (state) => ({
                 profile: state.profile,
                 sourcePath: state.sourcePath,
-                lastLoadedAt: state.lastLoadedAt,
+                // Session-only diagnostic. Persisting a new timestamp after
+                // every startup makes the exact legacy migration source hash
+                // change even when the profile itself is unchanged.
                 lastSavedAt: state.lastSavedAt,
                 lastDiskMtimeMs: state.lastDiskMtimeMs,
                 hasConflict: state.hasConflict,

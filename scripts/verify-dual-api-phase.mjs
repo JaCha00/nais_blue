@@ -12,6 +12,7 @@ const check = (name, pass, detail = '') => {
 const authStore = read('src/stores/auth-store.ts')
 const settings = read('src/pages/Settings.tsx')
 const layout = read('src/components/layout/ThreeColumnLayout.tsx')
+const removedCatalogPath = `/${['market', 'place'].join('')}`
 
 check('auth store exports ApiSlot', /export type ApiSlot = 1 \| 2/.test(authStore))
 check('auth store keeps slot 1 compatibility fields', /token:\s*string/.test(authStore) && /isVerified:\s*boolean/.test(authStore) && /anlas:\s*AnlasInfo \| null/.test(authStore))
@@ -38,7 +39,7 @@ check('Settings keeps Gemini controls', /GeminiIcon/.test(settings) && /settings
 check('layout bases Anlas pills on active tokens helper', /getActiveTokens/.test(layout) && /activeTokens/.test(layout))
 check('layout reads dual slot balances', /anlas2/.test(layout) && /slot2Enabled/.test(layout))
 check('layout refreshes both slots', /refreshAnlas\(1\)/.test(layout) && /refreshAnlas\(2\)/.test(layout))
-check('layout keeps marketplace/stylelab routes', /\/marketplace/.test(layout) && /\/style-lab/.test(layout))
+check('layout keeps Style Lab and excludes the removed remote catalog', /\/style-lab/.test(layout) && !layout.includes(removedCatalogPath))
 
 const generationStore = read('src/stores/generation-store.ts')
 check('main generation explicitly selects slot 1 token', /find\(\(entry\) => entry\.slot === 1\)/.test(generationStore) && /const token = slot1Token\?\.token/.test(generationStore))

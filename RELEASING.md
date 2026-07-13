@@ -50,8 +50,6 @@ signing job cannot read it until the required reviewer approves the deployment:
 
 - `NAIS_KEYSTORE_BASE64`: Base64 encoding of the exact pinned release keystore
 - `NAIS_KEYSTORE_PASSWORD`: keystore and key password
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`: optional production frontend
-  configuration, matching the desktop workflow
 
 The tracked policy supplies the non-secret `release` alias. The
 `android-release` GitHub Environment must require a reviewer and allow only

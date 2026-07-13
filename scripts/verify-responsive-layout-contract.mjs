@@ -7,10 +7,15 @@ import { chromium } from 'playwright'
 
 const VIEWPORTS = [
     { width: 390, height: 844, minCenterWidth: 330, sidebars: 'hidden', mobile: true },
-    { width: 412, height: 892, minCenterWidth: 352, sidebars: 'hidden', mobile: true },
-    { width: 768, height: 900, minCenterWidth: 680, sidebars: 'hidden' },
-    { width: 1280, height: 900, minCenterWidth: 1100, sidebars: 'hidden' },
+    { width: 412, height: 915, minCenterWidth: 352, sidebars: 'hidden', mobile: true },
+    { width: 768, height: 1024, minCenterWidth: 680, sidebars: 'hidden' },
+    { width: 1280, height: 800, minCenterWidth: 1100, sidebars: 'hidden' },
+    // Wide desktop restores both command sidebars, leaving the authoring/main
+    // center intentionally narrower than the viewport.
+    { width: 1536, height: 960, minCenterWidth: 680 },
 ]
+
+const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/asset-modules']
 
 // These routes represent each responsive information architecture used by the
 // production shell: command canvas, split editor, dense grids, and settings.
@@ -21,7 +26,6 @@ const routes = [
     '/prompts',
     '/tools',
     '/library',
-    '/marketplace',
     '/web',
     '/asset-modules',
     '/settings',
@@ -268,6 +272,283 @@ function assertVisibleCtaLayout(report, context) {
     )
 }
 
+async function collectCompositionShellReport(page, route) {
+    return page.evaluate(({ currentRoute }) => {
+        const visibleRect = (selector, requiredPosition) => {
+            for (const element of document.querySelectorAll(selector)) {
+                const rect = element.getBoundingClientRect()
+                const style = getComputedStyle(element)
+                if (style.display === 'none' || style.visibility === 'hidden' || rect.width < 1 || rect.height < 1) continue
+                if (requiredPosition && style.position !== requiredPosition) continue
+                return {
+                    left: rect.left,
+                    top: rect.top,
+                    right: rect.right,
+                    bottom: rect.bottom,
+                    width: rect.width,
+                    height: rect.height,
+                    position: style.position,
+                }
+            }
+            return null
+        }
+        const actionSelector = currentRoute === '/'
+            ? '[data-testid="main-generate-action"]'
+            : '[data-testid="scene-generate-action"], [data-testid="scene-cancel-action"]'
+        const shellActions = new Set(document.querySelectorAll([
+            '[data-testid="composition-command-bar"] button',
+            '[data-testid="composition-mobile-command-dock"] button',
+            '[data-testid="main-command-dock"] button',
+            '[data-testid="composition-module-stack"] button',
+            '[data-testid="composition-inspector"] button',
+        ].join(',')))
+        const shortActions = Array.from(shellActions).flatMap((element, index) => {
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            if (style.display === 'none' || style.visibility === 'hidden' || rect.width < 1 || rect.height < 1) return []
+            if (rect.width >= 44 && rect.height >= 44) return []
+            return [{
+                label: element.getAttribute('aria-label') || element.textContent?.trim().slice(0, 60) || `action-${index}`,
+                width: rect.width,
+                height: rect.height,
+            }]
+        })
+
+        return {
+            layout: visibleRect('[data-testid="composition-workspace-layout"]'),
+            dock: visibleRect('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]', 'fixed'),
+            commandBar: visibleRect('[data-testid="composition-command-bar"]'),
+            moduleStack: visibleRect('[data-testid="composition-module-stack"]'),
+            canvas: visibleRect('[data-testid="composition-workspace-canvas"]'),
+            inspector: visibleRect('[data-testid="composition-inspector"]'),
+            action: visibleRect(actionSelector),
+            shortActions,
+        }
+    }, { currentRoute: route })
+}
+
+function assertCompositionShell(report, route, viewport) {
+    const context = `${route} composition shell @ ${viewport.width}x${viewport.height}`
+    assert.ok(report.layout, `${context} is missing the workspace layout`)
+    assert.ok(report.action, `${context} is missing Generate/Cancel`)
+    assert.ok(
+        report.action.width >= 44 && report.action.height >= 44,
+        `${context} Generate/Cancel is below 44px (${report.action.width}x${report.action.height})`,
+    )
+    assert.deepEqual(report.shortActions, [], `${context} has Composition actions below 44px: ${JSON.stringify(report.shortActions)}`)
+
+    if (viewport.mobile) {
+        assert.ok(report.dock, `${context} must show the mobile command dock`)
+        assert.equal(report.commandBar, null, `${context} must keep the desktop/tablet command bar hidden`)
+        assert.equal(report.dock.position, 'fixed', `${context} mobile dock must be fixed`)
+        assert.ok(report.dock.left >= -1 && report.dock.right <= viewport.width + 1, `${context} dock leaves the horizontal viewport`)
+        assert.ok(report.dock.bottom <= viewport.height + 1, `${context} dock leaves the bottom viewport`)
+        assert.ok(
+            report.action.top >= report.dock.top - 1 && report.action.bottom <= report.dock.bottom + 1,
+            `${context} Generate/Cancel is not inside the dock`,
+        )
+        return
+    }
+
+    assert.equal(report.dock, null, `${context} must hide the mobile command dock at tablet/desktop widths`)
+    assert.ok(report.commandBar, `${context} must show the composition command bar`)
+
+    if (viewport.width >= 1536) {
+        assert.ok(report.moduleStack, `${context} must show the Module Stack rail`)
+        assert.ok(report.canvas, `${context} must show the center canvas/grid`)
+        assert.ok(report.inspector, `${context} must show the Context Inspector rail`)
+        assert.ok(
+            report.moduleStack.right <= report.canvas.left + 1 && report.canvas.right <= report.inspector.left + 1,
+            `${context} does not preserve Module Stack → canvas/grid → Inspector ordering`,
+        )
+    }
+}
+
+async function collectText200OverflowReport(page) {
+    return page.evaluate(async () => {
+        const previousFontSize = document.documentElement.style.fontSize
+        document.documentElement.style.fontSize = '200%'
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        const main = document.querySelector('main')
+        const workspace = document.querySelector('[data-testid="composition-workspace-layout"]')
+        const report = {
+            bodyScrollWidth: document.body.scrollWidth,
+            documentWidth: document.documentElement.clientWidth,
+            mainScrollWidth: main?.scrollWidth ?? 0,
+            mainClientWidth: main?.clientWidth ?? 0,
+            workspaceScrollWidth: workspace?.scrollWidth ?? 0,
+            workspaceClientWidth: workspace?.clientWidth ?? 0,
+        }
+        document.documentElement.style.fontSize = previousFontSize
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        return report
+    })
+}
+
+async function collectCompositionQualityReport(page, rootSelector, coarsePointer) {
+    return page.evaluate(({ selector, coarse }) => {
+        const root = document.querySelector(selector)
+        if (!root) return { missingRoot: true }
+        const visible = element => {
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 1 && rect.height > 1
+        }
+        const accessibleName = element => {
+            const labelledBy = element.getAttribute('aria-labelledby')
+            const labelledText = labelledBy
+                ? labelledBy.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? '').join(' ')
+                : ''
+            const label = element instanceof HTMLElement && element.id
+                ? document.querySelector(`label[for="${CSS.escape(element.id)}"]`)?.textContent ?? ''
+                : ''
+            return [
+                element.getAttribute('aria-label'),
+                labelledText,
+                element.getAttribute('title'),
+                label,
+                element.textContent,
+                element.getAttribute('alt'),
+                element.getAttribute('value'),
+            ].filter(Boolean).join(' ').trim()
+        }
+        const interactives = Array.from(root.querySelectorAll([
+            'button',
+            'a[href]',
+            'input:not([type="hidden"])',
+            'select',
+            'textarea',
+            '[role="button"]',
+            '[role="tab"]',
+            '[tabindex]:not([tabindex="-1"])',
+        ].join(','))).filter(visible)
+        const coarseTargetsBelow44 = coarse ? interactives.flatMap((element, index) => {
+            const rect = element.getBoundingClientRect()
+            return rect.width + 0.5 < 44 || rect.height + 0.5 < 44
+                ? [{ name: accessibleName(element) || `interactive-${index}`, width: rect.width, height: rect.height }]
+                : []
+        }) : []
+        const iconOnlyMissingNames = interactives.flatMap((element, index) => {
+            const visibleText = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
+            const iconOnly = visibleText.length === 0 && Boolean(element.querySelector('svg, img'))
+            return iconOnly && accessibleName(element).length === 0
+                ? [{ element: element.tagName.toLowerCase(), index }]
+                : []
+        })
+
+        const cardSelector = '[data-slot="card"], .border.bg-card, .bg-card.border'
+        let maxNestedCardDepth = 0
+        for (const card of root.querySelectorAll(cardSelector)) {
+            if (!visible(card)) continue
+            let depth = 1
+            for (let parent = card.parentElement; parent && parent !== root; parent = parent.parentElement) {
+                if (parent.matches(cardSelector)) depth += 1
+            }
+            maxNestedCardDepth = Math.max(maxNestedCardDepth, depth)
+        }
+
+        const textOutsideContainer = Array.from(root.querySelectorAll('*')).flatMap((element, index) => {
+            if (!visible(element) || element.matches('input, textarea, pre, code, option, script, style')) return []
+            if (element.closest('[data-intentional-editor-scroll], .overflow-x-auto, .overflow-x-scroll')) return []
+            const hasDirectText = Array.from(element.childNodes).some(node => (
+                node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())
+            ))
+            if (!hasDirectText || element.clientWidth < 1) return []
+            const style = getComputedStyle(element)
+            if ((style.overflowX === 'hidden' || style.overflowX === 'clip') && style.whiteSpace === 'nowrap') return []
+            return element.scrollWidth > element.clientWidth + 1
+                ? [{ index, text: (element.textContent ?? '').trim().slice(0, 80), scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }]
+                : []
+        })
+
+        const focusRingClipped = interactives.flatMap((element, index) => {
+            if (!(element instanceof HTMLElement) || !element.className?.toString().includes('focus-visible:')) return []
+            const rect = element.getBoundingClientRect()
+            const margin = 3
+            for (let parent = element.parentElement; parent && parent !== root.parentElement; parent = parent.parentElement) {
+                const style = getComputedStyle(parent)
+                const clipsX = ['hidden', 'clip'].includes(style.overflowX)
+                const clipsY = ['hidden', 'clip'].includes(style.overflowY)
+                if (!clipsX && !clipsY) continue
+                const parentRect = parent.getBoundingClientRect()
+                if ((clipsX && (rect.left - margin < parentRect.left || rect.right + margin > parentRect.right)) ||
+                    (clipsY && (rect.top - margin < parentRect.top || rect.bottom + margin > parentRect.bottom))) {
+                    return [{
+                        name: accessibleName(element) || `interactive-${index}`,
+                        clipsX,
+                        clipsY,
+                        rect: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+                        parent: { left: parentRect.left, right: parentRect.right, top: parentRect.top, bottom: parentRect.bottom, className: parent.className?.toString().slice(0, 120) },
+                    }]
+                }
+            }
+            return []
+        })
+
+        const dock = root.querySelector('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]')
+        const dockStyle = dock ? getComputedStyle(dock) : null
+        const fixedCtaSafeInset = !dock || dockStyle?.position !== 'fixed'
+            ? true
+            : Number.parseFloat(dockStyle.paddingBottom || '0') >= 0 && dock.getBoundingClientRect().bottom <= innerHeight + 1
+
+        return {
+            missingRoot: false,
+            coarseTargetsBelow44,
+            iconOnlyMissingNames,
+            focusRingClipped,
+            fixedCtaSafeInset,
+            maxNestedCardDepth,
+            textOutsideContainer,
+        }
+    }, { selector: rootSelector, coarse: coarsePointer })
+}
+
+function assertCompositionQuality(report, context) {
+    assert.equal(report.missingRoot, false, `${context} is missing its composition quality root`)
+    assert.deepEqual(report.coarseTargetsBelow44, [], `${context} has coarse-pointer targets below 44x44: ${JSON.stringify(report.coarseTargetsBelow44)}`)
+    assert.deepEqual(report.iconOnlyMissingNames, [], `${context} has icon-only actions without accessible names`)
+    assert.deepEqual(report.focusRingClipped, [], `${context} has focus rings clipped by a non-scroll container: ${JSON.stringify(report.focusRingClipped)}`)
+    assert.equal(report.fixedCtaSafeInset, true, `${context} fixed CTA overlaps or leaves the system-bar-safe viewport`)
+    assert.ok(report.maxNestedCardDepth <= 3, `${context} has excessive nested card depth ${report.maxNestedCardDepth}`)
+    assert.deepEqual(report.textOutsideContainer, [], `${context} has text outside its container: ${JSON.stringify(report.textOutsideContainer)}`)
+}
+
+async function assertCompositionSheetFocusReturn(page, route, viewport) {
+    const dock = page.locator('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]')
+    const trigger = dock.locator('button').first()
+    const sheetTestId = route === '/' ? 'main-module-stack-sheet' : 'scene-modules-sheet'
+    const sheet = page.locator(`[data-testid="${sheetTestId}"]`)
+
+    await trigger.focus()
+    assert.equal(await trigger.evaluate(element => element === document.activeElement), true, `${route} module trigger did not receive focus`)
+    await trigger.click()
+    await sheet.waitFor({ state: 'visible' })
+    assert.equal(
+        await sheet.evaluate(element => element.contains(document.activeElement)),
+        true,
+        `${route} composition sheet did not trap initial focus @ ${viewport.width}px`,
+    )
+    await page.keyboard.press('Tab')
+    assert.equal(
+        await sheet.evaluate(element => element.contains(document.activeElement)),
+        true,
+        `${route} composition sheet allowed focus to escape @ ${viewport.width}px`,
+    )
+    await page.keyboard.press('Escape')
+    await sheet.waitFor({ state: 'hidden' })
+    const triggerHandle = await trigger.elementHandle()
+    await page.waitForFunction(
+        element => element === document.activeElement,
+        triggerHandle,
+        { timeout: 2_000 },
+    )
+    assert.equal(
+        await trigger.evaluate(element => element === document.activeElement),
+        true,
+        `${route} composition sheet did not return focus @ ${viewport.width}px`,
+    )
+}
+
 async function waitForReady(child) {
     let output = ''
     const started = Date.now()
@@ -339,7 +620,8 @@ async function main() {
                     }
                     return route.abort()
                 })
-                for (const route of routes) {
+                const viewportRoutes = viewport.width === 1536 ? WIDE_COMPOSITION_ROUTES : routes
+                for (const route of viewportRoutes) {
                     console.log(`Checking ${route} at ${viewport.width}x${viewport.height}`)
                     await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded' })
                     await page.waitForFunction(() => {
@@ -460,6 +742,92 @@ async function main() {
                             0,
                             `${route} @ ${viewport.width}px should keep sidebars out of the primary frame`,
                         )
+                    }
+
+                    if (route === '/' || route === '/scenes') {
+                        const compositionActionSelector = route === '/'
+                            ? '[data-testid="main-generate-action"]'
+                            : '[data-testid="scene-generate-action"], [data-testid="scene-cancel-action"]'
+                        await page.waitForFunction(selector => Array.from(document.querySelectorAll(selector)).some(element => {
+                            const rect = element.getBoundingClientRect()
+                            const style = getComputedStyle(element)
+                            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width >= 1 && rect.height >= 1
+                        }), compositionActionSelector)
+                        const compositionReport = await collectCompositionShellReport(page, route)
+                        assertCompositionShell(compositionReport, route, viewport)
+                        assertCompositionQuality(
+                            await collectCompositionQualityReport(
+                                page,
+                                '[data-testid="composition-workspace-layout"]',
+                                Boolean(viewport.mobile),
+                            ),
+                            `${route} composition quality @ ${viewport.width}px`,
+                        )
+
+                        const text200Report = await collectText200OverflowReport(page)
+                        assert.ok(
+                            text200Report.bodyScrollWidth <= text200Report.documentWidth + 1,
+                            `${route} @ ${viewport.width}px creates page overflow at 200% text`,
+                        )
+                        assert.ok(
+                            text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
+                            `${route} @ ${viewport.width}px creates main overflow at 200% text`,
+                        )
+                        if (viewport.width === 390) {
+                            await assertCompositionSheetFocusReturn(page, route, viewport)
+                        }
+                    }
+
+                    if (route === '/asset-modules') {
+                        const studio = page.locator('[data-testid="composition-studio-v2"]')
+                        const studioAvailable = await studio.count() > 0
+
+                        if (studioAvailable) {
+                            assertCompositionQuality(
+                                await collectCompositionQualityReport(
+                                    page,
+                                    '[data-testid="composition-studio-v2"]',
+                                    Boolean(viewport.mobile),
+                                ),
+                                `/asset-modules quality @ ${viewport.width}px`,
+                            )
+                        }
+
+                        if (studioAvailable && viewport.mobile) {
+                            const shortTargets = await studio.locator('button:visible').evaluateAll(buttons => (
+                                buttons
+                                    .map(button => {
+                                        const rect = button.getBoundingClientRect()
+                                        return { label: button.textContent?.trim() || button.getAttribute('aria-label'), height: rect.height }
+                                    })
+                                    .filter(target => target.height > 0 && target.height < 44)
+                            ))
+                            assert.deepEqual(shortTargets, [], `/asset-modules @ ${viewport.width}px has coarse-pointer targets below 44px`)
+                        }
+
+                        const text200Report = studioAvailable ? await page.evaluate(async () => {
+                            document.documentElement.style.fontSize = '200%'
+                            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+                            const main = document.querySelector('main')
+                            const report = {
+                                bodyScrollWidth: document.body.scrollWidth,
+                                documentWidth: document.documentElement.clientWidth,
+                                mainScrollWidth: main?.scrollWidth ?? 0,
+                                mainClientWidth: main?.clientWidth ?? 0,
+                            }
+                            document.documentElement.style.fontSize = ''
+                            return report
+                        }) : null
+                        if (text200Report) {
+                            assert.ok(
+                                text200Report.bodyScrollWidth <= text200Report.documentWidth + 1,
+                                `/asset-modules @ ${viewport.width}px creates page overflow at 200% text`,
+                            )
+                            assert.ok(
+                                text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
+                                `/asset-modules @ ${viewport.width}px creates main overflow at 200% text`,
+                            )
+                        }
                     }
 
                     if (route === '/style-lab') {

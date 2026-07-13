@@ -28,9 +28,48 @@ export const BACKUP_STORE_KEYS = [
     'nais2-update',
     'nais2-style-lab',
     'nais2-asset-modules',
+    'nais2-composition-repository',
+    'nais2-composition-migration-backup',
 ] as const
 
 export type BackupStoreKey = typeof BACKUP_STORE_KEYS[number]
+
+// Renamed stores remain rollback sources until a dedicated destructive cleanup
+// phase is approved. Full backups include both names so an export/import cycle
+// never silently discards the retained copy.
+export const LEGACY_BACKUP_STORE_KEYS = [
+    'nais-library-storage',
+    'tools-storage',
+    'nais-update',
+    // Explicit Composition migration aliases. These are allowlisted rollback
+    // sources, not arbitrary IndexedDB keys.
+    'scenes',
+    'scene-store',
+    'nais2-scene-prompts',
+    'scene-prompts',
+    'scenePrompts',
+    'wildcards',
+    'fragments',
+    'wildcard-content',
+    'fragmentContent',
+    'character-prompts',
+    'characterPrompts',
+    'nais2-character-positions',
+    'character-positions',
+    'characterPositions',
+    'generation-presets',
+    'generationPresets',
+    'novelaiPromptEditorState',
+    'prompt-presets',
+    'promptPresets',
+    'asset-profile',
+    'assetProfile',
+] as const
+
+export const FULL_BACKUP_STORE_KEYS = [
+    ...BACKUP_STORE_KEYS,
+    ...LEGACY_BACKUP_STORE_KEYS,
+] as const
 
 // IndexedDB 초기화 실패 추적
 let dbInitFailed = false
@@ -510,184 +549,329 @@ export async function cleanupLargeData(key: string, maxSizeKB: number = 100): Pr
     }
 }
 
-/**
- * IndexedDB 내부에서 스토어 이름 변경 마이그레이션
- * 기존 이름의 데이터가 있고 새 이름에 데이터가 없으면 이동
- * 
- * @param renames - [oldName, newName] 배열
- */
-export async function migrateIndexedDBKeys(renames: [string, string][]): Promise<void> {
-    for (const [oldKey, newKey] of renames) {
-        try {
-            // 새 키에 이미 데이터가 있으면 스킵
-            const newData = await indexedDBStorage.getItem(newKey)
-            if (newData) {
-                console.log(`[IndexedDB Migration] ${newKey}: Already has data, skipping`)
-                // 기존 키 정리
-                const oldData = await indexedDBStorage.getItem(oldKey)
-                if (oldData) {
-                    await indexedDBStorage.removeItem(oldKey)
-                    console.log(`[IndexedDB Migration] ${oldKey}: Cleaned up old key`)
+export interface StoreMigrationReader {
+    getItem: (key: string) => string | null | Promise<string | null>
+}
+
+/** Strict storage read for migration/repository authority; never converts I/O failures to null. */
+export async function getIndexedDBItemStrict(name: string): Promise<string | null> {
+    await flushKey(name)
+    const db = await getDb()
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly')
+        const request = transaction.objectStore(STORE_NAME).get(name)
+        request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null)
+        request.onerror = () => reject(request.error ?? new Error(`Strict get failed for ${name}`))
+        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict get transaction failed for ${name}`))
+        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict get transaction aborted for ${name}`))
+    })
+}
+
+/** Strict immediate write used by repository commits; errors propagate to the transaction. */
+export async function setIndexedDBItemStrict(name: string, value: string): Promise<void> {
+    const pendingTimer = pendingWriteTimers.get(name)
+    if (pendingTimer !== undefined) clearTimeout(pendingTimer)
+    pendingWriteTimers.delete(name)
+    pendingWriteValues.delete(name)
+    const db = await getDb()
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite')
+        transaction.objectStore(STORE_NAME).put(value, name)
+        transaction.oncomplete = () => resolve()
+        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict set transaction failed for ${name}`))
+        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict set transaction aborted for ${name}`))
+    })
+    lastWriteTime.set(name, Date.now())
+    notifyIndexedDBWrite(name)
+}
+
+/** Strict immediate delete used only by restore compensation. */
+export async function removeIndexedDBItemStrict(name: string): Promise<void> {
+    const pendingTimer = pendingWriteTimers.get(name)
+    if (pendingTimer !== undefined) clearTimeout(pendingTimer)
+    pendingWriteTimers.delete(name)
+    pendingWriteValues.delete(name)
+    const db = await getDb()
+    await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite')
+        transaction.objectStore(STORE_NAME).delete(name)
+        transaction.oncomplete = () => resolve()
+        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict remove transaction failed for ${name}`))
+        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict remove transaction aborted for ${name}`))
+    })
+    if (await getIndexedDBItemStrict(name) !== null) {
+        throw new Error(`Strict remove readback mismatch for ${name}`)
+    }
+    notifyIndexedDBWrite(name)
+}
+
+/** Atomic compare-and-set used to acquire and advance the persisted migration lease. */
+export async function compareAndSetIndexedDBItem(
+    name: string,
+    expected: string | null,
+    next: string | null,
+): Promise<boolean> {
+    await flushKey(name)
+    const db = await getDb()
+    const changed = await new Promise<boolean>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite')
+        const store = transaction.objectStore(STORE_NAME)
+        const read = store.get(name)
+        let matched = false
+        read.onsuccess = () => {
+            const current = typeof read.result === 'string' ? read.result : null
+            if (current !== expected) return
+            matched = true
+            if (next === null) store.delete(name)
+            else store.put(next, name)
+        }
+        read.onerror = () => reject(read.error ?? new Error(`CAS read failed for ${name}`))
+        transaction.oncomplete = () => resolve(matched)
+        transaction.onerror = () => reject(transaction.error ?? new Error(`CAS transaction failed for ${name}`))
+        transaction.onabort = () => reject(transaction.error ?? new Error(`CAS transaction aborted for ${name}`))
+    })
+    if (changed) {
+        lastWriteTime.set(name, Date.now())
+        notifyIndexedDBWrite(name)
+    }
+    return changed
+}
+
+/** Exact serialized key/value snapshot used by non-destructive migrations. */
+export async function exportRawIndexedDBEntries(): Promise<Record<string, string>> {
+    const db = await getDb()
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readonly')
+        const store = transaction.objectStore(STORE_NAME)
+        const keysRequest = store.getAllKeys()
+        const valuesRequest = store.getAll()
+        let keys: IDBValidKey[] | null = null
+        let values: unknown[] | null = null
+
+        const finish = () => {
+            if (keys === null || values === null) return
+            const result: Record<string, string> = {}
+            for (let index = 0; index < keys.length; index += 1) {
+                const key = keys[index]
+                const value = values[index]
+                if (typeof key === 'string' && typeof value === 'string') {
+                    result[key] = value
                 }
-                continue
             }
-
-            // 기존 키에 데이터가 있는지 확인
-            const oldData = await indexedDBStorage.getItem(oldKey)
-            if (!oldData) {
-                console.log(`[IndexedDB Migration] ${oldKey}: No data to migrate`)
-                continue
-            }
-
-            // 새 키로 복사
-            console.log(`[IndexedDB Migration] ${oldKey} → ${newKey}: Migrating ${oldData.length} bytes`)
-            await indexedDBStorage.setItem(newKey, oldData)
-            await flushKey(newKey)
-
-            // 검증
-            const verifyData = await indexedDBStorage.getItem(newKey)
-            if (verifyData && verifyData.length === oldData.length) {
-                // 검증 성공 - 기존 키 삭제
-                await indexedDBStorage.removeItem(oldKey)
-                console.log(`[IndexedDB Migration] ${oldKey} → ${newKey}: Complete`)
-            } else {
-                console.error(`[IndexedDB Migration] ${oldKey} → ${newKey}: Verification failed!`)
-            }
-        } catch (error) {
-            console.error(`[IndexedDB Migration] ${oldKey} → ${newKey}: Failed`, error)
+            resolve(result)
         }
-    }
+        keysRequest.onsuccess = () => {
+            keys = keysRequest.result
+            finish()
+        }
+        valuesRequest.onsuccess = () => {
+            values = valuesRequest.result
+            finish()
+        }
+        transaction.onerror = () => reject(transaction.error)
+        transaction.onabort = () => reject(transaction.error ?? new Error('Raw IndexedDB snapshot aborted'))
+    })
+}
+
+/** Migration/repository writes use an explicit flush + readback boundary. */
+export async function flushIndexedDBKey(name: string): Promise<void> {
+    await flushKey(name)
+}
+
+export interface StoreMigrationWriter extends StoreMigrationReader {
+    setItem: (key: string, value: string) => unknown | Promise<unknown>
+}
+
+export type RetainedStoreMigrationStatus =
+    | 'source-missing'
+    | 'target-present'
+    | 'copied'
+    | 'verification-failed'
+    | 'failed'
+
+export interface RetainedStoreMigrationResult {
+    sourceKey: string
+    targetKey: string
+    status: RetainedStoreMigrationStatus
+    sourceRetained: true
 }
 
 /**
- * localStorage에 남아 있는 예전 이름의 키를 새 IndexedDB 키로 정리
+ * Dual-read/single-write migration primitive. It intentionally has no delete
+ * capability: the legacy value remains available for rollback and old backups.
  */
-export async function migrateRenamedLocalStorageKeys(renames: [string, string][]): Promise<void> {
-    for (const [oldKey, newKey] of renames) {
+export async function copyStoreKeysRetainingSource(
+    renames: readonly (readonly [string, string])[],
+    source: StoreMigrationReader,
+    target: StoreMigrationWriter,
+    flushTarget: (key: string) => void | Promise<void> = () => undefined,
+): Promise<RetainedStoreMigrationResult[]> {
+    const results: RetainedStoreMigrationResult[] = []
+    for (const [sourceKey, targetKey] of renames) {
         try {
-            const oldData = localStorage.getItem(oldKey)
-            if (!oldData) {
-                console.log(`[Migration] ${oldKey}: No legacy localStorage data`)
+            const targetData = await target.getItem(targetKey)
+            if (targetData !== null) {
+                results.push({ sourceKey, targetKey, status: 'target-present', sourceRetained: true })
                 continue
             }
 
-            const newData = await indexedDBStorage.getItem(newKey)
-            if (newData) {
-                localStorage.removeItem(oldKey)
-                console.log(`[Migration] ${oldKey}: ${newKey} already exists, cleaned legacy localStorage`)
+            const sourceData = await source.getItem(sourceKey)
+            if (sourceData === null) {
+                results.push({ sourceKey, targetKey, status: 'source-missing', sourceRetained: true })
                 continue
             }
 
-            console.log(`[Migration] ${oldKey} → ${newKey}: Migrating ${oldData.length} bytes from legacy localStorage`)
-            await indexedDBStorage.setItem(newKey, oldData)
-            await flushKey(newKey)
-
-            const verifyData = await indexedDBStorage.getItem(newKey)
-            if (verifyData && verifyData.length === oldData.length) {
-                localStorage.removeItem(oldKey)
-                console.log(`[Migration] ${oldKey} → ${newKey}: Migration verified and complete`)
-            } else {
-                console.error(`[Migration] ${oldKey} → ${newKey}: Verification failed! Keeping legacy localStorage data`)
-            }
+            await target.setItem(targetKey, sourceData)
+            await flushTarget(targetKey)
+            const verified = await target.getItem(targetKey)
+            results.push({
+                sourceKey,
+                targetKey,
+                status: verified === sourceData ? 'copied' : 'verification-failed',
+                sourceRetained: true,
+            })
         } catch (error) {
-            console.error(`[Migration] ${oldKey} → ${newKey}: Migration failed, keeping legacy localStorage data`, error)
+            console.error(`[Migration] ${sourceKey} → ${targetKey}: Failed`, error)
+            results.push({ sourceKey, targetKey, status: 'failed', sourceRetained: true })
+        }
+    }
+    return results
+}
+
+function logRetainedMigrationResults(prefix: string, results: readonly RetainedStoreMigrationResult[]): void {
+    for (const result of results) {
+        const route = `${result.sourceKey} → ${result.targetKey}`
+        if (result.status === 'copied') {
+            console.log(`${prefix} ${route}: copied and verified; legacy source retained`)
+        } else if (result.status === 'verification-failed' || result.status === 'failed') {
+            console.error(`${prefix} ${route}: ${result.status}; legacy source retained`)
+        } else {
+            console.log(`${prefix} ${route}: ${result.status}; legacy source retained`)
         }
     }
 }
 
-/**
- * localStorage에서 IndexedDB로 데이터 마이그레이션
- * 기존 localStorage 데이터가 있고 IndexedDB에 없으면 이동
- * 
- * CRITICAL: This MUST complete before Zustand stores initialize!
- */
-export async function migrateFromLocalStorage(keys: string[]): Promise<void> {
-    for (const key of keys) {
-        try {
-            // localStorage에 데이터가 있는지 확인
-            const localData = localStorage.getItem(key)
-            if (!localData) {
-                console.log(`[Migration] ${key}: No localStorage data`)
-                continue
-            }
+/** Copy renamed IndexedDB keys while retaining the old key for rollback. */
+export async function migrateIndexedDBKeys(renames: [string, string][]): Promise<RetainedStoreMigrationResult[]> {
+    const results = await copyStoreKeysRetainingSource(
+        renames,
+        indexedDBStorage,
+        indexedDBStorage,
+        flushKey,
+    )
+    logRetainedMigrationResults('[IndexedDB Migration]', results)
+    return results
+}
 
-            // IndexedDB에 이미 데이터가 있는지 확인
-            const indexedData = await indexedDBStorage.getItem(key)
-            if (indexedData) {
-                // 이미 IndexedDB에 데이터 있으면 localStorage 정리만
-                console.log(`[Migration] ${key}: IndexedDB already has data, cleaning localStorage`)
-                localStorage.removeItem(key)
-                continue
-            }
-
-            // localStorage → IndexedDB 마이그레이션
-            console.log(`[Migration] ${key}: Migrating ${localData.length} bytes from localStorage to IndexedDB`)
-            await indexedDBStorage.setItem(key, localData)
-            await flushKey(key)
-            
-            // 검증: 제대로 저장되었는지 확인
-            const verifyData = await indexedDBStorage.getItem(key)
-            if (verifyData && verifyData.length === localData.length) {
-                // 검증 성공 - localStorage 정리
-                localStorage.removeItem(key)
-                console.log(`[Migration] ${key}: Migration verified and complete`)
-            } else {
-                // 검증 실패 - localStorage 유지 (데이터 손실 방지)
-                console.error(`[Migration] ${key}: Verification failed! Keeping localStorage data`)
-            }
-        } catch (error) {
-            console.error(`[Migration] ${key}: Migration failed, keeping localStorage data`, error)
-            // 실패해도 localStorage 데이터는 유지 - 다음 시작에 다시 시도
-        }
+/** Copy renamed localStorage keys into IndexedDB without deleting local data. */
+export async function migrateRenamedLocalStorageKeys(renames: [string, string][]): Promise<RetainedStoreMigrationResult[]> {
+    const localReader: StoreMigrationReader = {
+        getItem: key => localStorage.getItem(key),
     }
+    const results = await copyStoreKeysRetainingSource(
+        renames,
+        localReader,
+        indexedDBStorage,
+        flushKey,
+    )
+    logRetainedMigrationResults('[Migration]', results)
+    return results
 }
 
 /**
- * 전체 데이터 백업 (JSON export)
- * 데이터 손실 방지를 위한 수동 백업 기능
- * 재생성 가능한 캐시(encodedVibe, thumbnails)는 자동으로 제외됩니다.
+ * Copy canonical localStorage values into IndexedDB before Zustand hydrates.
+ * The source remains intact until a separately approved cleanup phase.
  */
-export async function exportAllData(): Promise<{ [key: string]: unknown }> {
+export async function migrateFromLocalStorage(keys: string[]): Promise<RetainedStoreMigrationResult[]> {
+    const localReader: StoreMigrationReader = {
+        getItem: key => localStorage.getItem(key),
+    }
+    const results = await copyStoreKeysRetainingSource(
+        keys.map(key => [key, key] as const),
+        localReader,
+        indexedDBStorage,
+        flushKey,
+    )
+    logRetainedMigrationResults('[Migration]', results)
+    return results
+}
+
+export interface BackupStoragePort {
+    getItem: (key: string) => string | null | Promise<string | null>
+    setItem: (key: string, value: string) => unknown | Promise<unknown>
+    removeItem?: (key: string) => unknown | Promise<unknown>
+}
+
+export interface BackupExportOptions {
+    storeKeys?: readonly string[]
+    exportedAt?: string
+    exportWildcardContent?: () => Promise<{ [id: string]: string[] }>
+    /** Backup Envelope v3 must not turn read failures into silent omissions. */
+    strict?: boolean
+}
+
+/**
+ * Storage-port form used by tests and migrations to prove a real JSON
+ * export/import round trip without coupling the contract to browser IndexedDB.
+ */
+export async function exportBackupFromStorage(
+    storage: Pick<BackupStoragePort, 'getItem'>,
+    options: BackupExportOptions = {},
+): Promise<{ [key: string]: unknown }> {
     const backup: { [key: string]: unknown } = {
-        _exportedAt: new Date().toISOString(),
-        _version: '2.3',  // Version bump: always exclude regenerable cache
+        _exportedAt: options.exportedAt ?? new Date().toISOString(),
+        _version: '2.3',
     }
-    
-    for (const key of BACKUP_STORE_KEYS) {
+
+    for (const key of options.storeKeys ?? FULL_BACKUP_STORE_KEYS) {
         try {
-            const data = await indexedDBStorage.getItem(key)
-            if (data) {
-                let parsed = JSON.parse(data)
-                
-                // Always filter out regenerable cache data
-                parsed = filterLargeImageData(key, parsed)
-                
+            const data = await storage.getItem(key)
+            if (data !== null) {
+                const parsed = filterLargeImageData(key, JSON.parse(data))
                 backup[key] = parsed
             }
         } catch (err) {
             console.error(`[Backup] Failed to export ${key}:`, err)
+            if (options.strict) throw err
         }
     }
-    
-    // Export wildcard-content from separate IndexedDB database
-    try {
-        const wildcardContent = await exportWildcardContent()
-        if (Object.keys(wildcardContent).length > 0) {
-            backup['nais2-wildcard-content'] = wildcardContent
-            console.log('[Backup] Wildcard content exported:', Object.keys(wildcardContent).length, 'files')
+
+    if (options.exportWildcardContent) {
+        try {
+            const wildcardContent = await options.exportWildcardContent()
+            if (Object.keys(wildcardContent).length > 0) {
+                backup['nais2-wildcard-content'] = wildcardContent
+                console.log('[Backup] Wildcard content exported:', Object.keys(wildcardContent).length, 'files')
+            }
+        } catch (err) {
+            console.error('[Backup] Failed to export wildcard content:', err)
+            if (options.strict) throw err
         }
-    } catch (err) {
-        console.error('[Backup] Failed to export wildcard content:', err)
     }
-    
-    console.log('[Backup] Export complete:', Object.keys(backup).length - 2, 'stores (regenerable cache excluded)')
+
     return backup
 }
 
 /**
- * Filter out large regenerable data from store data
- * IMPORTANT: Character/Vibe base64 images are NOT excluded because they have no file backup
- * Only excludes: encodedVibe (can be regenerated via API), history thumbnails (files exist)
+ * Full JSON backup. Retained legacy keys are exported alongside canonical keys;
+ * character/vibe bytes stay in their existing stores and are never projected
+ * into Composition documents by this path.
+ */
+export async function exportAllData(
+    options: { strict?: boolean } = {},
+): Promise<{ [key: string]: unknown }> {
+    const backup = await exportBackupFromStorage(indexedDBStorage, {
+        strict: options.strict,
+        exportWildcardContent: () => exportWildcardContentSnapshot({ strict: options.strict }),
+    })
+    console.log('[Backup] Export complete:', Object.keys(backup).length - 2, 'stores')
+    return backup
+}
+
+/**
+ * Filter out disposable preview data from store data.
+ * Character/Vibe bytes and existing encoded-vibe caches are retained verbatim:
+ * migration/restore must never force an API re-encode.
  */
 function filterLargeImageData(key: string, data: unknown): unknown {
     if (!data || typeof data !== 'object') return data
@@ -704,25 +888,7 @@ function filterLargeImageData(key: string, data: unknown): unknown {
     
     switch (key) {
         case 'nais2-character-store':
-            // Only remove encodedVibe (can be regenerated via API)
-            // KEEP base64 images - they have no file backup!
-            return {
-                ...obj,
-                characterImages: Array.isArray(obj.characterImages) 
-                    ? obj.characterImages.map((img: Record<string, unknown>) => ({
-                        ...img,
-                        // base64 is KEPT - no file backup exists
-                        encodedVibe: undefined  // Can be regenerated via API
-                    }))
-                    : obj.characterImages,
-                vibeImages: Array.isArray(obj.vibeImages)
-                    ? obj.vibeImages.map((img: Record<string, unknown>) => ({
-                        ...img,
-                        // base64 is KEPT - no file backup exists
-                        encodedVibe: undefined  // Can be regenerated via API
-                    }))
-                    : obj.vibeImages,
-            }
+            return data
             
         case 'nais2-generation':
             // Filter history thumbnails (files exist) and temp images
@@ -750,26 +916,47 @@ function filterLargeImageData(key: string, data: unknown): unknown {
  * Export all wildcard content from separate IndexedDB
  * Fixed: Race condition where getAllRequest might complete before handler is attached
  */
-async function exportWildcardContent(): Promise<{ [id: string]: string[] }> {
+export interface WildcardContentExportOptions {
+    /** Migration capture must fail closed instead of treating a timeout as an empty DB. */
+    strict?: boolean
+    timeoutMs?: number
+}
+
+export async function exportWildcardContentSnapshot(
+    options: WildcardContentExportOptions = {},
+): Promise<{ [id: string]: string[] }> {
     return new Promise((resolve, reject) => {
+        let settled = false
+        const finishResolve = (value: { [id: string]: string[] }) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+            resolve(value)
+        }
+        const finishReject = (error: unknown) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+            reject(error)
+        }
         // Add timeout to prevent infinite waiting
         const timeout = setTimeout(() => {
-            console.error('[Backup] Wildcard export timed out after 30s')
-            resolve({}) // Return empty instead of rejecting to allow backup to continue
-        }, 30000)
+            const error = new Error(`Wildcard export timed out after ${options.timeoutMs ?? 30000}ms`)
+            console.error('[Backup]', error.message)
+            if (options.strict) finishReject(error)
+            else finishResolve({})
+        }, options.timeoutMs ?? 30000)
         
         const request = indexedDB.open('nais2-wildcard-content', 1)
         
         request.onerror = () => {
-            clearTimeout(timeout)
-            reject(request.error)
+            finishReject(request.error)
         }
         
         request.onsuccess = () => {
             const db = request.result
             if (!db.objectStoreNames.contains('contents')) {
-                clearTimeout(timeout)
-                resolve({})
+                finishResolve({})
                 return
             }
             
@@ -786,11 +973,10 @@ async function exportWildcardContent(): Promise<{ [id: string]: string[] }> {
             
             const tryResolve = () => {
                 if (keysReady && valuesReady) {
-                    clearTimeout(timeout)
                     for (let i = 0; i < keys.length; i++) {
                         result[keys[i]] = values[i]
                     }
-                    resolve(result)
+                    finishResolve(result)
                 }
             }
             
@@ -807,8 +993,7 @@ async function exportWildcardContent(): Promise<{ [id: string]: string[] }> {
             }
             
             transaction.onerror = () => {
-                clearTimeout(timeout)
-                reject(transaction.error)
+                finishReject(transaction.error)
             }
         }
         
@@ -824,8 +1009,17 @@ async function exportWildcardContent(): Promise<{ [id: string]: string[] }> {
 /**
  * Import wildcard content to separate IndexedDB
  */
-async function importWildcardContent(content: { [id: string]: string[] }): Promise<void> {
-    return new Promise((resolve, reject) => {
+export async function importWildcardContentSnapshot(content: { [id: string]: string[] }): Promise<void> {
+    const normalized = Object.fromEntries(
+        Object.entries(content).sort(([left], [right]) => left.localeCompare(right)),
+    )
+    for (const [id, lines] of Object.entries(normalized)) {
+        if (!Array.isArray(lines) || lines.some(line => typeof line !== 'string')) {
+            throw new Error(`Invalid wildcard content for ${id}`)
+        }
+    }
+
+    await new Promise<void>((resolve, reject) => {
         const request = indexedDB.open('nais2-wildcard-content', 1)
         
         request.onerror = () => reject(request.error)
@@ -834,13 +1028,13 @@ async function importWildcardContent(content: { [id: string]: string[] }): Promi
             const db = request.result
             const transaction = db.transaction('contents', 'readwrite')
             const store = transaction.objectStore('contents')
-            
-            for (const [id, lines] of Object.entries(content)) {
+            store.clear()
+            for (const [id, lines] of Object.entries(normalized)) {
                 store.put(lines, id)
             }
             
             transaction.oncomplete = () => {
-                console.log('[Restore] Wildcard content restored:', Object.keys(content).length, 'files')
+                console.log('[Restore] Wildcard content restored:', Object.keys(normalized).length, 'files')
                 resolve()
             }
             transaction.onerror = () => reject(transaction.error)
@@ -853,23 +1047,199 @@ async function importWildcardContent(content: { [id: string]: string[] }): Promi
             }
         }
     })
+
+    const readback = await exportWildcardContentSnapshot({ strict: true })
+    const canonical = (value: { [id: string]: string[] }) => JSON.stringify(
+        Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))),
+    )
+    if (canonical(readback) !== canonical(normalized)) {
+        throw new Error('Wildcard restore readback mismatch')
+    }
+}
+
+function canonicalWildcardContent(value: { [id: string]: string[] }): string {
+    return JSON.stringify(
+        Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))),
+    )
+}
+
+/** Atomic compare-and-replace used by startup migration sidecar materialization. */
+export async function compareAndReplaceWildcardContentSnapshot(
+    expected: { [id: string]: string[] },
+    replacement: { [id: string]: string[] },
+): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+        let settled = false
+        let comparisonFailed = false
+        const finish = (value: boolean) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+            resolve(value)
+        }
+        const fail = (error: unknown) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+            reject(error)
+        }
+        const timeout = setTimeout(() => fail(new Error('Wildcard compare-and-replace timed out')), 30000)
+        const request = indexedDB.open('nais2-wildcard-content', 1)
+
+        request.onerror = () => fail(request.error)
+        request.onupgradeneeded = event => {
+            const db = (event.target as IDBOpenDBRequest).result
+            if (!db.objectStoreNames.contains('contents')) db.createObjectStore('contents')
+        }
+        request.onsuccess = () => {
+            const transaction = request.result.transaction('contents', 'readwrite')
+            const store = transaction.objectStore('contents')
+            const keysRequest = store.getAllKeys()
+            const valuesRequest = store.getAll()
+            let keys: IDBValidKey[] | null = null
+            let values: unknown[] | null = null
+
+            const compareAndWrite = () => {
+                if (keys === null || values === null) return
+                const current: Record<string, string[]> = {}
+                for (let index = 0; index < keys.length; index += 1) {
+                    if (typeof keys[index] === 'string' && Array.isArray(values[index])) {
+                        current[keys[index] as string] = values[index] as string[]
+                    }
+                }
+                if (canonicalWildcardContent(current) !== canonicalWildcardContent(expected)) {
+                    comparisonFailed = true
+                    transaction.abort()
+                    return
+                }
+                store.clear()
+                for (const [id, lines] of Object.entries(replacement)) store.put([...lines], id)
+            }
+            keysRequest.onsuccess = () => { keys = keysRequest.result; compareAndWrite() }
+            valuesRequest.onsuccess = () => { values = valuesRequest.result; compareAndWrite() }
+            keysRequest.onerror = () => transaction.abort()
+            valuesRequest.onerror = () => transaction.abort()
+            transaction.oncomplete = () => finish(true)
+            transaction.onabort = () => {
+                if (comparisonFailed) finish(false)
+                else fail(transaction.error ?? new Error('Wildcard compare-and-replace aborted'))
+            }
+            transaction.onerror = () => {
+                if (!comparisonFailed) fail(transaction.error)
+            }
+        }
+    })
+}
+
+export interface BackupImportOptions {
+    overwrite?: boolean
+    flushStore?: (key: string) => void | Promise<void>
+    importWildcardContent?: (content: { [id: string]: string[] }) => Promise<void>
+    readWildcardContent?: () => Promise<{ [id: string]: string[] }>
+    allowedKeys?: readonly string[]
+    /** External allowlisted file commit kept inside the restore journal. */
+    finalizeRestore?: () => Promise<void>
+    rollbackFinalize?: () => Promise<void>
+    finalizeKey?: string
+}
+
+export type BackupRestoreIgnoredReason =
+    | 'metadata'
+    | 'legacy-marketplace-or-supabase'
+    | 'unknown-store-key'
+
+export interface BackupRestoreIgnoredKey {
+    key: string
+    reason: BackupRestoreIgnoredReason
+}
+
+export interface BackupRestoreDryRunReport {
+    acceptedKeys: string[]
+    ignoredKeys: BackupRestoreIgnoredKey[]
+}
+
+export interface BackupImportResult {
+    success: string[]
+    failed: string[]
+    ignored: BackupRestoreIgnoredKey[]
+}
+
+export const RESTORE_STORE_ALLOWLIST = [
+    ...FULL_BACKUP_STORE_KEYS,
+    'nais2-wildcard-content',
+] as const
+
+function ignoredRestoreReason(key: string): BackupRestoreIgnoredReason {
+    if (key.startsWith('_')) return 'metadata'
+    if (/market(?:place)?|supabase|^sb-/i.test(key)) return 'legacy-marketplace-or-supabase'
+    return 'unknown-store-key'
 }
 
 /**
- * 백업 데이터 복원
- * @param backup - exportAllData()로 생성된 백업 데이터
- * @param overwrite - true면 기존 데이터 덮어쓰기, false면 빈 키만 복원
+ * Pure preflight used by every restore surface. Unknown raw keys are reported
+ * but never written to IndexedDB.
  */
-export async function importAllData(backup: { [key: string]: unknown }, overwrite = false): Promise<{ success: string[], failed: string[] }> {
-    const result = { success: [] as string[], failed: [] as string[] }
-    
+export function dryRunBackupRestore(
+    backup: Readonly<Record<string, unknown>>,
+    allowedKeys: readonly string[] = RESTORE_STORE_ALLOWLIST,
+): BackupRestoreDryRunReport {
+    const allowed = new Set(allowedKeys)
+    const acceptedKeys: string[] = []
+    const ignoredKeys: BackupRestoreIgnoredKey[] = []
+    for (const key of Object.keys(backup).sort()) {
+        if (allowed.has(key)) {
+            acceptedKeys.push(key)
+        } else {
+            ignoredKeys.push({ key, reason: ignoredRestoreReason(key) })
+        }
+    }
+    return { acceptedKeys, ignoredKeys }
+}
+
+/** Restore backup payloads with write/flush/readback verification. */
+export async function importBackupToStorage(
+    storage: BackupStoragePort,
+    backup: { [key: string]: unknown },
+    options: BackupImportOptions = {},
+): Promise<BackupImportResult> {
+    const dryRun = dryRunBackupRestore(backup, options.allowedKeys)
+    const accepted = new Set(dryRun.acceptedKeys)
+    const result: BackupImportResult = {
+        success: [],
+        failed: [],
+        ignored: dryRun.ignoredKeys,
+    }
+    const previousValues = new Map<string, string | null>()
+    let previousWildcardContent: { [id: string]: string[] } | undefined
+    const attemptedMutations: string[] = []
+
+    try {
+        for (const key of dryRun.acceptedKeys) {
+            if (key === 'nais2-wildcard-content') {
+                if (options.readWildcardContent !== undefined) {
+                    previousWildcardContent = await options.readWildcardContent()
+                }
+            } else {
+                previousValues.set(key, await storage.getItem(key))
+            }
+        }
+    } catch (error) {
+        console.error('[Restore] Failed to create pre-restore journal:', error)
+        result.failed.push('pre-restore-journal')
+        return result
+    }
+
     for (const [key, value] of Object.entries(backup)) {
-        if (key.startsWith('_')) continue // 메타데이터 스킵
-        
-        // Handle wildcard-content separately (stored in separate IndexedDB)
+        if (!accepted.has(key)) continue
+
         if (key === 'nais2-wildcard-content') {
+            if (!options.importWildcardContent) {
+                result.failed.push(key)
+                continue
+            }
             try {
-                await importWildcardContent(value as { [id: string]: string[] })
+                attemptedMutations.push(key)
+                await options.importWildcardContent(value as { [id: string]: string[] })
                 result.success.push(key)
             } catch (err) {
                 console.error(`[Restore] ${key}: Failed`, err)
@@ -877,25 +1247,111 @@ export async function importAllData(backup: { [key: string]: unknown }, overwrit
             }
             continue
         }
-        
+
         try {
-            if (!overwrite) {
-                const existing = await indexedDBStorage.getItem(key)
-                if (existing) {
+            if (!options.overwrite) {
+                const existing = await storage.getItem(key)
+                if (existing !== null) {
                     console.log(`[Restore] ${key}: Skipping (data exists)`)
                     continue
                 }
             }
-            
-            await indexedDBStorage.setItem(key, JSON.stringify(value))
+
+            const serialized = JSON.stringify(value)
+            attemptedMutations.push(key)
+            await storage.setItem(key, serialized)
+            await options.flushStore?.(key)
+            const verified = await storage.getItem(key)
+            if (verified !== serialized) {
+                throw new Error(`Restore readback mismatch for ${key}`)
+            }
             result.success.push(key)
-            console.log(`[Restore] ${key}: Restored`)
+            console.log(`[Restore] ${key}: Restored and verified`)
         } catch (err) {
             console.error(`[Restore] ${key}: Failed`, err)
             result.failed.push(key)
         }
     }
-    
+
+    if (result.failed.length === 0 && options.finalizeRestore !== undefined) {
+        const finalizeKey = options.finalizeKey ?? 'external-finalize'
+        try {
+            await options.finalizeRestore()
+            result.success.push(finalizeKey)
+        } catch (error) {
+            console.error(`[Restore] Finalize failed for ${finalizeKey}:`, error)
+            result.failed.push(finalizeKey)
+            if (options.rollbackFinalize !== undefined) {
+                try {
+                    await options.rollbackFinalize()
+                } catch (rollbackError) {
+                    console.error(`[Restore] Finalize rollback failed for ${finalizeKey}:`, rollbackError)
+                    result.failed.push(`rollback:${finalizeKey}`)
+                }
+            }
+        }
+    }
+
+    if (result.failed.length > 0 && attemptedMutations.length > 0) {
+        const restoredKeys = [...new Set(attemptedMutations)].reverse()
+        for (const key of restoredKeys) {
+            try {
+                if (key === 'nais2-wildcard-content') {
+                    if (options.importWildcardContent === undefined || previousWildcardContent === undefined) {
+                        throw new Error('Wildcard rollback snapshot is unavailable')
+                    }
+                    await options.importWildcardContent(previousWildcardContent)
+                } else {
+                    const previous = previousValues.get(key) ?? null
+                    if (previous === null) {
+                        if (storage.removeItem === undefined) {
+                            throw new Error(`Storage port cannot remove newly restored key ${key}`)
+                        }
+                        await storage.removeItem(key)
+                        await options.flushStore?.(key)
+                        if (await storage.getItem(key) !== null) {
+                            throw new Error(`Rollback removal readback mismatch for ${key}`)
+                        }
+                    } else {
+                        await storage.setItem(key, previous)
+                        await options.flushStore?.(key)
+                        if (await storage.getItem(key) !== previous) {
+                            throw new Error(`Rollback readback mismatch for ${key}`)
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`[Restore] Rollback failed for ${key}:`, error)
+                result.failed.push(`rollback:${key}`)
+            }
+        }
+        result.success = []
+    }
+
+    return result
+}
+
+/**
+ * Restore data produced by exportAllData. Unknown/legacy store keys remain
+ * round-trippable and no old store is removed as a side effect.
+ */
+export async function importAllData(
+    backup: { [key: string]: unknown },
+    overwrite = false,
+    options: Pick<BackupImportOptions, 'finalizeRestore' | 'rollbackFinalize' | 'finalizeKey'> = {},
+): Promise<BackupImportResult> {
+    await flushAllPendingWrites()
+    const strictRestoreStorage: BackupStoragePort = {
+        getItem: getIndexedDBItemStrict,
+        setItem: setIndexedDBItemStrict,
+        removeItem: removeIndexedDBItemStrict,
+    }
+    const result = await importBackupToStorage(strictRestoreStorage, backup, {
+        overwrite,
+        importWildcardContent: importWildcardContentSnapshot,
+        readWildcardContent: () => exportWildcardContentSnapshot({ strict: true }),
+        ...options,
+    })
     console.log('[Restore] Complete:', result.success.length, 'success,', result.failed.length, 'failed')
     return result
 }
@@ -906,7 +1362,7 @@ export async function importAllData(backup: { [key: string]: unknown }, overwrit
 export async function getStoreSizes(): Promise<{ [key: string]: number }> {
     const sizes: { [key: string]: number } = {}
     
-    for (const key of BACKUP_STORE_KEYS) {
+    for (const key of FULL_BACKUP_STORE_KEYS) {
         try {
             const data = await indexedDBStorage.getItem(key)
             sizes[key] = data ? data.length : 0

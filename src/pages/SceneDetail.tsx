@@ -6,7 +6,6 @@ import { ResolutionSelector, Resolution } from '@/components/ui/ResolutionSelect
 import {
     ChevronLeft,
     Check,
-    Play,
     Image as ImageIcon,
     FolderOpen,
     Minus,
@@ -16,13 +15,15 @@ import {
     Star,
     Trash2,
     CheckSquare,
-    Square
+    Square,
+    ScanEye,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { AutocompleteTextarea } from "@/components/ui/AutocompleteTextarea";
 import { Tip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { useSceneStore, SceneImage } from '@/stores/scene-store'
+import { hasSceneCompositionOverrides, useSceneStore, SceneImage, type SceneCompositionMode } from '@/stores/scene-store'
+import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
 import { openPath } from '@tauri-apps/plugin-opener'
@@ -36,6 +37,35 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from '@/components/ui/use-toast'
 import { sanitizePathComponent } from '@/lib/scene-output-path'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
+import {
+    previewSceneComposition,
+} from '@/lib/scene-generation/build-scene-params'
+import {
+    decodeSceneRecipeSelection,
+    SCENE_DIRECT_SELECTION_ID,
+    sceneAssetRecipeSelectionId,
+    type SceneCompositionResolution,
+} from '@/lib/composition/scene-adapter'
+import { SceneCompositionWorkspace } from '@/components/scene/SceneCompositionWorkspace'
+import { CharacterLayoutEditor } from '@/components/composition-workspace'
+import { portableIssuesForResolvedPlan } from '@/components/composition-workspace'
+import type {
+    CharacterLayoutItem,
+    CompositionConflictSummary,
+    CompositionOverrideDiffItem,
+    CompositionValidationSummary,
+    ModuleStackItem,
+    ReadonlyCompositionIssue,
+} from '@/components/composition-workspace'
+import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
+import { useGenerationStore } from '@/stores/generation-store'
+import type { CharacterPosition, CharacterSlotPatch } from '@/domain/composition'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+
+const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
 const getParentDirectoryPath = (path: string): string | null => {
     if (!path || path.startsWith('data:')) return null
@@ -73,6 +103,7 @@ async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: str
 
 export default function SceneDetail() {
     const { id: sceneId } = useParams()
+    const navigate = useNavigate()
     const { t } = useTranslation()
     const activePresetId = useSceneStore(state => state.activePresetId)
 
@@ -91,9 +122,26 @@ export default function SceneDetail() {
         decrementQueue,
         validateSceneImages,
         updateSceneSettings,
+        setSceneCompositionRef,
+        resetSceneToRecipe,
+        startNewGenerationSession,
+        cancelSceneGeneration,
     } = useSceneStore()
-    const { isGenerating: _isGlobalGenerating } = useSceneGeneration()
+    const { isGenerating: sceneIsGenerating } = useSceneGeneration()
+    const sceneIsCancelling = useSceneStore(state => state.isCancelling)
+    const sceneCompositionMode = useSceneStore(state => state.sceneCompositionMode)
+    const setSceneCompositionMode = useSceneStore(state => state.setSceneCompositionMode)
+    const sceneCompositionRecord = useSceneStore(state => sceneId ? state.sceneCompositionResults[sceneId] : undefined)
     const { promptFontSize } = useSettingsStore()
+    const assetProfile = useAssetModuleStore(state => state.profile)
+    const assetHasConflict = useAssetModuleStore(state => state.hasConflict)
+    const assetConflictMessage = useAssetModuleStore(state => state.conflictMessage)
+    const seed = useGenerationStore(state => state.seed)
+    const seedLocked = useGenerationStore(state => state.seedLocked)
+    const setSeed = useGenerationStore(state => state.setSeed)
+    const setSeedLocked = useGenerationStore(state => state.setSeedLocked)
+    const steps = useGenerationStore(state => state.steps)
+    const generatingMode = useGenerationStore(state => state.generatingMode)
 
     // --- Resolution Logic ---
     const currentWidth = scene?.width || 832
@@ -135,10 +183,16 @@ export default function SceneDetail() {
     // Edit mode state
     const [isEditMode, setIsEditMode] = useState(false)
     const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set())
+    const [compositionPreviewLoading, setCompositionPreviewLoading] = useState(false)
+    const [compositionPreview, setCompositionPreview] = useState<SceneCompositionResolution | null>(null)
+    const [compositionPreviewError, setCompositionPreviewError] = useState<string | null>(null)
+    const [activeModuleId, setActiveModuleId] = useState<string | null>(null)
 
     // Auto-save prompt logic - hooks must be before conditional return
     const updateScenePrompt = useSceneStore(state => state.updateScenePrompt)
     const [localPrompt, setLocalPrompt] = useState(scene?.scenePrompt || '')
+    const localPromptRef = useRef(localPrompt)
+    localPromptRef.current = localPrompt
 
     const nav = useNavigate()
 
@@ -210,8 +264,9 @@ export default function SceneDetail() {
             const currentScene = useSceneStore.getState().presets
                 .find(p => p.id === activePresetId)?.scenes
                 .find(s => s.id === scene.id)
-            if (currentScene && localPrompt !== currentScene.scenePrompt) {
-                updateScenePrompt(activePresetId, scene.id, localPrompt)
+            const latestPrompt = localPromptRef.current
+            if (currentScene && latestPrompt !== currentScene.scenePrompt) {
+                updateScenePrompt(activePresetId, scene.id, latestPrompt)
             }
         }
     }, [localPrompt, scene, activePresetId, updateScenePrompt])
@@ -286,8 +341,59 @@ export default function SceneDetail() {
         setIsEditingName(false)
     }
 
+    const handleSceneRecipeChange = (selectionValue: string) => {
+        const selection = decodeSceneRecipeSelection(selectionValue)
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        setSceneCompositionRef(activePresetId, scene.id, {
+            ...scene.compositionRef,
+            recipeId: selection.recipeId,
+            selectionKind: selection.selectionKind,
+            recipeRevision: assetProfile.revision,
+            migrationMarker: scene.compositionRef?.migrationMarker ?? {
+                kind: 'legacy-scene-prompt',
+                schemaVersion: 2,
+            },
+        })
+    }
+
+    const handleResetSceneToRecipe = () => {
+        // Update the visible editor before the store change can trigger the
+        // prompt autosave cleanup with the previous text.
+        localPromptRef.current = ''
+        setLocalPrompt('')
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        resetSceneToRecipe(activePresetId, scene.id)
+    }
+
+    const handleLocalPromptChange = (value: string) => {
+        setLocalPrompt(value)
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+    }
+
+    const handlePreviewSceneComposition = async () => {
+        setCompositionPreviewLoading(true)
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        try {
+            const resolution = await previewSceneComposition(scene, { scenePrompt: localPrompt })
+            setCompositionPreview(resolution)
+        } catch (error) {
+            setCompositionPreviewError(error instanceof Error ? error.message : String(error))
+        } finally {
+            setCompositionPreviewLoading(false)
+        }
+    }
+
     const handleGenerate = () => {
         if (!activePresetId || !scene) return
+
+        if (sceneIsGenerating || sceneIsCancelling) {
+            cancelSceneGeneration()
+            return
+        }
 
         // If queue count is 0, set it to 1 for single generation
         // Otherwise, use the existing queue count without incrementing
@@ -296,7 +402,7 @@ export default function SceneDetail() {
         }
 
         // Start a new generation session to properly track and allow cancellation
-        useSceneStore.getState().startNewGenerationSession()
+        startNewGenerationSession()
     }
 
     const handleOpenFolder = async () => {
@@ -342,9 +448,288 @@ export default function SceneDetail() {
     const sortedImages = showFavoritesOnly
         ? scene.images.filter(img => img.isFavorite)
         : scene.images
+    const inheritedRecipeId = assetProfile.recipes.find(recipe => recipe.enabled)?.id
+    const displayedRecipeId = scene.compositionRef?.selectionKind === 'direct'
+        ? SCENE_DIRECT_SELECTION_ID
+        : scene.compositionRef?.recipeId !== undefined
+            ? sceneAssetRecipeSelectionId(scene.compositionRef.recipeId)
+            : inheritedRecipeId !== undefined
+                ? sceneAssetRecipeSelectionId(inheritedRecipeId)
+                : SCENE_DIRECT_SELECTION_ID
+    const displayedRecipeExists = displayedRecipeId === SCENE_DIRECT_SELECTION_ID
+        || assetProfile.recipes.some(recipe => sceneAssetRecipeSelectionId(recipe.id) === displayedRecipeId)
+    const hasCompositionOverrides = hasSceneCompositionOverrides(scene)
+    const selectedRecipe = decodeSceneRecipeSelection(displayedRecipeId)
+    const runtimeDocument = getRuntimeCompositionDocument()
+    const runtimeRecipe = selectedRecipe.selectionKind === 'asset'
+        ? runtimeDocument?.recipes.find(recipe => recipe.id === selectedRecipe.recipeId)
+        : undefined
+    const legacyRecipe = selectedRecipe.selectionKind === 'asset'
+        ? assetProfile.recipes.find(recipe => recipe.id === selectedRecipe.recipeId)
+        : undefined
+    const workspaceModules: ModuleStackItem[] = runtimeDocument
+        ? (() => {
+            const selectedIds = runtimeRecipe
+                ? new Set(runtimeRecipe.steps.filter(step => step.enabled).map(step => step.moduleId))
+                : null
+            return [...runtimeDocument.modules]
+                .filter(module => selectedIds === null || selectedIds.has(module.id))
+                .sort((left, right) => left.orderKey.localeCompare(right.orderKey) || left.id.localeCompare(right.id))
+                .map((module, order) => ({
+                    id: module.id,
+                    name: module.name,
+                    kind: module.kind,
+                    enabled: module.enabled,
+                    order,
+                    summary: module.contributions.map(contribution => contribution.text).filter(Boolean).join(', '),
+                }))
+        })()
+        : (() => {
+            const selectedIds = legacyRecipe
+                ? new Set(legacyRecipe.steps.filter(step => step.enabled !== false).map(step => step.moduleId))
+                : null
+            return Object.values(assetProfile.modules)
+                .filter(module => selectedIds === null || selectedIds.has(module.id))
+                .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id))
+                .map((module, order) => ({
+                    id: module.id,
+                    name: module.label || module.id,
+                    kind: module.kind || 'composite',
+                    enabled: module.enabled,
+                    order,
+                    summary: module.prompt || module.negativePrompt || module.negative || '',
+                }))
+        })()
+    const effectiveActiveModuleId = activeModuleId && workspaceModules.some(module => module.id === activeModuleId)
+        ? activeModuleId
+        : workspaceModules[0]?.id ?? null
+    const characterLayoutItems: CharacterLayoutItem[] = (runtimeDocument?.characters ?? []).map((character, order) => {
+        const patch = scene.compositionRef?.characterOverrides?.find(candidate => candidate.characterId === character.id)
+        return {
+            id: character.id,
+            name: character.name,
+            enabled: patch?.enabled ?? character.enabled,
+            order,
+            position: patch?.position ?? character.position,
+        }
+    })
+    const validationErrorCount = sceneCompositionRecord?.errors.length ?? 0
+    const validationWarningCount = sceneCompositionRecord?.warnings.length ?? 0
+    const validation: CompositionValidationSummary = assetHasConflict
+        ? { severity: 'conflict', errorCount: 1, label: t('composition.conflict.label', 'Conflict') }
+        : validationErrorCount > 0
+            ? { severity: 'error', errorCount: validationErrorCount, warningCount: validationWarningCount }
+            : validationWarningCount > 0
+                ? { severity: 'warning', warningCount: validationWarningCount }
+                : sceneCompositionMode === 'legacy'
+                    ? { severity: 'disabled', label: 'legacy' }
+                    : { severity: 'valid' }
+    const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')
+    const conflict: CompositionConflictSummary | null = assetHasConflict
+        ? {
+            severity: 'error',
+            title: t('composition.externalConflict', 'External composition edit'),
+            message: assetConflictMessage || t('composition.externalConflictDescription', 'Resolve the repository revision conflict before editing.'),
+            revision: `asset-profile@${assetProfile.revision}`,
+        }
+        : generationConflict
+            ? {
+                severity: 'warning',
+                title: t('generate.conflictTitle', 'Another workflow is generating'),
+                message: t('generate.conflictDescription', 'Wait for the active generation workflow to finish or cancel it there.'),
+                revision: generatingMode || undefined,
+            }
+            : null
+    const overrideDiff: CompositionOverrideDiffItem[] = [
+        {
+            id: 'prompt',
+            label: t('scene.scenePrompt', 'Scene prompt'),
+            inheritedValue: t('scene.composition.inherited', 'Recipe'),
+            overrideValue: localPrompt || '—',
+            changed: localPrompt.trim().length > 0,
+        },
+        {
+            id: 'resolution',
+            label: t('settings.resolution', 'Resolution'),
+            inheritedValue: '832 × 1216',
+            overrideValue: `${currentWidth} × ${currentHeight}`,
+            changed: scene.width !== undefined || scene.height !== undefined,
+        },
+        {
+            id: 'characters',
+            label: t('character.title', 'Characters'),
+            inheritedValue: '0',
+            overrideValue: String(scene.compositionRef?.characterOverrides?.length ?? 0),
+            changed: (scene.compositionRef?.characterOverrides?.length ?? 0) > 0,
+        },
+        {
+            id: 'params',
+            label: t('settings.parameters', 'Parameters'),
+            inheritedValue: '—',
+            overrideValue: scene.compositionRef?.paramsOverride ? 'custom' : '—',
+            changed: scene.compositionRef?.paramsOverride !== undefined,
+        },
+        {
+            id: 'output',
+            label: t('composition.output', 'Output'),
+            inheritedValue: 'recipe',
+            overrideValue: scene.compositionRef?.outputOverride ? 'custom' : 'recipe',
+            changed: scene.compositionRef?.outputOverride !== undefined,
+        },
+    ]
+    const resolvedPlan = compositionPreview?.result.success ? compositionPreview.result.plan : null
+    const portableResolvedIssues = resolvedPlan === null
+        ? []
+        : portableIssuesForResolvedPlan(
+            assessPortableCompositionPlan(resolvedPlan, runtimeCapabilities).issues,
+        )
+    const resolvedIssues = compositionPreview
+        ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
+        : portableResolvedIssues
+    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
+        const repairTarget = issue.entityRef?.id ?? issue.code
+        const params = new URLSearchParams({ repair: repairTarget })
+        if (issue.actionId) params.set('action', issue.actionId)
+        navigate(`/asset-modules?${params.toString()}`, {
+            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'scene-detail' },
+        })
+    }
+    const estimatedCost = calculateAnlasCost(currentWidth, currentHeight, steps) * Math.max(1, scene.queueCount)
+
+    const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        const existing = scene.compositionRef?.characterOverrides ?? []
+        const found = existing.some(patch => patch.characterId === characterId)
+        const characterOverrides: CharacterSlotPatch[] = found
+            ? existing.map(patch => patch.characterId === characterId ? { ...patch, position } : patch)
+            : [...existing, { characterId, position }]
+        setSceneCompositionRef(activePresetId, scene.id, {
+            ...scene.compositionRef,
+            recipeId: selectedRecipe.recipeId,
+            selectionKind: selectedRecipe.selectionKind,
+            recipeRevision: assetProfile.revision,
+            characterOverrides,
+        })
+    }
 
     return (
-        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+        <SceneCompositionWorkspace
+            mode={{
+                value: sceneCompositionMode,
+                label: t('scene.composition.mode', 'Mode'),
+                options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode })),
+                onChange: value => setSceneCompositionMode(value as SceneCompositionMode),
+                disabled: sceneIsGenerating,
+            }}
+            recipe={{
+                value: displayedRecipeId,
+                label: t('scene.composition.recipe', 'Recipe'),
+                options: [
+                    ...(!displayedRecipeExists
+                        ? [{ value: displayedRecipeId, label: t('composition.recipe.unavailable', '{{id}} (unavailable)', { id: displayedRecipeId }), disabled: true }]
+                        : []),
+                    { value: SCENE_DIRECT_SELECTION_ID, label: t('composition.recipe.direct', 'Direct prompts') },
+                    ...assetProfile.recipes.map(recipe => ({
+                        value: sceneAssetRecipeSelectionId(recipe.id),
+                        label: recipe.label || recipe.id,
+                        disabled: !recipe.enabled,
+                    })),
+                ],
+                onChange: handleSceneRecipeChange,
+                disabled: sceneIsGenerating,
+            }}
+            validation={validation}
+            cost={{ value: String(estimatedCost), label: 'Anlas', severity: estimatedCost > 0 ? 'warning' : 'normal' }}
+            seed={{
+                value: seed,
+                locked: seedLocked,
+                onChange: value => {
+                    const parsed = Number(value)
+                    if (Number.isSafeInteger(parsed) && parsed >= 0) setSeed(parsed)
+                },
+                onToggleLock: () => setSeedLocked(!seedLocked),
+                onPreviewWildcard: () => window.dispatchEvent(new Event(SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG)),
+                wildcardPreviewLabel: t('scene.wildcardPreview', 'Wildcard preview'),
+            }}
+            generation={{
+                generating: sceneIsGenerating || sceneIsCancelling,
+                disabled: sceneIsCancelling || (!sceneIsGenerating && generationConflict),
+                progressLabel: sceneIsCancelling ? t('generate.cancelling', 'Cancelling…') : undefined,
+                generateLabel: t('generate.button', 'Generate'),
+                cancelLabel: t('generate.cancel', 'Cancel'),
+                actionTestId: 'scene-detail-generate-action',
+                cancelTestId: 'scene-detail-cancel-action',
+                onGenerate: handleGenerate,
+                onCancel: handleGenerate,
+            }}
+            modules={workspaceModules}
+            activeModuleId={effectiveActiveModuleId}
+            recipeName={legacyRecipe?.label || runtimeRecipe?.name || selectedRecipe.recipeId}
+            resolvedPlan={resolvedPlan}
+            resolvedIssues={resolvedIssues}
+            resolvedLoading={compositionPreviewLoading}
+            resolvedError={compositionPreviewError}
+            conflict={conflict}
+            overrideDiff={overrideDiff}
+            inspectorChildren={(
+                <>
+                    {characterLayoutItems.length > 0 && (
+                        <CharacterLayoutEditor
+                            characters={characterLayoutItems}
+                            title={t('scene.characterLayout', 'Character layout')}
+                            disabled={sceneIsGenerating}
+                            className="rounded-none border-x-0 border-b-0 shadow-none"
+                            onChangePosition={handleCharacterPositionChange}
+                        />
+                    )}
+                    <details className="border-t border-border" open={hasCompositionOverrides}>
+                        <summary className="flex min-h-11 cursor-pointer items-center px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                            {t('scene.composition.advancedCompatibility', 'Advanced / compatibility prompt')}
+                        </summary>
+                        <div className="min-w-0 space-y-3 border-t border-border p-3">
+                            <label className="block min-w-0 text-xs font-medium text-muted-foreground">
+                                <span className="mb-1 block">{t('scene.scenePrompt')}</span>
+                                <AutocompleteTextarea
+                                    placeholder=""
+                                    className="min-h-32 min-w-0 resize-y rounded-control"
+                                    style={{ fontSize: `${promptFontSize}px` }}
+                                    value={localPrompt}
+                                    onChange={(event: any) => handleLocalPromptChange(event.target.value)}
+                                />
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="min-w-0"
+                                    onClick={() => window.dispatchEvent(new Event(SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG))}
+                                >
+                                    <span className="truncate">{t('scene.wildcardPreview', 'Wildcard preview')}</span>
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    className="min-w-0"
+                                    onClick={handlePreviewSceneComposition}
+                                    disabled={compositionPreviewLoading}
+                                    data-testid="scene-resolved-action"
+                                >
+                                    <ScanEye className="h-4 w-4 shrink-0" />
+                                    <span className="truncate">{t('scene.composition.resolved', 'Resolved')}</span>
+                                </Button>
+                            </div>
+                        </div>
+                    </details>
+                </>
+            )}
+            onSelectModule={setActiveModuleId}
+            onEditModule={moduleId => nav(`/asset-modules?module=${encodeURIComponent(moduleId)}`)}
+            onOpenResolved={handlePreviewSceneComposition}
+            onRepairIssue={handleRepairCompositionIssue}
+            onResetOverride={handleResetSceneToRecipe}
+        >
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3" data-testid="scene-detail-workspace">
             {/* DESIGN.md: mobile keeps identity, generation, and queue controls in three scan-friendly rows. */}
             <header className="flex min-w-0 shrink-0 flex-col gap-2 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 items-center gap-1">
@@ -437,11 +822,6 @@ export default function SceneDetail() {
                             onChange={handleResolutionChange}
                         />
                     </div>
-                    <Button className="h-11 shrink-0 rounded-control px-3 lg:h-9" onClick={handleGenerate}>
-                        <Play className="mr-2 h-4 w-4" />
-                        {t('generate.button')}
-                    </Button>
-
                     <div className="col-span-2 flex min-w-0 items-center justify-between rounded-control border border-border bg-card px-1 lg:col-span-1 lg:gap-1">
                         <span className="px-2 text-xs font-medium text-muted-foreground lg:sr-only">
                             {t('scene.queue', '대기열')}
@@ -473,17 +853,6 @@ export default function SceneDetail() {
                     </div>
                 </div>
             </header>
-
-            <div className="flex min-h-[140px] min-w-0 shrink-0 flex-col">
-                <label className="mb-1 text-xs font-medium text-muted-foreground">{t('scene.scenePrompt')}</label>
-                <AutocompleteTextarea
-                    placeholder=""
-                    className="min-h-0 min-w-0 flex-1 resize-none rounded-control"
-                    style={{ fontSize: `${promptFontSize}px` }}
-                    value={localPrompt}
-                    onChange={(e: any) => setLocalPrompt(e.target.value)}
-                />
-            </div>
 
             <Card className="mt-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
                 <CardHeader className="min-w-0 shrink-0 gap-2 border-b border-border p-3 sm:p-4">
@@ -820,6 +1189,7 @@ export default function SceneDetail() {
                 </div>
             )}
         </div>
+        </SceneCompositionWorkspace>
     )
 }
 

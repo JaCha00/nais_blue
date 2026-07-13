@@ -1,0 +1,130 @@
+# Composition Domain v2 결정 기록
+
+기준일: 2026-07-13 (Asia/Seoul)
+
+이 문서의 결정은 이후 phase의 기본 gate다. 변경이 필요하면 기존 항목을 묵시적으로 덮어쓰지 말고, 근거·fixture·rollback을 포함한 새 decision record로 대체한다.
+
+## D-001 — 현재 checkout 우선
+
+상태: Accepted
+
+`E:\AI_Project_Library\projects\nais\nais2-main` checkout의 runtime 코드와 테스트를 source of truth로 사용한다. C 드라이브/OneDrive의 NAIS checkout과 거기서 생성된 지침은 명시적으로 다시 활성화되지 않는 한 legacy다. README, 과거 integration 계획, legacy 디렉터리, 비교 저장소가 충돌하면 현재 E 드라이브 runtime 코드, 최신 사용자 지시, fresh verification 결과를 우선한다. NAIS3는 비교 참고 자료일 뿐 wholesale port의 원본이 아니다.
+
+## D-002 — Asset Profile을 출발점으로 사용
+
+상태: Accepted
+
+Asset Profile을 Composition Domain v2의 출발점으로 사용한다. `revision`, `updatedBy`, `updatedAt`, `settings`, `output`, `r2`, `modules`, `recipes`의 안정 top-level shape를 기존 GUI/agent JSON 교환 경계로 취급한다. v2 확장은 기존 profile을 읽을 수 있어야 하며, 현재 resolver의 fallback/warning 동작을 fixture 없이 제거하지 않는다.
+
+## D-003 — 공통 engine과 workflow adapter
+
+상태: Accepted
+
+Main, Scene, Style Lab은 공통 `CompositionEngine`의 workflow adapter가 된다. engine은 가능한 한 순수한 composition 결과를 만들고, workflow adapter는 각 workflow의 store 접근, queue/session, API 호출, 저장, toast 및 history side effect를 소유한다. 세 workflow를 한 번에 cutover하지 않고 shadow/parity 검증 뒤 순차 전환한다.
+
+## D-004 — Scene orchestration 보존
+
+상태: Accepted
+
+Scene orchestration은 보존한다. 특히 다음 현재 계약을 engine 도입의 부수 효과로 재작성하지 않는다.
+
+- App 수준 `useSceneGeneration()` lifecycle
+- token slot별 worker loop와 streaming 시 single-worker 제한
+- `generationSessionId`, `isGenerating`, `isCancelling` 검사
+- API 호출 전·후 및 result 저장 전 session guard
+- retry/requeue, generation delay, progress, rotation worker confirmation
+- character/vibe image data의 session 단위 release
+
+## D-005 — NAI payload builder 교체 금지 gate
+
+상태: Accepted
+
+NAI payload builder는 fixture parity 없이 교체하지 않는다. `src/services/nai/payload.ts`를 통째로 교체하지 않으며, 현재 43/43 NAI core verifier와 payload snapshot이 최소 회귀 gate다. V4/V4.5 외 V3/Furry V3 동작은 model별 fixture가 확보되기 전 parity 완료로 선언하지 않는다. source edit의 ZIP 경로와 stream-final parity gate도 유지한다.
+
+## D-006 — dual-read/single-write migration
+
+상태: Accepted
+
+migration은 dual-read/single-write 방식으로 진행한다.
+
+- read: 새 v2 형식을 우선 읽고, 없거나 호환 가능한 경우 기존 형식을 fallback으로 읽는다.
+- write: cutover 이후에는 새 v2 형식만 쓴다.
+- delete: rollback window와 backup/import compatibility가 입증되기 전 기존 데이터를 자동 삭제하지 않는다.
+- verify: migration fixture는 old-only, new-only, both-present, malformed-old, partial-write, interrupted-session을 포함한다.
+
+현재 `migrateIndexedDBKeys()`처럼 검증 후 old key를 삭제하는 helper는 이 결정의 최종 cleanup 단계와 동일하지 않다. v2 migration에 그대로 재사용하지 않는다.
+
+## D-007 — retired online catalog 제거 순서
+
+상태: Accepted
+
+온라인 catalog 제거는 backup compatibility 이후에 수행한다. Phase 19에서 route/UI, remote auth client와 전용 callback protocol을 제거했으며, backup/import는 과거 관련 key를 선언적으로 무시하면서 나머지 데이터 복구를 계속한다. system browser opener와 application single-instance는 독립 기능으로 유지한다.
+
+## D-008 — UI 전면 재작성 순서
+
+상태: Accepted
+
+UI 전면 재작성은 pure engine과 Main/Scene/Style Lab workflow cutover 이후에만 수행한다. 그 전에는 engine 도입에 필요한 최소 adapter wiring과 진단 UI만 허용한다. `DESIGN.md`의 Cobalt Instrument token, responsive breakpoint, accessibility, Android safe-area 계약을 유지한다.
+
+## D-009 — dependency 및 저장소 경계
+
+상태: Accepted
+
+Composition Domain v2 작업에서 Electron, better-sqlite3, Sharp를 도입하지 않는다. image bytes의 대규모 저장소 migration도 별도 승인과 fixture 없이 수행하지 않는다. 기존 Tauri, browser IndexedDB, file output, metadata sidecar 경계를 우선 재사용한다.
+
+## D-010 — phase 단위 변경과 rollback
+
+상태: Accepted
+
+각 phase는 작은 diff, phase 전용 contract, fresh lint/build/check 결과, 명시적 rollback을 가져야 한다. unrelated working-tree 변경은 삭제하거나 덮어쓰지 않는다. 실패한 검증은 환경 제약과 code regression으로 구분하되 어느 쪽도 성공으로 보고하지 않는다. push, PR, release는 명시 요청 없이는 수행하지 않는다.
+
+## D-011 — Composition 테스트 러너로 Vitest 채택
+
+상태: Accepted
+
+Composition Domain의 일반 TypeScript unit/fixture suite에는 `vitest` 4.1.10을 정확 버전의 devDependency로 사용한다. 기존 저장소에는 Playwright 기반 responsive contract, `node:test` 기반 Smart Tools contract, Node custom verifier만 있고 TypeScript helper와 fixture를 범주별로 실행할 일반 unit runner가 없었다. Vitest는 현재 Vite 6 alias/transform 경계를 재사용하고 로컬 Node 25 및 CI Node 20 범위를 지원하므로 별도 runtime loader나 broad mock 없이 payload builder와 순수 helper를 직접 검증할 수 있다.
+
+Vitest는 Node 환경의 Composition 테스트에만 사용하며 production dependency나 runtime bundle에 포함하지 않는다. Playwright는 responsive/E2E 목적에 유지하고 기존 Node contract/verifier 명령과 기대값은 변경하지 않는다. 새 스크립트는 일회 실행인 `vitest run`만 사용하며 실패를 숨기는 fallback을 두지 않는다.
+
+## D-012 — production authority gate가 legacy 제거보다 우선
+
+상태: Accepted
+
+Main, Scene, Style Lab의 persisted workflow mode 기본값은 `v2`지만 process authority는 startup repository 검증이 `v2`를 활성화한 경우에만 engine 요청을 허용한다. fresh repository의 현재 기본 authority는 의도적으로 `legacy`이며 Vitest setup은 workflow 테스트를 위해 authority를 `v2`로 올린다. 따라서 테스트에서 v2 adapter가 통과한다는 사실만으로 production cutover가 입증되지는 않는다.
+
+다음 증거가 모두 확보되기 전에는 legacy request builder, shadow 비교, compatibility projection, authority feature flag를 제거하지 않는다.
+
+- clean production-like startup에서 repository authority가 `v2`로 검증된다.
+- Main/Scene/Style Lab 온라인 회귀가 supported model과 source-edit 경로에서 통과한다.
+- rollback release/tag/export가 복원 연습으로 검증된다.
+- legacy caller search가 rollback 외 production caller 0건을 보인다.
+
+## D-013 — compatibility cleanup은 definition-only caller에 한정
+
+상태: Accepted
+
+최종 cleanup은 `rg` caller search와 TypeScript/lint/test가 함께 dead임을 증명한 export만 제거한다. 과거 데이터의 의미를 해석하는 importer, parser, fixture와 legacy metadata reader는 caller가 적어 보여도 데이터 복구 계약이므로 보존한다. 이번 cleanup에서 제거한 것은 wildcard counter와 FragmentState random/sequential line의 미사용 public wrapper, Scene fragment sequence의 미사용 commit wrapper, Style Lab의 미사용 formatting/signature alias뿐이다.
+
+## D-014 — output commit은 OutputWriter가 소유
+
+상태: Accepted
+
+Main, Scene, Style Lab의 final file, sidecar/metadata, thumbnail, session recheck, atomic commit, workflow state callback, cleanup과 recovery journal은 공통 OutputWriter 경계가 소유한다. history/scene image는 file commit 이후에만 추가한다. filename template와 extension 정책은 filename policy에 집중하고 desktop/Android path 차이는 capability adapter로 분리한다.
+
+## D-015 — portable document와 platform capability 분리
+
+상태: Accepted
+
+Composition document에는 raw OS absolute path나 platform의 opaque bookmark token을 authority 데이터로 저장하지 않는다. portable root/relative path/display path와 stable resource ID를 저장하고 실제 materialization은 platform adapter가 수행한다. Android가 desktop resource를 해석하지 못하면 recipe는 열되 generation을 차단하고 repair action, reason, alternative를 표시한다. 비지원 기능의 silent fallback은 허용하지 않는다.
+
+## D-016 — session 진단값은 migration source로 persist하지 않음
+
+상태: Accepted
+
+Migration raw source는 persisted compatibility data의 exact preimage를 보존한다. 반면 매 startup마다 새로 계산하는 `lastLoadedAt` 같은 session 진단값은 persistence projection에 넣지 않는다. 이 값은 composition 의미가 없고 무변경 startup의 source hash와 repository revision만 불필요하게 바꾼다. Profile content, source path, disk mtime, save/conflict 정보처럼 복구에 필요한 상태는 계속 persist한다.
+
+## D-017 — Tauri generation transport는 scoped HTTP plugin 사용
+
+상태: Accepted
+
+Browser/test runtime은 native fetch를 사용하지만 desktop/Android Tauri runtime의 NovelAI generation은 capability allowlist가 적용된 HTTP plugin을 사용한다. WebView `window.fetch`는 Android에서 CORS에 의해 즉시 실패했다. Plugin transport는 source contract에 고정하되 emulator live response가 완료되지 않은 현상은 별도 open risk로 관리하며 성공으로 과대 보고하지 않는다.

@@ -2,6 +2,17 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { saveReferenceImage, loadReferenceImage, deleteReferenceImage, saveEncodedVibe, loadEncodedVibe } from '@/lib/image-utils'
+import {
+    characterStoreResourceId,
+    type CharacterResourceRepository,
+} from '@/lib/composition/character-resource-repository'
+export {
+    characterStoreResourceId,
+} from '@/lib/composition/character-resource-repository'
+export type {
+    CharacterResourceKind,
+    CharacterResourceRepository,
+} from '@/lib/composition/character-resource-repository'
 
 // 참조 레퍼런스 타입 (NovelAI 2026년 2월 업데이트)
 export type PreciseReferenceType = 'character' | 'style' | 'character&style'
@@ -285,3 +296,24 @@ export const useCharacterStore = create<CharacterState>()(
         }
     )
 )
+
+/**
+ * Compatibility repository over the existing character/image store. It loads
+ * existing files and encoded-vibe caches on demand; it never moves or rebuilds
+ * their persisted content.
+ */
+export function createCharacterStoreResourceRepository(): CharacterResourceRepository {
+    return {
+        ensureAvailable: () => useCharacterStore.getState().ensureImagesLoaded(),
+        getByResourceId: (resourceId) => {
+            const state = useCharacterStore.getState()
+            const character = state.characterImages.find(image => (
+                characterStoreResourceId('character', image.id) === resourceId
+            ))
+            if (character !== undefined) return character
+            return state.vibeImages.find(image => (
+                characterStoreResourceId('vibe', image.id) === resourceId
+            ))
+        },
+    }
+}

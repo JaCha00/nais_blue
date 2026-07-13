@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, memo } from 'react'
+import { useState, useEffect, useMemo, useRef, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -73,21 +73,25 @@ import {
     ImageOff,
     GripVertical,
     ArrowUpDown,
-    Store,
     Drama,
     UserMinus,
     UserCheck,
+    Layers3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tip } from '@/components/ui/tooltip'
-import { useSceneStore } from '@/stores/scene-store'
+import {
+    hasSceneCompositionOverrides,
+    useSceneStore,
+    type SceneCompositionMode,
+} from '@/stores/scene-store'
 import { useGenerationStore } from '@/stores/generation-store'
+import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { remove, writeFile } from '@tauri-apps/plugin-fs'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
-import { UploadPresetDialog } from '@/components/marketplace/UploadPresetDialog'
 import { CharacterRotationDialog } from '@/components/scene/CharacterRotationDialog'
 import { RotationStatusBar } from '@/components/scene/RotationStatusBar'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -100,6 +104,34 @@ import {
 } from '@/components/ui/dialog'
 import { ResolutionSelector, Resolution } from '@/components/ui/ResolutionSelector'
 import { useRotationStore } from '@/stores/character-rotation-store'
+import {
+    decodeSceneRecipeSelection,
+    SCENE_DIRECT_SELECTION_ID,
+    sceneAssetRecipeSelectionId,
+    type SceneCompositionResolution,
+} from '@/lib/composition/scene-adapter'
+import { SceneCompositionCardMeta } from '@/components/scene/SceneCompositionControls'
+import { SceneCompositionWorkspace } from '@/components/scene/SceneCompositionWorkspace'
+import {
+    calculateSceneGridVirtualRange,
+    SCENE_GRID_VIRTUALIZATION_THRESHOLD,
+} from '@/components/scene/scene-grid-virtualization'
+import { previewSceneComposition } from '@/lib/scene-generation/build-scene-params'
+import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
+import type {
+    CompositionConflictSummary,
+    CompositionOverrideDiffItem,
+    CompositionValidationSummary,
+    ModuleStackItem,
+    ReadonlyCompositionIssue,
+} from '@/components/composition-workspace'
+import { portableIssuesForResolvedPlan } from '@/components/composition-workspace'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+
+const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
 const dropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
@@ -199,6 +231,7 @@ function ScenePresetReorderDialog({ presets, activePresetId, onReorder, t }: {
 
 export default function SceneMode() {
     const { t } = useTranslation()
+    const navigate = useNavigate()
     // const { token } = useAuthStore()
     // const { savePath } = useSettingsStore()
 
@@ -214,6 +247,8 @@ export default function SceneMode() {
     
     // Scroll container ref
     const scrollContainerRef = useRef<HTMLDivElement>(null)
+    const [sceneGridScrollTop, setSceneGridScrollTop] = useState(0)
+    const [sceneGridViewport, setSceneGridViewport] = useState({ width: 960, height: 720 })
     const gridColumns = useSceneStore(s => s.gridColumns)
     const setGridColumns = useSceneStore(s => s.setGridColumns)
     const thumbnailLayout = useSceneStore(s => s.thumbnailLayout)
@@ -225,6 +260,9 @@ export default function SceneMode() {
     const reorderScenes = useSceneStore(s => s.reorderScenes)
     const reorderPresets = useSceneStore(s => s.reorderPresets)
     const isGenerating = useSceneStore(s => s.isGenerating)
+    const isCancelling = useSceneStore(s => s.isCancelling)
+    const startNewGenerationSession = useSceneStore(s => s.startNewGenerationSession)
+    const cancelSceneGeneration = useSceneStore(s => s.cancelSceneGeneration)
     const importPreset = useSceneStore(s => s.importPreset)
     const rotationActive = useRotationStore(s => s.active)
 
@@ -244,8 +282,24 @@ export default function SceneMode() {
     const deleteSelectedScenes = useSceneStore(s => s.deleteSelectedScenes)
     const moveSelectedScenesToPreset = useSceneStore(s => s.moveSelectedScenesToPreset)
     const updateSelectedScenesResolution = useSceneStore(s => s.updateSelectedScenesResolution)
+    const applyRecipeToSelectedScenes = useSceneStore(s => s.applyRecipeToSelectedScenes)
     const clearAllFavorites = useSceneStore(s => s.clearAllFavorites)
     const deleteAllImages = useSceneStore(s => s.deleteAllImages)
+    const sceneCompositionMode = useSceneStore(s => s.sceneCompositionMode)
+    const setSceneCompositionMode = useSceneStore(s => s.setSceneCompositionMode)
+    const sceneCompositionResults = useSceneStore(s => s.sceneCompositionResults)
+    const setSceneCompositionRef = useSceneStore(s => s.setSceneCompositionRef)
+    const assetRecipes = useAssetModuleStore(s => s.profile.recipes)
+    const assetModules = useAssetModuleStore(s => s.profile.modules)
+    const assetProfileRevision = useAssetModuleStore(s => s.profile.revision)
+    const assetHasConflict = useAssetModuleStore(s => s.hasConflict)
+    const assetConflictMessage = useAssetModuleStore(s => s.conflictMessage)
+    const seed = useGenerationStore(s => s.seed)
+    const seedLocked = useGenerationStore(s => s.seedLocked)
+    const setSeed = useGenerationStore(s => s.setSeed)
+    const setSeedLocked = useGenerationStore(s => s.setSeedLocked)
+    const steps = useGenerationStore(s => s.steps)
+    const generatingMode = useGenerationStore(s => s.generatingMode)
 
     // Resolution state for selected scenes
     const [editModeResolution, setEditModeResolution] = useState<Resolution>({
@@ -253,10 +307,268 @@ export default function SceneMode() {
         width: 832,
         height: 1216
     })
+    const [bulkRecipeId, setBulkRecipeId] = useState<string>(SCENE_DIRECT_SELECTION_ID)
+    const [activeModuleId, setActiveModuleId] = useState<string | null>(null)
+    const [compositionPreviewLoading, setCompositionPreviewLoading] = useState(false)
+    const [compositionPreview, setCompositionPreview] = useState<SceneCompositionResolution | null>(null)
+    const [compositionPreviewError, setCompositionPreviewError] = useState<string | null>(null)
+
+    useEffect(() => {
+        const viewport = scrollContainerRef.current
+        if (!viewport) return
+        const measure = () => setSceneGridViewport({
+            width: viewport.clientWidth || 960,
+            height: viewport.clientHeight || 720,
+        })
+        measure()
+        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+        observer?.observe(viewport)
+        return () => observer?.disconnect()
+    }, [])
+
+    const sceneGridColumnCount = sceneGridViewport.width < 640
+        ? 1
+        : sceneGridViewport.width < 1024
+            ? 2
+            : gridColumns
+    const sceneGridCardWidth = Math.max(
+        240,
+        (sceneGridViewport.width - ((sceneGridColumnCount - 1) * 12) - 8) / sceneGridColumnCount,
+    )
+    const sceneGridEstimatedRowHeight = Math.ceil(
+        (thumbnailLayout === 'vertical' ? sceneGridCardWidth * 1.5 : sceneGridCardWidth * (2 / 3)) + 220,
+    )
+    const sceneGridVirtualized = scenes.length >= SCENE_GRID_VIRTUALIZATION_THRESHOLD
+    const sceneGridVirtualRange = useMemo(() => sceneGridVirtualized
+        ? calculateSceneGridVirtualRange({
+            itemCount: scenes.length,
+            columnCount: sceneGridColumnCount,
+            scrollTop: sceneGridScrollTop,
+            viewportHeight: sceneGridViewport.height,
+            rowHeight: sceneGridEstimatedRowHeight,
+        })
+        : {
+            startRow: 0,
+            endRow: Math.ceil(scenes.length / sceneGridColumnCount),
+            startIndex: 0,
+            endIndex: scenes.length,
+            paddingTop: 0,
+            paddingBottom: 0,
+        }, [
+        sceneGridColumnCount,
+        sceneGridEstimatedRowHeight,
+        sceneGridScrollTop,
+        sceneGridViewport.height,
+        sceneGridVirtualized,
+        scenes.length,
+    ])
+    const visibleScenes = sceneGridVirtualized
+        ? scenes.slice(sceneGridVirtualRange.startIndex, sceneGridVirtualRange.endIndex)
+        : scenes
 
     const handleApplyResolutionToSelected = () => {
         updateSelectedScenesResolution(editModeResolution.width, editModeResolution.height)
         toast({ description: t('scene.resolutionApplied', { count: selectedSceneIds.length, width: editModeResolution.width, height: editModeResolution.height }) })
+    }
+
+    const handleApplyRecipeToSelected = () => {
+        const selection = decodeSceneRecipeSelection(bulkRecipeId)
+        applyRecipeToSelectedScenes(
+            selection.recipeId,
+            assetProfileRevision,
+            selection.selectionKind,
+        )
+        toast({
+            description: t('scene.composition.bulkApplied', 'Recipe applied to {{count}} scenes', {
+                count: selectedSceneIds.length,
+            }),
+        })
+    }
+
+    const runtimeDocument = useMemo(
+        () => getRuntimeCompositionDocument(),
+        [assetProfileRevision],
+    )
+    const selectedRecipe = decodeSceneRecipeSelection(bulkRecipeId)
+    const selectedRuntimeRecipe = selectedRecipe.selectionKind === 'asset'
+        ? runtimeDocument?.recipes.find(recipe => recipe.id === selectedRecipe.recipeId)
+        : undefined
+    const selectedLegacyRecipe = selectedRecipe.selectionKind === 'asset'
+        ? assetRecipes.find(recipe => recipe.id === selectedRecipe.recipeId)
+        : undefined
+    const workspaceModules = useMemo<ModuleStackItem[]>(() => {
+        if (runtimeDocument) {
+            const selectedIds = selectedRuntimeRecipe
+                ? new Set(selectedRuntimeRecipe.steps.filter(step => step.enabled).map(step => step.moduleId))
+                : null
+            return [...runtimeDocument.modules]
+                .filter(module => selectedIds === null || selectedIds.has(module.id))
+                .sort((left, right) => left.orderKey.localeCompare(right.orderKey) || left.id.localeCompare(right.id))
+                .map((module, order) => ({
+                    id: module.id,
+                    name: module.name,
+                    kind: module.kind,
+                    enabled: module.enabled,
+                    order,
+                    summary: module.contributions.map(contribution => contribution.text).filter(Boolean).join(', '),
+                }))
+        }
+
+        const selectedIds = selectedLegacyRecipe
+            ? new Set(selectedLegacyRecipe.steps.filter(step => step.enabled !== false).map(step => step.moduleId))
+            : null
+        return Object.values(assetModules)
+            .filter(module => selectedIds === null || selectedIds.has(module.id))
+            .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id))
+            .map((module, order) => ({
+                id: module.id,
+                name: module.label || module.id,
+                kind: module.kind || 'composite',
+                enabled: module.enabled,
+                order,
+                summary: module.prompt || module.negativePrompt || module.negative || '',
+            }))
+    }, [assetModules, runtimeDocument, selectedLegacyRecipe, selectedRuntimeRecipe])
+
+    useEffect(() => {
+        if (activeModuleId && workspaceModules.some(module => module.id === activeModuleId)) return
+        setActiveModuleId(workspaceModules[0]?.id ?? null)
+    }, [activeModuleId, workspaceModules])
+
+    const compositionRecords = scenes
+        .map(scene => sceneCompositionResults[scene.id])
+        .filter((record): record is NonNullable<typeof record> => Boolean(record))
+    const compositionErrorCount = compositionRecords.reduce((count, record) => count + record.errors.length, 0)
+    const compositionWarningCount = compositionRecords.reduce((count, record) => count + record.warnings.length, 0)
+    const validation: CompositionValidationSummary = assetHasConflict
+        ? { severity: 'conflict', errorCount: 1, label: t('composition.conflict.label', 'Conflict') }
+        : compositionErrorCount > 0
+            ? { severity: 'error', errorCount: compositionErrorCount, warningCount: compositionWarningCount }
+            : compositionWarningCount > 0
+                ? { severity: 'warning', warningCount: compositionWarningCount }
+                : sceneCompositionMode === 'legacy'
+                    ? { severity: 'disabled', label: 'legacy' }
+                    : { severity: 'valid' }
+    const estimatedCost = scenes.reduce((sum, scene) => {
+        if (scene.queueCount <= 0) return sum
+        return sum + calculateAnlasCost(scene.width ?? 832, scene.height ?? 1216, steps) * scene.queueCount
+    }, 0)
+    const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')
+    const conflict: CompositionConflictSummary | null = assetHasConflict
+        ? {
+            severity: 'error',
+            title: t('composition.externalConflict', 'External composition edit'),
+            message: assetConflictMessage || t('composition.externalConflictDescription', 'Resolve the repository revision conflict before editing.'),
+            revision: `asset-profile@${assetProfileRevision}`,
+        }
+        : generationConflict
+            ? {
+                severity: 'warning',
+                title: t('generate.conflictTitle', 'Another workflow is generating'),
+                message: t('generate.conflictDescription', 'Wait for the active generation workflow to finish or cancel it there.'),
+                revision: generatingMode || undefined,
+            }
+            : null
+    const overrideSceneCount = scenes.filter(scene => hasSceneCompositionOverrides(scene)).length
+    const overrideDiff: CompositionOverrideDiffItem[] = [
+        {
+            id: 'recipe',
+            label: t('scene.composition.recipe', 'Recipe'),
+            inheritedValue: t('scene.composition.inherited', 'Default'),
+            overrideValue: selectedLegacyRecipe?.label || selectedRuntimeRecipe?.name || selectedRecipe.recipeId,
+            changed: selectedRecipe.selectionKind !== 'direct',
+        },
+        {
+            id: 'scene-overrides',
+            label: t('scene.composition.override', 'Override'),
+            inheritedValue: '0',
+            overrideValue: String(overrideSceneCount),
+            changed: overrideSceneCount > 0,
+        },
+        {
+            id: 'queue',
+            label: t('scene.queue', 'Queue'),
+            inheritedValue: '0',
+            overrideValue: String(totalQueue),
+            changed: totalQueue > 0,
+        },
+    ]
+    const resolvedPlan = compositionPreview?.result.success ? compositionPreview.result.plan : null
+    const portableResolvedIssues = resolvedPlan === null
+        ? []
+        : portableIssuesForResolvedPlan(
+            assessPortableCompositionPlan(resolvedPlan, runtimeCapabilities).issues,
+        )
+    const resolvedIssues = compositionPreview
+        ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
+        : portableResolvedIssues
+
+    const handleWorkspaceRecipeChange = (selectionValue: string) => {
+        setBulkRecipeId(selectionValue)
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        if (!activePresetId || isGenerating) return
+
+        const selection = decodeSceneRecipeSelection(selectionValue)
+        const targetIds = isEditMode && selectedSceneIds.length > 0
+            ? selectedSceneIds
+            : scenes.map(scene => scene.id)
+        for (const sceneId of targetIds) {
+            const currentScene = scenes.find(scene => scene.id === sceneId)
+            setSceneCompositionRef(activePresetId, sceneId, {
+                ...currentScene?.compositionRef,
+                recipeId: selection.recipeId,
+                selectionKind: selection.selectionKind,
+                recipeRevision: assetProfileRevision,
+            })
+        }
+        toast({
+            description: t('scene.composition.bulkApplied', 'Recipe applied to {{count}} scenes', {
+                count: targetIds.length,
+            }),
+        })
+    }
+
+    const handleOpenResolvedPlan = async () => {
+        const targetScene = scenes.find(scene => selectedSceneIds.includes(scene.id))
+            ?? scenes.find(scene => scene.queueCount > 0)
+            ?? scenes[0]
+        setCompositionPreviewLoading(true)
+        setCompositionPreview(null)
+        setCompositionPreviewError(null)
+        if (!targetScene) {
+            setCompositionPreviewError(t('scene.noScenes', 'No scenes'))
+            setCompositionPreviewLoading(false)
+            return
+        }
+        try {
+            setCompositionPreview(await previewSceneComposition(targetScene))
+        } catch (error) {
+            setCompositionPreviewError(error instanceof Error ? error.message : String(error))
+        } finally {
+            setCompositionPreviewLoading(false)
+        }
+    }
+
+    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
+        const repairTarget = issue.entityRef?.id ?? issue.code
+        const params = new URLSearchParams({ repair: repairTarget })
+        if (issue.actionId) params.set('action', issue.actionId)
+        navigate(`/asset-modules?${params.toString()}`, {
+            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'scenes' },
+        })
+    }
+
+    const handleSceneGenerate = () => {
+        if (rotationActive) {
+            useRotationStore.getState().stop({ reason: 'scene workspace stop', keepSnapshot: true })
+            return
+        }
+        if (isGenerating || isCancelling) {
+            cancelSceneGeneration()
+            return
+        }
+        if (totalQueue > 0) startNewGenerationSession()
     }
 
     const [newPresetName, setNewPresetName] = useState('')
@@ -273,6 +585,7 @@ export default function SceneMode() {
     useEffect(() => {
         if (scrollContainerRef.current && scrollPosition > 0) {
             scrollContainerRef.current.scrollTop = scrollPosition
+            setSceneGridScrollTop(scrollPosition)
         }
     }, []) // Only on mount
 
@@ -417,7 +730,6 @@ export default function SceneMode() {
 
     const [showExportDialog, setShowExportDialog] = useState(false)
     const [exportScenesFilter, setExportScenesFilter] = useState<'all' | 'selected'>('all')
-    const [showUploadDialog, setShowUploadDialog] = useState(false)
     const [showDeletePresetDialog, setShowDeletePresetDialog] = useState(false)
     const [showRotationDialog, setShowRotationDialog] = useState(false)
 
@@ -512,13 +824,89 @@ export default function SceneMode() {
     const activeItem = activeId ? scenes.find(s => s.id === activeId) : null
 
     return (
-        <div
-            className="relative flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden sm:gap-3"
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
+        <SceneCompositionWorkspace
+            mode={{
+                value: sceneCompositionMode,
+                label: t('scene.composition.mode', 'Mode'),
+                options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode })),
+                onChange: value => setSceneCompositionMode(value as SceneCompositionMode),
+                disabled: isGenerating,
+            }}
+            recipe={{
+                value: bulkRecipeId,
+                label: t('scene.composition.recipe', 'Recipe'),
+                options: [
+                    { value: SCENE_DIRECT_SELECTION_ID, label: t('composition.recipe.direct', 'Direct prompts') },
+                    ...assetRecipes.map(recipe => ({
+                        value: sceneAssetRecipeSelectionId(recipe.id),
+                        label: recipe.label || recipe.id,
+                        disabled: !recipe.enabled,
+                    })),
+                ],
+                onChange: handleWorkspaceRecipeChange,
+                disabled: isGenerating,
+            }}
+            validation={validation}
+            cost={{ value: `${estimatedCost}`, label: 'Anlas', severity: estimatedCost > 0 ? 'warning' : 'normal' }}
+            seed={{
+                value: seed,
+                locked: seedLocked,
+                onChange: value => {
+                    const parsed = Number(value)
+                    if (Number.isSafeInteger(parsed) && parsed >= 0) setSeed(parsed)
+                },
+                onToggleLock: () => setSeedLocked(!seedLocked),
+                onPreviewWildcard: () => window.dispatchEvent(new Event(SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG)),
+                wildcardPreviewLabel: t('scene.wildcardPreview', 'Wildcard preview'),
+            }}
+            generation={{
+                generating: isGenerating || isCancelling || rotationActive,
+                disabled: isCancelling || (!isGenerating && !rotationActive && (totalQueue === 0 || generationConflict)),
+                progressLabel: isCancelling ? t('generate.cancelling', 'Cancelling…') : undefined,
+                generateLabel: t('scene.generateAll', 'Generate scenes'),
+                cancelLabel: t('generate.cancel', 'Cancel'),
+                actionTestId: 'scene-generate-action',
+                cancelTestId: 'scene-cancel-action',
+                onGenerate: handleSceneGenerate,
+                onCancel: handleSceneGenerate,
+            }}
+            modules={workspaceModules}
+            activeModuleId={activeModuleId}
+            recipeName={selectedLegacyRecipe?.label || selectedRuntimeRecipe?.name || selectedRecipe.recipeId}
+            resolvedPlan={resolvedPlan}
+            resolvedIssues={resolvedIssues}
+            resolvedLoading={compositionPreviewLoading}
+            resolvedError={compositionPreviewError}
+            resolvedAvailable={scenes.length > 0}
+            conflict={conflict}
+            overrideDiff={overrideDiff}
+            inspectorChildren={(
+                <section className="border-t border-border p-3" aria-label={t('scene.queueStatus', 'Queue status')}>
+                    <dl className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="min-w-0">
+                            <dt className="text-muted-foreground">{t('scene.sceneCount', 'Scenes')}</dt>
+                            <dd className="mt-1 font-mono font-semibold tabular-nums">{scenes.length}</dd>
+                        </div>
+                        <div className="min-w-0">
+                            <dt className="text-muted-foreground">{t('scene.queue', 'Queue')}</dt>
+                            <dd className="mt-1 font-mono font-semibold tabular-nums">{totalQueue}</dd>
+                        </div>
+                    </dl>
+                </section>
+            )}
+            onSelectModule={setActiveModuleId}
+            onEditModule={moduleId => navigate(`/asset-modules?module=${encodeURIComponent(moduleId)}`)}
+            onOpenResolved={handleOpenResolvedPlan}
+            onRepairIssue={handleRepairCompositionIssue}
         >
+            <div
+                className="relative flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden p-1 sm:gap-3"
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                data-testid="scene-grid-workspace"
+            >
             {/* DESIGN.md responsive contract: compact groups wrap as rows so every existing command stays reachable without page-level horizontal scroll. */}
             {isEditMode ? (
                 <div className="grid min-w-0 gap-2 rounded-panel border border-primary/30 bg-card p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:p-3">
@@ -563,26 +951,66 @@ export default function SceneMode() {
                         </Tip>
                     </div>
 
-                    <div className="flex min-w-0 items-center gap-2">
-                        <div className="min-w-0 flex-1">
-                            <ResolutionSelector
-                                value={editModeResolution}
-                                onChange={setEditModeResolution}
-                                disabled={selectedSceneIds.length === 0}
-                            />
+                    <div className="grid min-w-0 gap-2 xl:grid-cols-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                                <ResolutionSelector
+                                    value={editModeResolution}
+                                    onChange={setEditModeResolution}
+                                    disabled={selectedSceneIds.length === 0}
+                                />
+                            </div>
+                            <Tip content={t('scene.applyResolution', '선택한 씬에 해상도 적용')}>
+                                <Button
+                                    variant="secondary"
+                                    size="icon"
+                                    className="h-11 w-11 shrink-0"
+                                    aria-label={t('scene.applyResolution', '선택한 씬에 해상도 적용')}
+                                    onClick={handleApplyResolutionToSelected}
+                                    disabled={selectedSceneIds.length === 0}
+                                >
+                                    <Check className="h-4 w-4" />
+                                </Button>
+                            </Tip>
                         </div>
-                        <Tip content={t('scene.applyResolution', '선택한 씬에 해상도 적용')}>
+
+                        <div className="flex min-w-0 items-center gap-2">
+                            <Select value={bulkRecipeId} onValueChange={setBulkRecipeId}>
+                                <SelectTrigger
+                                    className="h-11 min-w-0 flex-1"
+                                    aria-label={t('scene.composition.bulkRecipe', 'Recipe for selected scenes')}
+                                    data-testid="scene-bulk-recipe"
+                                >
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={SCENE_DIRECT_SELECTION_ID}>
+                                        {t('composition.recipe.direct', 'Direct prompts')}
+                                    </SelectItem>
+                                    {assetRecipes.map(recipe => (
+                                        <SelectItem
+                                            key={recipe.id}
+                                            value={sceneAssetRecipeSelectionId(recipe.id)}
+                                            disabled={!recipe.enabled}
+                                        >
+                                            {recipe.label || recipe.id}
+                                            {!recipe.enabled && ` ${t('composition.recipe.disabled', '(disabled)')}`}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <Button
                                 variant="secondary"
                                 size="icon"
                                 className="h-11 w-11 shrink-0"
-                                aria-label={t('scene.applyResolution', '선택한 씬에 해상도 적용')}
-                                onClick={handleApplyResolutionToSelected}
+                                aria-label={t('scene.composition.applyBulkRecipe', 'Apply recipe to selected scenes')}
+                                onClick={handleApplyRecipeToSelected}
                                 disabled={selectedSceneIds.length === 0}
+                                data-testid="scene-apply-bulk-recipe"
                             >
-                                <Check className="h-4 w-4" />
+                                <Layers3 className="h-4 w-4" />
                             </Button>
-                        </Tip>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-5 gap-2 lg:flex lg:justify-end">
@@ -735,14 +1163,6 @@ export default function SceneMode() {
                             <DropdownMenuItem className="min-h-11" onClick={handleExportJson} disabled={!activePreset || isGenerating}>
                                 <Copy className="mr-3 h-4 w-4" />
                                 {t('scene.exportJson', '씬 데이터를 JSON으로 내보내기')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                                className="min-h-11"
-                                onClick={() => setShowUploadDialog(true)}
-                                disabled={!activePreset || scenes.length === 0 || isGenerating}
-                            >
-                                <Store className="mr-3 h-4 w-4" />
-                                {t('scene.shareToMarket', '마켓에 공유')}
                             </DropdownMenuItem>
                             <DropdownMenuItem className="min-h-11" onClick={handleExportZip} disabled={scenes.length === 0}>
                                 <Download className="mr-3 h-4 w-4" />
@@ -905,7 +1325,12 @@ export default function SceneMode() {
                 </div>
             </div>
 
-            <div ref={scrollContainerRef} className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-1">
+            <div
+                ref={scrollContainerRef}
+                className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-1"
+                data-scene-grid-virtualized={sceneGridVirtualized ? 'true' : 'false'}
+                onScroll={event => setSceneGridScrollTop(event.currentTarget.scrollTop)}
+            >
                 {scenes.length === 0 ? (
                     <div className="grid gap-4 rounded-panel border border-dashed border-border bg-canvas p-4 text-muted-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
                         <ImageIcon className="h-10 w-10 text-muted-foreground" />
@@ -931,6 +1356,13 @@ export default function SceneMode() {
                         onDragEnd={handleDragEnd}
                     >
                         <SortableContext items={scenes.map(s => s.id)} strategy={rectSortingStrategy}>
+                            {sceneGridVirtualRange.paddingTop > 0 && (
+                                <div
+                                    aria-hidden="true"
+                                    style={{ height: sceneGridVirtualRange.paddingTop }}
+                                    data-testid="scene-grid-virtual-spacer-top"
+                                />
+                            )}
                             {/* DESIGN.md stores 2-5 columns as a desktop preference; effective columns are capped at 1/2 below lg without mutating that preference. */}
                             <div className={cn(
                                 "grid min-w-0 grid-cols-1 gap-2 pb-16 sm:grid-cols-2 sm:gap-3",
@@ -939,14 +1371,15 @@ export default function SceneMode() {
                                 gridColumns === 4 && "lg:grid-cols-4",
                                 gridColumns === 5 && "lg:grid-cols-5"
                             )}>
-                                {scenes.map((scene) => (
-                                    <SortableSceneCard
-                                        key={scene.id}
-                                        scene={scene}
-                                        disabled={isGenerating}
-                                    />
+                                {visibleScenes.map((scene, index) => (
+                                    <div key={scene.id} className="min-w-0" data-scene-virtual-index={sceneGridVirtualRange.startIndex + index}>
+                                        <SortableSceneCard
+                                            scene={scene}
+                                            disabled={isGenerating}
+                                        />
+                                    </div>
                                 ))}
-                                <button
+                                {sceneGridVirtualRange.endIndex === scenes.length && <button
                                     type="button"
                                     aria-label={t('scene.addScene')}
                                     onClick={!isGenerating ? handleAddScene : undefined}
@@ -958,8 +1391,15 @@ export default function SceneMode() {
                                 >
                                     <Plus className="mb-2 h-6 w-6 transition-transform duration-standard motion-safe:group-hover:scale-105" />
                                     <span className="text-sm font-medium">{t('scene.addScene')}</span>
-                                </button>
+                                </button>}
                             </div>
+                            {sceneGridVirtualRange.paddingBottom > 0 && (
+                                <div
+                                    aria-hidden="true"
+                                    style={{ height: sceneGridVirtualRange.paddingBottom }}
+                                    data-testid="scene-grid-virtual-spacer-bottom"
+                                />
+                            )}
                         </SortableContext>
                         <DragOverlay dropAnimation={dropAnimation} modifiers={[snapCenterToCursor]}>
                             {activeItem ? <SceneCardItem scene={activeItem} isOverlay /> : null}
@@ -982,12 +1422,6 @@ export default function SceneMode() {
                 )
             }
 
-            <UploadPresetDialog
-                open={showUploadDialog}
-                onOpenChange={setShowUploadDialog}
-                preset={activePreset ?? null}
-            />
-
             <CharacterRotationDialog
                 open={showRotationDialog}
                 onOpenChange={setShowRotationDialog}
@@ -1003,7 +1437,8 @@ export default function SceneMode() {
                 variant="destructive"
                 onConfirm={() => { if (activePreset) deletePreset(activePreset.id) }}
             />
-        </div >
+            </div>
+        </SceneCompositionWorkspace>
     )
 }
 
@@ -1223,7 +1658,13 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                                 />
                             </div>
                         ) : (
-                            <h3 className="truncate px-1 text-sm font-semibold text-card-foreground">{scene.name}</h3>
+                            <>
+                                <h3 className="truncate px-1 text-sm font-semibold text-card-foreground">{scene.name}</h3>
+                                <SceneCompositionCardMeta
+                                    scene={scene}
+                                    hasOverrides={hasSceneCompositionOverrides(scene)}
+                                />
+                            </>
                         )}
 
                         <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
@@ -1316,6 +1757,8 @@ const SortableSceneCard = memo(function SortableSceneCard(props: any) {
     return prevProps.scene.id === nextProps.scene.id &&
         prevProps.scene.queueCount === nextProps.scene.queueCount &&
         prevProps.scene.name === nextProps.scene.name &&
+        prevProps.scene.scenePrompt === nextProps.scene.scenePrompt &&
+        JSON.stringify(prevProps.scene.compositionRef) === JSON.stringify(nextProps.scene.compositionRef) &&
         prevProps.scene.excludePinned === nextProps.scene.excludePinned &&
         prevProps.scene.images?.length === nextProps.scene.images?.length &&
         prevProps.disabled === nextProps.disabled
