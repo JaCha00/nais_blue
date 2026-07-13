@@ -15,3 +15,7 @@
 11. Host production-client live smoke는 T2I, streaming final, Metadata v2와 AbortSignal cancel을 통과했다. Android emulator는 authority=v2에서 Tauri HTTP request를 시작하고 UI cancel/session invalidation까지 수행했지만 standard/stream 응답이 각각 160초/60초 안에 완료되지 않았다. Emulator DNS/TCP는 복구 후 정상 확인됐으므로 Android plugin HTTP 응답 전달은 별도 실기기/네트워크 조사 대상이다.
 12. Main cancel은 session을 즉시 무효화하지만 request가 끝날 때까지 `isGenerating`을 유지해 재요청/429를 방지한다. Android plugin request가 cancel 완료를 반환하지 않으면 Cancel 버튼이 남을 수 있다. Scene cancel은 현재 HTTP AbortSignal을 전달하지 않고 commit만 차단한다.
 13. Character reference와 uncached vibe는 base generation이 무료여도 별도 Anlas 비용 가능성이 있으므로 이번 live smoke에서 제외했다.
+14. Phase 01 이전에 생성된 manual/auto backup과 per-store snapshot은 raw `nais2-auth`
+    credential을 포함할 수 있다. 현재 runtime은 새 artifact와 restore write를 sanitize하지만,
+    기존 disk 파일을 자동 삭제·수정하지 않는다. 해당 파일은 사용자 주도 안전한 scan/폐기
+    workflow가 제공되기 전까지 credential-bearing artifact로 취급해야 한다.

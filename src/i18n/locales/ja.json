@@ -902,6 +902,7 @@
             "confirmRestore": "データ復元",
             "confirmRestoreDesc": "現在のデータがバックアップデータで上書きされます。続行しますか？",
             "restoreWarning": "復元後、アプリが再起動されます。",
+            "credentialReentryRequired": "認証情報の再入力が必要です。NovelAI トークンと実行時のアカウントデータは復元されません。",
             "sizes": "データサイズ",
             "totalSize": "合計サイズ"
         }

@@ -105,7 +105,7 @@ async function performAutoBackup() {
         }
         
         console.log('[AutoBackup] Starting automatic backup...')
-        const backup = await createCurrentBackupEnvelopeV3()
+        const backup = await createCurrentBackupEnvelopeV3({ purpose: 'local-auto' })
         
         // 기존 자동 백업들 로드
         const existingBackupsStr = localStorage.getItem(AUTO_BACKUP_KEY)

@@ -904,6 +904,7 @@
             "confirmRestore": "Restore Data",
             "confirmRestoreDesc": "This will overwrite current data with backup data. Continue?",
             "restoreWarning": "App will restart after restore.",
+            "credentialReentryRequired": "Credential re-entry required: NovelAI tokens and runtime account data are not restored.",
             "sizes": "Data Sizes",
             "totalSize": "Total Size"
         }

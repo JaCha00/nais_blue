@@ -92,8 +92,11 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
                 selectedGroup.storeKey,
                 label,
                 `Dry run: ${dryRun.restoreKeys.length} store(s) ready`,
+                dryRun.credentialReentryRequired
+                    ? t('settingsPage.backup.credentialReentryRequired')
+                    : '',
                 t('settingsPage.backup.restoreWarning'),
-            ].join('\n'))
+            ].filter(Boolean).join('\n'))
             if (!confirmed) return
 
             const result = await restoreStoreSnapshot(selectedGroup.storeKey, selectedRelPath)

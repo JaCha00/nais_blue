@@ -932,6 +932,7 @@
             "confirmRestore": "데이터 복원",
             "confirmRestoreDesc": "현재 데이터를 백업 데이터로 덮어씁니다. 계속하시겠습니까?",
             "restoreWarning": "복원 후 앱이 재시작됩니다.",
+            "credentialReentryRequired": "자격 증명 재입력 필요: NovelAI 토큰과 런타임 계정 데이터는 복원되지 않습니다.",
             "sizes": "데이터 크기",
             "totalSize": "전체 크기"
         }

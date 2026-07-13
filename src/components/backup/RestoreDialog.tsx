@@ -79,6 +79,9 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
                 `Dry run: ${dryRun.restoreKeys.length} store(s) ready, ${dryRun.ignoredKeys.length} ignored`,
                 ...dryRun.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
                 dryRun.ignoredKeys.length > 5 ? `- +${dryRun.ignoredKeys.length - 5} more` : '',
+                dryRun.credentialReentryRequired
+                    ? t('settingsPage.backup.credentialReentryRequired')
+                    : '',
                 t('settingsPage.backup.restoreWarning'),
             ].filter(Boolean).join('\n'))
             if (!confirmed) return

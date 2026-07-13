@@ -17,6 +17,7 @@
     "test:payload-parity": "vitest run tests/payload-parity tests/fixtures/provenance.test.ts",
     "test:composition": "vitest run",
     "test:migration": "vitest run tests/migration",
+    "test:secret-redaction": "node scripts/verify-secret-redaction.mjs",
     "test:characterization": "vitest run tests/characterization",
     "test:android-port": "node scripts/verify-android-port-contract.mjs",
     "test:release-version": "node scripts/verify-release-version.mjs",

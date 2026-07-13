@@ -324,7 +324,7 @@ export default function Settings() {
     const handleExportBackup = async () => {
         setIsExporting(true)
         try {
-            const backup = await createCurrentBackupEnvelopeV3()
+            const backup = await createCurrentBackupEnvelopeV3({ purpose: 'manual-full' })
             const storeCount = backup.storeManifest.storeCount
             
             // 파일 저장 다이얼로그
@@ -395,6 +395,9 @@ export default function Settings() {
                 ...prepared.report.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
                 prepared.report.ignoredKeys.length > 5
                     ? `- +${prepared.report.ignoredKeys.length - 5} more`
+                    : '',
+                prepared.report.credentialReentryRequired
+                    ? t('settingsPage.backup.credentialReentryRequired')
                     : '',
                 t('settingsPage.backup.restoreWarning'),
             ].filter(Boolean).join('\n'))

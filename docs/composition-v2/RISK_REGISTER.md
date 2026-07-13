@@ -25,6 +25,7 @@
 | R-017 | Android release 서명/업데이트 검증이 CI secret에 의존한다 | 로컬 debug APK는 가능하지만 release keystore와 immutable baseline 다운로드는 별도 권한이 필요하다 | High | protected GitHub environment에서 signed-build, signed-install, checksum, update baseline gate 유지 | Watching |
 | R-018 | volatile store 진단값이 migration source hash를 흔들 수 있다 | Android 연속 재시작에서 Asset Profile `lastLoadedAt` 때문에 같은 target이 반복 commit됐다 | High | session-only timestamp를 persistence projection에서 제외하고 contract test 및 emulator `already-current` 재시작 검증 | Mitigated |
 | R-019 | Android HTTP plugin이 NovelAI 응답을 완료하지 못할 수 있다 | authority=v2 emulator에서 standard/stream request와 cancel은 시작됐지만 제한 시간 안에 response/fetch cancel이 완료되지 않았다 | Critical | WebView fetch 대신 scoped plugin transport 유지; 실기기와 별도 네트워크에서 response body/abort 조사 전 Android authenticated generation 완료 선언 금지 | Open |
+| R-020 | Phase 01 이전에 생성된 backup/snapshot 파일에 raw auth credential이 남아 있을 수 있다 | 새 export/restore 경로는 sanitize하지만 기존 사용자 disk 파일은 동의 없이 삭제·수정하지 않는다 | Critical | restore preflight는 secret을 저장하지 않고 재입력 경고를 표시; 기존 파일은 값 노출 없는 사용자 주도 scan/폐기 workflow가 생기기 전까지 민감 파일로 취급 | Watching |
 
 ## 공통 stop 조건
 

@@ -128,3 +128,20 @@ Migration raw source는 persisted compatibility data의 exact preimage를 보존
 상태: Accepted
 
 Browser/test runtime은 native fetch를 사용하지만 desktop/Android Tauri runtime의 NovelAI generation은 capability allowlist가 적용된 HTTP plugin을 사용한다. WebView `window.fetch`는 Android에서 CORS에 의해 즉시 실패했다. Plugin transport는 source contract에 고정하되 emulator live response가 완료되지 않은 현상은 별도 open risk로 관리하며 성공으로 과대 보고하지 않는다.
+
+## D-018 — backup과 restore는 secret-safe store projection을 사용
+
+상태: Accepted
+
+Credential Vault 도입 전에도 manual/full, local auto, disk auto, per-store snapshot과
+restore preflight는 `projectStoreForBackup()` 경계를 공유한다. `nais2-auth`는 raw
+payload를 복사하거나 token을 encode/hash하지 않고 allowlist projection으로 다시 만든다.
+NovelAI token, runtime Anlas, provider error를 제외하고 verified 상태를 false로
+정규화하며 slot enabled와 알려진 subscription tier만 보존한다.
+
+로컬 Composition migration rollback archive는 exact preimage로 유지한다. 다만 그
+archive가 외부 backup이나 store snapshot으로 새롭게 복제될 때 중첩된 `nais2-auth`
+직렬값만 같은 projection으로 sanitize하고 projected source hash/count를 다시 계산한다.
+Restore는 과거 raw auth가 있는 legacy/v3/snapshot을 읽되 secret을 쓰지 않고
+credential 재입력 필요를 dry-run report와 UI summary에 표시한다. 기존 disk backup은
+자동 삭제하거나 수정하지 않는다.

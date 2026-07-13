@@ -1,4 +1,8 @@
 import { StateStorage } from 'zustand/middleware'
+import {
+    projectStoreForBackup,
+    type BackupProjectionPurpose,
+} from '@/lib/backup-projection'
 // Since I cannot install packages, I will implement a minimal wrapper similar to idb-keyval logic
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
@@ -808,6 +812,7 @@ export interface BackupExportOptions {
     exportWildcardContent?: () => Promise<{ [id: string]: string[] }>
     /** Backup Envelope v3 must not turn read failures into silent omissions. */
     strict?: boolean
+    purpose?: BackupProjectionPurpose
 }
 
 /**
@@ -828,7 +833,11 @@ export async function exportBackupFromStorage(
             const data = await storage.getItem(key)
             if (data !== null) {
                 const parsed = filterLargeImageData(key, JSON.parse(data))
-                backup[key] = parsed
+                backup[key] = projectStoreForBackup(
+                    key,
+                    parsed,
+                    options.purpose ?? 'manual-full',
+                ).payload
             }
         } catch (err) {
             console.error(`[Backup] Failed to export ${key}:`, err)
@@ -858,10 +867,11 @@ export async function exportBackupFromStorage(
  * into Composition documents by this path.
  */
 export async function exportAllData(
-    options: { strict?: boolean } = {},
+    options: { strict?: boolean; purpose?: BackupProjectionPurpose } = {},
 ): Promise<{ [key: string]: unknown }> {
     const backup = await exportBackupFromStorage(indexedDBStorage, {
         strict: options.strict,
+        purpose: options.purpose,
         exportWildcardContent: () => exportWildcardContentSnapshot({ strict: options.strict }),
     })
     console.log('[Backup] Export complete:', Object.keys(backup).length - 2, 'stores')
@@ -1257,7 +1267,8 @@ export async function importBackupToStorage(
                 }
             }
 
-            const serialized = JSON.stringify(value)
+            const projected = projectStoreForBackup(key, value, 'restore-preflight')
+            const serialized = JSON.stringify(projected.payload)
             attemptedMutations.push(key)
             await storage.setItem(key, serialized)
             await options.flushStore?.(key)
