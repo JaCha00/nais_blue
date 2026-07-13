@@ -31,6 +31,8 @@ Runtime에서 Marketplace/Supabase 문자열이 허용되는 위치는 old backu
 
 `.codex/**`는 위 compatibility allowlist와 구분되는 non-runtime development tooling allowlist다. 해당 경로는 앱과 무관한 repository-local Codex 개발 도구다. Gate는 그 내용도 계속 검색하고 allowlisted match 수를 출력하며, public source staging과 Vite/Tauri release input에서 제외되는지도 별도 검증한다. 따라서 앱 runtime, dependency, Android/Tauri, CI 또는 일반 문서의 Marketplace/Supabase 잔여물 검사는 완화되지 않는다.
 
+Gate는 tracked 파일이 working tree에서 unstaged 삭제된 경우 Git index blob을 읽는다. 따라서 로컬 dirty tree가 committed residue를 숨겨 clean CI와 다른 결과를 만들 수 없다.
+
 다음 gate가 이 allowlist 밖의 runtime, dependency, platform, CI, docs residue와 `legacy/**` release 포함을 거부한다.
 
 ```text

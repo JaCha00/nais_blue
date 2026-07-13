@@ -68,24 +68,42 @@ function isNonRuntimeDevelopmentTooling(relativePath) {
     return relativePath.startsWith('.codex/')
 }
 
-async function listRepositoryFiles() {
+async function runGit(args, options = {}) {
     const execute = promisify(execFile)
     const safeRoot = normalize(root)
-    const { stdout } = await execute('git', [
+    return execute('git', [
         '-c',
         `safe.directory=${safeRoot}`,
-        'ls-files',
-        '--cached',
-        '--others',
-        '--exclude-standard',
-        '-z',
+        ...args,
     ], {
         cwd: root,
         encoding: 'utf8',
         maxBuffer: 16 * 1024 * 1024,
+        ...options,
     })
+}
+
+async function listGitFiles(args) {
+    const { stdout } = await runGit(['ls-files', ...args, '-z'])
 
     return stdout.split('\0').filter(Boolean).map(normalize)
+}
+
+async function listRepositoryFiles() {
+    const [tracked, untracked] = await Promise.all([
+        listGitFiles(['--cached']),
+        listGitFiles(['--others', '--exclude-standard']),
+    ])
+
+    return {
+        paths: [...new Set([...tracked, ...untracked])],
+        tracked: new Set(tracked),
+    }
+}
+
+async function readTrackedFileFromIndex(relativePath) {
+    const { stdout } = await runGit(['show', `:${relativePath}`], { encoding: null })
+    return stdout
 }
 
 function findMatches(relativePath, content) {
@@ -108,13 +126,18 @@ function findMatches(relativePath, content) {
 
 const repositoryFiles = await listRepositoryFiles()
 const matches = []
-for (const relativePath of repositoryFiles) {
+for (const relativePath of repositoryFiles.paths) {
     let bytes
     try {
         bytes = await readFile(path.join(root, relativePath))
     } catch (error) {
-        if (error?.code === 'ENOENT') continue
-        throw error
+        if (error?.code !== 'ENOENT') throw error
+        if (!repositoryFiles.tracked.has(relativePath)) continue
+
+        // An unstaged deletion must not make a local run cleaner than CI.
+        // Read the tracked blob from the index so clean and dirty worktrees
+        // enforce the same residue policy.
+        bytes = await readTrackedFileFromIndex(relativePath)
     }
     if (bytes.includes(0)) continue
     matches.push(...findMatches(relativePath, bytes.toString('utf8')))

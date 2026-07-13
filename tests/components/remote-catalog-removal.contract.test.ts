@@ -87,6 +87,8 @@ describe('removed remote catalog runtime contract', () => {
         expect(gate).toContain('NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST')
         expect(gate).toContain("relativePath.startsWith('.codex/')")
         expect(gate).toContain('developmentToolingMatches')
+        expect(gate).toContain('readTrackedFileFromIndex')
+        expect(gate).toContain('repositoryFiles.tracked.has(relativePath)')
         expect(gate).toContain('repositoryRootIsNotPublicInput')
         expect(gate).toContain('publicSourceExcludesCodexTooling')
         expect(vite).not.toMatch(/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i)
