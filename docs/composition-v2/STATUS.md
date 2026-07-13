@@ -41,8 +41,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 19: retired online catalog/remote auth/deep-link runtime와 dependency 제거.
 - Phase 20 구현: OutputWriter/metadata v2, canonical authoring studio, Main/Scene information architecture, portable resource/capability adapter, Android/responsive contracts.
 - 최종 cleanup: caller audit, definition-only export 정리, CI compatibility gates와 운영 문서 연결.
-- 후속 hardening Phase 01~04: secret-safe backup projection, redacted diagnostic kernel,
-  persistence correctness/rescue startup, Stronghold-backed Credential Vault와 AuthState v3.
+- 후속 hardening Phase 01~05: secret-safe backup projection, redacted diagnostic kernel,
+  persistence correctness/rescue startup, Stronghold-backed Credential Vault/AuthState v3,
+  Android fixed-endpoint NAI transport와 Scene network cancellation.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -70,7 +71,7 @@ Production authority cutover와 legacy builder retirement는 별도 release gate
 
 ## Verification
 
-실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 72-suite/578-test Vitest aggregate, payload/migration/characterization/NAI/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate, Cargo와 debug APK를 포함한다.
+실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 05 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 84 passed/1 skipped file과 658 passed/3 opt-in skipped test의 Vitest aggregate, payload/migration/characterization/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate, Cargo host/mock tests와 x86_64 debug APK를 포함한다.
 
 Emulator에서 Asset Profile의 session 진단값 `lastLoadedAt`이 exact legacy source hash를 매번 바꾸는 문제가 발견됐다. 이 값은 persistence projection에서 제외했고, 기존 persisted 값이 한 번 정리된 뒤 연속 무변경 재시작이 `already-current; authority=legacy`로 안정됨을 확인했다.
 
@@ -80,7 +81,19 @@ credential migration을 추가했다. Android x86_64 debug APK가 Stronghold/lib
 Windows cross-build는 transitive libsodium prebuild 환경 제한이 있어 R-025와 developer
 verification 절차에 분리 기록한다.
 
-Ignored `.env`의 Opus token으로 실제 NovelAI live smoke도 실행했다. Raw endpoint 512×512/1 step PNG와 production client 512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash, AbortSignal cancel이 모두 통과했다. Android v2 Main은 WebView CORS를 피하도록 capability-scoped Tauri HTTP transport로 연결했고 실제 request/cancel 상태까지 진입했지만, emulator에서 standard/stream 응답이 제한 시간 안에 완료되지 않아 Android image/output commit은 성공으로 선언하지 않는다.
+Phase 05에서는 browser/test fetch와 desktop Tauri HTTP plugin을 유지하고, Phase 04에서
+response/abort가 완료되지 않은 Android generation만 고정 endpoint Rust reqwest/channel
+adapter로 격리했다. Standard/stream은 JS/native 120초 total deadline을 가지며 Scene cancel은
+session/slot/request AbortController에서 실제 HTTP request까지 전달된다. Host mock server의
+headers/body, stream chunk, active socket cancel, timeout과 Android x86_64 cross-build/APK 설치,
+startup, Scene routing은 통과했다. Credential opt-in이 없어 Android authenticated output은
+실행하지 않았고 R-019를 Watching으로 유지한다. Request 전 Main Back 종료에서 별도 native
+mutex teardown log가 재현돼 R-026으로 분리했다.
+
+이전 opt-in host smoke에서는 실제 NovelAI raw endpoint 512×512/1 step PNG와 production client
+512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash,
+AbortSignal cancel이 통과했다. 해당 credential은 Phase 05에서 읽거나 재사용하지 않았다.
+Android image/output commit은 위 authenticated gate가 남아 있어 성공으로 선언하지 않는다.
 
 실제 NovelAI generation, Android signed release/update install과 390/768/1280/1536 실기기 전체 수동 회귀는 credential, keystore 또는 물리 device가 없어 완료로 선언하지 않는다. emulator는 startup/migration, navigation, sheets, capability explanation, process recreation과 AppData persistence를 검증하며 API token이 필요한 지점에서 중단한다.
 

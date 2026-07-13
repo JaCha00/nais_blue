@@ -12,8 +12,8 @@
 8. Retired remote catalog 문자열은 ignored-key compatibility classifier, tests/fixtures, `legacy/**` historical source와 전용 removal note에 의도적으로 남는다. Runtime residue gate의 allowlist 밖에서는 허용하지 않는다.
 9. `test:composition`이 전체 Vitest suite라 category scripts와 실행 범위가 중복된다. 향후 suite가 커지면 explicit all/unit category를 분리할 수 있다.
 10. CI는 migration/old-backup와 remote-removal gate를 Android source-contract에서 실행한다. Desktop tag job은 Android reusable workflow가 뒤따르지만, desktop build 이전에 같은 data gate를 독립적으로 요구하려면 별도 common preflight job이 필요하다.
-11. Host production-client live smoke는 T2I, streaming final, Metadata v2와 AbortSignal cancel을 통과했다. Android emulator는 authority=v2에서 Tauri HTTP request를 시작하고 UI cancel/session invalidation까지 수행했지만 standard/stream 응답이 각각 160초/60초 안에 완료되지 않았다. Emulator DNS/TCP는 복구 후 정상 확인됐으므로 Android plugin HTTP 응답 전달은 별도 실기기/네트워크 조사 대상이다.
-12. Main cancel은 session을 즉시 무효화하지만 request가 끝날 때까지 `isGenerating`을 유지해 재요청/429를 방지한다. Android plugin request가 cancel 완료를 반환하지 않으면 Cancel 버튼이 남을 수 있다. Scene cancel은 현재 HTTP AbortSignal을 전달하지 않고 commit만 차단한다.
+11. Host production-client live smoke는 T2I, streaming final, Metadata v2와 AbortSignal cancel을 통과했다. Phase 04 Android JS HTTP plugin은 standard/stream/abort를 유한 시간에 완료하지 못해 Phase 05에서 Android generation만 fixed-endpoint Rust reqwest/channel adapter로 교체했다. Host mock은 standard/stream bytes, active socket cancel과 total timeout을 통과했고 x86_64 debug APK 설치·startup·Scene routing도 통과했다. 명시적 credential opt-in이 없어 emulator authenticated image/output은 실행하지 않았으므로 live Android 성공으로 간주하지 않는다.
+12. Standard와 streaming transport는 120초 total deadline을 가지며 Scene cancel은 session/slot/request controller를 실제 HTTP request에 전달한다. Cancel 뒤 sequence proposal, OutputWriter, history/image 저장과 queue resurrection이 없고 worker 종료 시 button lock이 풀리는 behavior test가 있다. 이미 provider가 수신한 request의 과금/서버 측 작업 중단 여부까지 client가 보장하는 것은 아니다.
 13. Character reference와 uncached vibe는 base generation이 무료여도 별도 Anlas 비용 가능성이 있으므로 이번 live smoke에서 제외했다.
 14. Phase 01 이전에 생성된 manual/auto backup과 per-store snapshot은 raw `nais2-auth`
     credential을 포함할 수 있다. 현재 runtime은 새 artifact와 restore write를 sanitize하고
@@ -45,3 +45,8 @@
     APK는 공식 crate archive를 WSL+NDK로 target static library로 만든 뒤 crate가 제공하는
     process-local `SODIUM_LIB_DIR`로 link해 통과했다. 이 generated binary는 tracked source가
     아니며 일반 재현 build는 Linux host 또는 같은 verified prebuild step이 필요하다.
+22. Android API 35 x86_64 debug emulator에서 request를 시작하지 않은 Main 화면을 Back으로
+    종료하면 process는 끝나지만 native crash buffer에 destroyed-mutex FORTIFY line이 두 번
+    재현됐다. Phase 05 transport request와는 분리된 teardown 현상이며 screenshot이나 user-data
+    artifact는 만들지 않았다. Base artifact, physical device와 signed build 비교 전까지 data
+    flush 영향과 원인은 미확정이다.

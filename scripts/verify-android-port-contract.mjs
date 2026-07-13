@@ -15,6 +15,7 @@ function listSourceFiles(directory) {
 
 const pkg = readJson('package.json')
 const rust = read('src-tauri/src/lib.rs')
+const nativeNaiTransport = read('src-tauri/src/nai_transport.rs')
 const cargoToml = read('src-tauri/Cargo.toml')
 const tauriConfig = readJson('src-tauri/tauri.conf.json')
 const desktopCapabilities = readJson('src-tauri/capabilities/default.json')
@@ -157,6 +158,24 @@ assert.ok(
 assert.ok(
     rust.includes('tauri_plugin_stronghold::Builder::with_argon2'),
     'native startup must initialize Stronghold with the official Argon2 builder',
+)
+assert.ok(
+    rust.includes('.manage(nai_transport::NaiTransportState::default())') &&
+        rust.includes('nai_transport::nai_generate_request') &&
+        rust.includes('nai_transport::cancel_nai_request'),
+    'native startup must register the bounded Android NAI transport and cancellation commands',
+)
+assert.ok(
+    nativeNaiTransport.includes('https://image.novelai.net/ai/generate-image') &&
+        nativeNaiTransport.includes('https://image.novelai.net/ai/generate-image-stream') &&
+        !/nai_generate_request\([\s\S]{0,500}\burl:\s*String/.test(nativeNaiTransport),
+    'Android NAI transport must map an endpoint enum to fixed NovelAI URLs instead of accepting arbitrary URLs',
+)
+assert.ok(
+    nativeNaiTransport.includes('Channel<Response>') &&
+        nativeNaiTransport.includes('tokio::select!') &&
+        nativeNaiTransport.includes('NaiTransportEvent::Cancelled'),
+    'Android NAI transport must stream body chunks and interrupt reqwest work on cancellation',
 )
 
 const generatedManifestPath = join(root, 'src-tauri/gen/android/app/src/main/AndroidManifest.xml')

@@ -21,10 +21,12 @@ const files = [
   'src/services/nai/refs.ts',
   'src/services/nai/adapter.ts',
   'src/services/nai/client.ts',
+  'src/services/nai/transport.ts',
   'src/services/novelai-types.ts',
   'src/services/novelai-api.ts',
   'src/lib/generation-metadata.ts',
   'src-tauri/src/lib.rs',
+  'src-tauri/src/nai_transport.rs',
 ]
 
 for (const file of files) {
@@ -37,12 +39,16 @@ const stream = read('src/services/nai/stream.ts')
 const refs = read('src/services/nai/refs.ts')
 const adapter = read('src/services/nai/adapter.ts')
 const client = read('src/services/nai/client.ts')
+const transport = read('src/services/nai/transport.ts')
 const facade = read('src/services/novelai-api.ts')
 const metadata = read('src/lib/generation-metadata.ts')
 const rust = read('src-tauri/src/lib.rs')
+const rustTransport = read('src-tauri/src/nai_transport.rs')
 const sceneBuilder = read('src/lib/scene-generation/build-scene-params.ts')
 const legacySceneBuilder = read('src/lib/scene-generation/legacy-build-scene-params.ts')
 const sceneGeneration = read('src/hooks/useSceneGeneration.ts')
+const sceneStore = read('src/stores/scene-store.ts')
+const sceneCancellation = read('src/lib/scene-generation/request-cancellation.ts')
 const sceneSave = read('src/lib/scene-generation/save-scene-result.ts')
 const generationStore = read('src/stores/generation-store.ts')
 const styleLab = read('src/services/style-lab-generation.ts')
@@ -219,9 +225,32 @@ check('refs normalize character references to NAI canvases', /1024/.test(refs) &
 check('adapter maps old GenerationParams through split type boundary', /GenerationParams/.test(adapter) && /..\/novelai-types/.test(adapter) && /export async function adaptGenerationParams/.test(adapter))
 check('client uses shared payload builder', /buildGenerateImagePayload/.test(client))
 check(
-  'Tauri generation uses the capability-scoped HTTP plugin instead of WebView fetch',
-  /fetch as tauriFetch/.test(client) &&
-  /isTauri\(\)\s*\?\s*tauriFetch\s*:\s*window\.fetch\.bind\(window\)/s.test(client)
+  'generation transport keeps browser fetch and desktop scoped HTTP plugin adapters',
+  /export interface NaiTransport/.test(transport) &&
+  /createFetchNaiTransport\('browser-fetch'/.test(transport) &&
+  /createFetchNaiTransport\('tauri-http-plugin', tauriFetch\)/.test(transport)
+)
+check(
+  'Android generation selects the fixed-endpoint Rust reqwest adapter',
+  /isAndroidRuntime\s*\?\s*androidRustTransport\s*:\s*tauriHttpTransport/.test(transport) &&
+  /STANDARD_ENDPOINT:\s*&str\s*=\s*"https:\/\/image\.novelai\.net\/ai\/generate-image"/.test(rustTransport) &&
+  /STREAM_ENDPOINT:\s*&str\s*=\s*"https:\/\/image\.novelai\.net\/ai\/generate-image-stream"/.test(rustTransport) &&
+  /Channel<Response>/.test(rustTransport) &&
+  /cancel_nai_request/.test(rustTransport)
+)
+check(
+  'standard and streaming requests have explicit finite transport deadlines',
+  /NAI_STANDARD_TIMEOUT_MS\s*=\s*120_000/.test(client) &&
+  /NAI_STREAM_TIMEOUT_MS\s*=\s*120_000/.test(client) &&
+  /NaiTransportTimeoutError/.test(transport) &&
+  /\.timeout\(total_timeout\)/.test(rustTransport)
+)
+check(
+  'transport lifecycle reports monitor stages without payload logging',
+  ['dns-connect', 'request-sent', 'response-headers', 'body-first-byte', 'stream-heartbeat']
+    .every(stage => transport.includes(`'${stage}'`)) &&
+  /operation\.stageStart\('decode'\)/.test(client) &&
+  !/console\.(?:log|error|warn)\([^\n]*(?:token|payload|body)/i.test(transport)
 )
 check('account endpoints stay Rust invoke primary', /invoke<.*verify_token/s.test(client) && /invoke<.*get_anlas_balance/s.test(client))
 check('facade delegates to nai client', /from '@\/services\/nai\/client'/.test(facade))
@@ -248,6 +277,16 @@ check(
   /sentPayloadSummary: result\.sentPayloadSummary/.test(sceneGeneration) &&
   /const redactedPayloadHash = params\.sentPayloadSummary/.test(metadata) &&
   /sentPayloadSummary: options\.sentPayloadSummary/.test(sceneSave)
+)
+check(
+  'Scene cancellation owns and aborts session-slot-request controllers',
+  /acquireSceneRequestController/.test(sceneGeneration) &&
+  /generateImageStream\([\s\S]*requestLease\.signal\)/.test(sceneGeneration) &&
+  /generateImage\(token, params, requestLease\.signal\)/.test(sceneGeneration) &&
+  /abortSceneSessionRequests\(cancelledSessionId\)/.test(sceneStore) &&
+  /sessionId:\s*number/.test(sceneCancellation) &&
+  /slot:\s*ApiSlot/.test(sceneCancellation) &&
+  /requestId:\s*string/.test(sceneCancellation)
 )
 check(
   'main webp writes compatibility sidecar',

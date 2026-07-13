@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
 import { encode } from '@msgpack/msgpack'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { GenerationParams } from '@/services/novelai-types'
+import { NovelAIHttpError, type GenerationParams } from '@/services/novelai-types'
 import { readNais2Params } from '@/lib/nais2-png-meta'
 import { SCENE_DIRECT_RECIPE_ID } from '@/lib/composition/scene-adapter'
 
@@ -17,7 +17,7 @@ import {
     summarizeNais2Metadata,
 } from './workflow-capture'
 
-type FetchBehavior = 'success' | 'http-400' | 'deferred-success'
+type FetchBehavior = 'success' | 'http-400' | 'deferred-success' | 'deferred-stream'
 
 const runtimeCapture = vi.hoisted(() => ({
     behaviors: [] as FetchBehavior[],
@@ -26,6 +26,8 @@ const runtimeCapture = vi.hoisted(() => ({
     events: [] as Array<{ type: string; detail: Record<string, unknown> }>,
     params: [] as GenerationParams[],
     requests: [] as CapturedRequest[],
+    requestSignals: [] as Array<AbortSignal | undefined>,
+    streamBodyCancelled: 0,
     writeBytes: [] as Uint8Array[],
     writes: [] as string[],
     zipBytes: new Uint8Array(),
@@ -241,11 +243,27 @@ async function capturedFetch(input: string | URL | Request, init?: RequestInit):
 
     runtimeCapture.calls.push(`transport:${mode}`)
     runtimeCapture.requests.push({ mode, endpoint, payload })
+    runtimeCapture.requestSignals.push(init?.signal ?? undefined)
 
     if (behavior === 'http-400') return new Response('synthetic fatal request', { status: 400 })
+    if (behavior === 'deferred-stream') {
+        return new Response(new ReadableStream<Uint8Array>({
+            pull() {
+                runtimeCapture.calls.push('transport:stream-body-read')
+                return new Promise<void>(() => undefined)
+            },
+            cancel() {
+                runtimeCapture.streamBodyCancelled++
+            },
+        }), { status: 200 })
+    }
     if (behavior === 'deferred-success') {
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
             runtimeCapture.deferredResolve = resolve
+            const signal = init?.signal
+            const rejectCancelled = () => reject(new DOMException('요청이 취소되었습니다.', 'AbortError'))
+            if (signal?.aborted) rejectCancelled()
+            else signal?.addEventListener('abort', rejectCancelled, { once: true })
         })
     }
     return makeSuccessResponse(mode)
@@ -297,6 +315,8 @@ function resetRuntime(sessionId: number, scenes = [scene('scene-1', 1)]): void {
     runtimeCapture.events.length = 0
     runtimeCapture.params.length = 0
     runtimeCapture.requests.length = 0
+    runtimeCapture.requestSignals.length = 0
+    runtimeCapture.streamBodyCancelled = 0
     runtimeCapture.writeBytes.length = 0
     runtimeCapture.writes.length = 0
     runtimeCapture.files.clear()
@@ -651,7 +671,7 @@ describe('Scene workflow golden characterization', () => {
 
         const source = await readFile('src/hooks/useSceneGeneration.ts', 'utf8')
         expect(source).toContain('const workerTokens = streamingView && !sourceEditActive ? tokens.slice(0, 1) : tokens')
-        expect(source.match(/isSessionAlive\(ctx\.sessionId\)/g)).toHaveLength(11)
+        expect(source.match(/isSessionAlive\(ctx\.sessionId\)/g)).toHaveLength(12)
         const saverSource = await readFile('src/lib/scene-generation/save-scene-result.ts', 'utf8')
         expect(saverSource.match(/if \(!canSave\(\)\) return false/g)).toHaveLength(1)
         expect(saverSource).toContain('canCommit: canSave')
@@ -690,6 +710,64 @@ describe('Scene workflow golden characterization', () => {
 })
 
 describe('Scene Composition v2 caller contract', () => {
+    it('aborts a streaming body and releases the Scene button lock without output', async () => {
+        resetRuntime(199, [scene('scene-stream-cancel', 1)])
+        runtimeCapture.behaviors.push('deferred-stream')
+        const worker = runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(199, true))
+
+        await vi.waitFor(() => expect(runtimeCapture.calls).toContain('transport:stream-body-read'))
+        const requestSignal = runtimeCapture.requestSignals[0]
+        runtime.useSceneStore.getState().cancelSceneGeneration()
+        await worker
+
+        expect(requestSignal?.aborted).toBe(true)
+        expect(runtimeCapture.streamBodyCancelled).toBeGreaterThan(0)
+        expect(runtime.useSceneStore.getState()).toMatchObject({
+            isGenerating: false,
+            isCancelling: false,
+        })
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-stream-cancel')?.images).toHaveLength(0)
+        expect(runtimeCapture.calls.some(call => call.startsWith('output:'))).toBe(false)
+    })
+
+    it('aborts the active HTTP request and unlocks without queue resurrection or late output', async () => {
+        resetRuntime(200, [scene('scene-network-cancel', 1)])
+        runtime.useSettingsStore.setState({ useStreaming: false })
+        runtimeCapture.behaviors.push('deferred-success')
+        const worker = runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(200, false))
+
+        await vi.waitFor(() => expect(runtimeCapture.deferredResolve).not.toBeNull())
+        const requestSignal = runtimeCapture.requestSignals[0]
+
+        try {
+            expect(requestSignal).toBeDefined()
+            expect(requestSignal?.aborted).toBe(false)
+            runtime.useSceneStore.getState().cancelSceneGeneration()
+            await worker
+
+            expect(requestSignal?.aborted).toBe(true)
+            expect(runtime.useSceneStore.getState().isGenerating).toBe(false)
+            expect(runtime.useSceneStore.getState().isCancelling).toBe(false)
+            expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-network-cancel')?.queueCount).toBe(0)
+            expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-network-cancel')?.images).toHaveLength(0)
+            expect(runtime.useGenerationStore.getState().history).toHaveLength(0)
+            expect(runtimeCapture.calls.some(call => call.startsWith('output:'))).toBe(false)
+            expect(runtimeCapture.writes).toHaveLength(0)
+        } finally {
+            runtimeCapture.deferredResolve?.(makeSuccessResponse('non-streaming'))
+            await worker
+        }
+    })
+
+    it('keeps 429 automatically retryable but preserves timed-out work in the queue without an automatic retry', () => {
+        expect(runtime.sceneTest.classifyProcessError(new NovelAIHttpError(429, 'synthetic'))).toMatchObject({
+            status: 'retryable',
+        })
+        expect(runtime.sceneTest.classifyProcessError('timed out', 'timeout')).toMatchObject({
+            status: 'fatal',
+        })
+    })
+
     it('keeps queueCount two on the streaming single-worker path and records a stable plan hash', async () => {
         resetRuntime(201, [scene('scene-v2', 2)])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })

@@ -35,6 +35,19 @@ Phase 04 rollback이 필요한 경우 unrelated working-tree와 user data를 보
 storage에 재기록하지 않는 현재 preflight 경계를 유지한다. Vault/snapshot 삭제는 별도 사용자
 확인과 recovery 판단 없이 수행하지 않는다.
 
+## Android NAI transport rollback
+
+Phase 05 transport는 repository schema, payload format, output format과 user data를 migration하지
+않는다. Rollback은 unrelated working-tree, Stronghold snapshot과 generated Android cache를
+보존한 채 Phase 05 local commit 하나만 `git revert`한다. `reset --hard`, `clean`, credential
+삭제와 output 삭제는 사용하지 않는다.
+
+Revert하면 browser/test fetch와 desktop Tauri HTTP plugin은 원래 경계로 돌아가지만 Android도
+response/abort 무한 대기가 관찰된 JS HTTP plugin으로 돌아간다. 따라서 forward fix 또는
+별도 검증 전 Android authenticated generation을 지원 완료로 표시하지 않는다. Payload builder,
+source-edit ZIP, Scene worker/dual-token/streaming 제한, session/stale guard와 OutputWriter를
+rollback 과정에서 별도로 변경하지 않는다.
+
 ## Authority rollback
 
 Repository는 committed v2 document를 지우지 않고 authority만 `legacy`로 변경할 수 있다. Operational hotfix는 `applyCompositionAuthorityFeatureFlag('legacy')`와 repository `setAuthority('legacy')` 경계를 사용하며, 임의로 IndexedDB JSON을 수정하지 않는다. Startup hydration failure도 같은 fail-closed path를 사용한다.
@@ -59,3 +72,5 @@ Rollback 후 확인할 항목:
 - interrupted migration recovery가 source를 손상한다.
 - Android update signer, package identity, process recreation persistence가 불명확하다.
 - authenticated generation/output smoke를 실행하지 못했다.
+- Android request가 success 또는 typed timeout/cancel로 유한 시간 안에 끝나지 않는다.
+- Scene cancel 뒤 sequence proposal, OutputWriter, history/image save 또는 queue resurrection이 발생한다.

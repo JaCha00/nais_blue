@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+mod nai_transport;
 #[cfg(mobile)]
 use tauri::Manager;
 
@@ -750,6 +751,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(tagger_state)
+        .manage(nai_transport::NaiTransportState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         // Production file logging intentionally accepts only the structured,
@@ -791,6 +793,8 @@ pub fn run() {
             zoom_embedded_browser,
             exit_app,
             record_diagnostic_event,
+            nai_transport::nai_generate_request,
+            nai_transport::cancel_nai_request,
         ])
         .setup(|_app| {
             let credential_vault_salt = _app

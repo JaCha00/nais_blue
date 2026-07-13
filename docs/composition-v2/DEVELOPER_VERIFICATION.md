@@ -21,15 +21,17 @@ npm run test:credential-vault
 npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
+npm run test:nai-transport
 npm run test:smart-tools
 npm run test:responsive-layout
 npm run test:android-port
 npm run test:android-release-contract
 npm run test:remote-runtime-removal
 cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
 
 ## Android
 
@@ -42,7 +44,7 @@ npx --no-install tauri android build --debug --apk --ci --target x86_64
 npm run test:android-debug -- --apk src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
-Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다.
+Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다. UI 좌표는 `uiautomator` tree의 현재 bounds에서만 얻고 persisted prompt/image가 보일 수 있는 screenshot이나 raw XML은 evidence로 보존하지 않는다. Android transport 결과는 success 또는 typed timeout/cancel로 유한 시간 안에 끝나야 하며 cancel 뒤 Scene output/history/queue를 재확인한다.
 
 Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix
 `configure`를 실행하지 못하면 code regression과 분리해 기록한다. Linux Android build host를
@@ -61,6 +63,7 @@ target sysroot를 사용한다.
 - payload parity
 - responsive/coarse pointer/focus assertions
 - Android APK metadata/install
+- Android native standard/stream body completion과 request cancellation
 
 Retired remote runtime residue는 broad grep 결과를 수동으로 세는 대신 allowlist를 코드화한 `test:remote-runtime-removal`을 authoritative gate로 사용한다.
 

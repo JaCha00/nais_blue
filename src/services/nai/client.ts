@@ -1,6 +1,5 @@
 import JSZip from 'jszip'
-import { invoke, isTauri } from '@tauri-apps/api/core'
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { invoke } from '@tauri-apps/api/core'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { embedNais2Params } from '@/lib/nais2-png-meta'
 import {
@@ -13,6 +12,13 @@ import { NAI_ENDPOINTS } from '@/services/nai/endpoints'
 import { buildGenerateImagePayload } from '@/services/nai/payload'
 import { stripBase64Header } from '@/services/nai/refs'
 import { readNaiImageStream } from '@/services/nai/stream'
+import {
+    NaiTransportCancelledError,
+    NaiTransportTimeoutError,
+    getNaiAuxiliaryFetch,
+    getRuntimeNaiTransport,
+    type NaiTransportStage,
+} from '@/services/nai/transport'
 import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { OperationMonitor } from '@/services/diagnostics/operation-monitor'
 import {
@@ -22,20 +28,26 @@ import {
     type GenerationParams,
 } from '@/services/novelai-types'
 
-// Tauri WebViews are subject to browser CORS when using window.fetch. The
-// HTTP plugin is the capability-scoped transport on desktop and Android;
-// browsers/tests keep the native fetch implementation.
-const CLIENT_FETCH: typeof fetch = isTauri()
-    ? tauriFetch
-    : window.fetch.bind(window)
-
-const DEFAULT_HEADERS = {
-    'Content-Type': 'application/json',
-    'User-Agent': 'NAIS2_Client/1.0',
-}
+export const NAI_STANDARD_TIMEOUT_MS = 120_000
+export const NAI_STREAM_TIMEOUT_MS = 120_000
 
 function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'AbortError'
+    return error instanceof NaiTransportCancelledError
+        || (error instanceof DOMException && error.name === 'AbortError')
+        || (error instanceof Error && error.name === 'AbortError')
+}
+
+function isTimeoutError(error: unknown): boolean {
+    return error instanceof NaiTransportTimeoutError
+}
+
+function observeTransportStage(
+    operation: ReturnType<OperationMonitor['start']>,
+): (stage: NaiTransportStage) => void {
+    return stage => {
+        if (stage === 'stream-heartbeat') operation.heartbeat(stage)
+        else operation.stageStart(stage)
+    }
 }
 
 function taggedImage(base64: string, params: GenerationParams): string {
@@ -147,15 +159,13 @@ export async function generateImage(
         const adapted = await adaptGenerationParams(token, params)
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
-        operation.stageStart('request')
-        const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImage, {
-            method: 'POST',
-            headers: {
-                ...DEFAULT_HEADERS,
-                Authorization: `Bearer ${token.trim()}`,
-            },
-            body: sentPayload,
+        const response = await getRuntimeNaiTransport().request({
+            endpoint: 'standard',
+            token,
+            payload: sentPayload,
             signal,
+            timeoutMs: NAI_STANDARD_TIMEOUT_MS,
+            onStage: observeTransportStage(operation),
         })
 
         if (!response.ok) {
@@ -164,8 +174,9 @@ export async function generateImage(
         }
 
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
-        operation.stageStart('decode-response')
-        const imageData = await firstZipEntryBase64(await response.arrayBuffer(), 'ZIP 파일이 비어있습니다.')
+        const responseBody = await response.arrayBuffer()
+        operation.stageStart('decode')
+        const imageData = await firstZipEntryBase64(responseBody, 'ZIP 파일이 비어있습니다.')
         return {
             success: true,
             imageData: taggedImage(imageData, { ...params, sentPayloadSummary }),
@@ -176,11 +187,17 @@ export async function generateImage(
         if (error instanceof NovelAIHttpError) throw error
         const event = reportDiagnostic(error, {
             operation: 'nai.generate',
-            stage: isAbortError(error) ? 'cancelled' : 'request',
+            stage: isAbortError(error) ? 'cancelled' : isTimeoutError(error) ? 'timeout' : 'request',
             prompt: params.prompt,
             cancelled: isAbortError(error),
+            timeout: isTimeoutError(error),
         })
-        return { success: false, error: event.userSummary }
+        return {
+            success: false,
+            error: event.userSummary,
+            ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
+            ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
+        }
     } finally {
         operation.finish()
     }
@@ -200,16 +217,13 @@ export async function generateImageStream(
         const adapted = await adaptGenerationParams(token, params, 'msgpack')
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
-        operation.stageStart('request')
-        const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImageStream, {
-            method: 'POST',
-            headers: {
-                ...DEFAULT_HEADERS,
-                Authorization: `Bearer ${token.trim()}`,
-                Accept: 'application/x-msgpack',
-            },
-            body: sentPayload,
+        const response = await getRuntimeNaiTransport().request({
+            endpoint: 'stream',
+            token,
+            payload: sentPayload,
             signal,
+            timeoutMs: NAI_STREAM_TIMEOUT_MS,
+            onStage: observeTransportStage(operation),
         })
 
         if (!response.ok) {
@@ -221,8 +235,13 @@ export async function generateImageStream(
         let lastStepShown = -1
         const totalSteps = params.steps || 28
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
+        let decodeStarted = false
         const imageData = await readNaiImageStream(response.body, {
             onEvent: event => {
+                if (!decodeStarted) {
+                    decodeStarted = true
+                    operation.stageStart('decode')
+                }
                 operation.heartbeat('streaming-progress')
                 if (typeof event.stepIx === 'number') {
                     const progress = Math.round((event.stepIx / totalSteps) * 100)
@@ -247,11 +266,17 @@ export async function generateImageStream(
         if (error instanceof NovelAIHttpError) throw error
         const event = reportDiagnostic(error, {
             operation: 'nai.generate-stream',
-            stage: isAbortError(error) ? 'cancelled' : 'stream',
+            stage: isAbortError(error) ? 'cancelled' : isTimeoutError(error) ? 'timeout' : 'stream',
             prompt: params.prompt,
             cancelled: isAbortError(error),
+            timeout: isTimeoutError(error),
         })
-        return { success: false, error: event.userSummary }
+        return {
+            success: false,
+            error: event.userSummary,
+            ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
+            ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
+        }
     } finally {
         operation.finish()
     }
@@ -283,7 +308,7 @@ async function augmentViaFormData(
     formData.append('image', new Blob([imageBytes], { type: 'image/png' }), 'image.png')
     formData.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }), 'blob')
 
-    const response = await CLIENT_FETCH(NAI_ENDPOINTS.augmentImage, {
+    const response = await getNaiAuxiliaryFetch()(NAI_ENDPOINTS.augmentImage, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.trim()}` },
         body: formData,

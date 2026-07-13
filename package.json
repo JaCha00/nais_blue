@@ -18,6 +18,7 @@
     "test:composition": "vitest run",
     "test:migration": "vitest run tests/migration",
     "test:diagnostics": "vitest run tests/diagnostics",
+    "test:nai-transport": "vitest run tests/transport",
     "test:persistence": "vitest run tests/persistence && node scripts/verify-rescue-mode.mjs",
     "test:secret-redaction": "node scripts/verify-secret-redaction.mjs",
     "test:credential-vault": "vitest run tests/credentials",

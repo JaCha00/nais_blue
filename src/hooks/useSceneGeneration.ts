@@ -13,6 +13,10 @@ import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fra
 import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import {
+    acquireSceneRequestController,
+    type SceneRequestControllerLease,
+} from '@/lib/scene-generation/request-cancellation'
 
 const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
@@ -80,7 +84,14 @@ function isRetryableReason(reason: string): boolean {
         || /\((5\d\d)\)/.test(reason)
 }
 
-function classifyProcessError(error: unknown): SceneProcessResult {
+function classifyProcessError(
+    error: unknown,
+    termination?: 'cancelled' | 'timeout',
+): SceneProcessResult {
+    if (termination === 'cancelled') return { status: 'cancelled', reason: 'Generation request cancelled' }
+    // A hard timeout has an indeterminate provider outcome. Preserve the queue
+    // item, but do not automatically submit a duplicate request.
+    if (termination === 'timeout') return { status: 'fatal', reason: 'Generation request timed out' }
     if (error instanceof NovelAIHttpError) {
         return {
             status: error.retryable ? 'retryable' : 'fatal',
@@ -113,6 +124,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
 
     useSceneStore.getState().setStreamingData(scene.id, null, 0)
     let sequenceLease: ReturnType<typeof reserveSceneFragmentSequenceProposal> = null
+    let requestLease: SceneRequestControllerLease | null = null
 
     try {
         const resolveStartedAt = Date.now()
@@ -146,6 +158,16 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         }
 
         const { params, finalPrompt, mimeType } = built
+        const requestId = `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`
+        requestLease = acquireSceneRequestController({
+            sessionId: ctx.sessionId,
+            slot,
+            requestId,
+        })
+        if (!isSessionAlive(ctx.sessionId)) {
+            requestLease.abort()
+            return { status: 'cancelled' }
+        }
 
         // Keep i2i/inpaint on ZIP until stream-final output is proven identical
         // to the server-composited archive result.
@@ -160,8 +182,8 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
                 } else {
                     useSceneStore.getState().setStreamingData(scene.id, null, progress / 100)
                 }
-            })
-            : await generateImage(token, params)
+            }, requestLease.signal)
+            : await generateImage(token, params, requestLease.signal)
 
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
@@ -173,7 +195,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
                 correlationId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
                 prompt: finalPrompt,
             })
-            const failure = classifyProcessError(result.error || 'Generation failed')
+            const failure = classifyProcessError(result.error || 'Generation failed', result.termination)
             reportSceneFailure(failure, ctx)
             return failure
         }
@@ -220,6 +242,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         reportSceneFailure(failure, ctx)
         return failure
     } finally {
+        requestLease?.release()
         sequenceLease?.release()
     }
 }

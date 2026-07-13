@@ -209,7 +209,7 @@ export function PromptPanel() {
                 return
             }
             if (sceneIsGenerating || sceneIsCancelling) {
-                cancelSceneGeneration()  // Cancel - invalidates session but keeps button locked
+                cancelSceneGeneration()  // Invalidate the session and abort its active requests
             } else {
                 startNewGenerationSession()  // Start - creates new session ID
             }

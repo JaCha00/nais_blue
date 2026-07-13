@@ -125,9 +125,12 @@ Migration raw source는 persisted compatibility data의 exact preimage를 보존
 
 ## D-017 — Tauri generation transport는 scoped HTTP plugin 사용
 
-상태: Accepted
+상태: Accepted; Android generation 부분은 D-023으로 대체
 
-Browser/test runtime은 native fetch를 사용하지만 desktop/Android Tauri runtime의 NovelAI generation은 capability allowlist가 적용된 HTTP plugin을 사용한다. WebView `window.fetch`는 Android에서 CORS에 의해 즉시 실패했다. Plugin transport는 source contract에 고정하되 emulator live response가 완료되지 않은 현상은 별도 open risk로 관리하며 성공으로 과대 보고하지 않는다.
+Browser/test runtime은 native fetch를 사용하고 desktop Tauri NovelAI generation은 capability
+allowlist가 적용된 HTTP plugin을 사용한다. 이 결정은 처음에 Android도 포함했지만 WebView
+`window.fetch`의 CORS를 피한 뒤에도 plugin response/abort 완료가 입증되지 않았다. 해당 Android
+부분만 D-023의 fixed-endpoint native adapter가 대체하며 browser/desktop 경계는 유지한다.
 
 ## D-018 — backup과 restore는 secret-safe store projection을 사용
 
@@ -233,3 +236,28 @@ completion marker를 기록한다. Vault/marker 단계에서 중단되면 marker
 secret을 v3 payload로 쓰거나 plaintext fallback으로 전환하지 않는다. Marker 직전 중단은
 v3 reference를 vault에서 재검증한 뒤 resume한다. 기존 backup은 자동 삭제하지 않고 별도
 privacy warning과 명시적 destructive confirmation을 거친 managed-artifact cleanup만 제공한다.
+
+## D-023 — Android generation은 fixed-endpoint Rust reqwest channel transport 사용
+
+상태: Accepted
+
+Phase 04 Android API 35 emulator에서 capability-scoped JS HTTP plugin의 standard/stream
+request와 abort가 각각 제한 시간 안에 response 또는 cancellation으로 완료되지 않았다.
+따라서 D-017의 browser native fetch와 desktop Tauri HTTP plugin은 유지하되 Android의 NAI
+generation 두 endpoint만 Rust command adapter로 교체한다. Source edit은 계속 standard ZIP
+endpoint를 사용하며 payload는 기존 `buildGenerateImagePayload()` 결과를 그대로 전달한다.
+
+Command는 caller URL을 받지 않고 `standard | stream` enum을 NovelAI의 두 고정 URL에만
+매핑한다. 기존 `reqwest`, `tokio`, Tauri `Channel` dependency를 재사용해 dependency/lockfile
+변경은 없다. Connect deadline은 15초, request/body total deadline은 120초이며 JS adapter도
+동일한 유한 deadline으로 IPC/fetch와 body consumption을 race한다. Request ID별 oneshot과
+`tokio::select!`가 header wait 및 body chunk wait를 실제 socket cancellation에 연결한다.
+Tauri가 streaming data에 권장하는 channel을 사용하고, reqwest total timeout은 response body
+완료까지 적용되는 공식 경계를 따른다.
+
+Diagnostic event에는 DNS/connect 시작, request sent, response headers, body first byte,
+heartbeat, decode stage만 전달한다. Token, Authorization header, payload, response body와 image
+bytes는 event나 Rust log에 넣지 않는다. Scene controller는 session/slot/request별로 소유하고
+cancel 시 session을 먼저 무효화한 뒤 active HTTP request를 abort한다. Revert가 필요하면 이
+phase commit만 되돌리되 Android plugin hang인 R-019가 다시 노출되므로 Android authenticated
+generation을 성공 지원으로 표시해서는 안 된다.

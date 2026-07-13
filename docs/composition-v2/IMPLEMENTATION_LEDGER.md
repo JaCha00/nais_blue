@@ -699,3 +699,164 @@ UI-tree focus + Enter로 같은 enabled button을 activation해 native create/un
   consume AuthState v3 refs, so use credential re-entry or a forward fix; vault deletion requires
   separate user confirmation.
 - Next phase readiness: READY
+
+## Phase 05 — Android NAI transport and cancellation
+
+기준 시각: 2026-07-13T21:09:11+09:00 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `4898e9384f09deee4894572c1d2b8b392a8b007e` |
+| Branch | `main` |
+| Initial working tree | ` M AGENTS.md` |
+| Dependency change | 없음; 기존 `reqwest`, `tokio`, Tauri `Channel`, HTTP plugin 재사용 |
+| Generated tooling | `.codex/**`, `.omx/**` 추가 없음 |
+
+`AGENTS.md`는 Phase 시작 전부터 존재한 unrelated user change이며 수정·stage·commit하지
+않는다. Browser/test native fetch와 desktop capability-scoped Tauri HTTP plugin은 유지하고,
+Phase 04에서 standard/stream response와 abort가 제한 시간 안에 끝나지 않은 Android
+generation만 fixed-endpoint Rust adapter로 격리했다. `payload.ts`, package/Cargo lockfile과
+repository schema는 변경하지 않았다.
+
+### Behavior and contracts
+
+- `NaiTransport`는 browser/test fetch, desktop Tauri HTTP plugin, Android Rust reqwest 세
+  adapter를 한 request contract 뒤에 둔다. Android command는 caller URL을 받지 않고
+  `standard | stream` enum만 NovelAI 두 고정 endpoint에 매핑한다. Auxiliary/source-edit
+  FormData는 기존 scoped plugin/browser fetch 경계를 유지한다.
+- Standard/stream 모두 JS에서 120초 total deadline을 가진다. Android native path는 15초
+  connect timeout과 response body 완료까지의 120초 reqwest deadline을 중첩한다. Plugin 또는
+  IPC가 abort를 무시해도 caller는 typed `cancelled | timeout`으로 유한 시간에 종료한다.
+- Tauri raw body `Channel<Response>`와 metadata channel이 response headers/body chunks를
+  전달한다. Request ID별 oneshot과 header/body 각 `tokio::select!`가 cancel을 active socket
+  drop에 연결한다. Host loopback server는 body 전달, active response close와 timeout을
+  credential 없이 검증한다.
+- OperationMonitor는 `dns-connect`, `request-sent`, `response-headers`, `body-first-byte`,
+  `stream-heartbeat`, `decode` 단계만 받는다. Token, Authorization header, payload, provider
+  body와 image bytes를 transport event/Rust log에 넣지 않는다.
+- Scene request controller는 session/slot/request별로 소유하며 실제 standard/stream call의
+  `AbortSignal`로 전달한다. Cancel은 기존 generation session을 먼저 무효화하고 해당 session의
+  active controller를 abort한다. Cancel-before-request, active fetch, streaming body와
+  cancel-before-output fixture에서 sequence commit, OutputWriter/history/image save, queue ghost
+  resurrection이 없고 worker 종료 뒤 button lock이 풀림을 확인했다.
+- 429는 기존 retryable 정책을 유지한다. Timeout은 provider outcome이 불명확하므로 queue item은
+  보존하되 자동 duplicate retry를 하지 않는 fatal result로 종료한다. Existing retry/requeue,
+  dual-token, streaming single-worker, rotation, image release와 generationSessionId 계약은
+  교체하지 않았다.
+- Source image/mask는 계속 ZIP/non-streaming 경로를 사용한다. Existing fixed-seed metadata,
+  payload parity, old backup/v1 Asset Profile/legacy metadata/migration fixtures와 OutputWriter
+  transaction은 그대로 보존했다.
+
+### Characterization before implementation
+
+| 명령 | Exit | 관찰 |
+| --- | ---: | --- |
+| `npx --no-install vitest run tests/characterization/scene-workflow.test.ts` | 0 | 기존 9/9 Scene worker/session/save 계약 baseline |
+| `npm run test:nai-core` | 0 | 기존 payload/transport boundary 44/44 baseline |
+| 첫 `npx --no-install vitest run tests/transport` | 1 | expected: 아직 `NaiTransport`/Scene controller module이 없음 |
+| 새 Scene signal characterization의 첫 실행 | 1 | expected: active request에 `AbortSignal`이 전달되지 않아 1 failed/9 passed |
+| request 직전 session guard 추가 후 Scene characterization | 1 | brittle source count가 의도적 guard 추가로 11→12가 됨; exact count를 12로 갱신 후 behavior 12/12 통과 |
+
+실패를 skip/loosen/catch-ignore로 숨기지 않았다. 새 behavior를 구현하고 exact source guard를
+실제 guard 수에 맞춘 뒤 아래 final matrix를 통과했다.
+
+### Verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | 392 packages; 393 audited | vulnerabilities 0; 실행 중 unrelated Node process는 종료하지 않음 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; non-host optional dependency 표시는 expected |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,362 modules | `tsc && vite build` PASS |
+| focused `npx --no-install tsc --noEmit` | 0 | TypeScript project | PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | payload builder unchanged PASS |
+| `npm run test:composition` | 0 | 84 passed, 1 skipped files; 658 passed, 3 skipped tests | aggregate PASS; live opt-in expected skip |
+| `npm run test:migration` | 0 | 14 files, 124/124 | old/import/interruption compatibility PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 25/25 | redacted diagnostic contract PASS |
+| `npm run test:persistence` | 0 | 3 files, 13/13 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 3 files, 15/15 | PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 43/43 | Scene standard/stream cancel, no late save, source ZIP, fixed-seed metadata 포함 PASS |
+| `npm run test:nai-transport` | 0 | 2 files, 12/12 | browser/plugin standard+stream, pre-cancel, active cancel, body cancel/timeout, 429, Android channels PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | fixed endpoint, finite timeout, stages, payload/source-edit/Scene contracts PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback line 포함 PASS |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport scenarios | PASS |
+| `npm run test:android-port` | 0 | 1 contract gate | native command/channel/cancel 및 기존 capability PASS |
+| `npm run test:android-release-contract` | 0 | 1 contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | authoritative search gate | allowlisted 309, forbidden 0, tracked tooling 0 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| `cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib` | 0 | 5/5 | fixed endpoints, request scope, loopback body, socket cancel, timeout PASS |
+| `rustfmt --edition 2021 --check src-tauri/src/nai_transport.rs` | 0 | new Rust source | PASS |
+| first repository-wide `cargo fmt --check` | 1 | existing Rust files + initial new file | 새 파일 formatting은 교정해 독립 check 0; pre-existing `build.rs`, `lib.rs`, `main.rs`는 broad unrelated reformat하지 않음 |
+| final Android x86_64 debug build | 0 | 1 universal debug APK | process-local generated libsodium link; tracked binary/dependency 없음 |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 PASS |
+| final emulator install/start/Scene route | 0 | API 35 x86_64 | `install -r`, Main foreground, UI-tree Scene route, run/force-stop crash buffer empty |
+| `git diff --check` | 0 | worktree diff | whitespace error 없음; line-ending warnings only |
+
+Android AVD는 installed user data를 보존하고 `pm clear`를 실행하지 않았다. Navigation tap은
+`uiautomator` tree의 current i18n key/bounds에서만 계산했다. 첫 relaunch 직후 Scene node wait는
+loading 중 exit 1이었고 5초 뒤 동일 final APK에서 통과했다. Raw UI XML, screenshot, prompt,
+image와 credential artifact는 저장하지 않았다.
+
+Phase 04 APK 대비 final universal debug APK는 432,532,527→433,457,519 bytes,
++924,992 bytes(약 0.214%)다. Dependency/lockfile 추가는 없고 frontend/native debug code 증가다.
+최종 APK를 재빌드·재설치한 뒤 Scene route에서 crash buffer는 비어 있었다. 별도 Back 종료
+probe에서는 NAI request 전에도 destroyed-mutex FORTIFY line이 두 process에서 재현되어
+transport success와 섞지 않고 R-026으로 등록했다. `force-stop` 종료는 crash buffer가 비었다.
+
+### Artifacts, gaps, and risk
+
+- Frontend build: `dist/index.html`, `dist/assets/**` (ignored generated output)
+- Android debug APK:
+  `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+  (433,457,519 bytes)
+- Rust/Android helper output: `src-tauri/target/**`, `src-tauri/gen/android/**`, Phase 04
+  process-local libsodium artifact (모두 ignored; tracked source 아님)
+- Phase source/tests: `src/services/nai/transport.ts`, `src-tauri/src/nai_transport.rs`,
+  `src/lib/scene-generation/request-cancellation.ts`, `tests/transport/**`, Scene characterization
+- Live NovelAI/R2 and authenticated Android image output: NOT RUN. 이번 Phase에 명시적 credential
+  opt-in이 없었고 ignored `.env`, existing vault token, Authorization/payload를 읽거나 사용하지 않았다.
+- Desktop native Tauri live standard/stream: NOT RUN. Browser/plugin adapter behavior test와 host
+  prior live evidence는 있으나 이번 Phase의 explicit credential opt-in이 없어 native profile/network를
+  변형하지 않았다.
+- Physical Android device, alternate carrier/network, signed release/update/rollback: NOT RUN.
+  Device, protected signing authority와 immutable release baseline이 없다.
+- Android emulator authenticated standard/stream success는 선언하지 않는다. Host Rust mock과
+  final APK/emulator startup/Scene route만 증거이며 R-019는 Watching이다.
+- R-026 Back-exit native teardown fatal log는 Open이다. Request-free exit에서 재현됐고 Phase 05
+  cancel/no-late-save stop gate와 분리했지만 base artifact/physical device 비교가 남았다.
+
+### HANDOFF REPORT
+
+- Phase: 05 — ANDROID NAI TRANSPORT AND CANCELLATION
+- Base HEAD: `4898e9384f09deee4894572c1d2b8b392a8b007e`
+- Resulting local commit: `SELF` (this Phase commit; resolve with `git rev-parse HEAD`)
+- Changed files: NAI transport interface/runtime adapters; Android fixed-endpoint reqwest/channel
+  command; Scene request-controller ownership/cancel wiring; typed result/diagnostic stages; focused
+  behavior/source contracts; composition-v2 decision/risk/verification/rollback/ledger docs
+- Behavior added/changed: finite standard/stream timeout, Android native body/cancel completion,
+  Scene network abort with no sequence/output/queue resurrection and eventual button unlock
+- Preserved contracts: browser fetch, desktop scoped plugin, payload builder/fixture parity,
+  source-edit ZIP, worker count/dual-token/streaming single-worker/generationSessionId/stale/retry/
+  requeue/rotation/image release, CompositionEngine, repository/migration, OutputWriter, portable
+  capability, old importers/readers/fixtures and non-destructive user data
+- Tests and exit codes: final matrix above; all executable required gates exit 0. Expected
+  pre-implementation failures, one exact-count update, repository-wide pre-existing fmt drift and
+  transient emulator loading wait are separately recorded.
+- Artifact paths: `dist/**`, final universal debug APK, ignored `src-tauri/target/**` and
+  `src-tauri/gen/android/**`, Phase source/tests and this ledger
+- Not tested and exact reason: authenticated Android/desktop live generation lacked explicit
+  credential opt-in; physical/signed/update drill lacked device, signing authority and immutable baseline
+- Remaining risks: R-019 Watching until authenticated device/network matrix; R-026 Open for Android
+  Back-exit teardown; R-005/R-006/R-015/R-016 and existing credential/release risks remain
+- Rollback procedure: preserve unrelated `AGENTS.md`, Stronghold/user data and generated caches, then
+  `git revert <phase-05-commit>` only. Revert exposes the prior Android plugin hang, so disable Android
+  authenticated generation or forward-fix; never reset/clean/delete data or change payload/OutputWriter.
+- Next phase readiness: BLOCKED
+
+Phase 06 readiness는 user brief에 따라 BLOCKED다. Host mock과 emulator evidence는 최대한
+수집했지만 authenticated Android image output, physical device/network와 signed release gate를
+실행하지 못했으므로 READY로 과대 보고하지 않는다.
