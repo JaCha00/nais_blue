@@ -25,7 +25,7 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 
 - `src/domain/composition/**`: React/Zustand/Tauri/IndexedDB/Node/filesystem과 분리된 schema, commands, resolver, engine, repository와 migration model.
 - workflow adapter: Main, Scene, Style Lab이 engine plan을 각 workflow request와 state transition으로 materialize한다. Scene queue worker 구조는 변경하지 않았다.
-- repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority.
+- repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority. Critical IndexedDB store는 immediate commit/readback하며 DB unavailable startup은 normal App을 mount하지 않는 rescue mode로 격리된다.
 - authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
@@ -41,6 +41,7 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 19: retired online catalog/remote auth/deep-link runtime와 dependency 제거.
 - Phase 20 구현: OutputWriter/metadata v2, canonical authoring studio, Main/Scene information architecture, portable resource/capability adapter, Android/responsive contracts.
 - 최종 cleanup: caller audit, definition-only export 정리, CI compatibility gates와 운영 문서 연결.
+- 후속 hardening Phase 01~03: secret-safe backup projection, redacted diagnostic kernel, persistence correctness/rescue startup.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 

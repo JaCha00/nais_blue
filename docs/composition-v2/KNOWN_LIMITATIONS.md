@@ -22,3 +22,9 @@
 15. Diagnostic file logging은 Phase 02부터 생성되는 redacted structured event만 대상으로
     하며 1 MB active file과 최대 5개 rotation으로 제한된다. 이전 release의 console/file
     artifact를 자동 검색·수정·삭제하지 않는다.
+16. Rescue mode의 진단 export는 DB unavailable 시점까지 현재 process의 bounded in-memory
+    event만 포함한다. Rescue 화면은 disk backup 위치를 안내하지만 DB를 열 수 없는 상태에서
+    restore를 실행하거나 기존 backup 파일을 자동 수정·삭제하지 않는다.
+17. Critical Zustand store는 immediate transaction/readback을 사용하므로 매우 큰 Scene 또는
+    generation state의 연속 변경은 이전 debounce 경로보다 write 비용이 높을 수 있다. Layout,
+    theme, shortcut, tools, update UI preference만 best-effort debounce allowlist에 남아 있다.

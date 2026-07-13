@@ -7,6 +7,10 @@ import {
     type DiagnosticEventInput,
     type DiagnosticSeverity,
 } from '@/domain/diagnostics/types'
+import {
+    PersistenceFault,
+    type PersistenceCriticality,
+} from '@/domain/persistence/fault'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 import {
     redactDiagnosticText,
@@ -210,6 +214,37 @@ export function diagnoseError(error: unknown, context: DiagnosticContext): Diagn
 export function reportDiagnostic(error: unknown, context: DiagnosticContext): DiagnosticEvent {
     const event = diagnoseError(error, context)
     return recordDiagnosticEvent(event)
+}
+
+export interface PersistenceDiagnosticContext {
+    operation?: string
+    stage?: string
+    criticality?: PersistenceCriticality
+    fatal?: boolean
+}
+
+/** Converts a typed persistence failure into the one redacted DiagnosticEvent projection. */
+export function diagnosePersistenceFault(
+    fault: PersistenceFault,
+    context: PersistenceDiagnosticContext = {},
+): DiagnosticEvent {
+    const criticality = context.criticality ?? fault.criticality
+    return diagnoseError(fault, {
+        operation: context.operation ?? fault.operation,
+        stage: context.stage ?? fault.kind,
+        category: 'persistence',
+        code: fault.code,
+        severity: context.fatal === false || criticality === 'best-effort' ? 'warning' : 'fatal',
+        recoverable: true,
+        fatal: context.fatal ?? criticality === 'critical',
+    })
+}
+
+export function reportPersistenceFault(
+    fault: PersistenceFault,
+    context: PersistenceDiagnosticContext = {},
+): DiagnosticEvent {
+    return recordDiagnosticEvent(diagnosePersistenceFault(fault, context))
 }
 
 /** Stores and writes a pre-built event after the same redaction boundary. */

@@ -12,7 +12,7 @@
 | R-004 | NAI model payload parity가 과대 선언될 수 있다 | 현재 source와 verifier가 V4/V4.5만 verified로 명시하고 V3/Furry V3는 경고한다 | Critical | model별 captured fixture 없이는 builder 교체·parity 완료 금지 | Watching |
 | R-005 | wildcard 결과가 비결정적이어서 engine parity가 흔들릴 수 있다 | `processWildcards()`는 `Math.random()`을 사용하고 resolver seed와 직접 연결되지 않는다 | High | injectable deterministic wildcard processor와 captured result fixture 사용; production 선택 순서는 보존 | Open |
 | R-006 | migration helper의 기존 key 삭제가 dual-read rollback을 깨뜨릴 수 있다 | `migrateIndexedDBKeys()`는 copy/length verify 후 old key를 삭제한다 | Critical | v2 migration 전용 dual-read/single-write adapter를 별도로 설계하고 cleanup을 후속 gate로 분리 | Open |
-| R-007 | IndexedDB write 실패가 상위 호출에 충분히 전파되지 않을 수 있다 | `rawSetItem()`은 최종 catch에서 log 후 반환하며 writes는 debounce된다 | High | migration/backup phase에서 write-readback 및 flush 기반 결과를 별도 검증; log만으로 성공 판정 금지 | Open |
+| R-007 | IndexedDB write 실패가 상위 호출에 충분히 전파되지 않을 수 있다 | 과거 `rawSetItem()`은 최종 catch에서 log 후 반환했고 writes는 debounce됐다 | High | typed PersistenceFault, critical immediate commit/readback, keyed flush error, close diagnostic과 rescue startup fault injection을 category test로 유지 | Mitigated |
 | R-008 | backup/import compatibility와 image memory가 손상될 수 있다 | 다수 store key, 별도 wildcard DB, character/vibe base64와 retired remote key가 한 backup에 공존할 수 있다 | Critical | backup v3 fixture, old backup fixture, ignored-key preview, repository rollback과 wildcard round-trip을 CI에서 실행 | Mitigated |
 | R-009 | output/metadata parity 손실 | PNG/WebP, embedded/sidecar metadata, portable path와 memory history가 workflow별로 분기한다 | High | OutputWriter fault injection, metadata v2/legacy reader, format/sidecar characterization 유지 | Mitigated |
 | R-010 | automated test shape가 contract script에 편중되어 있다 | Playwright와 `node:test`는 사용하지만 일반 test/spec/config suite는 없었다 | Medium | Vitest 기반 category script, executable fixture, helper unit/provenance test를 추가하고 static source assertion과 behavior test를 구분 | Mitigated |
@@ -27,6 +27,7 @@
 | R-019 | Android HTTP plugin이 NovelAI 응답을 완료하지 못할 수 있다 | authority=v2 emulator에서 standard/stream request와 cancel은 시작됐지만 제한 시간 안에 response/fetch cancel이 완료되지 않았다 | Critical | WebView fetch 대신 scoped plugin transport 유지; 실기기와 별도 네트워크에서 response body/abort 조사 전 Android authenticated generation 완료 선언 금지 | Open |
 | R-020 | Phase 01 이전에 생성된 backup/snapshot 파일에 raw auth credential이 남아 있을 수 있다 | 새 export/restore 경로는 sanitize하지만 기존 사용자 disk 파일은 동의 없이 삭제·수정하지 않는다 | Critical | restore preflight는 secret을 저장하지 않고 재입력 경고를 표시; 기존 파일은 값 노출 없는 사용자 주도 scan/폐기 workflow가 생기기 전까지 민감 파일로 취급 | Watching |
 | R-021 | 새 provider 또는 caller가 diagnostic redactor를 우회할 수 있다 | 이 phase는 NovelAI, OutputWriter, startup migration/recovery, R2를 우선 연결하지만 모든 future service error를 자동 변환하지는 않는다 | High | category fixture, token/path/prompt/signed-URL canary, redacted export/clipboard test, Rust structured-log gate를 유지하고 새 provider wiring 시 같은 gate를 추가 | Watching |
+| R-022 | critical Zustand store의 immediate commit/readback이 write pressure를 높일 수 있다 | Scene, generation, character 등 사용자 데이터는 debounce 성공 응답 대신 durability를 우선한다 | Medium | UI preference만 명시적 debounce allowlist로 유지하고 per-key write serialization, targeted fault tests, responsive/characterization gate를 관찰; 데이터 계약 없이 다시 debounce하지 않음 | Watching |
 
 ## 공통 stop 조건
 

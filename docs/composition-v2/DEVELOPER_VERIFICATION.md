@@ -16,6 +16,7 @@ npm run test:payload-parity
 npm run test:composition
 npm run test:migration
 npm run test:diagnostics
+npm run test:persistence
 npm run test:characterization
 npm run test:nai-core
 npm run test:smart-tools
@@ -26,7 +27,7 @@ npm run test:remote-runtime-removal
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다.
 
 ## Android
 

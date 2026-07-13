@@ -2,10 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './styles/globals.css'
 import './i18n'
-import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, type RetainedStoreMigrationResult } from './lib/indexed-db'
+import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, initializeIndexedDB, resetIndexedDBConnectionForRetry, indexedDBStorage, type RetainedStoreMigrationResult } from './lib/indexed-db'
 import { createCurrentBackupEnvelopeV3, createFullAutoBackup } from './lib/auto-backup'
 import { setRuntimeCompositionAuthority } from './lib/composition-authority'
-import { reportDiagnostic } from './services/diagnostics/error-registry'
+import { runStartupGate } from './lib/startup-mode'
+import { reportDiagnostic, reportPersistenceFault } from './services/diagnostics/error-registry'
+import type { DiagnosticEvent } from './domain/diagnostics/types'
 
 // 자동 백업 상수
 const AUTO_BACKUP_KEY = 'nais2-auto-backup'
@@ -28,6 +30,13 @@ const LEGACY_STORE_KEY_RENAMES: [string, string][] = [
     ['prompt-presets', 'nais2-prompt-library'],
     ['promptPresets', 'nais2-prompt-library'],
 ]
+let appRoot: ReactDOM.Root | null = null
+let startupInProgress = false
+
+function getAppRoot(): ReactDOM.Root {
+    appRoot ??= ReactDOM.createRoot(document.getElementById('root')!)
+    return appRoot
+}
 
 function retainedStoreCopiesAreHealthy(results: readonly RetainedStoreMigrationResult[]): boolean {
     return results.every(result => result.status !== 'failed' && result.status !== 'verification-failed')
@@ -233,9 +242,25 @@ async function checkDataIntegrity(): Promise<boolean> {
 
 async function renderApp(): Promise<void> {
     const { default: App } = await import('./App.tsx')
-    ReactDOM.createRoot(document.getElementById('root')!).render(
+    getAppRoot().render(
         <React.StrictMode>
             <App />
+        </React.StrictMode>,
+    )
+}
+
+async function renderRescueMode(diagnostic: DiagnosticEvent): Promise<void> {
+    const { RescueScreen } = await import('./components/startup/RescueScreen')
+    getAppRoot().render(
+        <React.StrictMode>
+            <RescueScreen
+                key={diagnostic.eventId}
+                diagnostic={diagnostic}
+                onRetry={async () => {
+                    resetIndexedDBConnectionForRetry()
+                    await startApp()
+                }}
+            />
         </React.StrictMode>,
     )
 }
@@ -267,34 +292,32 @@ async function runPostRenderStartupTasks(): Promise<void> {
         reportDiagnostic(err, { operation: 'startup.asset-profile-sync', stage: 'sync', category: 'sync' })
     })
 
-    if (!isDbInitFailed()) {
-        startStoreSnapshotScheduler()
+    startStoreSnapshotScheduler()
 
-        void checkDataIntegrity().then(isHealthy => {
-            if (!isHealthy) {
-                console.warn('[Startup] Data integrity check reported possible data loss')
-            }
-        }).catch(err => {
-            reportDiagnostic(err, { operation: 'startup.integrity-check', stage: 'verify', category: 'persistence' })
-        })
+    void checkDataIntegrity().then(isHealthy => {
+        if (!isHealthy) {
+            console.warn('[Startup] Data integrity check reported possible data loss')
+        }
+    }).catch(err => {
+        reportDiagnostic(err, { operation: 'startup.integrity-check', stage: 'verify', category: 'persistence' })
+    })
 
-        void performAutoBackup().catch(err => {
-            reportDiagnostic(err, { operation: 'startup.auto-backup', stage: 'backup', category: 'persistence' })
-        })
+    void performAutoBackup().catch(err => {
+        reportDiagnostic(err, { operation: 'startup.auto-backup', stage: 'backup', category: 'persistence' })
+    })
 
-        // Disk auto-backup supplements B's existing localStorage startup backup.
-        // It restores through importAllData, so the full IndexedDB export schema remains authoritative.
-        void createFullAutoBackup({ minIntervalMs: AUTO_BACKUP_INTERVAL }).then(result => {
-            if (result.status === 'created') {
-                console.log(`[Startup] Disk auto-backup written: ${result.entry.fileName}`)
-            }
-        }).catch(err => {
-            reportDiagnostic(err, { operation: 'startup.disk-auto-backup', stage: 'backup', category: 'persistence' })
-        })
+    // Disk auto-backup supplements B's existing localStorage startup backup.
+    // It restores through importAllData, so the full IndexedDB export schema remains authoritative.
+    void createFullAutoBackup({ minIntervalMs: AUTO_BACKUP_INTERVAL }).then(result => {
+        if (result.status === 'created') {
+            console.log(`[Startup] Disk auto-backup written: ${result.entry.fileName}`)
+        }
+    }).catch(err => {
+        reportDiagnostic(err, { operation: 'startup.disk-auto-backup', stage: 'backup', category: 'persistence' })
+    })
 
-        // FragmentStore owns embedded-content migration and verified repository
-        // writes. Startup must not strip/delete legacy wildcard content first.
-    }
+    // FragmentStore owns embedded-content migration and verified repository
+    // writes. Startup must not strip/delete legacy wildcard content first.
 
     window.setTimeout(async () => {
         try {
@@ -314,115 +337,125 @@ function schedulePostRenderStartupTasks() {
     }, 0)
 }
 
-// Start app only after migrations complete
-async function startApp() {
+async function runStartupMigrations(): Promise<void> {
+    // CRITICAL: Migration must complete BEFORE React renders
+    // Otherwise Zustand stores will hydrate from empty IndexedDB
+    let legacySourceCopyHealthy = true
+    // Step 1: Migrate renamed keys within IndexedDB (old name → new name)
+    // This handles stores that were already using IndexedDB but had their names changed
+    try {
+        setSplashStage('Migrating IndexedDB keys')
+        const results = await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
+        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
+        console.log('[Startup] IndexedDB key migration complete')
+    } catch (err) {
+        legacySourceCopyHealthy = false
+        reportDiagnostic(err, { operation: 'startup.indexeddb-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
+    }
+
+    try {
+        setSplashStage('Migrating legacy local data')
+        const results = await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
+        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
+        console.log('[Startup] Legacy localStorage key migration complete')
+    } catch (err) {
+        legacySourceCopyHealthy = false
+        reportDiagnostic(err, { operation: 'startup.local-storage-key-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
+    }
+
+    // Step 2: Migrate localStorage to IndexedDB for ALL stores
+    // Missing entries here will cause data loss on app restart/update!
+    try {
+        setSplashStage('Migrating local data')
+        const results = await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
+        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
+        console.log('[Startup] LocalStorage migration complete')
+    } catch (err) {
+        legacySourceCopyHealthy = false
+        reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
+    }
+
+    try {
+        setSplashStage('Migrating Composition data')
+        const { runStartupCompositionMigration } = await import('./lib/composition-migration-startup')
+        const migration = await runStartupCompositionMigration(
+            legacySourceCopyHealthy ? {} : { authority: 'legacy' },
+        )
+        if (!legacySourceCopyHealthy) {
+            reportDiagnostic(new Error('Composition v2 activation blocked because a retained source copy was not verified'), {
+                operation: 'startup.composition-migration',
+                stage: 'authority',
+                category: 'persistence',
+                severity: 'error',
+                recoverable: true,
+            })
+        }
+        if (migration.status === 'failed') {
+            reportDiagnostic(new Error(migration.error || 'Composition migration retained legacy authority'), {
+                operation: 'startup.composition-migration',
+                stage: 'migrate',
+                category: 'persistence',
+                severity: 'error',
+                recoverable: true,
+            })
+        } else {
+            console.log(
+                `[Startup] Composition migration ${migration.status}; authority=${migration.authority}`,
+            )
+        }
+    } catch (err) {
+        // The migration transaction is fail-closed and never deletes old
+        // stores. Startup can safely continue on the legacy authority.
+        reportDiagnostic(err, { operation: 'startup.composition-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
+    }
+
+    try {
+        setSplashStage('Hydrating migrated stores')
+        await rehydrateCompositionConnectedStores()
+    } catch (err) {
+        reportDiagnostic(err, { operation: 'startup.store-hydration', stage: 'hydrate', category: 'persistence', severity: 'error', recoverable: true })
+        try {
+            const { applyCompositionAuthorityFeatureFlag } = await import('./lib/composition-migration-startup')
+            await applyCompositionAuthorityFeatureFlag('legacy')
+        } catch (authorityError) {
+            setRuntimeCompositionAuthority('legacy')
+            reportDiagnostic(authorityError, { operation: 'startup.store-hydration', stage: 'rollback-authority', category: 'persistence', severity: 'error', recoverable: true })
+        }
+    }
+}
+
+async function runStartupAttempt(): Promise<void> {
     // No workflow may use v2 authority until repository migration verifies.
     setRuntimeCompositionAuthority('legacy')
     console.log('[Startup] Starting app initialization...')
     setSplashStage('Starting database')
-    
-    // CRITICAL: Ensure IndexedDB is ready before any migration
-    const dbReady = await ensureDbReady()
-    if (!dbReady) {
-        const event = reportDiagnostic(new Error('IndexedDB initialization failed'), {
+
+    const startup = await runStartupGate({
+        initializeDatabase: initializeIndexedDB,
+        runMigrations: runStartupMigrations,
+    })
+    if (startup.mode === 'rescue') {
+        const event = reportPersistenceFault(startup.databaseFault, {
             operation: 'startup.indexeddb',
             stage: 'initialize',
-            category: 'persistence',
             fatal: true,
         })
-        showSplashError(event.userSummary)
-        // 계속 진행하되, 데이터 저장이 안될 수 있음
+        setSplashStage('Recovery mode')
+        await renderRescueMode(event)
+        requestAnimationFrame(() => requestAnimationFrame(hideSplash))
+        return
     }
-    
-    // CRITICAL: Migration must complete BEFORE React renders
-    // Otherwise Zustand stores will hydrate from empty IndexedDB
-    
-    if (!isDbInitFailed()) {
-        let legacySourceCopyHealthy = true
-        // Step 1: Migrate renamed keys within IndexedDB (old name → new name)
-        // This handles stores that were already using IndexedDB but had their names changed
-        try {
-            setSplashStage('Migrating IndexedDB keys')
-            const results = await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
-            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
-            console.log('[Startup] IndexedDB key migration complete')
-        } catch (err) {
-            legacySourceCopyHealthy = false
-            reportDiagnostic(err, { operation: 'startup.indexeddb-migration', stage: 'migrate', category: 'persistence' })
-        }
-
-        try {
-            setSplashStage('Migrating legacy local data')
-            const results = await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
-            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
-            console.log('[Startup] Legacy localStorage key migration complete')
-        } catch (err) {
-            legacySourceCopyHealthy = false
-            reportDiagnostic(err, { operation: 'startup.local-storage-key-migration', stage: 'migrate', category: 'persistence' })
-        }
-
-        // Step 2: Migrate localStorage to IndexedDB for ALL stores
-        // Missing entries here will cause data loss on app restart/update!
-        try {
-            setSplashStage('Migrating local data')
-            const results = await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
-            legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
-            console.log('[Startup] LocalStorage migration complete')
-        } catch (err) {
-            legacySourceCopyHealthy = false
-            reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence' })
-        }
-
-        try {
-            setSplashStage('Migrating Composition data')
-            const { runStartupCompositionMigration } = await import('./lib/composition-migration-startup')
-            const migration = await runStartupCompositionMigration(
-                legacySourceCopyHealthy ? {} : { authority: 'legacy' },
-            )
-            if (!legacySourceCopyHealthy) {
-                reportDiagnostic(new Error('Composition v2 activation blocked because a retained source copy was not verified'), {
-                    operation: 'startup.composition-migration',
-                    stage: 'authority',
-                    category: 'persistence',
-                })
-            }
-            if (migration.status === 'failed') {
-                reportDiagnostic(new Error(migration.error || 'Composition migration retained legacy authority'), {
-                    operation: 'startup.composition-migration',
-                    stage: 'migrate',
-                    category: 'persistence',
-                })
-            } else {
-                console.log(
-                    `[Startup] Composition migration ${migration.status}; authority=${migration.authority}`,
-                )
-            }
-        } catch (err) {
-            // The migration transaction is fail-closed and never deletes old
-            // stores. Startup can safely continue on the legacy authority.
-            reportDiagnostic(err, { operation: 'startup.composition-migration', stage: 'migrate', category: 'persistence' })
-        }
-
-        try {
-            setSplashStage('Hydrating migrated stores')
-            await rehydrateCompositionConnectedStores()
-        } catch (err) {
-            reportDiagnostic(err, { operation: 'startup.store-hydration', stage: 'hydrate', category: 'persistence' })
-            try {
-                const { applyCompositionAuthorityFeatureFlag } = await import('./lib/composition-migration-startup')
-                await applyCompositionAuthorityFeatureFlag('legacy')
-            } catch (authorityError) {
-                setRuntimeCompositionAuthority('legacy')
-                reportDiagnostic(authorityError, { operation: 'startup.store-hydration', stage: 'rollback-authority', category: 'persistence' })
-            }
-        }
-        
-        // Non-critical integrity, backup, image-load, and cleanup tasks run after
-        // the first React paint so the splash screen is not held by maintenance work.
-    } else {
-        console.warn('[Startup] Skipping migrations due to DB init failure')
+    if (startup.migrationError !== undefined) {
+        setRuntimeCompositionAuthority('legacy')
+        reportDiagnostic(startup.migrationError, {
+            operation: 'startup.migration',
+            stage: 'migrate',
+            category: 'persistence',
+            severity: 'error',
+            recoverable: true,
+        })
     }
-    
+
     console.log('[Startup] Initialization complete, rendering React app...')
     setSplashStage('Rendering app')
 
@@ -437,6 +470,17 @@ async function startApp() {
             schedulePostRenderStartupTasks()
         })
     })
+}
+
+// Start app only after the database gate and migrations complete.
+async function startApp(): Promise<void> {
+    if (startupInProgress) return
+    startupInProgress = true
+    try {
+        await runStartupAttempt()
+    } finally {
+        startupInProgress = false
+    }
 }
 
 // Start the app - DO NOT add any code after this that runs in parallel!

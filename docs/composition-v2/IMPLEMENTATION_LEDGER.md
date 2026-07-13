@@ -429,3 +429,126 @@ lint, build, cargo check와 `git diff --check`를 다시 실행해 모두 exit 0
   `git revert <phase-02-commit>`; do not reset/clean. Existing pre-Phase diagnostic artifacts are
   not automatically modified or deleted.
 - Next phase readiness: READY
+
+## Phase 03 — persistence correctness and rescue mode
+
+기준 시각: 2026-07-13T18:20:41+09:00 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `a89b083cddcfe9691f5f443311c80a0dff5f1332` |
+| Branch | `main` |
+| Initial working tree | ` M AGENTS.md` |
+| Dependency/lockfile change | 없음 |
+| Generated tooling | `.codex/**`, `.omx/**` 추가 없음 |
+
+`AGENTS.md`는 Phase 시작 전부터 존재한 unrelated user change다. 이 Phase에서 수정,
+stage, commit하지 않는다. Composition repository/strict adapter와 backup restore의 기존
+authority/readback 경계를 교체하지 않고 공통 IndexedDB failure semantics만 강화했다.
+
+### Behavior and contracts
+
+- `rawSetItem`은 quota, abort, timeout과 transaction 실패를 더 이상 성공처럼 반환하지
+  않는다. `PersistenceFault`가 stable code, operation, store key, criticality를 보존하고
+  Phase 02의 redacted `DiagnosticEvent`로 변환된다.
+- durability classification은 UI preference allowlist(`layout`, `theme`, `shortcuts`, `tools`,
+  `update`)만 best-effort/debounce로 유지한다. 그 밖의 사용자 데이터와 auth, Scene,
+  Composition repository/migration backup, reserved restore journal/queue repository key는
+  critical이며 immediate transaction + readback을 통과해야 성공한다.
+- key별 write serialization을 추가해 strict readback과 compare-and-set이 같은 key의
+  pending write와 경합하지 않게 했다. 기존 Composition repository CAS/strict storage
+  interface와 restore compensation API는 유지했다.
+- `flushAllPendingWrites()`는 pending/in-flight write를 `allSettled`로 수집하되 실패를
+  숨기지 않고 key별 `PersistenceFlushError.failures`로 throw한다. Debounced value는 commit
+  성공 전 삭제하지 않는다.
+- titlebar/Tauri close는 flush failure를 진단하고 “안전하게 저장되지 않음”을 알린 뒤
+  종료를 정확히 한 번 수행한다. 알림 surface 자체가 실패해도 별도 diagnostic을 남기고
+  종료를 건너뛰거나 close loop를 만들지 않는다.
+- startup은 `StartupMode = normal | rescue` gate를 사용한다. IndexedDB unavailable/blocked는
+  migrations, `App`, post-render scheduler, generation/edit/save entry를 mount하지 않고
+  rescue screen으로 전환한다. 건강한 DB의 migration/hydration failure는 legacy authority를
+  유지한 normal mode이며 old source는 삭제하지 않는다.
+- rescue screen은 재시도, bounded/redacted diagnostic JSON export, desktop/Android backup
+  위치 안내와 안전 종료를 제공한다. native buttons, focus-visible ring과 44px touch target을
+  사용한다.
+- Electron, better-sqlite3, Sharp, Marketplace/Supabase/catalog/deep-link, dependency와
+  lockfile 변경은 없다. NAI payload, Scene orchestration, OutputWriter, portable capability,
+  old backup/v1/metadata importer와 migration fixture는 변경하지 않았다.
+
+### Verification
+
+`test:composition`은 category suite를 포함하므로 행의 test count를 합산하지 않는다.
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| 구현 전 `npm exec vitest run tests/persistence` | 1 | 3 files, 12 contract cases | Expected characterization failure: typed fault/classification/startup/rescue/close APIs가 아직 없음 |
+| 구현 중 첫 `npm run test:migration` | 1 | source-order contract 1건 | startup 함수 추출 시 migration-before-render source ordering이 깨져 발견; ordering을 복원하고 아래 final run 통과 |
+| `npm ci` | 0 | 391 packages; 392 audited | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; non-host optional dependency 표시는 expected |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,353 modules | `tsc && vite build`; rescue chunk 포함 |
+| `npx tsc --noEmit` | 0 | TypeScript project | PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:composition` | 0 | 79 passed, 1 skipped files; 627 passed, 3 skipped tests | PASS; live opt-in suite expected skip |
+| `npm run test:migration` | 0 | 14 files, 123/123 | PASS; healthy-DB migration failure keeps legacy/normal startup |
+| `npm run test:diagnostics` | 0 | 3 files, 25/25 | PASS; persistence projection remains redacted/bounded |
+| `npm run test:persistence` | 0 | 3 files, 13/13 + 1 Chromium startup scenario | quota, abort, blocked DB, readback mismatch, flush/close failure, notification failure, startup mode, rescue contract PASS |
+| `npm run test:characterization` | 0 | 6 files, 40/40 | PASS |
+| `npm run test:nai-core` | 0 | 44/44 checks | payload/transport boundary PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | PASS; BRIA failure text is expected fallback behavior |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport scenarios | PASS |
+| `npm run test:android-port` | 0 | 1 contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | 1 contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | 1 authoritative gate | PASS; allowlisted 309, forbidden 0, tracked Codex tooling 0 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS in 0.54s |
+| `git diff --check` | 0 | worktree diff | whitespace error 없음 |
+
+Chromium rescue gate는 production startup에 blocked IndexedDB를 주입하고 390×844 coarse
+pointer viewport에서 rescue mode만 표시되는지 확인했다. retry native button을 keyboard
+Enter와 touchscreen tap으로 각각 활성화해 DB open attempt 증가를 관찰했고, 세 버튼의
+44px height, backup 안내, Main/Scene generation action 부재를 확인했다. screenshot/evidence
+directory는 만들지 않았다.
+
+### Artifacts, gaps, and risk
+
+- Frontend build: `dist/index.html`, `dist/assets/**` (ignored generated output; rescue chunk 포함)
+- Rust cache/output: `src-tauri/target/**` (ignored generated output)
+- Phase source/tests: `src/domain/persistence/fault.ts`, `src/lib/startup-mode.ts`,
+  `src/components/startup/RescueScreen.tsx`, `tests/persistence/**`,
+  `scripts/verify-rescue-mode.mjs`
+- Live NovelAI/R2 smoke: NOT RUN. 명시적 opt-in과 credential 권한이 없고 Phase 03은
+  persistence fault/startup scope다. `.env`, token, request payload를 읽거나 출력하지 않았다.
+- Generated Android APK/emulator/physical-device rescue smoke: NOT RUN. 이 Phase는 generated
+  Android project mutation이나 hardware target을 제공받지 않았고 source-contract gates만
+  실행했다. Chromium production startup에서 blocked DB rescue interaction은 실행했다.
+- Signed release/update/restore drill: NOT RUN. protected signing authority, immutable release
+  baseline과 install target이 필요한 external release gate다.
+- R-007은 Mitigated다. R-022는 large critical Zustand store의 immediate serialization/write
+  pressure를 Watching으로 남긴다. best-effort allowlist 확대는 데이터 의미와 durability
+  review 없이 하지 않는다.
+
+### HANDOFF REPORT
+
+- Phase: 03 — PERSISTENCE CORRECTNESS AND RESCUE MODE
+- Base HEAD: `a89b083cddcfe9691f5f443311c80a0dff5f1332`
+- Resulting local commit: `SELF` (this Phase commit; resolve with `git rev-parse HEAD`)
+- Changed files: persistence fault/startup mode/rescue UI; IndexedDB/close/startup wiring;
+  diagnostics integration; persistence unit/browser tests; package script and composition-v2 docs
+- Behavior added/changed: critical write failure propagation/readback, keyed flush failure,
+  diagnostic close handling, DB-unavailable rescue startup with retry/export/backup/exit
+- Preserved contracts: CompositionEngine, repository/migration strict/CAS authority, OutputWriter,
+  portable capability, NAI payload parity, Scene worker/token/session/cancel/retry/rotation/image
+  release, old importers/readers/fixtures, user data, generated tooling exclusion
+- Tests and exit codes: Verification table above; all final executable gates exit 0. Expected
+  pre-implementation persistence failure and in-phase ordering failure are recorded separately.
+- Artifact paths: `dist/**`, `src-tauri/target/**`, Phase source/tests/browser verifier, this ledger
+- Not tested and exact reason: live credential smoke, generated Android/emulator/physical-device
+  rescue and signed release drill은 위 Gaps의 authority/environment 제한 참조
+- Remaining risks: R-022 immediate critical-write pressure Watching; live/Android external gates와
+  pre-existing open risks remain
+- Rollback procedure: unrelated `AGENTS.md`와 user data를 보존하고
+  `git revert <phase-03-commit>`; reset/clean이나 destructive migration을 사용하지 않음
+- Next phase readiness: READY
