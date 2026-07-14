@@ -19,6 +19,8 @@ describe('native credential vault source contract', () => {
         ])
 
         expect(cargo).toContain('tauri-plugin-stronghold')
+        expect(rust).toContain('create_dir_all(&credential_vault_data_dir)')
+        expect(rust).toContain('create_dir_all(&credential_vault_local_data_dir)')
         expect(rust).toContain('tauri_plugin_stronghold::Builder::with_argon2')
         expect(packageJson).toContain('@tauri-apps/plugin-stronghold')
         for (const capability of [desktop, mobile]) {
@@ -63,6 +65,30 @@ describe('native credential vault source contract', () => {
         expect(startup).toContain('initializeAuthCredentialState')
         for (const caller of [mainGeneration, sceneGeneration, styleLab]) {
             expect(caller).toContain('requestCredentialUnlock')
+        }
+    })
+
+    it('awaits vault readiness before History enters source edit and routes every relaunch through cleanup', async () => {
+        const [authStore, history, persistence, relaunchLifecycle, settings, updateStore, restore, storeRestore] = await Promise.all([
+            source('src/stores/auth-store.ts'),
+            source('src/components/layout/HistoryPanel.tsx'),
+            source('src/lib/indexed-db.ts'),
+            source('src/lib/app-relaunch.ts'),
+            source('src/pages/Settings.tsx'),
+            source('src/stores/update-store.ts'),
+            source('src/components/backup/RestoreDialog.tsx'),
+            source('src/components/backup/StoreSnapshotRestoreDialog.tsx'),
+        ])
+
+        expect(authStore).toContain('waitForCredentialVaultReady')
+        expect(history).toContain('await waitForCredentialVaultReady()')
+        expect(history).toContain('sourceEditPreparing')
+        expect(persistence).toContain('getRuntimeCredentialVault().lock()')
+        expect(relaunchLifecycle).toContain('closeApplicationWithFlush')
+        expect(relaunchLifecycle).toContain('relaunch')
+        for (const caller of [settings, updateStore, restore, storeRestore]) {
+            expect(caller).toContain("@/lib/app-relaunch")
+            expect(caller).not.toContain("from '@tauri-apps/plugin-process'")
         }
     })
 })

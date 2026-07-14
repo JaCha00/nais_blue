@@ -185,6 +185,16 @@ if (existsSync(generatedManifestPath)) {
     const generatedManifest = readFileSync(generatedManifestPath, 'utf8')
     assert.ok(!generatedManifest.includes('android.intent.action.VIEW'))
     assert.ok(!generatedManifest.includes('android.intent.category.BROWSABLE'))
+    for (const privilegedSystemPermission of [
+        'android.permission.ACCESS_BROADCAST_RESPONSE_STATS',
+        'android.permission.READ_SAFETY_CENTER_STATUS',
+        'android.permission.SEND_SAFETY_CENTER_UPDATE',
+    ]) {
+        assert.ok(
+            !generatedManifest.includes(privilegedSystemPermission),
+            `NAIS2 must not request Google Play Services privileged permission ${privilegedSystemPermission}`,
+        )
+    }
 }
 for (const desktopWindowPermission of [
     'core:window:allow-minimize',

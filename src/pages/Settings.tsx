@@ -50,7 +50,7 @@ import { toast } from '@/components/ui/use-toast'
 import GeminiIcon from '@/assets/gemini-color.svg'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { relaunchApplication } from '@/lib/app-relaunch'
 import { getVersion } from '@tauri-apps/api/app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
 import { importAllData, getStoreSizes } from '@/lib/indexed-db'
@@ -426,7 +426,7 @@ export default function Settings() {
 
             // 앱 재시작
             setTimeout(() => {
-                relaunch()
+                void relaunchApplication()
             }, 1500)
             
         } catch (err) {
@@ -688,7 +688,7 @@ export default function Settings() {
                                                                                             size="sm"
                                                                                             onClick={async () => {
                                                                                                 await update.install()
-                                                                                                await relaunch()
+                                                                                                await relaunchApplication()
                                                                                             }}
                                                                                         >
                                                                                             <Sparkles className="h-4 w-4 mr-1" />

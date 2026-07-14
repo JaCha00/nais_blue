@@ -291,3 +291,27 @@ Fresh, canonical-v2-only, current legacy upgrade, both-present, retired-key old 
 migration, corrupted repository, rollback→forward fixture가 통과해도 supported-model online matrix,
 authenticated Android output, signed export/restore drill을 대신하지 않는다. 해당 외부 증거가
 없으므로 Phase 06은 fresh default를 `legacy`로 유지하고 BLOCKED handoff를 남긴다.
+
+## D-025 — Vault lifecycle은 app-owned shutdown/readiness 경계에서 직렬화한다
+
+상태: Accepted
+
+Stronghold snapshot은 frontend `appDataDir`, Argon2 salt는 Rust `app_local_data_dir`에 있으므로
+native setup이 두 directory를 plugin 등록 전에 비파괴적으로 생성한다. Window close, custom
+titlebar close, updater relaunch, backup restore relaunch는 IndexedDB flush 뒤 official Stronghold
+`unload()`를 await하고 마지막에만 exit/relaunch한다. Cleanup 실패는 redacted diagnostic과 사용자
+안내를 남기되 Rust process exit를 막아 stale process가 file/memory lock을 계속 보유하게 만들지
+않는다. Plaintext/Base64 fallback, snapshot delete와 passphrase persistence는 추가하지 않는다.
+
+Credential metadata hydration은 single-flight로 만들고 History의 source-edit 진입은 hydration과
+진행 중 unlock이 terminal status에 도달할 때까지 기다린다. `locked`는 source composition이 가능한
+준비 상태이며 실제 generation은 기존 unlock gate를 유지한다. `unavailable/error`는 vault dialog를
+열고 I2I state/navigation을 commit하지 않는다. 이 gate는 payload builder나 source-edit ZIP transport를
+변경하지 않는다.
+
+M500_MIKU logcat의 `ACCESS_BROADCAST_RESPONSE_STATS`, `READ_SAFETY_CENTER_STATUS`,
+`SEND_SAFETY_CENTER_UPDATE` denial은 `com.google.android.gms(.persistent)`에서 발생했다. Device
+package manager상 각각 signature/privileged/development, signature/privileged,
+internal/privileged 보호 수준이며 NAIS2는 `DEPENDENCY DIED`였다. 따라서 NAIS2 manifest/runtime
+permission request나 try/catch로 해결할 수 없다. Contract는 이 privileged permission들을 NAIS2에
+추가하지 못하게 하고, 정상 ROM/Play Services 조합에서 physical matrix를 다시 실행한다.

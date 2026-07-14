@@ -400,7 +400,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     },
 }))
 
-export async function initializeAuthCredentialState(): Promise<void> {
+async function hydrateAuthCredentialState(): Promise<void> {
     const storage = getRuntimeAuthMigrationStorage()
     try {
         let inspection = await inspectAuthPersistence(storage)
@@ -448,4 +448,41 @@ export async function initializeAuthCredentialState(): Promise<void> {
             vaultErrorCode: vaultErrorCode(error),
         })
     }
+}
+
+let authCredentialInitializationPromise: Promise<void> | null = null
+
+export async function initializeAuthCredentialState(): Promise<void> {
+    if (useAuthStore.getState().isCredentialStateInitialized) return
+    authCredentialInitializationPromise ??= hydrateAuthCredentialState()
+    try {
+        await authCredentialInitializationPromise
+    } finally {
+        authCredentialInitializationPromise = null
+    }
+}
+
+/** Wait for startup hydration (and an active unlock) before entering source-edit UI. */
+export async function waitForCredentialVaultReady(): Promise<boolean> {
+    await initializeAuthCredentialState()
+    if (useAuthStore.getState().vaultStatus === 'unlocking') {
+        await new Promise<void>((resolve) => {
+            const finishWhenSettled = (status: CredentialVaultStatus) => {
+                if (status === 'unlocking') return
+                unsubscribe()
+                resolve()
+            }
+            const unsubscribe = useAuthStore.subscribe((state) => {
+                finishWhenSettled(state.vaultStatus)
+            })
+            finishWhenSettled(useAuthStore.getState().vaultStatus)
+        })
+    }
+
+    const state = useAuthStore.getState()
+    const ready = state.isCredentialStateInitialized
+        && state.vaultStatus !== 'unavailable'
+        && state.vaultStatus !== 'error'
+    if (!ready) state.requestCredentialUnlock()
+    return ready
 }

@@ -56,6 +56,15 @@ Stronghold snapshot, app data, output 또는 generated cache 삭제를 요구하
 gate가 불완전하더라도 device system service를 임의로 grant/disable/clear하여 rollback evidence를
 만들지 않는다.
 
+## Vault restart lifecycle rollback
+
+Phase 07은 credential schema, snapshot format과 user data를 migration하지 않는다. Rollback은
+unrelated `AGENTS.md`, Stronghold snapshot/salt, app data, output과 generated caches를 보존하고 해당
+local commit만 `git revert`한다. Revert하면 native parent-directory precreation, close/relaunch unload,
+I2I readiness wait와 privileged-permission manifest gate가 함께 제거되므로 Windows restart source-edit와
+Android system-crash 분류를 다시 검증하기 전 release하지 않는다. Snapshot/salt 삭제, plaintext export,
+Play Services grant/disable/data clear와 app data clear는 rollback 절차가 아니다.
+
 ## Authority rollback
 
 Repository는 committed v2 document를 지우지 않고 authority만 `legacy`로 변경할 수 있다. Operational hotfix는 `applyCompositionAuthorityFeatureFlag('legacy')`와 repository `setAuthority('legacy')` 경계를 사용하며, 임의로 IndexedDB JSON을 수정하지 않는다. Startup hydration failure도 같은 fail-closed path를 사용한다.

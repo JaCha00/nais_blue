@@ -1352,3 +1352,110 @@ contract의 expected diagnostics다. Test skip이나 assertion 완화, catch-and
 Fresh production authority remains legacy. A separate approval must not change it until the complete host
 workflow matrix, post-fix authenticated Android gate or explicit Android-exclusion decision, and signed
 export→rollback→restore→forward drill all pass with unexplained payload diff 0.
+
+## Phase 07 — VAULT RESTART LIFECYCLE / ANDROID PERMISSION CLASSIFICATION
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `f7c029a048e9dc97a41f40f49d338354c57ea297`
+- Initial working tree: unrelated user change `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`가 있었고 변경·삭제하지 않았다.
+- Initial red tests: credential-vault source contract 2 failed, persistence lifecycle behavior 2 failed.
+  Native parent directory creation, cleanup ordering, cleanup failure diagnosis, I2I readiness와 common
+  relaunch wrapper 부재를 각각 정확히 고정했다.
+- Android contract는 기존 manifest에 privileged permission이 없어서 처음부터 통과했다. 이는
+  runtime permission 구현 증거가 아니라 잘못된 GMS privileged permission 추가 방지 gate다.
+
+### Behavior and boundary changes
+
+1. Rust setup이 Stronghold plugin 등록 전에 `app_data_dir`와 `app_local_data_dir`를
+   `create_dir_all`로 비파괴 생성한다. Snapshot/salt format이나 위치는 바꾸지 않았다.
+2. `closeApplicationWithFlush`가 persistence flush 뒤 Stronghold `lock()`/official `unload()`를
+   await한 후 exit한다. Cleanup 실패는 `credential-vault.shutdown` diagnostic과 사용자 안내를 남기고
+   process exit는 한 번 수행한다.
+3. Updater, legacy import, full backup restore와 per-store restore의 모든 `relaunch()` caller를
+   `relaunchApplication()`으로 모아 같은 flush→unload→relaunch 순서를 사용한다.
+4. Credential hydration은 single-flight다. History→I2I는 hydration과 진행 중 unlock의 terminal
+   state를 await하며 기다리는 동안 bounded spinner overlay를 표시한다. `unavailable/error`이면 vault
+   dialog를 열고 source image, I2I mode와 navigation을 commit하지 않는다.
+5. Android logcat/dumpsys는 NAIS2 crash가 아닌 GMS privileged permission failure와 FontsProvider
+   dependency death를 확인했다. NAIS2 manifest/runtime permission이나 Google Play dependency를
+   추가하지 않았다.
+
+### Android physical evidence
+
+M500_MIKU API 34의 historical crash buffer에서 `com.google.android.gms.persistent`가
+`ACCESS_BROADCAST_RESPONSE_STATS`, `com.google.android.gms`가
+`READ_SAFETY_CENTER_STATUS`/`SEND_SAFETY_CENTER_UPDATE` denial로 종료됐다. Device package manager
+protection level은 각각 `signature|privileged|development`, `signature|privileged`,
+`internal|privileged`였다. NAIS2 exit-info는 `reason=12 (DEPENDENCY DIED)`와
+`com.google.android.gms/.fonts.provider.FontsProvider` dependency를 기록했다.
+
+Logcat clear 뒤 기존 debug package를 명시적으로 cold launch한 결과 status `ok`, PID `13588`이었고
+full local baseline 뒤에도 PID가 유지됐으며 새 crash buffer match는 없었다. Historical exit-info는
+남아 있다. Device/Play Services를 grant, disable, clear 또는 reset하지 않았다. 이 short survival은
+authenticated Android generation/output matrix PASS가 아니다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| initial `test:credential-vault` before implementation | 1 expected | 2 failed | directory/readiness/relaunch contract red |
+| initial `test:persistence` before implementation | 1 expected | 2 failed | cleanup ordering/failure behavior red |
+| `npm ci` | 0 | 392 packages | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음 |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,364 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | unexplained diff 0 |
+| `npm run test:composition` | 0 | 87 passed/1 skipped files; 683 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 4 files, 19/19 | lifecycle/readiness PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 46/46 | PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload/source-edit contract PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected BRIA fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport cases | PASS |
+| `npm run test:android-port` | 0 | source/generated manifest contract | privileged permission absent PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | forbidden 0; allowlisted 313; tracked tooling 0 | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | PASS |
+| adb cold launch/PID/new crash buffer | 0 | 1 physical package | launch/PID PASS; authenticated matrix 미실행 |
+| `git diff --check` | 0 | final tracked diff | PASS |
+
+Node invalid localstorage-file warning과 Smart Tools BRIA unavailable line은 passing contract의 expected
+diagnostic이다. Test skip, assertion 완화, catch-and-ignore 또는 device 권한 조작으로 실패를 숨기지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 07 — VAULT RESTART LIFECYCLE / ANDROID PERMISSION CLASSIFICATION
+- Base HEAD: `f7c029a048e9dc97a41f40f49d338354c57ea297`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Rust Stronghold startup; credential auth/readiness; persistence/relaunch lifecycle; History
+  source-edit UI; updater/restore relaunch callers; Android contract; credential/persistence tests;
+  composition-v2 status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: native data dirs exist before Stronghold initialization; close/relaunch awaits vault
+  unload; I2I entry waits for vault readiness; GMS privileged permissions are rejected from NAIS2 manifest
+- Preserved contracts: fresh authority legacy, CompositionEngine, repository/migration, OutputWriter,
+  portable capability, payload builder/fixtures, source-edit ZIP, Scene worker/dual-token/stream/session/cancel/
+  stale/retry/requeue/rotation/image release, legacy builders/importers/readers, existing user/vault data
+- Tests and exit codes: final verification table above; all final executable gates exit 0
+- Artifact paths: `dist/**`; `src-tauri/target/**`;
+  ignored `artifacts/phase07-vault-android-redacted.txt`; this ledger
+- Not tested and exact reason: existing encrypted Windows vault unlock→restart→re-unlock and actual source-edit
+  request need passphrase/live credential opt-in; Android authenticated standard/stream/cancel/output was not
+  run because no credential opt-in and historical R-027 remains intermittent; signed rollback lacks protected
+  signer/immutable baseline
+- Remaining risks: R-015, R-016, R-019, R-024, R-026, R-027, R-028; actual existing-vault restart and
+  authenticated Android/signed release gates remain open
+- Rollback procedure: preserve unrelated `AGENTS.md`, generated caches, Stronghold snapshot/salt, app/user/output
+  data; revert only this Phase 07 local commit. Do not reset/clean/delete vault data, grant privileged Android
+  permissions, disable/clear Play Services, or mutate payload/OutputWriter/Scene contracts.
+- Next phase readiness: BLOCKED — credential-opt-in existing-vault restart, Android authenticated output와
+  signed rollback evidence가 남아 있다.

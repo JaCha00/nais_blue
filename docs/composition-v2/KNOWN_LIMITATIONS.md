@@ -71,3 +71,9 @@
     FontsProvider dependency와 함께 NAIS2를 `DEPENDENCY DIED`로 종료하며 reboot 후에도 재현됐다.
     이는 NAIS2 crash가 아니지만 post-fix physical matrix를 막는다. Privileged permission grant,
     Play Services disable/data clear 또는 app-data clear는 별도 authority 없이 수행하지 않는다.
+26. Phase 07은 native startup directory precondition, close/relaunch Stronghold unload와 History I2I
+    readiness wait를 behavior/contract/Cargo gate로 검증했다. Existing encrypted snapshot과 live
+    credential을 가진 isolated Windows profile의 unlock→restart→re-unlock→source-edit request는 이번
+    일반 검증에서 credential opt-in이 없어 실행하지 않았다. M500_MIKU는 fresh cold launch 뒤 PID를
+    유지하고 새 crash buffer는 비어 있었지만 과거 `DEPENDENCY DIED` exit-info는 남아 있고
+    authenticated Android output matrix를 대체하지 않는다.

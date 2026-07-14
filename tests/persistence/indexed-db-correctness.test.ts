@@ -116,9 +116,10 @@ async function loadPersistence() {
         getPersistenceCriticality(key: string): 'critical' | 'best-effort'
         closeApplicationWithFlush(options: {
             flush?: () => Promise<void>
+            cleanup?: () => Promise<void>
             notify?: (message: string) => void
             exit: () => Promise<void>
-        }): Promise<{ status: 'closed' | 'closed-with-persistence-failure' }>
+        }): Promise<{ status: 'closed' | 'closed-with-persistence-failure' | 'closed-with-cleanup-failure' }>
     }>
 }
 
@@ -243,6 +244,43 @@ describe('IndexedDB persistence correctness', () => {
         expect(useDiagnosticsStore.getState().events).toEqual(expect.arrayContaining([
             expect.objectContaining({ operation: 'persistence.close-flush' }),
             expect.objectContaining({ operation: 'persistence.close-flush-notification' }),
+        ]))
+    })
+
+    it('awaits native cleanup after persistence flush and before exit', async () => {
+        installFakeIndexedDB()
+        const { closeApplicationWithFlush } = await loadPersistence()
+        const order: string[] = []
+
+        const result = await closeApplicationWithFlush({
+            flush: async () => { order.push('flush') },
+            cleanup: async () => { order.push('cleanup') },
+            exit: async () => { order.push('exit') },
+        })
+
+        expect(result.status).toBe('closed')
+        expect(order).toEqual(['flush', 'cleanup', 'exit'])
+    })
+
+    it('diagnoses cleanup failure but still releases the process exactly once', async () => {
+        installFakeIndexedDB()
+        const { closeApplicationWithFlush } = await loadPersistence()
+        const notify = vi.fn()
+        const exit = vi.fn(async () => undefined)
+
+        const result = await closeApplicationWithFlush({
+            flush: async () => undefined,
+            cleanup: async () => { throw new Error('Synthetic vault cleanup failure') },
+            notify,
+            exit,
+        })
+
+        expect(result.status).toBe('closed-with-cleanup-failure')
+        expect(notify).toHaveBeenCalledOnce()
+        expect(exit).toHaveBeenCalledOnce()
+        const { useDiagnosticsStore } = await import('@/stores/diagnostics-store')
+        expect(useDiagnosticsStore.getState().events).toEqual(expect.arrayContaining([
+            expect.objectContaining({ operation: 'credential-vault.shutdown' }),
         ]))
     })
 })

@@ -797,11 +797,19 @@ pub fn run() {
             nai_transport::cancel_nai_request,
         ])
         .setup(|_app| {
-            let credential_vault_salt = _app
+            let credential_vault_data_dir = _app
+                .path()
+                .app_data_dir()
+                .map_err(|error| error.to_string())?;
+            let credential_vault_local_data_dir = _app
                 .path()
                 .app_local_data_dir()
-                .map_err(|error| error.to_string())?
-                .join("credential-vault.salt");
+                .map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&credential_vault_data_dir)
+                .map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&credential_vault_local_data_dir)
+                .map_err(|error| error.to_string())?;
+            let credential_vault_salt = credential_vault_local_data_dir.join("credential-vault.salt");
             _app.handle().plugin(
                 tauri_plugin_stronghold::Builder::with_argon2(&credential_vault_salt).build(),
             )?;

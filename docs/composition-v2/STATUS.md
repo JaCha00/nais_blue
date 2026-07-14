@@ -46,6 +46,8 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
   Android fixed-endpoint NAI transport와 Scene network cancellation.
 - 후속 hardening Phase 06: production-like authority fixture matrix, repository/runtime/workflow
   authority diagnostics, redacted fallback observation, one-action legacy rollback.
+- 후속 hardening Phase 07: native vault data-directory precondition, flush→Stronghold unload→exit/relaunch
+  lifecycle, History source-edit readiness wait와 Android privileged-permission crash classification.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -133,3 +135,8 @@ evidence를 Phase 06 production cutover 승인으로 승격하지 않는다.
 3. signed desktop/Android artifact로 backup export → rollback install → restore → forward migration drill을 실행한다.
 4. 한 release observation window 뒤 legacy builder caller를 다시 검색한다.
 5. 그때 caller 0, rollback drill 성공, payload gap 해소가 모두 성립하면 별도 PR에서 legacy runtime을 제거한다.
+
+Phase 07은 Windows restart source-edit의 재현 가능한 lifecycle 결함을 수정했지만 live credential을
+사용한 existing-vault re-unlock/ZIP request는 실행하지 않았다. Android logcat은 NAIS2 권한 누락이
+아니라 Google Play Services privileged permission/FontsProvider dependency failure임을 재확인했다.
+따라서 NAIS2 runtime permission을 추가하지 않았으며 Android authenticated release gate는 계속 닫혀 있다.

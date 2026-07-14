@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { relaunchApplication } from '@/lib/app-relaunch'
 import { AlertTriangle, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -66,7 +66,7 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
     const restartAfterRestore = async () => {
         try {
             if (isTauri()) {
-                await relaunch()
+                await relaunchApplication()
                 return
             }
         } catch (error) {

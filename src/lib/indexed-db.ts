@@ -10,6 +10,7 @@ import {
     type PersistenceFaultKind,
 } from '@/domain/persistence/fault'
 import { reportDiagnostic, reportPersistenceFault } from '@/services/diagnostics/error-registry'
+import { getRuntimeCredentialVault } from '@/services/credentials/stronghold-credential-vault'
 // Since I cannot install packages, I will implement a minimal wrapper similar to idb-keyval logic
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
@@ -420,12 +421,13 @@ export async function flushAllPendingWrites(): Promise<void> {
 
 export interface CloseApplicationOptions {
     flush?: () => Promise<void>
+    cleanup?: () => Promise<void>
     notify?: (message: string) => void
     exit: () => Promise<void>
 }
 
 export type CloseApplicationResult = {
-    status: 'closed' | 'closed-with-persistence-failure'
+    status: 'closed' | 'closed-with-persistence-failure' | 'closed-with-cleanup-failure'
 }
 
 function defaultCloseFailureNotification(message: string): void {
@@ -454,6 +456,30 @@ export async function closeApplicationWithFlush(
                 operation: 'persistence.close-flush-notification',
                 stage: 'close',
                 category: 'persistence',
+                severity: 'warning',
+                recoverable: true,
+            })
+        }
+    }
+    try {
+        await (options.cleanup ?? (() => getRuntimeCredentialVault().lock()))()
+    } catch (error) {
+        if (status === 'closed') status = 'closed-with-cleanup-failure'
+        const event = reportDiagnostic(error, {
+            operation: 'credential-vault.shutdown',
+            stage: 'close',
+            category: 'auth',
+            severity: 'error',
+            recoverable: true,
+        })
+        const notify = options.notify ?? defaultCloseFailureNotification
+        try {
+            notify(`${event.userSummary}\nCredential vault를 닫지 못했지만 앱 프로세스를 종료합니다.`)
+        } catch (notificationError) {
+            reportDiagnostic(notificationError, {
+                operation: 'credential-vault.shutdown-notification',
+                stage: 'close',
+                category: 'auth',
                 severity: 'warning',
                 recoverable: true,
             })

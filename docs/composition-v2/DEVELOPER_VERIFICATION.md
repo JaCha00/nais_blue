@@ -33,6 +33,13 @@ cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 
 `test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
 
+Vault restart regression의 focused gate는 `npm run test:credential-vault`와
+`npm run test:persistence`다. Native setup은 `app_data_dir`와 `app_local_data_dir`를 Stronghold plugin
+등록 전에 생성해야 하며 close/relaunch는 pending IndexedDB flush → Stronghold unload → process
+exit 순서다. History I2I는 metadata hydration과 진행 중 unlock의 terminal state를 await하고
+`unavailable/error`에서는 source image/mode/navigation을 commit하지 않는다. Existing snapshot의
+실제 re-unlock은 passphrase/credential이 명시적으로 opt-in된 isolated profile에서만 수행한다.
+
 ## Phase 06 authority preflight
 
 Production-like authority fixture와 운영 panel contract는 다음 focused 명령으로 먼저 진단할 수 있다.
@@ -78,6 +85,13 @@ death를 먼저 구분한다. M500_MIKU에서 Google Play Services FontsProvider
 transport 실패로 분류하지 않는다. 그러나 post-fix authenticated output gate도 통과한 것으로
 간주하지 않는다. 별도 authority 없이 Play Services privileged permission grant, component disable,
 data clear 또는 app-data clear로 testbed를 변형하지 않는다.
+
+`ACCESS_BROADCAST_RESPONSE_STATS`, `READ_SAFETY_CENTER_STATUS`,
+`SEND_SAFETY_CENTER_UPDATE`가 logcat에 보이면 crash line의 `Process:`를 함께 확인한다. 이 권한들은
+M500_MIKU package manager에서 signature/privileged 계열이며 GMS process denial이었다. NAIS2
+manifest에 선언하거나 runtime permission dialog로 요청하지 않는다. `test:android-port`는 generated
+manifest에 세 privileged permission이 들어오면 실패한다. Runtime request는 NAIS2가 실제로 호출하는
+dangerous permission과 app-owned failure stack이 확인된 경우에만 별도 characterization 뒤 추가한다.
 
 Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix
 `configure`를 실행하지 못하면 code regression과 분리해 기록한다. Linux Android build host를
