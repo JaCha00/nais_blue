@@ -125,6 +125,234 @@ Migration raw source는 persisted compatibility data의 exact preimage를 보존
 
 ## D-017 — Tauri generation transport는 scoped HTTP plugin 사용
 
+상태: Accepted; Android generation 부분은 D-023으로 대체
+
+Browser/test runtime은 native fetch를 사용하고 desktop Tauri NovelAI generation은 capability
+allowlist가 적용된 HTTP plugin을 사용한다. 이 결정은 처음에 Android도 포함했지만 WebView
+`window.fetch`의 CORS를 피한 뒤에도 plugin response/abort 완료가 입증되지 않았다. 해당 Android
+부분만 D-023의 fixed-endpoint native adapter가 대체하며 browser/desktop 경계는 유지한다.
+
+## D-018 — backup과 restore는 secret-safe store projection을 사용
+
 상태: Accepted
 
-Browser/test runtime은 native fetch를 사용하지만 desktop/Android Tauri runtime의 NovelAI generation은 capability allowlist가 적용된 HTTP plugin을 사용한다. WebView `window.fetch`는 Android에서 CORS에 의해 즉시 실패했다. Plugin transport는 source contract에 고정하되 emulator live response가 완료되지 않은 현상은 별도 open risk로 관리하며 성공으로 과대 보고하지 않는다.
+Credential Vault 도입 전에도 manual/full, local auto, disk auto, per-store snapshot과
+restore preflight는 `projectStoreForBackup()` 경계를 공유한다. `nais2-auth`는 raw
+payload를 복사하거나 token을 encode/hash하지 않고 allowlist projection으로 다시 만든다.
+NovelAI token, runtime Anlas, provider error를 제외하고 verified 상태를 false로
+정규화하며 slot enabled와 알려진 subscription tier만 보존한다.
+
+로컬 Composition migration rollback archive는 exact preimage로 유지한다. 다만 그
+archive가 외부 backup이나 store snapshot으로 새롭게 복제될 때 중첩된 `nais2-auth`
+직렬값만 같은 projection으로 sanitize하고 projected source hash/count를 다시 계산한다.
+Restore는 과거 raw auth가 있는 legacy/v3/snapshot을 읽되 secret을 쓰지 않고
+credential 재입력 필요를 dry-run report와 UI summary에 표시한다. 기존 disk backup은
+자동 삭제하거나 수정하지 않는다.
+
+## D-019 — 진단 이벤트는 redacted projection 하나로만 이동한다
+
+상태: Accepted
+
+NovelAI, OutputWriter, startup migration/recovery, R2와 이후 queue는 raw Error,
+provider response, token, prompt, image bytes를 toast·drawer·clipboard·JSON export·file
+log에 직접 전달하지 않는다. `DiagnosticEvent`의 redacted projection만 in-memory store와
+Tauri production file logger로 전달한다. Event store는 100개로 bounded하며 persisted
+Zustand projection에 포함하지 않는다.
+
+prompt는 SHA-256, 문자 수와 추정 token 수로만 남기고, image/base64/binary와 provider
+plaintext body는 제외한다. provider JSON body는 명시 allowlist와 512-byte 상한을 거쳐야
+한다. 같은 redactor는 stack, cause chain, breadcrumb, clipboard와 export에 재적용한다.
+
+OperationMonitor는 고정 10초 slow, 30초 no-heartbeat stalled, 120초 hard-timeout
+threshold를 사용한다. streaming progress heartbeat는 stalled 판정을 갱신한다. adaptive
+threshold는 이번 phase의 확장점일 뿐 동작하지 않는다. monitor는 queue worker 수,
+dual-token, cancel/stale/retry/requeue/rotation/image-release 계약을 변경하지 않는다.
+
+기존 `tauri-plugin-log`만 재사용하며, production file target은 `nais2_diagnostic`
+structured event만 허용한다. 각 파일은 1,000,000 bytes, rotation 보존은 active file을
+포함해 최대 5개(`KeepSome(5)`)다. 별도 JS logging dependency나 console forwarding을
+도입하지 않는다.
+
+## D-020 — critical persistence는 즉시 commit/readback하고 DB unavailable은 rescue mode로 격리한다
+
+상태: Accepted
+
+Zustand persistence는 store 단위 정책을 사용한다. Layout, theme, shortcut, tools와 update
+표시 상태만 best-effort UI preference로 debounce할 수 있다. 그 밖의 현재/향후 사용자
+데이터 store는 기본 critical이며, 특히 auth, Scene, Composition repository/migration
+archive, restore journal과 queue repository는 immediate IndexedDB transaction과 readback
+또는 기존 strict/CAS API를 사용한다. Unknown future key도 명시적으로 best-effort에
+등록되기 전까지 critical이다.
+
+IndexedDB quota, abort, blocked open, timeout과 readback mismatch는 `PersistenceFault`로
+정규화한 뒤 D-019의 `DiagnosticEvent` 경계로만 이동하며 critical caller에 reject를
+전파한다. Pending flush는 store별 실패 목록을 포함한 `PersistenceFlushError`를 throw한다.
+Close flush가 실패하면 사용자에게 미commit 상태를 알리고 진단 event를 기록한 뒤 exit를
+한 번만 수행한다.
+
+Startup mode는 `normal | rescue`다. DB open 자체가 실패하면 normal App과 generation/edit/
+save entry point를 import/mount하지 않고 retry, redacted diagnostic export, backup 위치 안내,
+safe exit만 제공한다. 반면 healthy DB에서 Composition migration이 실패하면 old source를
+삭제하지 않고 legacy authority의 normal App으로 진행한다. Rescue mode는 migration failure를
+대체하는 일반 오류 화면이 아니다.
+
+## D-021 — native credential backend는 공식 Stronghold plugin을 사용한다
+
+상태: Accepted
+
+`CredentialVault` backend는 `@tauri-apps/plugin-stronghold`와
+`tauri-plugin-stronghold` 2.3.1을 정확 버전으로 사용한다. Native startup은 app-local salt
+file과 공식 `Builder::with_argon2`를 사용하며 passphrase는 unlock call 동안만 전달하고
+NAIS2 state/storage/log에 보관하지 않는다. Capability는 initialize, client create/load,
+store get/save/remove, snapshot save/destroy에 필요한 명시적 permission만 desktop/mobile에
+부여하고 `stronghold:default`는 사용하지 않는다.
+
+현재 NovelAI transport와 dual-token worker가 renderer token을 소비하므로 plugin의 공식 JS
+API를 `CredentialVault` service 안에 감쌌다. 별도 Rust command를 추가하면 같은 secret이
+새 custom IPC를 한 번 더 통과하며 renderer session memory를 제거하지 못한다. 따라서 이번
+phase에서는 custom command보다 공식 plugin IPC 하나가 secret 노출 면적이 작다. 향후 native
+HTTP/keychain/biometric backend가 renderer plaintext까지 제거할 수 있을 때 interface 뒤에서
+교체한다.
+
+직접 암호화, Base64/plaintext fallback, hardcoded machine key와 custom crypto format은
+복구성과 검증 가능한 KDF/secret-store 경계를 약화하므로 기각했다. Dependency는 frontend
+Stronghold API module과 Rust Stronghold/crypto graph를 추가하며 Android/iOS target도 같은
+공식 plugin 경계를 사용한다. License는 MIT OR Apache-2.0이다. Dev build KDF 성능을 위해
+공식 setup 권고의 `scrypt` dev-profile optimization만 추가하고 release cryptography는
+변경하지 않는다.
+
+## D-022 — AuthState v3는 reference만 persist하고 migration marker를 마지막에 쓴다
+
+상태: Accepted
+
+AuthState v3 durable projection은 두 `CredentialRef`, slot enabled, tier/display metadata만
+저장한다. `token`, `token2`, session plaintext, verified runtime flag와 Anlas cache는 저장하지
+않는다. Plaintext는 unlocked app session의 Zustand memory에만 있고 lock 시 즉시 비운다.
+
+Legacy v2 migration은 startup hydration 뒤 사용자 unlock을 기다린다. Strict source read와
+secret detection 뒤 vault write, exact vault readback, sanitized v3 strict write/readback,
+남아 있는 localStorage source의 sanitized write/readback을 차례로 수행하고 마지막에만
+completion marker를 기록한다. Vault/marker 단계에서 중단되면 marker를 기록하지 않으며 raw
+secret을 v3 payload로 쓰거나 plaintext fallback으로 전환하지 않는다. Marker 직전 중단은
+v3 reference를 vault에서 재검증한 뒤 resume한다. 기존 backup은 자동 삭제하지 않고 별도
+privacy warning과 명시적 destructive confirmation을 거친 managed-artifact cleanup만 제공한다.
+
+## D-023 — Android generation은 fixed-endpoint Rust reqwest channel transport 사용
+
+상태: Accepted
+
+Phase 04 Android API 35 emulator에서 capability-scoped JS HTTP plugin의 standard/stream
+request와 abort가 각각 제한 시간 안에 response 또는 cancellation으로 완료되지 않았다.
+따라서 D-017의 browser native fetch와 desktop Tauri HTTP plugin은 유지하되 Android의 NAI
+generation 두 endpoint만 Rust command adapter로 교체한다. Source edit은 계속 standard ZIP
+endpoint를 사용하며 payload는 기존 `buildGenerateImagePayload()` 결과를 그대로 전달한다.
+
+Command는 caller URL을 받지 않고 `standard | stream` enum을 NovelAI의 두 고정 URL에만
+매핑한다. 기존 `reqwest`, `tokio`, Tauri `Channel`, `base64` dependency를 재사용해
+dependency/lockfile 변경은 없다. Connect deadline은 15초, request/body total deadline은
+120초이며 JS adapter도 동일한 유한 deadline으로 IPC/fetch와 body consumption을 race한다.
+Request ID별 oneshot과 `tokio::select!`가 header wait 및 body chunk wait를 실제 socket
+cancellation에 연결한다.
+
+2026-07-14 M500_MIKU physical run에서 desktop IPC용 raw `Channel<Response>`는 headers와 end는
+전달했지만 Android mobile channel에서 standard/stream body를 모두 0 byte로 만들었다. Mobile
+plugin channel은 JSON message 경계이므로 body를 별도 raw channel에 두지 않는다. Rust는 각
+64 KiB 이하 chunk를 `BodyChunk { bytesBase64 }` JSON event로 보내고 JS는 같은 channel에서
+decode한다. Headers, body chunks, end가 한 channel의 순서를 공유하므로 별도 channel 간 end race도
+제거한다. Base64는 mobile IPC encoding일 뿐 persistence, diagnostic 또는 log format이 아니다.
+
+Diagnostic event에는 DNS/connect 시작, request sent, response headers, body first byte,
+heartbeat, decode stage만 전달한다. Native IPC의 body event는 diagnostic kernel에 연결하지
+않는다. Token, Authorization header, payload, response body와 image bytes는 diagnostic이나
+Rust/JS log에 넣지 않는다. Scene controller는 session/slot/request별로 소유하고
+cancel 시 session을 먼저 무효화한 뒤 active HTTP request를 abort한다. Revert가 필요하면 이
+transport hardening commit만 되돌려도 Android empty-body failure가 다시 노출되고, Phase 05
+commit까지 되돌리면 plugin hang이 다시 노출된다. 어느 경우든 Android authenticated generation을
+성공 지원으로 표시해서는 안 된다. Post-fix physical rerun은 R-027 device environment가
+정상화되기 전까지 R-019의 열린 release gate로 유지한다.
+
+## D-024 — authority 운영 가시성은 production default 승인을 대체하지 않는다
+
+상태: Accepted
+
+Diagnostics의 Composition Authority panel은 strict repository read를 통해 persisted authority,
+process runtime authority, revision/hash, migration/startup verification, Main/Scene/Style Lab의
+requested/effective mode를 표시한다. Startup이 persisted v2를 process에 설치하지 못한 경우 raw
+Error를 console에 남기지 않고 stable fallback reason을 D-019 redacted diagnostic event로 기록한다.
+
+사용자 rollback은 한 동작으로 `applyCompositionAuthorityFeatureFlag('legacy')`를 호출한다. 이
+경계는 runtime을 먼저 fail-closed하고 repository `setAuthority('legacy')`의 write/readback 뒤
+feature flag를 기록하며 committed v2 document와 migration archive를 삭제하지 않는다. V2
+activation은 같은 public helper 안에서 startup migration, authoritative document re-read와
+committed hash 일치를 다시 검증한 경우에만 성공한다. Panel은 release gate를 우회하는 v2
+activation control을 노출하지 않는다.
+
+Fresh, canonical-v2-only, current legacy upgrade, both-present, retired-key old backup, interrupted
+migration, corrupted repository, rollback→forward fixture가 통과해도 supported-model online matrix,
+authenticated Android output, signed export/restore drill을 대신하지 않는다. 해당 외부 증거가
+없으므로 Phase 06은 fresh default를 `legacy`로 유지하고 BLOCKED handoff를 남긴다.
+
+## D-025 — Vault lifecycle은 app-owned shutdown/readiness 경계에서 직렬화한다
+
+상태: Accepted
+
+Stronghold snapshot은 frontend `appDataDir`, Argon2 salt는 Rust `app_local_data_dir`에 있으므로
+native setup이 두 directory를 plugin 등록 전에 비파괴적으로 생성한다. Window close, custom
+titlebar close, updater relaunch, backup restore relaunch는 IndexedDB flush 뒤 official Stronghold
+`unload()`를 await하고 마지막에만 exit/relaunch한다. Cleanup 실패는 redacted diagnostic과 사용자
+안내를 남기되 Rust process exit를 막아 stale process가 file/memory lock을 계속 보유하게 만들지
+않는다. Plaintext/Base64 fallback, snapshot delete와 passphrase persistence는 추가하지 않는다.
+
+Credential metadata hydration은 single-flight로 만들고 History의 source-edit 진입은 hydration과
+진행 중 unlock이 terminal status에 도달할 때까지 기다린다. `locked`는 source composition이 가능한
+준비 상태이며 실제 generation은 기존 unlock gate를 유지한다. `unavailable/error`는 vault dialog를
+열고 I2I state/navigation을 commit하지 않는다. 이 gate는 payload builder나 source-edit ZIP transport를
+변경하지 않는다.
+
+M500_MIKU logcat의 `ACCESS_BROADCAST_RESPONSE_STATS`, `READ_SAFETY_CENTER_STATUS`,
+`SEND_SAFETY_CENTER_UPDATE` denial은 `com.google.android.gms(.persistent)`에서 발생했다. Device
+package manager상 각각 signature/privileged/development, signature/privileged,
+internal/privileged 보호 수준이며 NAIS2는 `DEPENDENCY DIED`였다. 따라서 NAIS2 manifest/runtime
+permission request나 try/catch로 해결할 수 없다. Contract는 이 privileged permission들을 NAIS2에
+추가하지 못하게 하고, 정상 ROM/Play Services 조합에서 physical matrix를 다시 실행한다.
+
+## D-026 — durable generation queue는 workflow와 분리된 normalized repository다
+
+상태: Accepted
+
+Generation job은 큰 Zustand JSON이나 Scene queue state에 넣지 않고 별도 IndexedDB database의
+`batches`, `jobs`, `attempts`, `leases`, `resources` store에 저장한다. Enqueue snapshot은 최종
+prompt/params/output policy를 immutable canonical document로 고정하고 hash와 idempotency key를 함께
+commit한다. Token, Authorization, base64와 cache secret은 schema에서 거부한다. Restart 뒤 필요한
+source/mask는 managed AppData digest/reference만 가리키며 volatile memory resource는 명시적으로
+non-resumable/blocked 처리한다.
+
+Repository는 indexed priority/ordinal/id order, CAS lease token, immediate transaction/readback,
+idempotent transition, terminal-state 불변, expiry recovery와 versioned schema upgrade를 소유한다.
+이번 phase는 enqueue caller, network, worker, UI와 OutputWriter를 연결하지 않는다. 따라서 기존
+Scene worker 수, dual-token/streaming/session/cancel/stale/retry/requeue/rotation/image-release 계약과
+generation-store는 그대로다.
+
+## D-027 — IndexedDB behavior test는 exact dev-only fake-indexeddb를 사용한다
+
+상태: Accepted
+
+`fake-indexeddb@6.2.5`를 exact devDependency로 추가한다. License는 Apache-2.0이고 Node >=18 개발
+환경에서만 실행되므로 production/browser/Android bundle에는 포함되지 않는다. Custom in-memory
+repository는 IndexedDB transaction abort, key range, unique index와 version upgrade semantics를
+재구현해야 해 실제 경계를 검증하지 못하므로 거절했다. Browser-only integration test는 10,000-job
+matrix를 느리고 비결정적으로 만들 수 있어 focused repository tests의 기본 대안으로 사용하지 않는다.
+
+## D-028 — Vault availability ACL probe는 BaseDirectory-relative 표현을 사용한다
+
+상태: Accepted
+
+Tauri generated capability의 `$APPDATA/**`와 JS `BaseDirectory.AppData`는 같은 app-specific data
+directory resolver를 사용한다. Isolated production binary에서 resolved directory/snapshot parent
+동일성, absolute/relative `exists` 허용과 동일 존재 결과를 경로 원문 없이 직접 확인했다. 따라서
+이전 `unavailable` 관찰을 ACL expansion mismatch로 분류하지 않는다.
+
+Stronghold load에는 official API가 요구하는 absolute snapshot path를 계속 전달하되 availability의
+filesystem check는 `exists(SNAPSHOT_FILE, { baseDir: BaseDirectory.AppData })`로 수행한다. 이는 ACL과
+동일한 표현을 사용해 directory bootstrap/파일 부재와 permission rejection을 구분하며 snapshot
+format, salt, passphrase, credential persistence를 바꾸지 않는다.

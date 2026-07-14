@@ -3,6 +3,7 @@ import {
     LOCAL_TAGGER_BASE_URL,
 } from '@/services/local-tagger-server'
 import { requireRuntimeCapability } from '@/platform/capabilities'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 
 export type R2DeployMode = 'current-session' | 'delta' | 'full-sync' | 'dry-run'
 export type R2UploaderKind = 'wrangler' | 's3'
@@ -130,6 +131,32 @@ const R2_DEPLOY_URL = `${LOCAL_TAGGER_BASE_URL}/asset/r2/deploy`
 const R2_JOBS_URL = `${LOCAL_TAGGER_BASE_URL}/asset/r2/jobs`
 const R2_SCOPE_CHECK_URL = `${LOCAL_TAGGER_BASE_URL}/asset/r2/scope-check`
 
+class R2ServiceError extends Error {
+    constructor(
+        readonly operation: string,
+        readonly status?: number,
+        readonly responseBody?: string,
+    ) {
+        super(status === undefined ? 'R2 operation failed' : `R2 operation failed (${status})`)
+        this.name = 'R2ServiceError'
+    }
+}
+
+async function runR2Operation<T>(
+    operation: string,
+    stage: string,
+    task: () => Promise<T>,
+): Promise<T> {
+    try {
+        return await task()
+    } catch (error) {
+        const event = reportDiagnostic(error, { operation, stage })
+        // Callers render only the same user-safe summary used by the toast and
+        // drawer; raw local-server/provider text does not escape this boundary.
+        throw new Error(event.userSummary)
+    }
+}
+
 /**
  * Starts a local R2 deployment job through `src-tauri/python/r2_deploy.py`.
  * Credentials are deliberately absent from this contract: callers should use
@@ -139,70 +166,78 @@ const R2_SCOPE_CHECK_URL = `${LOCAL_TAGGER_BASE_URL}/asset/r2/scope-check`
 export async function startR2DeployJob(
     request: R2DeployRequest,
 ): Promise<R2DeployStartResponse> {
-    requireRuntimeCapability('r2DeployTooling')
-    await ensureTaggerServer()
+    return runR2Operation('r2.deploy.start', 'request', async () => {
+        requireRuntimeCapability('r2DeployTooling')
+        await ensureTaggerServer()
 
-    const response = await fetch(R2_DEPLOY_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(request),
+        const response = await fetch(R2_DEPLOY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(request),
+        })
+
+        if (!response.ok) {
+            throw new R2ServiceError('r2.deploy.start', response.status, await readR2Error(response))
+        }
+
+        return await response.json() as R2DeployStartResponse
     })
-
-    if (!response.ok) {
-        throw new Error(`R2 deploy start failed with HTTP ${response.status}: ${await readR2Error(response)}`)
-    }
-
-    return await response.json() as R2DeployStartResponse
 }
 
 export async function getR2DeployJob(jobId: string): Promise<R2DeployJobResponse> {
-    requireRuntimeCapability('r2DeployTooling')
-    await ensureTaggerServer()
+    return runR2Operation('r2.deploy.status', 'request', async () => {
+        requireRuntimeCapability('r2DeployTooling')
+        await ensureTaggerServer()
 
-    const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}`, {
-        method: 'GET',
+        const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}`, {
+            method: 'GET',
+        })
+
+        if (!response.ok) {
+            throw new R2ServiceError('r2.deploy.status', response.status, await readR2Error(response))
+        }
+
+        return await response.json() as R2DeployJobResponse
     })
-
-    if (!response.ok) {
-        throw new Error(`R2 deploy status failed with HTTP ${response.status}: ${await readR2Error(response)}`)
-    }
-
-    return await response.json() as R2DeployJobResponse
 }
 
 export async function cancelR2DeployJob(jobId: string): Promise<R2DeployJobResponse> {
-    requireRuntimeCapability('r2DeployTooling')
-    await ensureTaggerServer()
+    return runR2Operation('r2.deploy.cancel', 'request', async () => {
+        requireRuntimeCapability('r2DeployTooling')
+        await ensureTaggerServer()
 
-    const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}/cancel`, {
-        method: 'POST',
+        const response = await fetch(`${R2_JOBS_URL}/${encodeURIComponent(jobId)}/cancel`, {
+            method: 'POST',
+        })
+
+        if (!response.ok) {
+            throw new R2ServiceError('r2.deploy.cancel', response.status, await readR2Error(response))
+        }
+
+        return await response.json() as R2DeployJobResponse
     })
-
-    if (!response.ok) {
-        throw new Error(`R2 deploy cancel failed with HTTP ${response.status}: ${await readR2Error(response)}`)
-    }
-
-    return await response.json() as R2DeployJobResponse
 }
 
 export async function checkR2DeployScope(
     params: R2ScopeCheckParams,
 ): Promise<R2ScopeCheckResponse> {
-    requireRuntimeCapability('r2DeployTooling')
-    await ensureTaggerServer()
+    return runR2Operation('r2.deploy.scope-check', 'request', async () => {
+        requireRuntimeCapability('r2DeployTooling')
+        await ensureTaggerServer()
 
-    const query = toScopeCheckQuery(params)
-    const response = await fetch(`${R2_SCOPE_CHECK_URL}?${query}`, {
-        method: 'GET',
+        const query = toScopeCheckQuery(params)
+        const response = await fetch(`${R2_SCOPE_CHECK_URL}?${query}`, {
+            method: 'GET',
+        })
+
+        if (!response.ok) {
+            throw new R2ServiceError('r2.deploy.scope-check', response.status, await readR2Error(response))
+        }
+
+        return await response.json() as R2ScopeCheckResponse
     })
-
-    if (!response.ok) {
-        throw new Error(`R2 scope check failed with HTTP ${response.status}: ${await readR2Error(response)}`)
-    }
-
-    return await response.json() as R2ScopeCheckResponse
 }
 
 export async function pollR2DeployJob(
@@ -220,7 +255,9 @@ export async function pollR2DeployJob(
         }
 
         if (Date.now() - startedAt >= timeoutMs) {
-            throw new Error(`R2 deploy polling timed out after ${timeoutMs}ms`)
+            return runR2Operation('r2.deploy.poll', 'poll', async () => {
+                throw new Error(`R2 deploy polling timed out after ${timeoutMs}ms`)
+            })
         }
 
         await sleep(intervalMs)

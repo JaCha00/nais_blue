@@ -25,6 +25,61 @@
         "moreActions": "その他の操作",
         "close": "閉じる"
     },
+    "credentialVault": {
+        "title": "Credential Vault",
+        "description": "NovelAI の認証情報はネイティブ vault で暗号化され、平文は vault を開いた現在のセッションだけに存在します。",
+        "manage": "Vault を管理",
+        "status": {
+            "locked": "ロック中",
+            "unlocking": "解除中...",
+            "unlocked": "現在のセッションで解除済み",
+            "unavailable": "ネイティブ vault を利用できません",
+            "error": "Vault の確認が必要"
+        },
+        "passphrase": "Vault パスフレーズ",
+        "passphraseSessionOnly": "パスフレーズは現在のセッションだけで使用し、NAIS2 は保存しません。",
+        "create": "Vault を作成",
+        "unlock": "Vault を解除",
+        "unlocked": "Credential vault を解除しました",
+        "lock": "Vault をロック",
+        "slot1": "NovelAI スロット 1",
+        "slot2": "NovelAI スロット 2",
+        "notRegistered": "未登録",
+        "lastFour": "末尾 •••• {{lastFour}}",
+        "tierUnknown": "プラン情報なし",
+        "slotEnabled": "認証スロット {{slot}} を使用",
+        "verified": "検証済み",
+        "secretPlaceholder": "新しい NovelAI token を入力",
+        "register": "登録",
+        "replace": "置換",
+        "saved": "暗号化 vault に認証情報を保存しました",
+        "reverify": "再検証",
+        "reverified": "認証情報を検証しました",
+        "verificationFailed": "認証情報の検証に失敗しました",
+        "delete": "削除",
+        "deleted": "認証情報を削除しました",
+        "deleteConfirmation": "この認証情報を削除しますか？",
+        "deleteConfirmationDescription": "別の認証情報を登録するまで、このスロットでは生成できません。",
+        "migrationRequired": "旧認証情報を vault に移行する必要があります",
+        "migrationRequiredDescription": "Vault を作成または解除すると、検証付き two-phase migration を完了します。成功するまで生成はロックされます。",
+        "legacyBackupWarning": "旧 backup に認証情報が残っている可能性があります",
+        "legacyBackupWarningDescription": "旧バージョンの backup は機密ファイルとして扱ってください。クリーンアップは認証情報フィールドを含む管理対象 backup 全体を永久削除します。",
+        "cleanupAction": "安全でない管理 backup を削除",
+        "cleanupConfirmation": "安全でない管理 backup を永久削除しますか？",
+        "cleanupConfirmationDescription": "値を表示せず NAIS2 管理の local/disk backup を検査し、旧 NovelAI または R2 認証情報フィールドを含む backup artifact 全体を削除します。元に戻せません。",
+        "cleanupComplete": "旧認証 backup のクリーンアップ完了",
+        "cleanupIncomplete": "一部の旧 backup をクリーンアップできませんでした",
+        "cleanupResult": "検査 {{inspected}}、削除 {{deleted}}、失敗 {{failed}}。",
+        "errors": {
+            "unavailable": "ネイティブ暗号化 vault を利用できません。代わりに平文保存は行いません。",
+            "locked": "認証情報を使うには vault を解除してください。",
+            "wrong-passphrase": "このパスフレーズでは vault を解除できません。",
+            "invalid-secret": "有効な認証情報を入力してください。",
+            "not-found": "参照された認証情報がありません。置き換えてください。",
+            "readback-failed": "暗号化認証情報の保存後検証に失敗しました。",
+            "operation-failed": "Credential vault 操作に失敗し、平文保存には切り替えませんでした。"
+        }
+    },
     "update": {
         "available": "アップデートがあります",
         "version": "v{{version}}にアップデートできます",
@@ -47,8 +102,8 @@
             "desc": "画像生成がキャンセルされました。"
         },
         "tokenRequired": {
-            "title": "APIトークンが必要",
-            "desc": "設定ページでトークンを入力して検証してください。"
+            "title": "Credential Vault の解除が必要",
+            "desc": "Credential vault を解除するか NovelAI token を登録してください。"
         },
         "generationFailed": {
             "title": "生成失敗"
@@ -902,6 +957,7 @@
             "confirmRestore": "データ復元",
             "confirmRestoreDesc": "現在のデータがバックアップデータで上書きされます。続行しますか？",
             "restoreWarning": "復元後、アプリが再起動されます。",
+            "credentialReentryRequired": "認証情報の再入力が必要です。NovelAI トークンと実行時のアカウントデータは復元されません。",
             "sizes": "データサイズ",
             "totalSize": "合計サイズ"
         }

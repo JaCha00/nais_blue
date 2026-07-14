@@ -17,6 +17,7 @@ import {
     type PrepareBackupRestoreOptions,
     type PreparedBackupRestore,
 } from '@/lib/auto-backup'
+import { projectStoreForBackup } from '@/lib/backup-projection'
 import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 
 const BACKUP_ROOT = 'NAIS_Backup'
@@ -128,14 +129,7 @@ async function writeStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapsh
     await ensureStoreSnapshotDir(storeKey)
 
     const exportedAt = new Date().toISOString()
-    const backup = {
-        _exportedAt: exportedAt,
-        _version: STORE_SNAPSHOT_VERSION,
-        _kind: 'store-snapshot',
-        _storeKey: storeKey,
-        _manifest: createBackupStoreManifestEntry(storeKey, persistPayload),
-        [storeKey]: persistPayload,
-    }
+    const backup = createStoreSnapshotBackup(storeKey, persistPayload, exportedAt)
     const timestamp = tsStamp()
     const fileName = `${storeKey}_${timestamp}.json`
     const relPath = `${storeSnapshotDir(storeKey)}/${fileName}`
@@ -144,6 +138,26 @@ async function writeStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapsh
     await rotateStoreSnapshots(storeKey)
 
     return { storeKey, fileName, relPath, timestamp, exportedAt }
+}
+
+export function createStoreSnapshotBackup(
+    storeKey: BackupStoreKey,
+    persistedPayload: unknown,
+    exportedAt = new Date().toISOString(),
+): Record<string, unknown> {
+    const projectedPayload = projectStoreForBackup(
+        storeKey,
+        persistedPayload,
+        'store-snapshot',
+    ).payload
+    return {
+        _exportedAt: exportedAt,
+        _version: STORE_SNAPSHOT_VERSION,
+        _kind: 'store-snapshot',
+        _storeKey: storeKey,
+        _manifest: createBackupStoreManifestEntry(storeKey, projectedPayload),
+        [storeKey]: projectedPayload,
+    }
 }
 
 function scheduleStoreSnapshot(storeKey: BackupStoreKey): void {

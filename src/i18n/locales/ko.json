@@ -42,14 +42,69 @@
         "moreActions": "더보기",
         "close": "닫기"
     },
+    "credentialVault": {
+        "title": "Credential Vault",
+        "description": "NovelAI credential은 native vault가 암호화합니다. 평문은 vault를 연 현재 앱 session에만 존재합니다.",
+        "manage": "Vault 관리",
+        "status": {
+            "locked": "잠김",
+            "unlocking": "여는 중...",
+            "unlocked": "현재 session에서 열림",
+            "unavailable": "Native vault 사용 불가",
+            "error": "Vault 확인 필요"
+        },
+        "passphrase": "Vault passphrase",
+        "passphraseSessionOnly": "Passphrase는 현재 session에서만 사용되며 NAIS2가 저장하지 않습니다.",
+        "create": "Vault 생성",
+        "unlock": "Vault 열기",
+        "unlocked": "Credential vault를 열었습니다",
+        "lock": "Vault 잠금",
+        "slot1": "NovelAI 슬롯 1",
+        "slot2": "NovelAI 슬롯 2",
+        "notRegistered": "등록되지 않음",
+        "lastFour": "끝 4자리 •••• {{lastFour}}",
+        "tierUnknown": "구독 정보 없음",
+        "slotEnabled": "Credential 슬롯 {{slot}} 사용",
+        "verified": "검증됨",
+        "secretPlaceholder": "새 NovelAI token 입력",
+        "register": "등록",
+        "replace": "교체",
+        "saved": "암호화 vault에 credential을 저장했습니다",
+        "reverify": "재검증",
+        "reverified": "Credential 검증 완료",
+        "verificationFailed": "Credential 검증 실패",
+        "delete": "삭제",
+        "deleted": "Credential 삭제 완료",
+        "deleteConfirmation": "이 credential을 삭제할까요?",
+        "deleteConfirmationDescription": "새 credential을 등록할 때까지 이 슬롯으로 생성할 수 없습니다.",
+        "migrationRequired": "기존 credential을 vault로 이동해야 합니다",
+        "migrationRequiredDescription": "Vault를 생성하거나 열면 검증된 two-phase migration을 완료합니다. 성공 전에는 생성을 잠급니다.",
+        "legacyBackupWarning": "기존 backup에 credential이 남아 있을 수 있습니다",
+        "legacyBackupWarningDescription": "이전 버전이 만든 backup은 민감 파일로 취급하세요. 정리는 credential 필드가 있는 관리 대상 backup 파일 전체를 영구 삭제합니다.",
+        "cleanupAction": "안전하지 않은 관리 backup 삭제",
+        "cleanupConfirmation": "안전하지 않은 관리 backup을 영구 삭제할까요?",
+        "cleanupConfirmationDescription": "값을 표시하지 않고 NAIS2 관리 local/disk backup을 검사한 뒤 기존 NovelAI 또는 R2 credential 필드가 있는 backup artifact 전체를 삭제합니다. 되돌릴 수 없습니다.",
+        "cleanupComplete": "기존 credential backup 정리 완료",
+        "cleanupIncomplete": "일부 기존 backup을 정리하지 못했습니다",
+        "cleanupResult": "검사 {{inspected}}개, 삭제 {{deleted}}개, 실패 {{failed}}개.",
+        "errors": {
+            "unavailable": "Native encrypted vault를 사용할 수 없습니다. 대신 평문 저장을 사용하지 않습니다.",
+            "locked": "Credential을 사용하려면 vault를 여세요.",
+            "wrong-passphrase": "입력한 passphrase로 vault를 열 수 없습니다.",
+            "invalid-secret": "올바른 credential 값을 입력하세요.",
+            "not-found": "참조한 credential이 없습니다. 새 값으로 교체하세요.",
+            "readback-failed": "암호화 credential 저장 후 검증에 실패했습니다.",
+            "operation-failed": "Credential vault 작업에 실패했으며 평문 저장으로 전환하지 않았습니다."
+        }
+    },
     "toast": {
         "generationCancelled": {
             "title": "생성 취소됨",
             "desc": "이미지 생성이 취소되었습니다."
         },
         "tokenRequired": {
-            "title": "API 토큰 필요",
-            "desc": "설정 페이지에서 토큰을 입력하고 검증해주세요."
+            "title": "Credential Vault 잠금 해제 필요",
+            "desc": "Credential vault를 열거나 NovelAI token을 등록하세요."
         },
         "generationFailed": {
             "title": "생성 실패"
@@ -932,6 +987,7 @@
             "confirmRestore": "데이터 복원",
             "confirmRestoreDesc": "현재 데이터를 백업 데이터로 덮어씁니다. 계속하시겠습니까?",
             "restoreWarning": "복원 후 앱이 재시작됩니다.",
+            "credentialReentryRequired": "자격 증명 재입력 필요: NovelAI 토큰과 런타임 계정 데이터는 복원되지 않습니다.",
             "sizes": "데이터 크기",
             "totalSize": "전체 크기"
         }

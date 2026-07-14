@@ -12,6 +12,7 @@ import type {
     SceneCompositionMode,
     SceneCompositionRef,
 } from '@/lib/composition/scene-adapter'
+import { abortSceneSessionRequests } from '@/lib/scene-generation/request-cancellation'
 
 export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
@@ -108,9 +109,9 @@ interface SceneState {
 
     // Generation Status
     isGenerating: boolean
-    isCancelling: boolean  // True when cancel requested but API call still in progress
+    isCancelling: boolean  // True while active worker requests are aborting
     setIsGenerating: (isGenerating: boolean) => void
-    cancelSceneGeneration: () => void  // Request cancel (keeps button locked until API completes)
+    cancelSceneGeneration: () => void  // Invalidates the session and aborts its active HTTP requests
     generationSessionId: number  // Incremented on each new generation session to invalidate old ones
     startNewGenerationSession: () => number  // Returns new session ID
 
@@ -797,9 +798,9 @@ export const useSceneStore = create<SceneState>()(
                 }
             },
             cancelSceneGeneration: () => {
-                // Request cancel but keep isGenerating=true until API completes
-                // This prevents 429 errors from rapid cancel/restart
+                const cancelledSessionId = get().generationSessionId
                 set({ isCancelling: true, generationSessionId: Date.now() })
+                abortSceneSessionRequests(cancelledSessionId)
             },
             generationSessionId: 0,
             startNewGenerationSession: () => {

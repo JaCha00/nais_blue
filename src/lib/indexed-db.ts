@@ -1,4 +1,16 @@
 import { StateStorage } from 'zustand/middleware'
+import {
+    projectStoreForBackup,
+    type BackupProjectionPurpose,
+} from '@/lib/backup-projection'
+import {
+    PersistenceFault,
+    toPersistenceFault,
+    type PersistenceCriticality,
+    type PersistenceFaultKind,
+} from '@/domain/persistence/fault'
+import { reportDiagnostic, reportPersistenceFault } from '@/services/diagnostics/error-registry'
+import { getRuntimeCredentialVault } from '@/services/credentials/stronghold-credential-vault'
 // Since I cannot install packages, I will implement a minimal wrapper similar to idb-keyval logic
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
@@ -77,6 +89,49 @@ let dbInitError: Error | null = null
 
 // 지연 초기화 - 모듈 로드 시점이 아닌 첫 사용 시점에 초기화
 let dbPromise: Promise<IDBDatabase> | null = null
+let activeDb: IDBDatabase | null = null
+
+const BEST_EFFORT_PERSISTENCE_KEYS = new Set([
+    'nais2-layout',
+    'nais2-theme',
+    'nais2-shortcuts',
+    'nais2-tools',
+    'nais2-update',
+])
+
+export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
+    'nais2-auth',
+    'nais2-auth-v3-migration-complete',
+    'nais2-scenes',
+    'nais2-composition-repository',
+    'nais2-composition-migration-backup',
+    'nais2-backup-restore-journal',
+    'nais2-queue-repository',
+] as const)
+
+export function getPersistenceCriticality(name: string): PersistenceCriticality {
+    return BEST_EFFORT_PERSISTENCE_KEYS.has(name) ? 'best-effort' : 'critical'
+}
+
+function persistenceFault(
+    error: unknown,
+    operation: string,
+    storeKey?: string,
+    kind?: PersistenceFaultKind,
+): PersistenceFault {
+    return toPersistenceFault(error, {
+        operation,
+        ...(storeKey === undefined ? {} : { storeKey }),
+        criticality: storeKey === undefined ? 'critical' : getPersistenceCriticality(storeKey),
+        ...(kind === undefined ? {} : { kind }),
+    })
+}
+
+function markDbInitializationFailed(error: PersistenceFault): PersistenceFault {
+    dbInitFailed = true
+    dbInitError = error
+    return error
+}
 
 function getDb(): Promise<IDBDatabase> {
     if (dbPromise) return dbPromise
@@ -87,20 +142,35 @@ function getDb(): Promise<IDBDatabase> {
     }
     
     dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+        let settled = false
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
+        const finishResolve = (db: IDBDatabase) => {
+            if (settled) {
+                db.onclose = null
+                db.close()
+                return
+            }
+            settled = true
+            if (timeoutId !== undefined) clearTimeout(timeoutId)
+            activeDb = db
+            resolve(db)
+        }
+        const finishReject = (error: unknown, kind: PersistenceFaultKind = 'database-unavailable') => {
+            if (settled) return
+            settled = true
+            if (timeoutId !== undefined) clearTimeout(timeoutId)
+            reject(markDbInitializationFailed(persistenceFault(error, 'persistence.initialize', undefined, kind)))
+        }
+
         // IndexedDB 지원 체크
         if (typeof indexedDB === 'undefined') {
-            dbInitFailed = true
-            dbInitError = new Error('IndexedDB is not supported in this environment')
-            reject(dbInitError)
+            finishReject(new Error('IndexedDB is not supported in this environment'))
             return
         }
         
         // 타임아웃 설정 - DB 열기가 무한 대기되는 것 방지
-        const timeoutId = setTimeout(() => {
-            dbInitFailed = true
-            dbInitError = new Error(`IndexedDB open timed out after ${DB_TIMEOUT_MS}ms`)
-            console.error('[IndexedDB]', dbInitError.message)
-            reject(dbInitError)
+        timeoutId = setTimeout(() => {
+            finishReject(new Error(`IndexedDB open timed out after ${DB_TIMEOUT_MS}ms`), 'operation-timeout')
         }, DB_TIMEOUT_MS)
         
         try {
@@ -113,17 +183,18 @@ function getDb(): Promise<IDBDatabase> {
                         db.createObjectStore(STORE_NAME)
                     }
                 } catch (err) {
-                    console.error('[IndexedDB] onupgradeneeded error:', err)
+                    request.transaction?.abort()
+                    finishReject(err, 'transaction-aborted')
                 }
             }
             
             request.onsuccess = () => {
-                clearTimeout(timeoutId)
                 const db = request.result
                 
                 // DB 연결 끊김 감지
                 db.onclose = () => {
                     console.warn('[IndexedDB] Database connection closed unexpectedly')
+                    if (activeDb === db) activeDb = null
                     dbPromise = null // 다음 요청 시 재연결 시도
                 }
                 
@@ -132,26 +203,19 @@ function getDb(): Promise<IDBDatabase> {
                 }
                 
                 console.log('[IndexedDB] Database opened successfully')
-                resolve(db)
+                finishResolve(db)
             }
             
             request.onerror = () => {
-                clearTimeout(timeoutId)
-                dbInitFailed = true
-                dbInitError = request.error || new Error('Failed to open IndexedDB')
-                console.error('[IndexedDB] Open error:', dbInitError)
-                reject(dbInitError)
+                finishReject(request.error || new Error('Failed to open IndexedDB'))
             }
             
             request.onblocked = () => {
                 console.warn('[IndexedDB] Database blocked - another connection is open')
+                finishReject(new Error('IndexedDB open blocked by another connection'), 'database-blocked')
             }
         } catch (err) {
-            clearTimeout(timeoutId)
-            dbInitFailed = true
-            dbInitError = err instanceof Error ? err : new Error(String(err))
-            console.error('[IndexedDB] Unexpected error during open:', dbInitError)
-            reject(dbInitError)
+            finishReject(err)
         }
     })
     
@@ -183,13 +247,11 @@ const OPERATION_TIMEOUT_MS = 5000 // 개별 작업 타임아웃
 // With thousands of scene images, each write serializes megabytes of data.
 // ============================================
 const WRITE_DEBOUNCE_MS: Record<string, number> = {
-    'nais2-scenes': 3000,           // Largest store (scene images), debounce aggressively
-    'nais2-generation': 1000,       // Prompt typing triggers frequent updates
-    'nais2-character-store': 1500,
-    'nais2-character-prompts': 1500,
-    'nais2-character-rotation': 1000, // Rotation snapshots must survive app restarts and full backups.
-    'nais2-presets': 1500,
-    'nais2-wildcards': 2000,
+    'nais2-layout': 500,
+    'nais2-theme': 500,
+    'nais2-shortcuts': 750,
+    'nais2-tools': 750,
+    'nais2-update': 750,
 }
 const DEFAULT_WRITE_DEBOUNCE = 500
 const MAX_WRITE_INTERVAL = 10000   // Force write at least every 10 seconds even during rapid changes
@@ -198,7 +260,8 @@ const pendingWriteTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const pendingWriteValues = new Map<string, string>()
 const lastWriteTime = new Map<string, number>()
 const indexedDBWriteListeners = new Set<(key: string) => void>()
-const inFlightWrites = new Set<Promise<void>>()
+const inFlightWrites = new Map<Promise<void>, string>()
+const writeTails = new Map<string, Promise<void>>()
 let tauriCloseFlushInstalled = false
 let tauriCloseFlushInProgress = false
 let tauriCloseFlushCompleted = false
@@ -220,59 +283,75 @@ function notifyIndexedDBWrite(key: string): void {
 
 /** Write directly to IndexedDB (no debounce) */
 async function rawSetItem(name: string, value: string): Promise<void> {
-    if (dbInitFailed) return
     try {
         const db = await getDb()
-        return new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
+            let settled = false
+            let transaction: IDBTransaction | undefined
+            const finishResolve = () => {
+                if (settled) return
+                settled = true
+                clearTimeout(timeoutId)
+                resolve()
+            }
+            const finishReject = (error: unknown, kind?: PersistenceFaultKind) => {
+                if (settled) return
+                settled = true
+                clearTimeout(timeoutId)
+                reject(persistenceFault(error, 'persistence.write', name, kind))
+            }
             const timeoutId = setTimeout(() => {
-                console.error(`[IndexedDB] setItem(${name}): Operation timed out`)
-                reject(new Error(`setItem timed out for key: ${name}`))
+                try { transaction?.abort() } catch { /* timeout remains authoritative */ }
+                finishReject(new Error(`setItem timed out for key: ${name}`), 'operation-timeout')
             }, OPERATION_TIMEOUT_MS)
 
             try {
-                const transaction = db.transaction(STORE_NAME, 'readwrite')
+                transaction = db.transaction(STORE_NAME, 'readwrite')
 
                 transaction.onerror = () => {
-                    clearTimeout(timeoutId)
-                    console.error(`[IndexedDB] setItem(${name}): Transaction error`, transaction.error)
-                    reject(transaction.error)
+                    finishReject(transaction?.error ?? new Error(`setItem transaction failed for ${name}`))
                 }
 
                 transaction.onabort = () => {
-                    clearTimeout(timeoutId)
-                    console.error(`[IndexedDB] setItem(${name}): Transaction aborted`)
-                    reject(new Error('Transaction aborted'))
+                    finishReject(transaction?.error ?? new Error(`setItem transaction aborted for ${name}`), 'transaction-aborted')
                 }
 
-                transaction.oncomplete = () => {
-                    clearTimeout(timeoutId)
-                    resolve()
-                }
+                transaction.oncomplete = finishResolve
 
                 const store = transaction.objectStore(STORE_NAME)
                 const request = store.put(value, name)
 
                 request.onerror = () => {
-                    clearTimeout(timeoutId)
-                    console.error(`[IndexedDB] setItem(${name}): Request error`, request.error)
-                    reject(request.error)
+                    finishReject(request.error ?? new Error(`setItem request failed for ${name}`))
                 }
             } catch (err) {
-                clearTimeout(timeoutId)
-                throw err
+                finishReject(err)
             }
         })
     } catch (err) {
-        console.error(`[IndexedDB] setItem(${name}): Failed`, err)
+        throw persistenceFault(err, 'persistence.write', name)
     }
 }
 
-function trackedRawSetItem(name: string, value: string): Promise<void> {
-    const writePromise = rawSetItem(name, value)
-    inFlightWrites.add(writePromise)
-    return writePromise.finally(() => {
-        inFlightWrites.delete(writePromise)
-    })
+function enqueueTrackedWrite<T>(name: string, write: () => Promise<T>): Promise<T> {
+    const previous = writeTails.get(name) ?? Promise.resolve()
+    const result = previous.catch(() => undefined).then(write)
+    const completion = result.then(() => undefined)
+    void completion.catch(() => undefined)
+    writeTails.set(name, completion)
+    inFlightWrites.set(completion, name)
+    const cleanup = () => {
+        inFlightWrites.delete(completion)
+        if (writeTails.get(name) === completion) writeTails.delete(name)
+    }
+    completion.then(cleanup, cleanup)
+    return result
+}
+
+function reportWriteFault(error: unknown, name: string, stage: string): PersistenceFault {
+    const fault = persistenceFault(error, 'persistence.write', name)
+    reportPersistenceFault(fault, { stage })
+    return fault
 }
 
 /** Flush a single pending write immediately */
@@ -284,26 +363,136 @@ async function flushKey(name: string): Promise<void> {
     }
     const value = pendingWriteValues.get(name)
     if (value !== undefined) {
-        pendingWriteValues.delete(name)
-        lastWriteTime.set(name, Date.now())
-        await trackedRawSetItem(name, value)
+        try {
+            await enqueueTrackedWrite(name, () => rawSetItem(name, value))
+            if (pendingWriteValues.get(name) === value) pendingWriteValues.delete(name)
+            lastWriteTime.set(name, Date.now())
+            notifyIndexedDBWrite(name)
+        } catch (error) {
+            throw reportWriteFault(error, name, 'debounced-flush')
+        }
+        return
+    }
+    await writeTails.get(name)
+}
+
+export interface PersistenceFlushFailure {
+    key: string
+    fault: PersistenceFault
+}
+
+export class PersistenceFlushError extends Error {
+    constructor(readonly failures: PersistenceFlushFailure[]) {
+        super(`Failed to flush ${failures.length} IndexedDB store${failures.length === 1 ? '' : 's'}.`)
+        this.name = 'PersistenceFlushError'
     }
 }
 
-/** Flush ALL pending writes (called on app close) */
+function collectFlushFailures(
+    failures: Map<string, PersistenceFlushFailure>,
+    keys: readonly string[],
+    results: readonly PromiseSettledResult<void>[],
+): void {
+    results.forEach((result, index) => {
+        if (result.status === 'fulfilled') return
+        const key = keys[index]
+        const fault = persistenceFault(result.reason, 'persistence.flush', key, 'flush-failed')
+        failures.set(`${key}:${fault.code}`, { key, fault })
+    })
+}
+
+/** Flush ALL pending writes and throw a keyed failure list if any commit fails. */
 export async function flushAllPendingWrites(): Promise<void> {
     const keys = new Set([...pendingWriteTimers.keys(), ...pendingWriteValues.keys()])
-    for (const key of keys) {
-        await flushKey(key)
-    }
+    const failures = new Map<string, PersistenceFlushFailure>()
+    const pendingKeys = [...keys]
+    collectFlushFailures(failures, pendingKeys, await Promise.allSettled(pendingKeys.map(flushKey)))
+
     if (inFlightWrites.size > 0) {
-        await Promise.allSettled([...inFlightWrites])
+        const entries = [...inFlightWrites.entries()]
+        collectFlushFailures(
+            failures,
+            entries.map(([, key]) => key),
+            await Promise.allSettled(entries.map(([write]) => write)),
+        )
     }
+    if (failures.size > 0) throw new PersistenceFlushError([...failures.values()])
+}
+
+export interface CloseApplicationOptions {
+    flush?: () => Promise<void>
+    cleanup?: () => Promise<void>
+    notify?: (message: string) => void
+    exit: () => Promise<void>
+}
+
+export type CloseApplicationResult = {
+    status: 'closed' | 'closed-with-persistence-failure' | 'closed-with-cleanup-failure'
+}
+
+function defaultCloseFailureNotification(message: string): void {
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert(message)
+}
+
+export async function closeApplicationWithFlush(
+    options: CloseApplicationOptions,
+): Promise<CloseApplicationResult> {
+    let status: CloseApplicationResult['status'] = 'closed'
+    try {
+        await (options.flush ?? flushAllPendingWrites)()
+    } catch (error) {
+        status = 'closed-with-persistence-failure'
+        const fault = persistenceFault(error, 'persistence.close-flush', undefined, 'flush-failed')
+        const event = reportPersistenceFault(fault, {
+            operation: 'persistence.close-flush',
+            stage: 'close',
+            fatal: true,
+        })
+        const notify = options.notify ?? defaultCloseFailureNotification
+        try {
+            notify(`${event.userSummary}\n일부 변경이 안전하게 저장되지 않았습니다. 앱은 종료됩니다.`)
+        } catch (notificationError) {
+            reportDiagnostic(notificationError, {
+                operation: 'persistence.close-flush-notification',
+                stage: 'close',
+                category: 'persistence',
+                severity: 'warning',
+                recoverable: true,
+            })
+        }
+    }
+    try {
+        await (options.cleanup ?? (() => getRuntimeCredentialVault().lock()))()
+    } catch (error) {
+        if (status === 'closed') status = 'closed-with-cleanup-failure'
+        const event = reportDiagnostic(error, {
+            operation: 'credential-vault.shutdown',
+            stage: 'close',
+            category: 'auth',
+            severity: 'error',
+            recoverable: true,
+        })
+        const notify = options.notify ?? defaultCloseFailureNotification
+        try {
+            notify(`${event.userSummary}\nCredential vault를 닫지 못했지만 앱 프로세스를 종료합니다.`)
+        } catch (notificationError) {
+            reportDiagnostic(notificationError, {
+                operation: 'credential-vault.shutdown-notification',
+                stage: 'close',
+                category: 'auth',
+                severity: 'warning',
+                recoverable: true,
+            })
+        }
+    }
+    await options.exit()
+    return { status }
 }
 
 function requestBestEffortFlush(reason: string): void {
     void flushAllPendingWrites().catch((error) => {
-        console.warn(`[IndexedDB] ${reason} flush failed:`, error)
+        const fault = persistenceFault(error, `persistence.${reason}-flush`, undefined, 'flush-failed')
+        reportPersistenceFault(fault, { operation: `persistence.${reason}-flush`, stage: reason })
     })
 }
 
@@ -327,18 +516,20 @@ async function installTauriCloseFlushHandler(): Promise<void> {
 
             tauriCloseFlushInProgress = true
             try {
-                await flushAllPendingWrites()
-            } catch (error) {
-                console.warn('[IndexedDB] Tauri close flush failed:', error)
-            } finally {
-                tauriCloseFlushCompleted = true
-                tauriCloseFlushInProgress = false
-                await invoke('exit_app').catch(async (error) => {
-                    console.warn('[IndexedDB] Failed to exit after close flush:', error)
-                    await appWindow.close().catch((closeError) => {
-                        console.warn('[IndexedDB] Fallback close failed:', closeError)
-                    })
+                await closeApplicationWithFlush({
+                    exit: async () => {
+                        // Mark complete before fallback close so its close event is not intercepted again.
+                        tauriCloseFlushCompleted = true
+                        try {
+                            await invoke('exit_app')
+                        } catch (error) {
+                            console.warn('[IndexedDB] Failed to exit after close flush:', error)
+                            await appWindow.close()
+                        }
+                    },
                 })
+            } finally {
+                tauriCloseFlushInProgress = false
             }
         })
     } catch (error) {
@@ -353,159 +544,107 @@ if (typeof window !== 'undefined') {
     void installTauriCloseFlushHandler()
 }
 
+async function readIndexedDBItem(name: string): Promise<string | null> {
+    try {
+        const db = await getDb()
+        return await new Promise<string | null>((resolve, reject) => {
+            let settled = false
+            let transaction: IDBTransaction | undefined
+            const finishResolve = (value: string | null) => {
+                if (settled) return
+                settled = true
+                clearTimeout(timeoutId)
+                resolve(value)
+            }
+            const finishReject = (error: unknown, kind?: PersistenceFaultKind) => {
+                if (settled) return
+                settled = true
+                clearTimeout(timeoutId)
+                reject(persistenceFault(error, 'persistence.read', name, kind))
+            }
+            const timeoutId = setTimeout(() => {
+                try { transaction?.abort() } catch { /* timeout remains authoritative */ }
+                finishReject(new Error(`getItem timed out for key: ${name}`), 'operation-timeout')
+            }, OPERATION_TIMEOUT_MS)
+
+            try {
+                transaction = db.transaction(STORE_NAME, 'readonly')
+                transaction.onerror = () => finishReject(
+                    transaction?.error ?? new Error(`getItem transaction failed for ${name}`),
+                )
+                transaction.onabort = () => finishReject(
+                    transaction?.error ?? new Error(`getItem transaction aborted for ${name}`),
+                    'transaction-aborted',
+                )
+                const request = transaction.objectStore(STORE_NAME).get(name)
+                request.onsuccess = () => finishResolve(typeof request.result === 'string' ? request.result : null)
+                request.onerror = () => finishReject(request.error ?? new Error(`getItem request failed for ${name}`))
+            } catch (error) {
+                finishReject(error)
+            }
+        })
+    } catch (error) {
+        throw persistenceFault(error, 'persistence.read', name)
+    }
+}
+
 export const indexedDBStorage: StateStorage = {
     getItem: async (name: string): Promise<string | null> => {
+        if (getPersistenceCriticality(name) === 'critical') {
+            return getIndexedDBItemStrict(name)
+        }
+
         // Return pending value if exists (debounced write hasn't flushed yet)
         const pendingVal = pendingWriteValues.get(name)
         if (pendingVal !== undefined) return pendingVal
 
-        // DB 초기화 실패 시 null 반환 (데이터 손실 방지를 위해 에러 대신 null)
-        if (dbInitFailed) {
-            console.warn(`[IndexedDB] getItem(${name}): DB init failed, returning null`)
-            return null
-        }
-
         try {
-            const db = await getDb()
-            return new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                    console.error(`[IndexedDB] getItem(${name}): Operation timed out`)
-                    reject(new Error(`getItem timed out for key: ${name}`))
-                }, OPERATION_TIMEOUT_MS)
-
-                try {
-                    const transaction = db.transaction(STORE_NAME, 'readonly')
-
-                    transaction.onerror = () => {
-                        clearTimeout(timeoutId)
-                        console.error(`[IndexedDB] getItem(${name}): Transaction error`, transaction.error)
-                        reject(transaction.error)
-                    }
-
-                    transaction.onabort = () => {
-                        clearTimeout(timeoutId)
-                        console.error(`[IndexedDB] getItem(${name}): Transaction aborted`)
-                        reject(new Error('Transaction aborted'))
-                    }
-
-                    const store = transaction.objectStore(STORE_NAME)
-                    const request = store.get(name)
-
-                    request.onsuccess = () => {
-                        clearTimeout(timeoutId)
-                        resolve(request.result as string || null)
-                    }
-
-                    request.onerror = () => {
-                        clearTimeout(timeoutId)
-                        console.error(`[IndexedDB] getItem(${name}): Request error`, request.error)
-                        reject(request.error)
-                    }
-                } catch (err) {
-                    clearTimeout(timeoutId)
-                    throw err
-                }
-            })
-        } catch (err) {
-            console.error(`[IndexedDB] getItem(${name}): Failed`, err)
+            return await readIndexedDBItem(name)
+        } catch (error) {
+            const fault = persistenceFault(error, 'persistence.read', name)
+            reportPersistenceFault(fault, { stage: 'best-effort-read', fatal: false })
             return null
         }
     },
 
     setItem: async (name: string, value: string): Promise<void> => {
-        if (dbInitFailed) {
-            console.warn(`[IndexedDB] setItem(${name}): DB init failed, skipping persist`)
+        if (getPersistenceCriticality(name) === 'critical') {
+            await setIndexedDBItemStrict(name, value)
             return
         }
 
         // Store latest value (always keep the newest)
         pendingWriteValues.set(name, value)
-        notifyIndexedDBWrite(name)
 
         // Clear existing debounce timer
         const existingTimer = pendingWriteTimers.get(name)
         if (existingTimer) clearTimeout(existingTimer)
 
         // Check if we need to force-write (prevent starvation during rapid changes)
-        const lastWrite = lastWriteTime.get(name) ?? 0
-        const elapsed = Date.now() - lastWrite
+        const lastWrite = lastWriteTime.get(name)
+        const elapsed = lastWrite === undefined ? 0 : Date.now() - lastWrite
 
-        if (elapsed >= MAX_WRITE_INTERVAL) {
+        if (lastWrite !== undefined && elapsed >= MAX_WRITE_INTERVAL) {
             // Too long since last write — flush immediately
             pendingWriteTimers.delete(name)
-            const val = pendingWriteValues.get(name)!
-            pendingWriteValues.delete(name)
-            lastWriteTime.set(name, Date.now())
-            await trackedRawSetItem(name, val)
+            await flushKey(name)
             return
         }
 
         // Schedule debounced write
         const debounceMs = WRITE_DEBOUNCE_MS[name] ?? DEFAULT_WRITE_DEBOUNCE
-        const timer = setTimeout(async () => {
-            pendingWriteTimers.delete(name)
-            const val = pendingWriteValues.get(name)
-            if (val !== undefined) {
-                pendingWriteValues.delete(name)
-                lastWriteTime.set(name, Date.now())
-                try {
-                    await trackedRawSetItem(name, val)
-                } catch (err) {
-                    console.error(`[IndexedDB] Debounced write failed for ${name}:`, err)
-                }
-            }
+        const timer = setTimeout(() => {
+            void flushKey(name).catch((error) => {
+                const fault = persistenceFault(error, 'persistence.write', name)
+                console.warn(`[IndexedDB] Debounced write failed for ${name}: ${fault.code}`)
+            })
         }, debounceMs)
 
         pendingWriteTimers.set(name, timer)
     },
     
     removeItem: async (name: string): Promise<void> => {
-        if (dbInitFailed) {
-            console.warn(`[IndexedDB] removeItem(${name}): DB init failed, skipping`)
-            return
-        }
-        
-        try {
-            const db = await getDb()
-            return new Promise((resolve, reject) => {
-                const timeoutId = setTimeout(() => {
-                    console.error(`[IndexedDB] removeItem(${name}): Operation timed out`)
-                    reject(new Error(`removeItem timed out for key: ${name}`))
-                }, OPERATION_TIMEOUT_MS)
-                
-                try {
-                    const transaction = db.transaction(STORE_NAME, 'readwrite')
-                    
-                    transaction.onerror = () => {
-                        clearTimeout(timeoutId)
-                        reject(transaction.error)
-                    }
-                    
-                    transaction.onabort = () => {
-                        clearTimeout(timeoutId)
-                        reject(new Error('Transaction aborted'))
-                    }
-                    
-                    transaction.oncomplete = () => {
-                        clearTimeout(timeoutId)
-                        resolve()
-                    }
-                    
-                    const store = transaction.objectStore(STORE_NAME)
-                    const request = store.delete(name)
-                    
-                    request.onerror = () => {
-                        clearTimeout(timeoutId)
-                        reject(request.error)
-                    }
-                } catch (err) {
-                    clearTimeout(timeoutId)
-                    throw err
-                }
-            })
-        } catch (err) {
-            console.error(`[IndexedDB] removeItem(${name}): Failed`, err)
-        }
+        await removeIndexedDBItemStrict(name)
     },
 }
 
@@ -553,36 +692,55 @@ export interface StoreMigrationReader {
     getItem: (key: string) => string | null | Promise<string | null>
 }
 
-/** Strict storage read for migration/repository authority; never converts I/O failures to null. */
-export async function getIndexedDBItemStrict(name: string): Promise<string | null> {
-    await flushKey(name)
-    const db = await getDb()
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readonly')
-        const request = transaction.objectStore(STORE_NAME).get(name)
-        request.onsuccess = () => resolve(typeof request.result === 'string' ? request.result : null)
-        request.onerror = () => reject(request.error ?? new Error(`Strict get failed for ${name}`))
-        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict get transaction failed for ${name}`))
-        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict get transaction aborted for ${name}`))
-    })
+export async function initializeIndexedDB(): Promise<void> {
+    await getDb()
 }
 
-/** Strict immediate write used by repository commits; errors propagate to the transaction. */
+export function resetIndexedDBConnectionForRetry(): void {
+    if (activeDb !== null) {
+        activeDb.onclose = null
+        activeDb.close()
+    }
+    activeDb = null
+    dbPromise = null
+    dbInitFailed = false
+    dbInitError = null
+}
+
+/** Strict storage read for migration/repository authority; never converts I/O failures to null. */
+export async function getIndexedDBItemStrict(name: string): Promise<string | null> {
+    try {
+        await flushKey(name)
+        return await readIndexedDBItem(name)
+    } catch (error) {
+        const fault = persistenceFault(error, 'persistence.read', name)
+        reportPersistenceFault(fault, { stage: 'strict-read' })
+        throw fault
+    }
+}
+
+/** Strict immediate write used by critical stores and repository commits; commit is read back before success. */
 export async function setIndexedDBItemStrict(name: string, value: string): Promise<void> {
     const pendingTimer = pendingWriteTimers.get(name)
     if (pendingTimer !== undefined) clearTimeout(pendingTimer)
     pendingWriteTimers.delete(name)
     pendingWriteValues.delete(name)
-    const db = await getDb()
-    await new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite')
-        transaction.objectStore(STORE_NAME).put(value, name)
-        transaction.oncomplete = () => resolve()
-        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict set transaction failed for ${name}`))
-        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict set transaction aborted for ${name}`))
-    })
-    lastWriteTime.set(name, Date.now())
-    notifyIndexedDBWrite(name)
+    try {
+        await enqueueTrackedWrite(name, async () => {
+            await rawSetItem(name, value)
+            if (await readIndexedDBItem(name) !== value) {
+                throw new PersistenceFault('readback-mismatch', {
+                    operation: 'persistence.write',
+                    storeKey: name,
+                    criticality: getPersistenceCriticality(name),
+                })
+            }
+        })
+        lastWriteTime.set(name, Date.now())
+        notifyIndexedDBWrite(name)
+    } catch (error) {
+        throw reportWriteFault(error, name, 'strict-write')
+    }
 }
 
 /** Strict immediate delete used only by restore compensation. */
@@ -591,18 +749,58 @@ export async function removeIndexedDBItemStrict(name: string): Promise<void> {
     if (pendingTimer !== undefined) clearTimeout(pendingTimer)
     pendingWriteTimers.delete(name)
     pendingWriteValues.delete(name)
-    const db = await getDb()
-    await new Promise<void>((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite')
-        transaction.objectStore(STORE_NAME).delete(name)
-        transaction.oncomplete = () => resolve()
-        transaction.onerror = () => reject(transaction.error ?? new Error(`Strict remove transaction failed for ${name}`))
-        transaction.onabort = () => reject(transaction.error ?? new Error(`Strict remove transaction aborted for ${name}`))
-    })
-    if (await getIndexedDBItemStrict(name) !== null) {
-        throw new Error(`Strict remove readback mismatch for ${name}`)
+    try {
+        await enqueueTrackedWrite(name, async () => {
+            const db = await getDb()
+            await new Promise<void>((resolve, reject) => {
+                let settled = false
+                let transaction: IDBTransaction | undefined
+                const finishResolve = () => {
+                    if (settled) return
+                    settled = true
+                    clearTimeout(timeoutId)
+                    resolve()
+                }
+                const finishReject = (error: unknown, kind?: PersistenceFaultKind) => {
+                    if (settled) return
+                    settled = true
+                    clearTimeout(timeoutId)
+                    reject(persistenceFault(error, 'persistence.remove', name, kind))
+                }
+                const timeoutId = setTimeout(() => {
+                    try { transaction?.abort() } catch { /* timeout remains authoritative */ }
+                    finishReject(new Error(`removeItem timed out for key: ${name}`), 'operation-timeout')
+                }, OPERATION_TIMEOUT_MS)
+                try {
+                    transaction = db.transaction(STORE_NAME, 'readwrite')
+                    const request = transaction.objectStore(STORE_NAME).delete(name)
+                    request.onerror = () => finishReject(request.error ?? new Error(`removeItem request failed for ${name}`))
+                    transaction.oncomplete = finishResolve
+                    transaction.onerror = () => finishReject(
+                        transaction?.error ?? new Error(`removeItem transaction failed for ${name}`),
+                    )
+                    transaction.onabort = () => finishReject(
+                        transaction?.error ?? new Error(`removeItem transaction aborted for ${name}`),
+                        'transaction-aborted',
+                    )
+                } catch (error) {
+                    finishReject(error)
+                }
+            })
+            if (await readIndexedDBItem(name) !== null) {
+                throw new PersistenceFault('readback-mismatch', {
+                    operation: 'persistence.remove',
+                    storeKey: name,
+                    criticality: getPersistenceCriticality(name),
+                })
+            }
+        })
+        notifyIndexedDBWrite(name)
+    } catch (error) {
+        const fault = persistenceFault(error, 'persistence.remove', name)
+        reportPersistenceFault(fault, { stage: 'strict-remove' })
+        throw fault
     }
-    notifyIndexedDBWrite(name)
 }
 
 /** Atomic compare-and-set used to acquire and advance the persisted migration lease. */
@@ -611,30 +809,65 @@ export async function compareAndSetIndexedDBItem(
     expected: string | null,
     next: string | null,
 ): Promise<boolean> {
-    await flushKey(name)
-    const db = await getDb()
-    const changed = await new Promise<boolean>((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, 'readwrite')
-        const store = transaction.objectStore(STORE_NAME)
-        const read = store.get(name)
-        let matched = false
-        read.onsuccess = () => {
-            const current = typeof read.result === 'string' ? read.result : null
-            if (current !== expected) return
-            matched = true
-            if (next === null) store.delete(name)
-            else store.put(next, name)
+    try {
+        await flushKey(name)
+        const changed = await enqueueTrackedWrite(name, async () => {
+            const db = await getDb()
+            return new Promise<boolean>((resolve, reject) => {
+                let settled = false
+                let transaction: IDBTransaction | undefined
+                let matched = false
+                const finishResolve = () => {
+                    if (settled) return
+                    settled = true
+                    clearTimeout(timeoutId)
+                    resolve(matched)
+                }
+                const finishReject = (error: unknown, kind?: PersistenceFaultKind) => {
+                    if (settled) return
+                    settled = true
+                    clearTimeout(timeoutId)
+                    reject(persistenceFault(error, 'persistence.compare-and-set', name, kind))
+                }
+                const timeoutId = setTimeout(() => {
+                    try { transaction?.abort() } catch { /* timeout remains authoritative */ }
+                    finishReject(new Error(`CAS timed out for key: ${name}`), 'operation-timeout')
+                }, OPERATION_TIMEOUT_MS)
+                try {
+                    transaction = db.transaction(STORE_NAME, 'readwrite')
+                    const store = transaction.objectStore(STORE_NAME)
+                    const read = store.get(name)
+                    read.onsuccess = () => {
+                        const current = typeof read.result === 'string' ? read.result : null
+                        if (current !== expected) return
+                        matched = true
+                        if (next === null) store.delete(name)
+                        else store.put(next, name)
+                    }
+                    read.onerror = () => finishReject(read.error ?? new Error(`CAS read failed for ${name}`))
+                    transaction.oncomplete = finishResolve
+                    transaction.onerror = () => finishReject(
+                        transaction?.error ?? new Error(`CAS transaction failed for ${name}`),
+                    )
+                    transaction.onabort = () => finishReject(
+                        transaction?.error ?? new Error(`CAS transaction aborted for ${name}`),
+                        'transaction-aborted',
+                    )
+                } catch (error) {
+                    finishReject(error)
+                }
+            })
+        })
+        if (changed) {
+            lastWriteTime.set(name, Date.now())
+            notifyIndexedDBWrite(name)
         }
-        read.onerror = () => reject(read.error ?? new Error(`CAS read failed for ${name}`))
-        transaction.oncomplete = () => resolve(matched)
-        transaction.onerror = () => reject(transaction.error ?? new Error(`CAS transaction failed for ${name}`))
-        transaction.onabort = () => reject(transaction.error ?? new Error(`CAS transaction aborted for ${name}`))
-    })
-    if (changed) {
-        lastWriteTime.set(name, Date.now())
-        notifyIndexedDBWrite(name)
+        return changed
+    } catch (error) {
+        const fault = persistenceFault(error, 'persistence.compare-and-set', name)
+        reportPersistenceFault(fault, { stage: 'compare-and-set' })
+        throw fault
     }
-    return changed
 }
 
 /** Exact serialized key/value snapshot used by non-destructive migrations. */
@@ -808,6 +1041,7 @@ export interface BackupExportOptions {
     exportWildcardContent?: () => Promise<{ [id: string]: string[] }>
     /** Backup Envelope v3 must not turn read failures into silent omissions. */
     strict?: boolean
+    purpose?: BackupProjectionPurpose
 }
 
 /**
@@ -828,7 +1062,11 @@ export async function exportBackupFromStorage(
             const data = await storage.getItem(key)
             if (data !== null) {
                 const parsed = filterLargeImageData(key, JSON.parse(data))
-                backup[key] = parsed
+                backup[key] = projectStoreForBackup(
+                    key,
+                    parsed,
+                    options.purpose ?? 'manual-full',
+                ).payload
             }
         } catch (err) {
             console.error(`[Backup] Failed to export ${key}:`, err)
@@ -858,10 +1096,11 @@ export async function exportBackupFromStorage(
  * into Composition documents by this path.
  */
 export async function exportAllData(
-    options: { strict?: boolean } = {},
+    options: { strict?: boolean; purpose?: BackupProjectionPurpose } = {},
 ): Promise<{ [key: string]: unknown }> {
     const backup = await exportBackupFromStorage(indexedDBStorage, {
         strict: options.strict,
+        purpose: options.purpose,
         exportWildcardContent: () => exportWildcardContentSnapshot({ strict: options.strict }),
     })
     console.log('[Backup] Export complete:', Object.keys(backup).length - 2, 'stores')
@@ -1257,7 +1496,8 @@ export async function importBackupToStorage(
                 }
             }
 
-            const serialized = JSON.stringify(value)
+            const projected = projectStoreForBackup(key, value, 'restore-preflight')
+            const serialized = JSON.stringify(projected.payload)
             attemptedMutations.push(key)
             await storage.setItem(key, serialized)
             await options.flushStore?.(key)

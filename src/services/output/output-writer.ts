@@ -16,6 +16,7 @@ import {
     type ResolvedOutputDirectory,
 } from './platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from './tauri-output-adapter'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 
 export type OutputWriterPhase =
     | 'resolve-destination'
@@ -509,13 +510,24 @@ export class OutputWriter {
                 } catch (cleanupError) {
                     journal.phase = 'rollback-required'
                     try { await this.persistJournal(journal) } catch { /* retain earlier journal */ }
-                    throw new OutputWriterError('rollback-cleanup', 'Output failed and rollback is pending', {
+                    const rollbackError = new OutputWriterError('rollback-cleanup', 'Output failed and rollback is pending', {
                         cause: { transactionError: error, cleanupError },
                     })
+                    reportDiagnostic(rollbackError, {
+                        operation: 'output.write',
+                        stage: rollbackError.phase,
+                    })
+                    throw rollbackError
                 }
             }
-            if (error instanceof OutputWriterError) throw error
-            throw new OutputWriterError(phase, `Output transaction failed during ${phase}`, { cause: error })
+            const diagnosticError = error instanceof OutputWriterError
+                ? error
+                : new OutputWriterError(phase, `Output transaction failed during ${phase}`, { cause: error })
+            reportDiagnostic(diagnosticError, {
+                operation: 'output.write',
+                stage: diagnosticError.phase,
+            })
+            throw diagnosticError
         }
     }
 
@@ -547,10 +559,14 @@ export class OutputWriter {
             await this.platform.removeJournal(transactionId)
             return { transactionId, action: 'rolled-back' }
         } catch (error) {
+            const diagnostic = reportDiagnostic(error, {
+                operation: 'output.recovery',
+                stage: 'recover-transaction',
+            })
             return {
                 transactionId,
                 action: 'failed',
-                error: error instanceof Error ? error.message : String(error),
+                error: diagnostic.userSummary,
             }
         }
     }

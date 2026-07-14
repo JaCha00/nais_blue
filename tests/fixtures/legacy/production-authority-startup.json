@@ -1,0 +1,54 @@
+{
+  "case": "production-authority-startup",
+  "description": "Synthetic production-like authority startup and rollback matrix for the Phase 06 release gate.",
+  "scenarios": [
+    {
+      "id": "fresh-install",
+      "description": "No legacy stores, feature flag, or Composition repository exists.",
+      "expectedRuntimeAuthority": "legacy",
+      "expectedPersistedAuthority": "legacy"
+    },
+    {
+      "id": "canonical-v2-only",
+      "description": "A repository-verified canonical v2 document exists without legacy stores or a feature flag.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    },
+    {
+      "id": "upgrade-current-legacy-stores",
+      "description": "Current local generation and Scene stores are migrated under an explicit v2 activation request.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    },
+    {
+      "id": "both-present",
+      "description": "Current legacy stores and a matching committed v2 repository coexist.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    },
+    {
+      "id": "old-backup-retired-remote-keys",
+      "description": "An old backup is sanitized before startup and retired remote keys remain ignored.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    },
+    {
+      "id": "interrupted-migration",
+      "description": "An expired lock and staged document are cleaned before verified v2 activation.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    },
+    {
+      "id": "corrupted-repository",
+      "description": "Malformed repository JSON is retained and runtime authority fails closed to legacy.",
+      "expectedRuntimeAuthority": "legacy",
+      "expectedPersistedAuthority": "unavailable"
+    },
+    {
+      "id": "rollback-and-forward-migration",
+      "description": "One authority action rolls back to legacy without deleting v2 data and a verified forward activation restores v2.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
+    }
+  ]
+}

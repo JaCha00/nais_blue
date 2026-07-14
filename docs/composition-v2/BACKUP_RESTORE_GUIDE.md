@@ -16,6 +16,11 @@
 
 Full auto backup은 media base directory의 `NAIS_Backup/full` 아래에 기록하며 최대 10개를 유지한다. 자동 backup과 수동 restore 모두 동일한 v3 preflight 경계를 사용해야 한다.
 
+`nais2-auth`는 AuthState v3 allowlist projection만 포함한다. 두 slot의 `CredentialRef`와 enabled,
+tier/display metadata는 보존하지만 NovelAI/R2 secret, session token, verified runtime flag와
+Anlas cache는 backup/snapshot/export에 포함하지 않는다. Reference는 다른 vault의 secret을
+복원하지 않으므로 target profile에서 vault unlock 후 credential 재등록이 필요할 수 있다.
+
 ## Restore sequence
 
 1. 원본 backup을 변경하지 않고 보관한다.
@@ -38,6 +43,13 @@ CI fixture:
 `tests/fixtures/legacy/old-backup-with-obsolete-remote-state.json`
 
 이 fixture는 obsolete remote state가 있어도 restore가 성공하고, retired credentials/session key가 clean storage에 기록되지 않으며, local workflow data가 보존되는지를 검증한다. 구체적인 retired key 목록은 전용 runtime removal note에만 기록한다.
+
+Phase 01 이전 backup에는 raw credential이 남아 있을 수 있다. Restore projection은 이를
+AuthState v3 metadata로 sanitize하고 raw value를 durable storage에 쓰지 않는다. 원본 legacy
+artifact는 민감 파일로 격리하며 자동 삭제하지 않는다. Credential Vault dialog의 관리 대상
+backup cleanup은 값을 표시하지 않고 structural field만 검사하고, 별도 destructive
+confirmation 뒤 credential-bearing artifact 전체를 삭제한다. 외부 복사본은 이 cleanup의
+범위가 아니다.
 
 ## Composition-specific behavior
 

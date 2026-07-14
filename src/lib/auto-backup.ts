@@ -31,6 +31,11 @@ import {
     importAllData,
     type BackupStoragePort,
 } from '@/lib/indexed-db'
+import {
+    AUTH_BACKUP_STORE_KEY,
+    projectStoreForBackup,
+    type BackupProjectionPurpose,
+} from '@/lib/backup-projection'
 import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 import {
     ASSET_PROFILE_FILE_PATH,
@@ -96,7 +101,7 @@ export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedB
     'nais2-character-prompts': { version: 2, schemaVersion: 2 },
     'nais2-presets': { version: 2, schemaVersion: 2 },
     'nais2-settings': { version: 2, schemaVersion: 2 },
-    'nais2-auth': { version: 2, schemaVersion: 2 },
+    'nais2-auth': { version: 3, schemaVersion: 2 },
     'nais2-scenes': { version: 1, schemaVersion: 2 },
     'nais2-character-rotation': { version: 2, schemaVersion: 2 },
     'nais2-shortcuts': { version: 2, schemaVersion: 2 },
@@ -238,6 +243,7 @@ export interface BackupRestoreDryRunReport {
     wildcardContentCount: number
     errors: BackupRestoreIssue[]
     warnings: BackupRestoreIssue[]
+    credentialReentryRequired: boolean
 }
 
 export interface PreparedBackupRestore {
@@ -306,6 +312,7 @@ export interface CreateBackupEnvelopeV3Options {
     includedFiles?: readonly BackupIncludedFileEntry[]
     excludedFiles?: readonly BackupExcludedFileEntry[]
     assetProfileJson?: string
+    purpose?: Exclude<BackupProjectionPurpose, 'store-snapshot' | 'restore-preflight'>
 }
 
 export interface PrepareBackupRestoreOptions {
@@ -340,6 +347,7 @@ export interface CreateCurrentBackupEnvelopeV3Options {
     readRawIndexedEntries?: () => Promise<Record<string, string>>
     readLegacyLocalValue?: (key: string) => string | null
     readLegacyLocalKeys?: () => readonly string[]
+    purpose?: Exclude<BackupProjectionPurpose, 'store-snapshot' | 'restore-preflight'>
 }
 
 export interface CreateFullAutoBackupOptions extends CreateCurrentBackupEnvelopeV3Options {
@@ -621,7 +629,11 @@ export function createBackupEnvelopeV3(
             else ignoredKeys.push(key)
             continue
         }
-        stores[key] = detachedJsonValue(value)
+        stores[key] = detachedJsonValue(projectStoreForBackup(
+            key,
+            value,
+            options.purpose ?? 'manual-full',
+        ).payload)
     }
 
     const compositionDocument = detachedJsonValue(parsedDocument.data)
@@ -685,6 +697,7 @@ function emptyRestoreReport(sourceFormat: BackupRestoreSourceFormat, sourceVersi
         wildcardContentCount: 0,
         errors: [],
         warnings: [],
+        credentialReentryRequired: false,
     }
 }
 
@@ -773,6 +786,25 @@ function addIgnoredKey(report: BackupRestoreDryRunReport, key: string, declared 
     }
 }
 
+function projectStoreForRestore(
+    report: BackupRestoreDryRunReport,
+    key: string,
+    value: unknown,
+): unknown {
+    const projected = projectStoreForBackup(key, value, 'restore-preflight')
+    if (projected.credentialReentryRequired) {
+        report.credentialReentryRequired = true
+        if (!report.warnings.some(issue => issue.code === 'W_AUTH_CREDENTIAL_REENTRY_REQUIRED')) {
+            report.warnings.push({
+                code: 'W_AUTH_CREDENTIAL_REENTRY_REQUIRED',
+                key: AUTH_BACKUP_STORE_KEY,
+                message: 'NovelAI credentials and runtime account data were sanitized; credential re-entry is required.',
+            })
+        }
+    }
+    return detachedJsonValue(projected.payload)
+}
+
 function prepareLegacyRestore(backup: Readonly<Record<string, unknown>>): PreparedBackupRestore {
     const sourceVersion = typeof backup._version === 'string' || typeof backup._version === 'number'
         ? backup._version
@@ -828,7 +860,7 @@ function prepareLegacyRestore(backup: Readonly<Record<string, unknown>>): Prepar
                     }
                 }
             } else {
-                restorePayload[key] = detachedJsonValue(value)
+                restorePayload[key] = projectStoreForRestore(report, key, value)
                 report.restoreKeys.push(key)
             }
         } else {
@@ -1006,7 +1038,7 @@ function prepareEnvelopeRestore(
         if (restoreStoreKeySet.has(key)) {
             validateSupportedStoreVersion(report, key, payload.value)
             if (key !== COMPOSITION_REPOSITORY_STORE_KEY) {
-                restorePayload[key] = detachedJsonValue(payload.value)
+                restorePayload[key] = projectStoreForRestore(report, key, payload.value)
                 report.restoreKeys.push(key)
             }
         } else {
@@ -1355,7 +1387,10 @@ function createEmptyCompositionDocument(createdAt: string): CompositionDocument 
 export async function createCurrentBackupEnvelopeV3(
     options: CreateCurrentBackupEnvelopeV3Options = {},
 ): Promise<BackupEnvelopeV3> {
-    let rawBackup = await (options.readBackupData ?? (() => exportAllData({ strict: true })))()
+    let rawBackup = await (options.readBackupData ?? (() => exportAllData({
+        strict: true,
+        purpose: options.purpose ?? 'manual-full',
+    })))()
     const rawEntries = await (options.readRawIndexedEntries ?? exportRawIndexedDBEntries)()
     for (const [key, raw] of Object.entries(rawEntries)) {
         if (rawBackup[key] !== undefined) continue
@@ -1412,6 +1447,7 @@ export async function createCurrentBackupEnvelopeV3(
         appVersion: options.appVersion ?? CURRENT_APP_VERSION,
         sourceCommit: options.sourceCommit,
         assetProfileJson,
+        purpose: options.purpose,
     })
 }
 
@@ -1484,6 +1520,7 @@ export async function createFullAutoBackup(options: CreateFullAutoBackupOptions 
         createdAt,
         appVersion: options.appVersion,
         sourceCommit: options.sourceCommit,
+        purpose: 'disk-auto',
     })
     const timestamp = tsStamp(new Date(now))
     const fileName = `${FULL_BACKUP_PREFIX}_${timestamp}.json`

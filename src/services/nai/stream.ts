@@ -129,7 +129,7 @@ export async function readNaiImageStream(
                     const decoded = msgpackDecode(message) as Record<string, unknown>
                     if (decoded.error || decoded.message) {
                         await reader.cancel()
-                        throw new Error(`API 오류: ${String(decoded.error ?? decoded.message)}`)
+                        throw new Error('NovelAI stream reported an error')
                     }
 
                     const eventType = String(decoded.event_type ?? decoded.event ?? 'unknown')

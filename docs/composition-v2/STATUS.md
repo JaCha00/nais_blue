@@ -1,10 +1,10 @@
 # Composition Domain v2 최종 상태
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 ## 결론
 
-Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. 그러나 **fresh production startup은 아직 v2 authority를 기본 활성화하지 않는다.** Main/Scene/Style Lab의 persisted mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup은 workflow 테스트를 위해 authority를 `v2`로 올리므로 테스트 통과만으로 production cutover를 선언할 수 없다.
+Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. 독립 durable generation queue domain과 normalized IndexedDB repository도 추가됐지만 기존 Main/Scene workflow는 아직 이를 사용하지 않는다. Phase 06은 production-like startup matrix, 항상 접근 가능한 Composition Authority diagnostics panel, repository/hash 검증과 한 동작 legacy rollback을 추가했다. 그러나 **fresh production startup은 아직 v2 authority를 기본 활성화하지 않는다.** Main/Scene/Style Lab의 persisted mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup과 explicit fixture activation은 v2를 올릴 수 있으므로 local test 통과만으로 production cutover를 선언할 수 없다.
 
 따라서 이번 최종 정리에서는 caller search로 definition-only임이 확인된 작은 public alias만 제거했다. legacy request builder, shadow 비교, migration projection, authority feature flag와 recovery importer/parser는 삭제하지 않았다.
 
@@ -19,13 +19,14 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 | old backup import fixture가 CI에 존재 | 충족 | `tests/fixtures/legacy/old-backup-with-obsolete-remote-state.json`을 `test:migration`이 실행하며 PR/main source-contract에 연결했다. |
 | retired online catalog 제거 | 충족 | route/UI/auth/dependency/deep-link/CI env가 제거됐고 allowlist gate가 통과한다. 과거 backup key classifier와 historical source만 허용한다. |
 | rollback release/tag/export 정책 | 문서 충족 | `ROLLBACK_POLICY.md`, `BACKUP_RESTORE_GUIDE.md`, `RELEASING.md`가 tag, immutable artifact, backup/export, authority rollback 순서를 정의한다. 실제 signed release restore drill은 별도 환경이 필요하다. |
-| production legacy mode 불필요 근거 | **미충족** | fresh startup authority가 legacy이고 credential 기반 online smoke가 없다. legacy runtime compatibility 삭제 gate는 닫혀 있다. |
+| production legacy mode 불필요 근거 | **미충족** | Phase 06 fixture는 통과했지만 fresh default는 legacy이고 full supported-model online matrix, authenticated Android output, signed rollback drill이 없다. legacy runtime compatibility 삭제 gate는 닫혀 있다. |
 
 ## 최종 아키텍처
 
 - `src/domain/composition/**`: React/Zustand/Tauri/IndexedDB/Node/filesystem과 분리된 schema, commands, resolver, engine, repository와 migration model.
 - workflow adapter: Main, Scene, Style Lab이 engine plan을 각 workflow request와 state transition으로 materialize한다. Scene queue worker 구조는 변경하지 않았다.
-- repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority.
+- repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority. Critical IndexedDB store는 immediate commit/readback하며 DB unavailable startup은 normal App을 mount하지 않는 rescue mode로 격리된다.
+- durable queue: `batches`, `jobs`, `attempts`, `leases`, `resources` object store를 가진 별도 IndexedDB database가 immutable enqueue snapshot, CAS lease, terminal-state 불변, expiry recovery와 deterministic pagination을 소유한다. Main/Scene worker와 generation Zustand state는 변경하지 않았다.
 - authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
@@ -41,6 +42,15 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 19: retired online catalog/remote auth/deep-link runtime와 dependency 제거.
 - Phase 20 구현: OutputWriter/metadata v2, canonical authoring studio, Main/Scene information architecture, portable resource/capability adapter, Android/responsive contracts.
 - 최종 cleanup: caller audit, definition-only export 정리, CI compatibility gates와 운영 문서 연결.
+- 후속 hardening Phase 01~05: secret-safe backup projection, redacted diagnostic kernel,
+  persistence correctness/rescue startup, Stronghold-backed Credential Vault/AuthState v3,
+  Android fixed-endpoint NAI transport와 Scene network cancellation.
+- 후속 hardening Phase 06: production-like authority fixture matrix, repository/runtime/workflow
+  authority diagnostics, redacted fallback observation, one-action legacy rollback.
+- 후속 hardening Phase 07: native vault data-directory precondition, flush→Stronghold unload→exit/relaunch
+  lifecycle, History source-edit readiness wait와 Android privileged-permission crash classification.
+- Phase 07 durable queue domain: workflow-independent snapshot/state/retry model, normalized IndexedDB
+  repository, competing lease/restart recovery/schema-upgrade/10,000-job deterministic tests. Runtime cutover 없음.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -68,13 +78,47 @@ Production authority cutover와 legacy builder retirement는 별도 release gate
 
 ## Verification
 
-실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 72-suite/578-test Vitest aggregate, payload/migration/characterization/NAI/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate, Cargo와 debug APK를 포함한다.
+실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. Phase 06 transport continuation 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 85 passed/1 skipped file과 671 passed/3 opt-in skipped test의 Vitest aggregate, 8-case production-like startup fixture, payload/migration/characterization/diagnostics/NAI transport/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate와 Cargo host/mock tests를 포함한다.
+
+Phase 06에서 diagnostics launcher를 항상 보이게 한 첫 responsive run은 1536px Asset Modules의 Prompt CTA와 겹쳤고, 반대쪽 하단 배치는 Scene Resolved Plan CTA와 겹쳤다. 테스트를 완화하지 않고 desktop launcher를 shell toolbar로 이동하고 mobile만 safe-area 위에 유지한 뒤 전체 matrix가 통과했다. 연결 가능한 in-app/Chrome browser backend가 없어 별도 수동 click-through는 실행하지 못했다.
 
 Emulator에서 Asset Profile의 session 진단값 `lastLoadedAt`이 exact legacy source hash를 매번 바꾸는 문제가 발견됐다. 이 값은 persistence projection에서 제외했고, 기존 persisted 값이 한 번 정리된 뒤 연속 무변경 재시작이 `already-current; authority=legacy`로 안정됨을 확인했다.
 
-Ignored `.env`의 Opus token으로 실제 NovelAI live smoke도 실행했다. Raw endpoint 512×512/1 step PNG와 production client 512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash, AbortSignal cancel이 모두 통과했다. Android v2 Main은 WebView CORS를 피하도록 capability-scoped Tauri HTTP transport로 연결했고 실제 request/cancel 상태까지 진입했지만, emulator에서 standard/stream 응답이 제한 시간 안에 완료되지 않아 Android image/output commit은 성공으로 선언하지 않는다.
+Phase 04에서는 official Stronghold plugin, AuthState v3 reference persistence와 two-phase legacy
+credential migration을 추가했다. Android x86_64 debug APK가 Stronghold/libsodium을 포함해
+빌드됐고 emulator에서 vault create/unlocked/lock과 encrypted snapshot 생성을 확인했다.
+Windows cross-build는 transitive libsodium prebuild 환경 제한이 있어 R-025와 developer
+verification 절차에 분리 기록한다.
 
-실제 NovelAI generation, Android signed release/update install과 390/768/1280/1536 실기기 전체 수동 회귀는 credential, keystore 또는 물리 device가 없어 완료로 선언하지 않는다. emulator는 startup/migration, navigation, sheets, capability explanation, process recreation과 AppData persistence를 검증하며 API token이 필요한 지점에서 중단한다.
+Phase 05에서는 browser/test fetch와 desktop Tauri HTTP plugin을 유지하고, Phase 04에서
+response/abort가 완료되지 않은 Android generation만 고정 endpoint Rust reqwest/channel
+adapter로 격리했다. Standard/stream은 JS/native 120초 total deadline을 가지며 Scene cancel은
+session/slot/request AbortController에서 실제 HTTP request까지 전달된다. Host mock server의
+headers/body, stream chunk, active socket cancel, timeout과 Android x86_64 cross-build/APK 설치,
+startup, Scene routing은 통과했다. Credential opt-in이 없어 Android authenticated output은
+실행하지 않았고 R-019를 Watching으로 유지한다. Request 전 Main Back 종료에서 별도 native
+mutex teardown log가 재현돼 R-026으로 분리했다.
+
+2026-07-14 opt-in physical M500_MIKU run은 Stronghold vault create, token remote verification과
+Main standard/stream request headers까지 도달했지만 raw `Channel<Response>` body가 mobile IPC에서
+0 byte가 되어 ZIP/msgpack decode가 실패했다. Body를 headers/end와 같은 ordered JSON/base64
+event channel로 바꿨고 JS adapter 12/12, Rust loopback 5/5, arm64 APK build/metadata/install은
+통과했다. Post-fix app launch 시 testbed의 Google Play Services FontsProvider가 ROM permission
+mismatch로 crash loop에 빠져 Android가 NAIS2를 dependency-died로 종료했다. 이 system blocker는
+R-027로 분리하며 post-fix authenticated output을 통과한 것으로 간주하지 않는다. 따라서 R-019는
+Open이고 Android release gate는 계속 닫혀 있다.
+
+이번 opt-in host smoke에서는 실제 NovelAI raw endpoint 512×512/1 step PNG와 production client
+512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash,
+AbortSignal cancel이 통과했다. Token은 ignored `.env`에서 process-local로만 읽었고 값, Authorization
+header, payload 전문, image base64 또는 response body를 출력·보존하지 않았다. Android
+image/output commit은 위 authenticated gate가 남아 있어 성공으로 선언하지 않는다.
+
+Host production-client smoke는 통과했지만 Main/Scene/Style Lab 전체 supported-model·format·source-edit
+online matrix는 아니다. Android pre-fix failure는 확보했지만 post-fix authenticated image/output과
+cancel/no-late-save는 R-027로 미실행이다. Signed release/update/rollback install은 protected keystore와
+immutable release baseline이 없어 실행하지 않았다. 따라서 Phase 05 emulator와 이번 physical
+evidence를 Phase 06 production cutover 승인으로 승격하지 않는다.
 
 ## 운영 문서
 
@@ -94,3 +138,19 @@ Ignored `.env`의 Opus token으로 실제 NovelAI live smoke도 실행했다. Ra
 3. signed desktop/Android artifact로 backup export → rollback install → restore → forward migration drill을 실행한다.
 4. 한 release observation window 뒤 legacy builder caller를 다시 검색한다.
 5. 그때 caller 0, rollback drill 성공, payload gap 해소가 모두 성립하면 별도 PR에서 legacy runtime을 제거한다.
+
+Phase 07은 Windows restart source-edit의 재현 가능한 lifecycle 결함을 수정했지만 live credential을
+사용한 existing-vault re-unlock/ZIP request는 실행하지 않았다. Android logcat은 NAIS2 권한 누락이
+아니라 Google Play Services privileged permission/FontsProvider dependency failure임을 재확인했다.
+따라서 NAIS2 runtime permission을 추가하지 않았으며 Android authenticated release gate는 계속 닫혀 있다.
+
+Durable queue Phase 07은 pure domain/repository만 추가했다. 10,000-job pagination, competing CAS lease,
+expiry/restart recovery, duplicate idempotency, missing resource, v1→v2 schema upgrade와 aborted upgrade가
+결정적으로 통과한다. Enqueue caller, worker execution, managed AppData resource-copy producer와 UI는
+의도적으로 연결하지 않았으므로 기존 generation behavior와 production authority는 바뀌지 않는다.
+
+같은 phase의 isolated production binary probe는 generated capability에 `$APPDATA/**`가 있음을 확인했고,
+`BaseDirectory.AppData` resolved directory와 Stronghold snapshot parent가 동일하며 absolute/relative
+`exists`가 모두 허용되고 같은 존재 결과를 반환함을 경로 원문 없이 확인했다. 따라서 관찰된 Vault
+`unavailable`은 generated ACL의 AppData 해석 차이가 원인이 아니다. Availability probe는 capability와
+동일한 relative path + `BaseDirectory.AppData` 형태로 고정해 이후 ACL/존재 오류를 분리한다.

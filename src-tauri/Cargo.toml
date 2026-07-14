@@ -24,12 +24,13 @@ log = "0.4"
 tauri = { version = "2", features = ["protocol-asset", "unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-http = "2"
+tauri-plugin-http = "=2.5.9"
 tauri-plugin-store = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2.5.2"
 tauri-plugin-process = "2"
+tauri-plugin-stronghold = "=2.3.1"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 tokio = { version = "1", features = ["full"] }
 zip = "2.2"
@@ -40,6 +41,11 @@ base64 = "0.22"
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+
+# Recommended by the official Stronghold plugin setup to keep the password KDF
+# usable in development builds without changing release cryptography.
+[profile.dev.package.scrypt]
+opt-level = 3
 
 [patch.crates-io]
 # Tauri 2.11 still pulls plist 1.9.0, whose published crate depends on

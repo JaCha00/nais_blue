@@ -28,5 +28,6 @@ describe('Backup restore UI contract', () => {
         expect(restoreDialog).toContain('onClick={() => onOpenChange(false)} disabled={restoring}')
         expect(restoreDialog).not.toContain('pendingRestart')
         expect(restoreDialog).not.toContain('setPendingRestart')
+        expect(restoreDialog).toContain('settingsPage.backup.credentialReentryRequired')
     })
 })

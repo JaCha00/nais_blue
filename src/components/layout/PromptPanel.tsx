@@ -193,7 +193,7 @@ export function PromptPanel() {
     const isStyleLabGenerating = generatingMode === 'styleLab'
     const isConflict = isSceneMode
         ? isMainGenerating || isStyleLabGenerating
-        : isSceneGenerating || isStyleLabGenerating
+        : isSceneGenerating
 
     const handleGenerateOrCancel = useCallback(() => {
         if (isConflict) return // Prevent action if conflict exists
@@ -209,7 +209,7 @@ export function PromptPanel() {
                 return
             }
             if (sceneIsGenerating || sceneIsCancelling) {
-                cancelSceneGeneration()  // Cancel - invalidates session but keeps button locked
+                cancelSceneGeneration()  // Invalidate the session and abort its active requests
             } else {
                 startNewGenerationSession()  // Start - creates new session ID
             }

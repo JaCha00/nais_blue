@@ -22,7 +22,6 @@ import {
     Monitor,
     Languages,
     Loader2,
-    Coins,
     FolderOpen,
     Palette,
     Type,
@@ -45,21 +44,20 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/theme-store'
-import { useAuthStore, type ApiSlot } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useShortcutStore, SHORTCUT_ACTIONS, formatKeyBinding, type ShortcutAction, type KeyBinding } from '@/stores/shortcut-store'
 import { toast } from '@/components/ui/use-toast'
-import NovelAILogo from '@/assets/novelai_logo.svg'
 import GeminiIcon from '@/assets/gemini-color.svg'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { relaunchApplication } from '@/lib/app-relaunch'
 import { getVersion } from '@tauri-apps/api/app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
 import { importAllData, getStoreSizes } from '@/lib/indexed-db'
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
+import { CredentialVaultSettingsCard } from '@/components/credentials/CredentialVaultSettingsCard'
 import {
     ASSET_PROFILE_FILE_RESTORE_KEY,
     createCurrentBackupEnvelopeV3,
@@ -324,7 +322,7 @@ export default function Settings() {
     const handleExportBackup = async () => {
         setIsExporting(true)
         try {
-            const backup = await createCurrentBackupEnvelopeV3()
+            const backup = await createCurrentBackupEnvelopeV3({ purpose: 'manual-full' })
             const storeCount = backup.storeManifest.storeCount
             
             // 파일 저장 다이얼로그
@@ -396,6 +394,9 @@ export default function Settings() {
                 prepared.report.ignoredKeys.length > 5
                     ? `- +${prepared.report.ignoredKeys.length - 5} more`
                     : '',
+                prepared.report.credentialReentryRequired
+                    ? t('settingsPage.backup.credentialReentryRequired')
+                    : '',
                 t('settingsPage.backup.restoreWarning'),
             ].filter(Boolean).join('\n'))
             if (!confirmed) return
@@ -425,7 +426,7 @@ export default function Settings() {
 
             // 앱 재시작
             setTimeout(() => {
-                relaunch()
+                void relaunchApplication()
             }, 1500)
             
         } catch (err) {
@@ -687,7 +688,7 @@ export default function Settings() {
                                                                                             size="sm"
                                                                                             onClick={async () => {
                                                                                                 await update.install()
-                                                                                                await relaunch()
+                                                                                                await relaunchApplication()
                                                                                             }}
                                                                                         >
                                                                                             <Sparkles className="h-4 w-4 mr-1" />
@@ -859,10 +860,7 @@ export default function Settings() {
                                 </p>
                             </div>
 
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <ApiSlotCard slot={1} />
-                                <ApiSlotCard slot={2} />
-                            </div>
+                            <CredentialVaultSettingsCard />
 
                             <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-2 pt-4 border-t border-border/30">
@@ -1514,169 +1512,6 @@ export default function Settings() {
                     )}
                 </div>
             </div>
-        </div>
-    )
-}
-
-type TokenStatus = 'idle' | 'valid' | 'invalid' | 'verifying'
-
-function ApiSlotCard({ slot }: { slot: ApiSlot }) {
-    const { t } = useTranslation()
-    const {
-        token,
-        isVerified,
-        anlas,
-        slot1Enabled,
-        token2,
-        isVerified2,
-        anlas2,
-        slot2Enabled,
-        isLoading,
-        verifyAndSave,
-        clearToken,
-        setSlotEnabled,
-    } = useAuthStore()
-
-    const currentToken = slot === 2 ? token2 : token
-    const currentVerified = slot === 2 ? isVerified2 : isVerified
-    const currentAnlas = slot === 2 ? anlas2 : anlas
-    const enabled = slot === 2 ? slot2Enabled : slot1Enabled
-    const slotLabel = slot === 2 ? t('settingsPage.api.slot2') : t('settingsPage.api.slot1')
-    const helpText = slot === 2 ? t('settingsPage.api.slot2Help') : t('settingsPage.api.tokenHelp')
-    const accent = slot === 2
-        ? {
-            active: 'bg-info/15 text-info',
-            border: 'border-info/30',
-            iconBg: 'bg-info/15',
-            icon: 'text-info',
-            text: 'text-info',
-        }
-        : {
-            active: 'bg-primary/15 text-primary',
-            border: 'border-primary/30',
-            iconBg: 'bg-primary/15',
-            icon: 'text-primary',
-            text: 'text-primary',
-        }
-
-    const [apiToken, setApiToken] = useState(currentToken)
-    const [tokenStatus, setTokenStatus] = useState<TokenStatus>(
-        currentVerified ? 'valid' : 'idle'
-    )
-
-    useEffect(() => {
-        setApiToken(currentToken)
-        setTokenStatus(currentVerified ? 'valid' : 'idle')
-    }, [currentToken, currentVerified])
-
-    const handleVerifyToken = async () => {
-        if (!apiToken) return
-        setTokenStatus('verifying')
-        const success = await verifyAndSave(apiToken, slot)
-        setTokenStatus(success ? 'valid' : 'invalid')
-        if (success) {
-            toast({ title: t('settingsPage.api.verified'), variant: 'success' })
-        }
-    }
-
-    const handleClearToken = () => {
-        clearToken(slot)
-        setApiToken('')
-        setTokenStatus('idle')
-    }
-
-    return (
-        <div className={cn(
-            'space-y-4 rounded-panel border bg-card p-4 transition-opacity sm:p-5',
-            currentVerified ? accent.border : 'border-border/50',
-            currentVerified && !enabled && 'opacity-70'
-        )}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <label className="text-sm font-medium flex items-center gap-2">
-                    <img src={NovelAILogo} alt="NovelAI" className="h-4 w-4" />
-                    {slotLabel}
-                    {currentVerified && (
-                        <span className={cn(
-                            'rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider',
-                            enabled ? accent.active : 'bg-muted/40 text-muted-foreground'
-                        )}>
-                            {enabled ? t('settingsPage.api.slotActive') : t('settingsPage.api.slotPaused')}
-                        </span>
-                    )}
-                </label>
-                {currentVerified && (
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                            {t('settingsPage.api.useThisAccount')}
-                        </span>
-                        <Switch
-                            checked={enabled}
-                            onChange={(event) => setSlotEnabled(slot, event.target.checked)}
-                        />
-                    </div>
-                )}
-            </div>
-
-            {currentVerified && currentAnlas && (
-                <div className="flex items-center gap-4 rounded-lg bg-muted/30 p-3">
-                    <div className={cn('rounded-control p-3', accent.iconBg)}>
-                        <Coins className={cn('h-6 w-6', accent.icon)} />
-                    </div>
-                    <div>
-                        <p className={cn('text-2xl font-bold', accent.text)}>
-                            {currentAnlas.total.toLocaleString()} Anlas
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            {t('settingsPage.api.anlas.fixed')}: {currentAnlas.fixed.toLocaleString()} / {t('settingsPage.api.anlas.purchased')}: {currentAnlas.purchased.toLocaleString()}
-                        </p>
-                    </div>
-                </div>
-            )}
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-                <div className="relative flex-1">
-                    <Input
-                        type="password"
-                        placeholder={t('settingsPage.api.tokenPlaceholder')}
-                        value={apiToken}
-                        onChange={(event) => {
-                            setApiToken(event.target.value)
-                            setTokenStatus('idle')
-                        }}
-                        className={cn(
-                            'pr-10',
-                            tokenStatus === 'valid' && 'border-success focus-visible:ring-success',
-                            tokenStatus === 'invalid' && 'border-destructive focus-visible:ring-destructive'
-                        )}
-                    />
-                    {tokenStatus !== 'idle' && tokenStatus !== 'verifying' && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            {tokenStatus === 'valid' ? (
-                                <Check className="h-4 w-4 text-success" />
-                            ) : (
-                                <X className="h-4 w-4 text-destructive" />
-                            )}
-                        </div>
-                    )}
-                </div>
-                <Button
-                    onClick={handleVerifyToken}
-                    disabled={tokenStatus === 'verifying' || isLoading || !apiToken}
-                >
-                    {tokenStatus === 'verifying' || isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        t('settingsPage.api.verify')
-                    )}
-                </Button>
-                {currentVerified && (
-                    <Button variant="outline" onClick={handleClearToken} aria-label={t('settingsPage.api.clearToken', '토큰 지우기')}>
-                        <X className="h-4 w-4" />
-                    </Button>
-                )}
-            </div>
-
-            <p className="text-xs text-muted-foreground">{helpText}</p>
         </div>
     )
 }

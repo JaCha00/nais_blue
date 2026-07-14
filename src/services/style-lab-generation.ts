@@ -5,6 +5,7 @@ import { createThumbnail } from '@/lib/image-utils'
 import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
 import { getRuntimeOutputWriter, OutputWriterError } from '@/services/output/output-writer'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { useAuthStore } from '@/stores/auth-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore, warnIfUnverifiedPayloadParityModel } from '@/stores/generation-store'
@@ -222,6 +223,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
 
     const authState = useAuthStore.getState()
     if (!authState.token || !authState.isVerified) {
+        authState.requestCredentialUnlock()
         toast({
             title: i18n.t('toast.tokenRequired.title'),
             description: i18n.t('toast.tokenRequired.desc'),
@@ -395,7 +397,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                     }
                     previewThumbnail = savedPath.thumbnail
                 } catch (saveError) {
-                    console.warn('[StyleLab] Failed to save preview image:', saveError)
+                    reportDiagnostic(saveError, { operation: 'style-lab.output', stage: 'write' })
                     if (!canCommitPreview()) break
                     if (saveError instanceof OutputWriterError
                         && saveError.message.includes('rollback is pending')) {
@@ -443,15 +445,20 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                     break
                 }
 
-                console.error('[StyleLab] Preview generation failed:', error)
+                const diagnostic = reportDiagnostic(error, {
+                    operation: 'style-lab.preview',
+                    stage: 'generate',
+                })
                 useStyleLabStore.getState().updateCombinationPreview(id, {
                     isPreviewing: false,
                     previewProgress: 0,
-                    previewError: String(error),
+                    // This stays inside the explicit preview detail surface;
+                    // it is still the kernel's redacted developer projection.
+                    previewError: diagnostic.redactedDeveloperMessage,
                 })
                 toast({
                     title: i18n.t('styleLab.toast.previewFailed'),
-                    description: String(error),
+                    description: diagnostic.userSummary,
                     variant: 'destructive',
                 })
             } finally {

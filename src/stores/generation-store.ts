@@ -47,6 +47,7 @@ import {
     assessPortableCompositionPlan,
     runtimePortablePathTokenRegistry,
 } from '@/platform/portable-resources'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 
 interface Resolution {
     label: string
@@ -917,6 +918,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const token = slot1Token?.token
 
                 if (!token) {
+                    useAuthStore.getState().requestCredentialUnlock()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
                         description: i18n.t('toast.tokenRequired.desc'),
@@ -1551,10 +1553,12 @@ export const useGenerationStore = create<GenerationState>()(
                                         })
                                     }
                                 } catch (outputError) {
-                                    console.warn('Transactional output save failed:', outputError)
+                                    reportDiagnostic(outputError, { operation: 'main.output', stage: 'write' })
                                     if (!canCommitOutput() || sequenceConflict) break
                                     if (historyCommitted) {
-                                        console.warn('Output files and workflow state committed; recovery cleanup remains pending.')
+                                        // OutputWriter has retained its recovery journal; preserve
+                                        // the successfully committed workflow state without logging
+                                        // a raw platform error to the console.
                                     } else {
                                         throw outputError
                                     }
@@ -1605,9 +1609,21 @@ export const useGenerationStore = create<GenerationState>()(
                                 await new Promise(resolve => setTimeout(resolve, generationDelay))
                             }
                         } else {
+                            const termination = result.termination
+                            const diagnostic = reportDiagnostic(new Error(result.error || 'Main generation failed'), {
+                                operation: 'main.generate',
+                                stage: termination === 'timeout'
+                                    ? 'transport-timeout'
+                                    : termination === 'cancelled'
+                                        ? 'transport-cancelled'
+                                        : canUseStreaming ? 'stream' : 'request',
+                                prompt: generationParams.prompt,
+                                cancelled: termination === 'cancelled',
+                                timeout: termination === 'timeout',
+                            })
                             toast({
                                 title: i18n.t('toast.generationFailed.title'),
-                                description: result.error || i18n.t('toast.unknownError'),
+                                description: diagnostic.userSummary,
                                 variant: 'destructive',
                             })
                             break
@@ -1627,10 +1643,10 @@ export const useGenerationStore = create<GenerationState>()(
                     if (get().isCancelled) {
                         return
                     }
-                    console.error('Generation failed:', error)
+                    const diagnostic = reportDiagnostic(error, { operation: 'main.generate', stage: 'request' })
                     toast({
                         title: i18n.t('toast.errorOccurred.title'),
-                        description: i18n.t('toast.errorOccurred.desc'),
+                        description: diagnostic.userSummary,
                         variant: 'destructive',
                     })
                 } finally {
@@ -1711,7 +1727,11 @@ export const useGenerationStore = create<GenerationState>()(
             }),
             onRehydrateStorage: () => (state, error) => {
                 if (error) {
-                    console.error('[GenerationStore] Hydration failed:', error)
+                    reportDiagnostic(error, {
+                        operation: 'generation-store.hydration',
+                        stage: 'rehydrate',
+                        category: 'persistence',
+                    })
                     return
                 }
                 // Trim history to 20 items on load to prevent OOM

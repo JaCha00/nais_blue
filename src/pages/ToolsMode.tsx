@@ -153,6 +153,7 @@ export default function ToolsMode() {
     const handleUpscale = async () => {
         if (!processedImage) return
         if (!token) {
+            useAuthStore.getState().requestCredentialUnlock()
             toast({ title: t('toast.tokenRequired.title', 'API 토큰 필요'), description: t('toast.tokenRequired.desc', '설정에서 토큰을 입력해주세요.'), variant: 'destructive' })
             return
         }
@@ -200,6 +201,7 @@ export default function ToolsMode() {
     const handleDirectorTool = async (reqType: 'lineart' | 'sketch' | 'colorize' | 'emotion' | 'declutter', options?: { defry?: number; prompt?: string; emotion?: string }) => {
         if (!processedImage) return
         if (!token) {
+            useAuthStore.getState().requestCredentialUnlock()
             toast({ title: t('toast.tokenRequired.title', 'API 토큰 필요'), description: t('toast.tokenRequired.desc', '설정에서 토큰을 입력해주세요.'), variant: 'destructive' })
             return
         }
@@ -490,9 +492,9 @@ export default function ToolsMode() {
                         icon={PenTool}
                         color="text-slate-400"
                         title={t('smartTools.lineart', '라인아트 추출')}
-                        disabled={!processedImage || isLoading || !token}
+                        disabled={!processedImage || isLoading}
                     >
-                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('lineart')} disabled={!processedImage || isLoading || !token}>
+                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('lineart')} disabled={!processedImage || isLoading}>
                             {t('smartTools.runLineart', '라인아트 추출')}
                         </Button>
                     </ToolCard>
@@ -502,9 +504,9 @@ export default function ToolsMode() {
                         icon={Pencil}
                         color="text-gray-400"
                         title={t('smartTools.sketch', '스케치 변환')}
-                        disabled={!processedImage || isLoading || !token}
+                        disabled={!processedImage || isLoading}
                     >
-                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('sketch')} disabled={!processedImage || isLoading || !token}>
+                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('sketch')} disabled={!processedImage || isLoading}>
                             {t('smartTools.runSketch', '스케치 변환')}
                         </Button>
                     </ToolCard>
@@ -514,11 +516,11 @@ export default function ToolsMode() {
                         icon={Droplets}
                         color="text-cyan-400"
                         title={t('smartTools.colorize', '색칠하기')}
-                        disabled={!processedImage || isLoading || !token}
+                        disabled={!processedImage || isLoading}
                     >
                         <DirectorToolWithOptions
                             onRun={(defry, prompt) => handleDirectorTool('colorize', { defry, prompt })}
-                            disabled={!processedImage || isLoading || !token}
+                            disabled={!processedImage || isLoading}
                             showPrompt
                             promptPlaceholder={t('smartTools.colorizePrompt', '색상 힌트 (예: red hair, blue eyes)')}
                             buttonLabel={t('smartTools.runColorize', '색칠 실행')}
@@ -531,11 +533,11 @@ export default function ToolsMode() {
                         icon={Smile}
                         color="text-yellow-400"
                         title={t('smartTools.emotion', '표정 변경')}
-                        disabled={!processedImage || isLoading || !token}
+                        disabled={!processedImage || isLoading}
                     >
                         <DirectorToolWithOptions
                             onRun={(defry, prompt, emotion) => handleDirectorTool('emotion', { defry, prompt, emotion })}
-                            disabled={!processedImage || isLoading || !token}
+                            disabled={!processedImage || isLoading}
                             showEmotion
                             showPrompt
                             promptPlaceholder={t('smartTools.emotionPrompt', '추가 프롬프트 (선택)')}
@@ -549,9 +551,9 @@ export default function ToolsMode() {
                         icon={Sparkles}
                         color="text-emerald-400"
                         title={t('smartTools.declutter', '이미지 정리')}
-                        disabled={!processedImage || isLoading || !token}
+                        disabled={!processedImage || isLoading}
                     >
-                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('declutter')} disabled={!processedImage || isLoading || !token}>
+                        <Button className="w-full" variant="secondary" onClick={() => handleDirectorTool('declutter')} disabled={!processedImage || isLoading}>
                             {t('smartTools.runDeclutter', '정리 실행')}
                         </Button>
                     </ToolCard>

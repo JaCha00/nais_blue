@@ -10,7 +10,9 @@ export class NovelAIHttpError extends Error {
     readonly retryable: boolean
 
     constructor(status: number, responseBody: string) {
-        super(`API Error: ${status} ${responseBody}`)
+        // The raw provider body stays available only for the diagnostic
+        // redactor. Error.message is safe for existing retry/UI callers.
+        super(`NovelAI request failed (${status})`)
         this.name = 'NovelAIHttpError'
         this.status = status
         this.responseBody = responseBody
@@ -103,4 +105,6 @@ export interface GenerateImageResult {
     encodedVibes?: string[]
     /** SHA-256 of the redacted transport payload; never the payload itself. */
     sentPayloadSummary?: string
+    /** Finite transport termination reason for cancellation and hard timeout. */
+    termination?: 'cancelled' | 'timeout'
 }

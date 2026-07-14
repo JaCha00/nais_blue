@@ -63,6 +63,15 @@ describe('Main composition UI contract', () => {
         expect(promptPanel).toContain('data-testid="prompt-generate-action"')
     })
 
+    it('keeps the shared prompt action cancellable while Style Lab owns the generation store', async () => {
+        const promptPanel = await source('src/components/layout/PromptPanel.tsx')
+
+        expect(promptPanel).toContain("const isStyleLabGenerating = generatingMode === 'styleLab'")
+        expect(promptPanel).toMatch(/const isConflict = isSceneMode[\s\S]*?: isSceneGenerating\s/)
+        expect(promptPanel).not.toMatch(/: isSceneGenerating \|\| isStyleLabGenerating/)
+        expect(promptPanel).toMatch(/if \(isGenerating\) \{[\s\S]*?cancelGeneration\(\)/)
+    })
+
     it('does not connect the Main composition controls to Scene or Style Lab', async () => {
         const [sceneMode, sceneDetail, styleLab] = await Promise.all([
             source('src/pages/SceneMode.tsx'),

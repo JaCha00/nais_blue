@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState, useCallback, memo } from 'react'
-import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles } from 'lucide-react'
+import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
-import { useAuthStore } from '@/stores/auth-store'
+import { useAuthStore, waitForCredentialVaultReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { readDir, readFile, remove, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
@@ -241,6 +241,7 @@ export function HistoryPanel() {
     const [savedImages, setSavedImages] = useState<SavedImage[]>([])
     const [imageThumbnails, setImageThumbnails] = useState<Record<string, string>>({})
     const [isLoading, setIsLoading] = useState(false)
+    const [sourceEditPreparing, setSourceEditPreparing] = useState(false)
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
     const [selectedImageForMetadata, setSelectedImageForMetadata] = useState<string | undefined>()
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
@@ -738,6 +739,7 @@ export function HistoryPanel() {
 
         const token = useAuthStore.getState().token
         if (!token) {
+            useAuthStore.getState().requestCredentialUnlock()
             toast({ title: t('toast.tokenRequired.title', '토큰 필요'), variant: 'destructive' })
             return
         }
@@ -962,24 +964,38 @@ export function HistoryPanel() {
 
     // I2I: Set source and navigate to main mode
     const handleI2I = async (image: SavedImage) => {
-        let imageData = imageThumbnails[image.path]
-        if (!imageData && !image.isTemporary) {
-            try {
-                const data = await readFile(image.path)
-                const base64 = arrayBufferToBase64(data)
-                imageData = `data:image/png;base64,${base64}`
-                // NOT caching full base64 in thumbnails - use directly
-            } catch { return }
+        setSourceEditPreparing(true)
+        try {
+            if (!await waitForCredentialVaultReady()) return
+            let imageData = imageThumbnails[image.path]
+            if (!imageData && !image.isTemporary) {
+                try {
+                    const data = await readFile(image.path)
+                    const base64 = arrayBufferToBase64(data)
+                    imageData = `data:image/png;base64,${base64}`
+                    // NOT caching full base64 in thumbnails - use directly
+                } catch { return }
+            }
+            if (!imageData) return
+
+            setSourceImage(imageData)
+            setI2IMode('i2i')
+            navigate('/')
+        } finally {
+            setSourceEditPreparing(false)
         }
-        if (!imageData) return
-        
-        setSourceImage(imageData)
-        setI2IMode('i2i')
-        navigate('/')
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="relative flex h-full min-h-0 flex-col">
+            {sourceEditPreparing && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-scrim/70" role="status" aria-live="polite">
+                    <div className="flex items-center gap-2 rounded-control border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-panel">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        {t('credentialVault.status.unlocking')}
+                    </div>
+                </div>
+            )}
             {/* Header */}
             <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
                 <span className="flex items-center gap-2 text-sm font-semibold text-foreground">

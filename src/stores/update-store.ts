@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { Update, check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
+import { relaunchApplication } from '@/lib/app-relaunch'
 
 interface PendingUpdateInfo {
     version: string
@@ -38,14 +38,14 @@ export const installPendingUpdate = async () => {
     // If we have an Update object that was downloaded in this session, just install
     if (currentUpdateObject && downloadedInSession) {
         await currentUpdateObject.install()
-        await relaunch()
+        await relaunchApplication()
     } else {
         // Either no Update object, or it's a fresh one from check() that wasn't downloaded
         // Use downloadAndInstall() to be safe
         const update = currentUpdateObject || await check()
         if (update) {
             await update.downloadAndInstall()
-            await relaunch()
+            await relaunchApplication()
         } else {
             throw new Error('No update available')
         }

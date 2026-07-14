@@ -259,7 +259,10 @@ export const useRotationStore = create<RotationState>()(
                 const state = get()
                 if (state.active) return '로테이션이 이미 진행 중입니다.'
                 if (useGenerationStore.getState().generatingMode === 'main') return '메인 모드 생성을 먼저 멈춰주세요.'
-                if (useAuthStore.getState().getActiveTokens().length === 0) return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
+                if (useAuthStore.getState().getActiveTokens().length === 0) {
+                    useAuthStore.getState().requestCredentialUnlock()
+                    return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
+                }
                 if (state.characterIds.length === 0) return '로테이션할 캐릭터를 선택하세요.'
 
                 const sceneStore = useSceneStore.getState()
@@ -305,7 +308,10 @@ export const useRotationStore = create<RotationState>()(
                 if (state.active) return '로테이션이 이미 진행 중입니다.'
                 if (!state.snapshot) return '저장된 로테이션 세션이 없습니다.'
                 if (useGenerationStore.getState().generatingMode === 'main') return '메인 모드 생성을 먼저 멈춰주세요.'
-                if (useAuthStore.getState().getActiveTokens().length === 0) return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
+                if (useAuthStore.getState().getActiveTokens().length === 0) {
+                    useAuthStore.getState().requestCredentialUnlock()
+                    return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
+                }
 
                 const sceneStore = useSceneStore.getState()
                 if (!sceneStore.presets.some(preset => preset.id === state.snapshot!.presetId)) {
@@ -403,7 +409,10 @@ export const useRotationStore = create<RotationState>()(
                 if (state.status !== 'paused' || !state.snapshot) return
                 if (useSceneStore.getState().isGenerating) return
                 if (useGenerationStore.getState().generatingMode === 'main') return
-                if (useAuthStore.getState().getActiveTokens().length === 0) return
+                if (useAuthStore.getState().getActiveTokens().length === 0) {
+                    useAuthStore.getState().requestCredentialUnlock()
+                    return
+                }
                 if (!reassertCharacterAndPreset(state.characterIds[state.currentIndex])) return
                 set({ status: 'arming_pass', ...flagsForStatus('arming_pass') })
                 useSceneStore.getState().startNewGenerationSession()

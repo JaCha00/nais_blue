@@ -120,6 +120,10 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
 - **History:** empty/loading/error states occupy the panel without ornamental
   rings. Sheet view uses a two-column thumbnail grid when space allows; docked
   view may use one column.
+- **Startup rescue:** database-unavailable startup renders one bounded alert panel
+  without workspace navigation or generation/edit/save entry points. Retry,
+  diagnostic export, backup guidance, and safe exit remain direct native-button
+  actions with 44px touch targets and visible keyboard focus.
 - **Icons:** Lucide only except existing product logos. Every icon-only action has
   an accessible name and tooltip where hover exists.
 

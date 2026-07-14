@@ -8,9 +8,11 @@ import { AnimatedNavBar } from './AnimatedNavBar'
 import { CustomTitleBar } from './CustomTitleBar'
 import { LAYOUT_SHEET_EVENTS } from './layout-events'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
+import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
 import { useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { Tip } from '@/components/ui/tooltip'
+import { toast } from '@/components/ui/use-toast'
 import {
     Sheet,
     SheetContent,
@@ -81,6 +83,17 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     // Get active preset for header display
     const { presets, activePresetId } = usePresetStore()
     const activePreset = presets.find(p => p.id === activePresetId)
+
+    const handleSlotEnabled = async (slot: 1 | 2, enabled: boolean) => {
+        try {
+            await setSlotEnabled(slot, enabled)
+        } catch {
+            toast({
+                title: t('credentialVault.errors.operation-failed'),
+                variant: 'destructive',
+            })
+        }
+    }
 
     // Preset dialog state (for shortcut support)
     const [presetDialogOpen, setPresetDialogOpen] = useState(false)
@@ -191,7 +204,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 >
                                     <button
                                         type="button"
-                                        onClick={() => setSlotEnabled(entry.slot, false)}
+                                        onClick={() => void handleSlotEnabled(entry.slot, false)}
                                         className={cn(
                                             'flex min-h-11 min-w-0 items-center gap-1 rounded-control border px-2 py-2 transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:gap-2 sm:px-3',
                                             isSlot2
@@ -214,7 +227,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                             <Tip content={t('settingsPage.api.clickToResume2')}>
                                 <button
                                     type="button"
-                                    onClick={() => setSlotEnabled(2, true)}
+                                    onClick={() => void handleSlotEnabled(2, true)}
                                     className="flex min-h-11 min-w-0 items-center gap-1 rounded-control border border-border bg-muted px-2 py-2 text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:gap-2 sm:px-3"
                                 >
                                     <span className="text-xs font-semibold">2</span>
@@ -313,6 +326,9 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
+                        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 z-40 shrink-0 sm:static sm:z-auto">
+                            <DiagnosticDrawer />
+                        </div>
                     </div>
 
                     {/* Page Content */}

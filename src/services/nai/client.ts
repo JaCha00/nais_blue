@@ -1,6 +1,5 @@
 import JSZip from 'jszip'
-import { invoke, isTauri } from '@tauri-apps/api/core'
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
+import { invoke } from '@tauri-apps/api/core'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { embedNais2Params } from '@/lib/nais2-png-meta'
 import {
@@ -14,30 +13,41 @@ import { buildGenerateImagePayload } from '@/services/nai/payload'
 import { stripBase64Header } from '@/services/nai/refs'
 import { readNaiImageStream } from '@/services/nai/stream'
 import {
+    NaiTransportCancelledError,
+    NaiTransportTimeoutError,
+    getNaiAuxiliaryFetch,
+    getRuntimeNaiTransport,
+    type NaiTransportStage,
+} from '@/services/nai/transport'
+import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { OperationMonitor } from '@/services/diagnostics/operation-monitor'
+import {
     NovelAIHttpError,
     type AnlasInfo,
     type GenerateImageResult,
     type GenerationParams,
 } from '@/services/novelai-types'
 
-// Tauri WebViews are subject to browser CORS when using window.fetch. The
-// HTTP plugin is the capability-scoped transport on desktop and Android;
-// browsers/tests keep the native fetch implementation.
-const CLIENT_FETCH: typeof fetch = isTauri()
-    ? tauriFetch
-    : window.fetch.bind(window)
-
-const DEFAULT_HEADERS = {
-    'Content-Type': 'application/json',
-    'User-Agent': 'NAIS2_Client/1.0',
-}
+export const NAI_STANDARD_TIMEOUT_MS = 120_000
+export const NAI_STREAM_TIMEOUT_MS = 120_000
 
 function isAbortError(error: unknown): boolean {
-    return error instanceof DOMException && error.name === 'AbortError'
+    return error instanceof NaiTransportCancelledError
+        || (error instanceof DOMException && error.name === 'AbortError')
+        || (error instanceof Error && error.name === 'AbortError')
 }
 
-function errorToMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
+function isTimeoutError(error: unknown): boolean {
+    return error instanceof NaiTransportTimeoutError
+}
+
+function observeTransportStage(
+    operation: ReturnType<OperationMonitor['start']>,
+): (stage: NaiTransportStage) => void {
+    return stage => {
+        if (stage === 'stream-heartbeat') operation.heartbeat(stage)
+        else operation.stageStart(stage)
+    }
 }
 
 function taggedImage(base64: string, params: GenerationParams): string {
@@ -59,6 +69,12 @@ function makeSentPayloadSummary(sentPayload: string): string {
     return `sha256:${sha256Utf8(redactSentPayloadForMetadata(sentPayload))}`
 }
 
+const naiOperationMonitor = new OperationMonitor({
+    onObservation: recordDiagnosticEvent,
+    autoCheck: true,
+    pollIntervalMs: 1_000,
+})
+
 export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } | null> {
     try {
         const result = await invoke<{ success: boolean; fixed?: number; purchased?: number; error?: string }>(
@@ -70,7 +86,7 @@ export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } |
         const purchased = result.purchased ?? 0
         return { anlas: { fixed, purchased, total: fixed + purchased } }
     } catch (error) {
-        console.error('getUserInfo error:', error)
+        reportDiagnostic(error, { operation: 'nai.user-info', stage: 'invoke' })
         return null
     }
 }
@@ -88,9 +104,15 @@ export async function verifyToken(token: string): Promise<{
         if (result.valid && result.tier) {
             return { valid: true, tier: result.tier as 'paper' | 'tablet' | 'scroll' | 'opus' }
         }
-        return { valid: false, error: result.error || '인증 실패' }
+        const event = reportDiagnostic(new Error(result.error || '인증 실패'), {
+            operation: 'nai.verify-token',
+            stage: 'invoke',
+            category: 'auth',
+        })
+        return { valid: false, error: event.userSummary }
     } catch (error) {
-        return { valid: false, error: `Rust 통신 오류: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.verify-token', stage: 'invoke', category: 'auth' })
+        return { valid: false, error: event.userSummary }
     }
 }
 
@@ -105,6 +127,13 @@ export async function getAnlasBalance(token: string): Promise<{
             'get_anlas_balance',
             { token: token.trim() },
         )
+        if (!result.success) {
+            const event = reportDiagnostic(new Error(result.error || 'Anlas balance request failed'), {
+                operation: 'nai.anlas-balance',
+                stage: 'invoke',
+            })
+            return { success: false, error: event.userSummary }
+        }
         return {
             success: result.success,
             fixedTrainingStepsLeft: result.fixed,
@@ -112,7 +141,8 @@ export async function getAnlasBalance(token: string): Promise<{
             error: result.error,
         }
     } catch (error) {
-        return { success: false, error: `Rust invoke failed: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.anlas-balance', stage: 'invoke' })
+        return { success: false, error: event.userSummary }
     }
 }
 
@@ -123,18 +153,19 @@ export async function generateImage(
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
+    const operation = naiOperationMonitor.start({ operation: 'nai.generate', stage: 'prepare', prompt: params.prompt })
     try {
+        operation.stageStart('payload')
         const adapted = await adaptGenerationParams(token, params)
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
-        const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImage, {
-            method: 'POST',
-            headers: {
-                ...DEFAULT_HEADERS,
-                Authorization: `Bearer ${token.trim()}`,
-            },
-            body: sentPayload,
+        const response = await getRuntimeNaiTransport().request({
+            endpoint: 'standard',
+            token,
+            payload: sentPayload,
             signal,
+            timeoutMs: NAI_STANDARD_TIMEOUT_MS,
+            onStage: observeTransportStage(operation),
         })
 
         if (!response.ok) {
@@ -143,7 +174,9 @@ export async function generateImage(
         }
 
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
-        const imageData = await firstZipEntryBase64(await response.arrayBuffer(), 'ZIP 파일이 비어있습니다.')
+        const responseBody = await response.arrayBuffer()
+        operation.stageStart('decode')
+        const imageData = await firstZipEntryBase64(responseBody, 'ZIP 파일이 비어있습니다.')
         return {
             success: true,
             imageData: taggedImage(imageData, { ...params, sentPayloadSummary }),
@@ -152,9 +185,21 @@ export async function generateImage(
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error
-        if (isAbortError(error)) return { success: false, error: '요청이 취소되었습니다.' }
-        console.error('Generation error:', error)
-        return { success: false, error: `생성 오류: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, {
+            operation: 'nai.generate',
+            stage: isAbortError(error) ? 'cancelled' : isTimeoutError(error) ? 'timeout' : 'request',
+            prompt: params.prompt,
+            cancelled: isAbortError(error),
+            timeout: isTimeoutError(error),
+        })
+        return {
+            success: false,
+            error: event.userSummary,
+            ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
+            ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
+        }
+    } finally {
+        operation.finish()
     }
 }
 
@@ -166,19 +211,19 @@ export async function generateImageStream(
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
+    const operation = naiOperationMonitor.start({ operation: 'nai.generate-stream', stage: 'prepare', prompt: params.prompt })
     try {
+        operation.stageStart('payload')
         const adapted = await adaptGenerationParams(token, params, 'msgpack')
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
-        const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImageStream, {
-            method: 'POST',
-            headers: {
-                ...DEFAULT_HEADERS,
-                Authorization: `Bearer ${token.trim()}`,
-                Accept: 'application/x-msgpack',
-            },
-            body: sentPayload,
+        const response = await getRuntimeNaiTransport().request({
+            endpoint: 'stream',
+            token,
+            payload: sentPayload,
             signal,
+            timeoutMs: NAI_STREAM_TIMEOUT_MS,
+            onStage: observeTransportStage(operation),
         })
 
         if (!response.ok) {
@@ -190,8 +235,14 @@ export async function generateImageStream(
         let lastStepShown = -1
         const totalSteps = params.steps || 28
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
+        let decodeStarted = false
         const imageData = await readNaiImageStream(response.body, {
             onEvent: event => {
+                if (!decodeStarted) {
+                    decodeStarted = true
+                    operation.stageStart('decode')
+                }
+                operation.heartbeat('streaming-progress')
                 if (typeof event.stepIx === 'number') {
                     const progress = Math.round((event.stepIx / totalSteps) * 100)
                     if (event.eventType === 'intermediate' && event.imageBase64 && event.stepIx > lastStepShown + 1) {
@@ -213,9 +264,21 @@ export async function generateImageStream(
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error
-        if (isAbortError(error)) return { success: false, error: '요청이 취소되었습니다.' }
-        console.error('[Stream] Error:', error)
-        return { success: false, error: `스트리밍 오류: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, {
+            operation: 'nai.generate-stream',
+            stage: isAbortError(error) ? 'cancelled' : isTimeoutError(error) ? 'timeout' : 'stream',
+            prompt: params.prompt,
+            cancelled: isAbortError(error),
+            timeout: isTimeoutError(error),
+        })
+        return {
+            success: false,
+            error: event.userSummary,
+            ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
+            ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
+        }
+    } finally {
+        operation.finish()
     }
 }
 
@@ -245,7 +308,7 @@ async function augmentViaFormData(
     formData.append('image', new Blob([imageBytes], { type: 'image/png' }), 'image.png')
     formData.append('request', new Blob([JSON.stringify(payload)], { type: 'application/json' }), 'blob')
 
-    const response = await CLIENT_FETCH(NAI_ENDPOINTS.augmentImage, {
+    const response = await getNaiAuxiliaryFetch()(NAI_ENDPOINTS.augmentImage, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token.trim()}` },
         body: formData,
@@ -273,10 +336,8 @@ export async function augmentImage(
             imageData: await augmentViaFormData(token, imageBase64, width, height, reqType, defry, prompt),
         }
     } catch (error) {
-        if (error instanceof NovelAIHttpError) {
-            return { success: false, error: `API 오류 ${error.status}: ${error.responseBody}` }
-        }
-        return { success: false, error: `Augment error: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, { operation: 'nai.augment', stage: 'request', prompt })
+        return { success: false, error: event.userSummary }
     }
 }
 
@@ -295,12 +356,20 @@ export async function upscaleImage(
             height,
             scale,
         })
+        if (!result.success) {
+            const event = reportDiagnostic(new Error(result.error || 'Upscale request failed'), {
+                operation: 'nai.upscale',
+                stage: 'invoke',
+            })
+            return { success: false, error: event.userSummary }
+        }
         return {
             success: result.success,
             imageData: result.image_data,
             error: result.error,
         }
     } catch (error) {
-        return { success: false, error: `Rust invoke failed: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.upscale', stage: 'invoke' })
+        return { success: false, error: event.userSummary }
     }
 }

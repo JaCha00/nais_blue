@@ -110,6 +110,15 @@
       "sensitiveDataRemoved": true
     },
     {
+      "path": "legacy/production-authority-startup.json",
+      "source": "Synthetic production-like startup matrix derived from Phase 06, DECISIONS.md D-006/D-012, and the current Composition repository/startup contracts.",
+      "model": "not-applicable",
+      "captureDate": "2026-07-13",
+      "captureKind": "synthetic-derived",
+      "transformed": false,
+      "sensitiveDataRemoved": true
+    },
+    {
       "path": "workflows/main/default-direct-prompt.json",
       "source": "Derived from the current direct-prompt path in src/stores/generation-store.ts.",
       "model": "nai-diffusion-4-5-full",

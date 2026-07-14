@@ -35,6 +35,8 @@ describe('startup legacy source capture', () => {
         expect(mainSource).not.toMatch(/^import App from/m)
         expect(mainSource).not.toMatch(/^import .*['"]\.\/stores\//m)
         expect(mainSource).not.toMatch(/^import .*composition-migration-startup/m)
+        expect(mainSource).toContain('authorityObservation?.fallbackReason')
+        expect(mainSource).toContain("code: 'E_COMPOSITION_AUTHORITY_FALLBACK'")
         expect(assetResolverSource).not.toMatch(/^import .*fragment-processor/m)
         expect(assetResolverSource).toContain("await import('@/lib/fragment-processor')")
         for (const storeName of [

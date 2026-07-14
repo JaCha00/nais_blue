@@ -42,14 +42,69 @@
         "moreActions": "More actions",
         "close": "Close"
     },
+    "credentialVault": {
+        "title": "Credential Vault",
+        "description": "NovelAI credentials are encrypted by the native vault. Plaintext exists only while this app session is unlocked.",
+        "manage": "Manage vault",
+        "status": {
+            "locked": "Locked",
+            "unlocking": "Unlocking...",
+            "unlocked": "Unlocked for this session",
+            "unavailable": "Native vault unavailable",
+            "error": "Vault needs attention"
+        },
+        "passphrase": "Vault passphrase",
+        "passphraseSessionOnly": "The passphrase is used for this session and is not saved by NAIS2.",
+        "create": "Create vault",
+        "unlock": "Unlock vault",
+        "unlocked": "Credential vault unlocked",
+        "lock": "Lock vault",
+        "slot1": "NovelAI slot 1",
+        "slot2": "NovelAI slot 2",
+        "notRegistered": "Not registered",
+        "lastFour": "Ends in •••• {{lastFour}}",
+        "tierUnknown": "Tier unavailable",
+        "slotEnabled": "Use credential slot {{slot}}",
+        "verified": "Verified",
+        "secretPlaceholder": "Enter a new NovelAI token",
+        "register": "Register",
+        "replace": "Replace",
+        "saved": "Credential saved in the encrypted vault",
+        "reverify": "Reverify",
+        "reverified": "Credential verified",
+        "verificationFailed": "Credential verification failed",
+        "delete": "Delete",
+        "deleted": "Credential deleted",
+        "deleteConfirmation": "Delete this credential?",
+        "deleteConfirmationDescription": "Generation with this slot will remain unavailable until another credential is registered.",
+        "migrationRequired": "Legacy credentials must be moved to the vault",
+        "migrationRequiredDescription": "Unlock or create the vault to finish the verified two-phase migration. Generation stays locked until it succeeds.",
+        "legacyBackupWarning": "Legacy backups may still contain credentials",
+        "legacyBackupWarningDescription": "Backups created by older releases must be treated as sensitive. Cleanup permanently deletes managed backup files that contain credential fields.",
+        "cleanupAction": "Delete unsafe managed backups",
+        "cleanupConfirmation": "Permanently delete unsafe managed backups?",
+        "cleanupConfirmationDescription": "This scans NAIS2-managed local and disk backups without revealing values, then deletes entire backup artifacts that contain legacy NovelAI or R2 credentials. This cannot be undone.",
+        "cleanupComplete": "Legacy credential backup cleanup complete",
+        "cleanupIncomplete": "Some legacy backups could not be cleaned",
+        "cleanupResult": "Inspected {{inspected}}, deleted {{deleted}}, failed {{failed}}.",
+        "errors": {
+            "unavailable": "The native encrypted vault is unavailable. No plaintext storage is used instead.",
+            "locked": "Unlock the vault to use credentials.",
+            "wrong-passphrase": "The vault could not be unlocked with that passphrase.",
+            "invalid-secret": "Enter a valid credential value.",
+            "not-found": "A referenced credential is missing. Register a replacement.",
+            "readback-failed": "The encrypted credential could not be verified after writing.",
+            "operation-failed": "The credential vault operation failed without changing to plaintext storage."
+        }
+    },
     "toast": {
         "generationCancelled": {
             "title": "Generation Cancelled",
             "desc": "Image generation has been cancelled."
         },
         "tokenRequired": {
-            "title": "API Token Required",
-            "desc": "Please enter and verify your token in Settings."
+            "title": "Credential Vault Unlock Required",
+            "desc": "Unlock the credential vault or register a NovelAI token."
         },
         "generationFailed": {
             "title": "Generation Failed"
@@ -904,6 +959,7 @@
             "confirmRestore": "Restore Data",
             "confirmRestoreDesc": "This will overwrite current data with backup data. Continue?",
             "restoreWarning": "App will restart after restore.",
+            "credentialReentryRequired": "Credential re-entry required: NovelAI tokens and runtime account data are not restored.",
             "sizes": "Data Sizes",
             "totalSize": "Total Size"
         }

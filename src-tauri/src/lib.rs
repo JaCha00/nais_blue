@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+mod nai_transport;
+#[cfg(mobile)]
+use tauri::Manager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VerifyTokenResult {
@@ -52,12 +55,9 @@ async fn verify_token(token: String) -> VerifyTokenResult {
     match result {
         Ok(response) => {
             let status = response.status();
-            println!("[VerifyToken] API Response Status: {}", status);
-
             if status.is_success() {
                 match response.json::<SubscriptionResponse>().await {
                     Ok(data) => {
-                        println!("[VerifyToken] Success! Tier data: {:?}", data.tier);
                         let tier_name = match data.tier {
                             Some(3) => Some("opus".to_string()),
                             Some(2) => Some("scroll".to_string()),
@@ -70,38 +70,33 @@ async fn verify_token(token: String) -> VerifyTokenResult {
                             error: None,
                         }
                     }
-                    Err(e) => {
-                        println!("[VerifyToken] JSON Parse Error: {}", e);
+                    Err(_) => {
                         VerifyTokenResult {
                             valid: false,
                             tier: None,
-                            error: Some(format!("JSON 파싱 오류: {}", e)),
+                            error: Some("응답 형식 오류".to_string()),
                         }
                     }
                 }
             } else if status.as_u16() == 401 {
-                println!("[VerifyToken] 401 Unauthorized");
                 VerifyTokenResult {
                     valid: false,
                     tier: None,
                     error: Some("유효하지 않은 API 토큰".to_string()),
                 }
             } else {
-                let error_text = response.text().await.unwrap_or_default();
-                println!("[VerifyToken] API Error: {} - {}", status, error_text);
                 VerifyTokenResult {
                     valid: false,
                     tier: None,
-                    error: Some(format!("API 오류: {} ({})", status.as_u16(), error_text)),
+                    error: Some(format!("API 오류: {}", status.as_u16())),
                 }
             }
         }
-        Err(e) => {
-            println!("[VerifyToken] Network Error: {}", e);
+        Err(_) => {
             VerifyTokenResult {
                 valid: false,
                 tier: None,
-                error: Some(format!("네트워크 오류: {}", e)),
+                error: Some("네트워크 오류".to_string()),
             }
         }
     }
@@ -138,11 +133,11 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
                             error: None,
                         }
                     }
-                    Err(e) => AnlasResult {
+                    Err(_) => AnlasResult {
                         success: false,
                         fixed: None,
                         purchased: None,
-                        error: Some(format!("JSON 파싱 오류: {}", e)),
+                        error: Some("응답 형식 오류".to_string()),
                     },
                 }
             } else {
@@ -154,11 +149,11 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
                 }
             }
         }
-        Err(e) => AnlasResult {
+        Err(_) => AnlasResult {
             success: false,
             fixed: None,
             purchased: None,
-            error: Some(format!("네트워크 오류: {}", e)),
+            error: Some("네트워크 오류".to_string()),
         },
     }
 }
@@ -216,33 +211,32 @@ async fn upscale_image(
                                 image_data: Some(base64_image),
                                 error: None,
                             },
-                            Err(e) => UpscaleResult {
+                            Err(_) => UpscaleResult {
                                 success: false,
                                 image_data: None,
-                                error: Some(format!("ZIP 처리 오류: {}", e)),
+                                error: Some("ZIP 처리 오류".to_string()),
                             },
                         }
                     }
-                    Err(e) => UpscaleResult {
+                    Err(_) => UpscaleResult {
                         success: false,
                         image_data: None,
-                        error: Some(format!("응답 읽기 오류: {}", e)),
+                        error: Some("응답 읽기 오류".to_string()),
                     },
                 }
             } else {
                 let status = response.status().as_u16();
-                let error_text = response.text().await.unwrap_or_default();
                 UpscaleResult {
                     success: false,
                     image_data: None,
-                    error: Some(format!("API 오류 {}: {}", status, error_text)),
+                    error: Some(format!("API 오류 {}", status)),
                 }
             }
         }
-        Err(e) => UpscaleResult {
+        Err(_) => UpscaleResult {
             success: false,
             image_data: None,
-            error: Some(format!("네트워크 오류: {}", e)),
+            error: Some("네트워크 오류".to_string()),
         },
     }
 }
@@ -301,33 +295,32 @@ async fn augment_image(
                                 image_data: Some(base64_image),
                                 error: None,
                             },
-                            Err(e) => UpscaleResult {
+                            Err(_) => UpscaleResult {
                                 success: false,
                                 image_data: None,
-                                error: Some(format!("ZIP 처리 오류: {}", e)),
+                                error: Some("ZIP 처리 오류".to_string()),
                             },
                         }
                     }
-                    Err(e) => UpscaleResult {
+                    Err(_) => UpscaleResult {
                         success: false,
                         image_data: None,
-                        error: Some(format!("응답 읽기 오류: {}", e)),
+                        error: Some("응답 읽기 오류".to_string()),
                     },
                 }
             } else {
                 let status = response.status().as_u16();
-                let error_text = response.text().await.unwrap_or_default();
                 UpscaleResult {
                     success: false,
                     image_data: None,
-                    error: Some(format!("API 오류 {}: {}", status, error_text)),
+                    error: Some(format!("API 오류 {}", status)),
                 }
             }
         }
-        Err(e) => UpscaleResult {
+        Err(_) => UpscaleResult {
             success: false,
             image_data: None,
-            error: Some(format!("네트워크 오류: {}", e)),
+            error: Some("네트워크 오류".to_string()),
         },
     }
 }
@@ -365,11 +358,11 @@ async fn remove_background(image_base64: String) -> RemoveBackgroundResult {
     // Decode base64 image
     let image_bytes = match STANDARD.decode(&image_base64) {
         Ok(bytes) => bytes,
-        Err(e) => {
+        Err(_) => {
             return RemoveBackgroundResult {
                 success: false,
                 image_data: None,
-                error: Some(format!("Base64 디코딩 오류: {}", e)),
+                error: Some("Base64 디코딩 오류".to_string()),
             }
         }
     };
@@ -397,26 +390,25 @@ async fn remove_background(image_base64: String) -> RemoveBackgroundResult {
                             error: None,
                         }
                     }
-                    Err(e) => RemoveBackgroundResult {
+                    Err(_) => RemoveBackgroundResult {
                         success: false,
                         image_data: None,
-                        error: Some(format!("응답 읽기 오류: {}", e)),
+                        error: Some("응답 읽기 오류".to_string()),
                     },
                 }
             } else {
                 let status = response.status().as_u16();
-                let error_text = response.text().await.unwrap_or_default();
                 RemoveBackgroundResult {
                     success: false,
                     image_data: None,
-                    error: Some(format!("API 오류 {}: {}", status, error_text)),
+                    error: Some(format!("API 오류 {}", status)),
                 }
             }
         }
-        Err(e) => RemoveBackgroundResult {
+        Err(_) => RemoveBackgroundResult {
             success: false,
             image_data: None,
-            error: Some(format!("네트워크 오류: {}", e)),
+            error: Some("네트워크 오류".to_string()),
         },
     }
 }
@@ -656,6 +648,48 @@ async fn check_tagger_binary() -> bool {
     false
 }
 
+const DIAGNOSTIC_LOG_MAX_BYTES: usize = 16 * 1024;
+
+fn contains_unredacted_diagnostic_payload(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Array(items) => items.iter().any(contains_unredacted_diagnostic_payload),
+        serde_json::Value::Object(record) => record.iter().any(|(key, item)| {
+            let normalized = key.to_ascii_lowercase();
+            matches!(normalized.as_str(), "responsebody" | "imagedata" | "imagebytes" | "base64" | "binary")
+                || contains_unredacted_diagnostic_payload(item)
+        }),
+        serde_json::Value::String(text) => {
+            let normalized = text.to_ascii_lowercase();
+            normalized.contains("data:image")
+                || normalized.contains("x-amz-signature=")
+                || normalized.contains("x-amz-credential=")
+        }
+        _ => false,
+    }
+}
+
+/// The frontend submits an already-redacted DiagnosticEvent. This command keeps
+/// the production file target structured and rejects image/provider payloads
+/// instead of forwarding arbitrary console data into a durable log.
+#[tauri::command]
+fn record_diagnostic_event(event: serde_json::Value) -> Result<(), String> {
+    let record = event.as_object().ok_or_else(|| "Invalid diagnostic event".to_string())?;
+    if record.get("schemaVersion") != Some(&serde_json::Value::from(1))
+        || !record.contains_key("redactedDeveloperMessage")
+        || contains_unredacted_diagnostic_payload(&event)
+    {
+        return Err("Diagnostic event did not satisfy the redacted schema".to_string());
+    }
+
+    let serialized = serde_json::to_string(&event).map_err(|_| "Unable to serialize diagnostic event".to_string())?;
+    if serialized.len() > DIAGNOSTIC_LOG_MAX_BYTES {
+        return Err("Diagnostic event exceeded the bounded log size".to_string());
+    }
+
+    log::error!(target: "nais2_diagnostic", "{}", serialized);
+    Ok(())
+}
+
 #[cfg(not(mobile))]
 fn spawn_tagger_sidecar(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<TaggerState>();
@@ -717,8 +751,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .manage(tagger_state)
+        .manage(nai_transport::NaiTransportState::default())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        // Production file logging intentionally accepts only the structured,
+        // redacted diagnostic target emitted by record_diagnostic_event.
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                    file_name: Some("diagnostics".to_string()),
+                }))
+                .level(log::LevelFilter::Error)
+                .filter(|metadata| metadata.target() == "nais2_diagnostic")
+                .max_file_size(1_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .build(),
+        );
 
     #[cfg(not(mobile))]
     {
@@ -743,19 +792,31 @@ pub fn run() {
             is_browser_open,
             zoom_embedded_browser,
             exit_app,
+            record_diagnostic_event,
+            nai_transport::nai_generate_request,
+            nai_transport::cancel_nai_request,
         ])
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+        .setup(|_app| {
+            let credential_vault_data_dir = _app
+                .path()
+                .app_data_dir()
+                .map_err(|error| error.to_string())?;
+            let credential_vault_local_data_dir = _app
+                .path()
+                .app_local_data_dir()
+                .map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&credential_vault_data_dir)
+                .map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(&credential_vault_local_data_dir)
+                .map_err(|error| error.to_string())?;
+            let credential_vault_salt = credential_vault_local_data_dir.join("credential-vault.salt");
+            _app.handle().plugin(
+                tauri_plugin_stronghold::Builder::with_argon2(&credential_vault_salt).build(),
+            )?;
 
             #[cfg(target_os = "macos")]
             {
-                if let Some(window) = app.get_webview_window("main") {
+                if let Some(window) = _app.get_webview_window("main") {
                     let _ = window.set_decorations(true);
                 }
             }

@@ -175,8 +175,9 @@ async function encodeVibeImage(
     })
 
     if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        throw new Error(`Vibe encode failed ${response.status}: ${text.slice(0, 300)}`)
+        // Provider bodies can echo request context; retain only the status for
+        // the diagnostic registry and never put the body in Error.message.
+        throw new Error(`Vibe encode failed (${response.status})`)
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())

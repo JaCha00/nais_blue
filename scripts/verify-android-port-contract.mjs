@@ -15,6 +15,7 @@ function listSourceFiles(directory) {
 
 const pkg = readJson('package.json')
 const rust = read('src-tauri/src/lib.rs')
+const nativeNaiTransport = read('src-tauri/src/nai_transport.rs')
 const cargoToml = read('src-tauri/Cargo.toml')
 const tauriConfig = readJson('src-tauri/tauri.conf.json')
 const desktopCapabilities = readJson('src-tauri/capabilities/default.json')
@@ -94,6 +95,16 @@ assert.ok(
 const mobileCapabilities = readJson('src-tauri/capabilities/mobile.json')
 const mobilePermissions = JSON.stringify(mobileCapabilities.permissions)
 const desktopPermissions = JSON.stringify(desktopCapabilities.permissions)
+const requiredStrongholdPermissions = [
+    'stronghold:allow-initialize',
+    'stronghold:allow-create-client',
+    'stronghold:allow-load-client',
+    'stronghold:allow-get-store-record',
+    'stronghold:allow-save-store-record',
+    'stronghold:allow-remove-store-record',
+    'stronghold:allow-save',
+    'stronghold:allow-destroy',
+]
 
 assert.deepEqual(desktopCapabilities.platforms, ['windows', 'linux', 'macOS'])
 assert.deepEqual(mobileCapabilities.platforms, ['android', 'iOS'])
@@ -126,12 +137,64 @@ assert.ok(
 assert.ok(!mobilePermissions.includes('updater:'), 'mobile capability must not expose updater IPC')
 assert.ok(!mobilePermissions.includes(`${retiredUrlPluginKey}:`), 'mobile capability must not expose retired URL callback IPC')
 assert.ok(!desktopPermissions.includes(`${retiredUrlPluginKey}:`), 'desktop capability must not expose retired URL callback IPC')
+for (const permission of requiredStrongholdPermissions) {
+    assert.ok(
+        mobileCapabilities.permissions.includes(permission),
+        `mobile capability must expose the required Stronghold operation: ${permission}`,
+    )
+    assert.ok(
+        desktopCapabilities.permissions.includes(permission),
+        `desktop capability must expose the required Stronghold operation: ${permission}`,
+    )
+}
+assert.ok(
+    !mobileCapabilities.permissions.includes('stronghold:default'),
+    'mobile capability must not grant the broad Stronghold default permission set',
+)
+assert.ok(
+    !desktopCapabilities.permissions.includes('stronghold:default'),
+    'desktop capability must not grant the broad Stronghold default permission set',
+)
+assert.ok(
+    rust.includes('tauri_plugin_stronghold::Builder::with_argon2'),
+    'native startup must initialize Stronghold with the official Argon2 builder',
+)
+assert.ok(
+    rust.includes('.manage(nai_transport::NaiTransportState::default())') &&
+        rust.includes('nai_transport::nai_generate_request') &&
+        rust.includes('nai_transport::cancel_nai_request'),
+    'native startup must register the bounded Android NAI transport and cancellation commands',
+)
+assert.ok(
+    nativeNaiTransport.includes('https://image.novelai.net/ai/generate-image') &&
+        nativeNaiTransport.includes('https://image.novelai.net/ai/generate-image-stream') &&
+        !/nai_generate_request\([\s\S]{0,500}\burl:\s*String/.test(nativeNaiTransport),
+    'Android NAI transport must map an endpoint enum to fixed NovelAI URLs instead of accepting arbitrary URLs',
+)
+assert.ok(
+    nativeNaiTransport.includes('NaiTransportEvent::BodyChunk') &&
+        nativeNaiTransport.includes('BASE64_STANDARD.encode(part)') &&
+        !nativeNaiTransport.includes('Channel<Response>') &&
+        nativeNaiTransport.includes('tokio::select!') &&
+        nativeNaiTransport.includes('NaiTransportEvent::Cancelled'),
+    'Android NAI transport must serialize ordered mobile body chunks and interrupt reqwest work on cancellation',
+)
 
 const generatedManifestPath = join(root, 'src-tauri/gen/android/app/src/main/AndroidManifest.xml')
 if (existsSync(generatedManifestPath)) {
     const generatedManifest = readFileSync(generatedManifestPath, 'utf8')
     assert.ok(!generatedManifest.includes('android.intent.action.VIEW'))
     assert.ok(!generatedManifest.includes('android.intent.category.BROWSABLE'))
+    for (const privilegedSystemPermission of [
+        'android.permission.ACCESS_BROADCAST_RESPONSE_STATS',
+        'android.permission.READ_SAFETY_CENTER_STATUS',
+        'android.permission.SEND_SAFETY_CENTER_UPDATE',
+    ]) {
+        assert.ok(
+            !generatedManifest.includes(privilegedSystemPermission),
+            `NAIS2 must not request Google Play Services privileged permission ${privilegedSystemPermission}`,
+        )
+    }
 }
 for (const desktopWindowPermission of [
     'core:window:allow-minimize',

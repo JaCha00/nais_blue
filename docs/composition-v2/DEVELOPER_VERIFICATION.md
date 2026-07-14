@@ -1,6 +1,6 @@
 # Developer verification guide
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 ## Reproducible baseline
 
@@ -15,17 +15,56 @@ npm run test:unit
 npm run test:payload-parity
 npm run test:composition
 npm run test:migration
+npm run test:diagnostics
+npm run test:persistence
+npm run test:credential-vault
+npm run test:queue
+npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
+npm run test:nai-transport
 npm run test:smart-tools
 npm run test:responsive-layout
 npm run test:android-port
 npm run test:android-release-contract
 npm run test:remote-runtime-removal
 cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:queue`는 모든 state transition, immutable snapshot/hash, competing CAS lease, expiry/restart recovery, duplicate idempotency, missing resource, 10,000-job indexed pagination, schema upgrade와 transaction abort를 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
+
+Vault restart regression의 focused gate는 `npm run test:credential-vault`와
+`npm run test:persistence`다. Native setup은 `app_data_dir`와 `app_local_data_dir`를 Stronghold plugin
+등록 전에 생성해야 하며 close/relaunch는 pending IndexedDB flush → Stronghold unload → process
+exit 순서다. History I2I는 metadata hydration과 진행 중 unlock의 terminal state를 await하고
+`unavailable/error`에서는 source image/mode/navigation을 commit하지 않는다. Existing snapshot의
+실제 re-unlock은 passphrase/credential이 명시적으로 opt-in된 isolated profile에서만 수행한다.
+
+Vault ACL regression을 확인할 때는 별도 application identifier의 isolated production binary를 사용한다.
+Generated capability의 `$APPDATA/**` 존재, `BaseDirectory.AppData` resolved directory와 snapshot parent
+동일 여부, absolute/relative `exists` 허용 여부만 boolean으로 기록한다. 실제 resolved path, snapshot
+내용, passphrase와 credential은 terminal/artifact에 남기지 않는다.
+
+## Phase 06 authority preflight
+
+Production-like authority fixture와 운영 panel contract는 다음 focused 명령으로 먼저 진단할 수 있다.
+
+```text
+npx --no-install vitest run tests/migration/composition-production-startup.test.ts tests/migration/composition-migration-startup.test.ts tests/diagnostics/diagnostics-ui.contract.test.ts
+```
+
+이 suite는 fresh default legacy 유지, canonical v2 restart, explicit verified upgrade,
+both-present, retired-key old backup sanitation, expired interruption cleanup, corrupted repository
+fail-closed, one-action rollback과 verified forward activation을 실제 repository/startup 경계로
+실행한다. Diagnostics panel은 persisted/runtime authority, revision/hash, migration status,
+startup verification과 workflow requested/effective mode를 표시해야 한다. Silent fallback은
+`E_COMPOSITION_AUTHORITY_FALLBACK` redacted event로 남아야 한다.
+
+이 local suite 통과만으로 production default를 바꾸지 않는다. Supported V4/V4.5 Main/Scene/
+Style Lab standard/stream, PNG/WebP, source edit, cancel matrix는 명시적 live credential opt-in과
+redacted evidence가 필요하다. Android authenticated image/output과 signed export→rollback
+install→restore→forward migration drill도 별도 release environment에서 실행한다.
 
 ## Android
 
@@ -38,7 +77,35 @@ npx --no-install tauri android build --debug --apk --ci --target x86_64
 npm run test:android-debug -- --apk src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
-Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다.
+Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다. UI 좌표는 `uiautomator` tree의 현재 bounds에서만 얻고 persisted prompt/image가 보일 수 있는 screenshot이나 raw XML은 evidence로 보존하지 않는다. Android transport 결과는 success 또는 typed timeout/cancel로 유한 시간 안에 끝나야 하며 cancel 뒤 Scene output/history/queue를 재확인한다.
+
+Android native response body는 raw `Channel<Response>`가 아니라 headers/body/end를 함께 운반하는
+single JSON event channel을 사용한다. Body chunk는 IPC에서만 base64로 직렬화하고 JS가 즉시
+`Uint8Array`로 복원한다. `test:nai-transport`는 `onBody`가 다시 생기지 않고 body event가 end 전에
+조립되는지 검증하며 Rust loopback test는 reconstructed bytes와 headers→body→end 순서를 검증한다.
+Token, payload, body/base64를 log나 artifact로 저장하지 않는다.
+
+Physical app이 요청 전에 종료되면 `dumpsys activity exit-info <package>`로 app crash와 dependency
+death를 먼저 구분한다. M500_MIKU에서 Google Play Services FontsProvider가
+`ACCESS_BROADCAST_RESPONSE_STATS` permission denial로 crash loop를 만들었던 환경은 Android
+transport 실패로 분류하지 않는다. 그러나 post-fix authenticated output gate도 통과한 것으로
+간주하지 않는다. 별도 authority 없이 Play Services privileged permission grant, component disable,
+data clear 또는 app-data clear로 testbed를 변형하지 않는다.
+
+`ACCESS_BROADCAST_RESPONSE_STATS`, `READ_SAFETY_CENTER_STATUS`,
+`SEND_SAFETY_CENTER_UPDATE`가 logcat에 보이면 crash line의 `Process:`를 함께 확인한다. 이 권한들은
+M500_MIKU package manager에서 signature/privileged 계열이며 GMS process denial이었다. NAIS2
+manifest에 선언하거나 runtime permission dialog로 요청하지 않는다. `test:android-port`는 generated
+manifest에 세 privileged permission이 들어오면 실패한다. Runtime request는 NAIS2가 실제로 호출하는
+dangerous permission과 app-owned failure stack이 확인된 경우에만 별도 characterization 뒤 추가한다.
+
+Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix
+`configure`를 실행하지 못하면 code regression과 분리해 기록한다. Linux Android build host를
+사용하거나 공식 crate archive에서 해당 target의 static library를 검증 생성한 뒤 crate가
+정의한 `SODIUM_LIB_DIR`를 해당 build process에만 설정한다. Generated library를 repository에
+track하거나 Base64/plain credential fallback으로 우회하지 않는다. Windows PATH에서는
+standalone Rust보다 `%USERPROFILE%\.cargo\bin` rustup shim이 먼저 와야 installed Android
+target sysroot를 사용한다.
 
 ## Required evidence
 
@@ -49,6 +116,7 @@ Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets,
 - payload parity
 - responsive/coarse pointer/focus assertions
 - Android APK metadata/install
+- Android native standard/stream body completion과 request cancellation
 
 Retired remote runtime residue는 broad grep 결과를 수동으로 세는 대신 allowlist를 코드화한 `test:remote-runtime-removal`을 authoritative gate로 사용한다.
 
