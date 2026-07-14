@@ -20,6 +20,7 @@ npm run test:persistence
 npm run test:credential-vault
 npm run test:queue
 npm run test:r2
+npm run test:organizer
 npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
@@ -179,3 +180,25 @@ NAI_LIVE=1 npm run smoke:nai-client
 ```
 
 PowerShell에서는 각 env 값을 해당 process에만 설정하고 실행 후 제거한다. Endpoint smoke는 512×512, 1 step, 1 sample이고 production-client smoke는 512×512, 4 steps와 취소용 최대 28 steps를 사용한다. 토큰, payload 전문, image base64와 API error body는 출력하거나 artifact에 저장하지 않는다. Character reference와 uncached vibe는 별도 추가 비용 가능성이 있으므로 이 free-base smoke에 포함하지 않는다.
+
+## Phase 10 organizer and distribution focused verification
+
+먼저 pure/repository/coordinator/UI contract와 OutputWriter artifact-sidecar path를 실행한다.
+
+```text
+npm run test:organizer
+npx --no-install vitest run tests/services/output/output-writer.test.ts tests/services/output/filename-policy.test.ts tests/helpers/metadata-v2.test.ts tests/services/r2/r2-upload-repository-coordinator.test.ts
+npm run lint
+npm run build
+npm run test:responsive-layout
+```
+
+Organizer suite는 10,000-image fixed-grid bounded window, Enter/drag/touch slot assignment와 duplicate block,
+portable ArtifactRecord immutability/pagination, filename traversal/reserved-name collision, original checksum,
+interrupted rename/conversion rollback, failed-only retry, PNG/WebP/JPEG EXIF/XMP/ICC/text/app chunk strip, WebP flags,
+alpha LSB/color fixture와 R2 enqueue linkage를 검증한다. OutputWriter suite는 image/metadata/artifact-sidecar가 같은
+journal collision/rollback path를 사용하는지 확인한다. Responsive matrix에는 `/organizer` route가 포함된다.
+
+Live NovelAI/R2 credential, actual external user folder mutation, physical Android organizer flow, actual disk-full,
+Canvas/browser color-profile matrix와 WAN R2 completion은 explicit opt-in/isolated environment 없이는 실행하지 않는다.
+Fixture/log/artifact에는 raw path, token, Authorization, signed URL, prompt, image byte/base64를 남기지 않는다.

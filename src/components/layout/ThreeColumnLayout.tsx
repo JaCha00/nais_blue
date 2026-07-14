@@ -34,6 +34,7 @@ import {
     PanelRight,
     Package,
     ListTodo,
+    FolderKanban,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
@@ -76,6 +77,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const compositionWorkspaceOwnsRails = location.pathname === '/'
         || location.pathname === '/scenes'
         || location.pathname.startsWith('/scenes/')
+    const organizerRoute = location.pathname === '/organizer'
     const supportPanelsAreDocked = isDesktopShell && !compositionWorkspaceOwnsRails
 
     // Get generation params for cost calculation
@@ -157,6 +159,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/asset-modules', icon: Package, labelKey: 'nav.assetModuleStudio', fallbackLabel: 'Asset Studio' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
         { path: '/queue', icon: ListTodo, labelKey: 'nav.queue', fallbackLabel: 'Queue Center' },
+        { path: '/organizer', icon: FolderKanban, labelKey: 'nav.organizer', fallbackLabel: 'Organizer' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },
         { path: '/library', icon: Images, labelKey: 'nav.library' },
         { path: '/settings', icon: Settings, labelKey: 'nav.settings' },
@@ -328,7 +331,12 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
-                        <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 z-40 shrink-0 sm:static sm:z-auto">
+                        <div className={cn(
+                            'fixed left-3 z-40 shrink-0 sm:static sm:z-auto',
+                            organizerRoute
+                                ? 'bottom-[calc(0.75rem+env(safe-area-inset-bottom))]'
+                                : 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))]',
+                        )}>
                             <DiagnosticDrawer />
                         </div>
                     </div>

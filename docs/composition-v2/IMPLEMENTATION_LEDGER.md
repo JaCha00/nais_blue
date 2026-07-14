@@ -1839,3 +1839,125 @@ use; reconciliation now re-reads the latest job before terminal commit. All fina
   delete bucket/DB/vault, sweep multipart or perform destructive migration without separate user confirmation
 - Next phase readiness: READY — native desktop upload, conditional safety, restart missing-part resume and all three stop
   gates have deterministic coverage; live provider and background-worker evidence remain explicit later gates.
+
+## Phase 10 — ORGANIZER AND DISTRIBUTION ARTIFACTS
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `ac3612e0d633cba67e38c67943185a0ed91c92d4`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 working tree의 unrelated `M AGENTS.md`와 generated untracked `src-tauri/src-tauri/**`를 보존했고
+  읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전 `OutputWriter`, filename policy, metadata v2와 existing R2 coordinator focused suite를 실행해
+  4 files/28 tests exit 0으로 현재 file/sidecar transaction과 portable path 동작을 고정했다.
+- Existing CompositionEngine/repository/migration, current OutputWriter, portable capability, payload builder/fixture,
+  Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release, old backup/v1 Asset
+  Profile/legacy metadata/migration fixtures는 교체·삭제하지 않았다. Retired Marketplace/Supabase/catalog runtime과
+  OAuth/deep-link도 재도입하지 않았다.
+
+### Artifact authority and distribution boundary
+
+1. Separate `nais2-organizer-artifacts` repository는 `ArtifactRecord`의 immutable original variant, source
+   job/scene identity, content checksum, portable file/thumbnail/sidecar reference, distribution variants와 remote
+   object reference만 저장한다. Raw absolute path, opaque platform token, image/base64, prompt, credential,
+   Authorization 및 signed URL은 repository validation에서 거부한다.
+2. Managed collection은 portable AppData ref를 사용한다. External folder는 current desktop process의 explicit
+   capability token registry에서만 materialize하며 authority data에 raw path를 남기지 않는다. Restart 또는
+   다른 platform에서는 silent fallback 없이 folder reselect/repair가 필요하다.
+3. Original checksum, size, format, portable ref는 immutable이다. Rename/convert/metadata strip은 distribution
+   variant만 만든다. Image, metadata와 artifact sidecar는 OutputWriter의 같은 journal/stage/rename/rollback
+   transaction으로 commit되며 artifact sidecar도 filename collision preflight에 포함된다.
+4. Metadata strict mode는 PNG/WebP/JPEG raw metadata container와 decoded alpha-LSB/color 결과를 모두 검증한다.
+   Same-format preserve는 raw path를 우선하고 Canvas conversion은 PNG/WebP만 지원한다. Canvas가 lossless WebP
+   또는 arbitrary ICC parity를 증명할 수 없으므로 lossless WebP request는 typed failure로 끝난다.
+5. Optional R2 action은 non-secret profile/key policy로 existing foreground R2 coordinator에 enqueue만 한다.
+   Organizer는 credential, signing, multipart/manifest, mobile upload 또는 background worker를 재구현하지 않는다.
+
+### Organizer interaction and responsive contract
+
+- `/organizer`는 managed/external collection, sibling folder PageUp/PageDown, adaptive thumbnail fixed-grid window,
+  keyboard Enter 다음 빈 slot, pointer/touch drag slot assignment와 duplicate block을 제공한다. 10,000 item은
+  bounded range/thumbnail cache로 필요한 tile만 materialize한다.
+- Policy panel은 actual filename, R2 key와 collision preview, copy/rename/strip/convert path, PNG/WebP,
+  quality/alpha/matte, strict metadata와 foreground R2 availability를 표시한다. Progress는 OutputWriter commit 및
+  enqueue 상태를 분리해 표시하고 failed-only distribution/R2 retry만 허용한다.
+- Organizer route를 responsive matrix에 넣었고, mobile diagnostic launcher의 safe-area position과 compact desktop
+  navigation overflow를 보정했다. 새 nav item 때문에 1536px Asset Modules tab이 clip되는 중간 failure를 발견해
+  compact desktop에서 ninth item 뒤 `More` overflow를 사용하도록 수정했다.
+
+### Dependency decision and implementation diagnostic
+
+- 새 npm/Rust dependency, Electron, Sharp, better-sqlite3, SQLite, Marketplace/Supabase client를 추가하지 않았다.
+  Existing browser Canvas와 Tauri file/capability layer를 사용하므로 renderer/mobile bundle graph를 새 codec/native
+  library로 확장하지 않는다. License/bundle 영향이 있는 추가 dependency decision은 발생하지 않았다.
+- Initial generic OutputWriter checksum insertion은 every save before staging에 async yield를 추가해 existing Scene
+  concurrent golden의 collision ordering을 흔들었다. Full composition suite가 이를 발견했고, checksum calculation을
+  `artifactSidecarBytes`가 있는 Organizer transaction으로만 제한했다. Re-run scene characterization과 aggregate
+  suite가 통과했으며 existing generation timing/worker contract에는 추가 await가 남지 않았다.
+- Test skip, assertion loosen, catch-and-ignore 또는 failure masking은 추가하지 않았다. Live NovelAI/R2 credential,
+  external user folder mutation, raw prompt/image/secret artifact는 사용하거나 생성하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS |
+| `npm run test:composition` | 0 | 107 passed/1 skipped files; 772 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | compatibility fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | vault/legacy scan PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | retained worker/output contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | virtualization/assignment/artifact/sanitize/retry/UI PASS |
+| Phase 10 OutputWriter focus | 0 | 4 files, 30/30 | image/metadata/artifact-sidecar journal/collision/rollback PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload source untouched/PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | `/organizer` 포함 PASS |
+| `npm run test:android-port` | 0 | contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; tracked tooling 0 | forbidden runtime/dependency residue 없음 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | existing transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | existing R2 native PASS |
+| `git diff --check` | 0 | Phase diff | PASS |
+
+### HANDOFF REPORT
+
+- Phase: 10 — ORGANIZER AND DISTRIBUTION ARTIFACTS
+- Base HEAD: `ac3612e0d633cba67e38c67943185a0ed91c92d4`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Organizer artifact domain/repository/sanitizer/coordinator/runtime/collection adapter and route UI;
+  fixed-grid utility; OutputWriter/filename artifact-sidecar transaction support; nav/layout/responsive contract;
+  organizer/output tests; composition-v2 architecture/status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: immutable originals linked by artifactId to distribution variants/sidecar/R2 refs; managed and
+  explicit-capability external collections; 10,000-item virtual browser; keyboard/touch assignment; strict metadata
+  sanitation; policy/conflict/R2 preview; OutputWriter-owned copy/rename/convert/strip transaction and failed-only retry
+- Preserved contracts: CompositionEngine/repository/migration, current OutputWriter ownership, portable capability,
+  payload fixture parity, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release,
+  retained old importers/readers/fixtures, user data and retired remote-runtime removal
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; tracked implementation ledger. No token, prompt,
+  Authorization, signed URL, raw external path, image/base64 or provider response-body artifact was created
+- Not tested and exact reason: live NovelAI/R2 and WAN R2 completion were not used because no explicit isolated
+  credential opt-in was provided; actual external user folder mutation, actual disk-full and long-running WebView
+  color/profile/quota observations need a controlled environment; Android APK/emulator/physical M500_MIKU Organizer flow
+  was not run because no isolated release/device authorization was provided and the known system-service blocker remains
+- Remaining risks: R-015, R-016, R-019, R-024~R-028, R-031~R-034, R-037~R-041; especially Canvas ICC/lossless limits,
+  external-token repair, long-running thumbnail memory and live R2/device observation remain open
+- Rollback procedure: stop/cancel Organizer distribution and R2 follow-up; allow OutputWriter journal recovery; preserve
+  organizer/R2 DB, managed artifacts, originals, sidecars, remote objects, user output, unrelated `AGENTS.md` and
+  generated `src-tauri/src-tauri/**`; revert only this Phase 10 local commit. Never reset/clean/delete DB/artifacts or
+  perform a destructive migration
+- Next phase readiness: READY — deterministic Organizer distribution and retained output/worker/R2 contracts are covered;
+  live provider, physical Android and controlled filesystem/browser observation remain explicit release gates.

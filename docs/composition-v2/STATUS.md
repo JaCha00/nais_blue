@@ -63,6 +63,21 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
+## Phase 10 — Organizer and distribution artifacts
+
+Organizer는 Tauri/portable capability와 current OutputWriter를 재사용해 managed AppData collection 또는 명시적으로
+선택한 desktop external folder의 PNG/WebP/JPEG를 fixed-grid virtualization으로 browse한다. PageUp/PageDown sibling
+navigation, Enter의 next-empty slot, drag/touch specific slot 및 duplicate-assignment block을 제공한다. ArtifactRecord는
+artifactId, nullable source job/scene identity, immutable original checksum/file, thumbnail cache identity,
+distribution variants, sidecar digest/ref와 R2 refs를 secret-free IndexedDB authority로 보존한다.
+
+Distribution은 original bytes를 write하지 않는다. Same-format copy/rename/strip과 Canvas PNG/WebP conversion은
+OutputWriter의 temp/journal/atomic rename/rollback 안에서 image와 `.nais2.artifact.json` sidecar를 함께 commit한다.
+Raw PNG/WebP/JPEG metadata scanner와 decoded alpha/color verification이 strict strip/convert fixture로 고정됐고,
+optional R2는 current native queue에 follow-up만 enqueue한다. Canvas lossless WebP와 mobile external/native upload는
+silent fallback 없이 unsupported/fail-safe로 남는다. 기존 Composition authority, repository/migration, queue worker,
+payload, OutputWriter, legacy importer/reader/user data는 이 phase에서 교체하거나 삭제하지 않았다.
+
 ## 보존한 compatibility
 
 - old backup importer와 ignored retired-key preview

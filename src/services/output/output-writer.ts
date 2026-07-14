@@ -3,6 +3,7 @@ import { MetadataWriter } from './metadata-writer'
 import {
     ensureImageFileExtension,
     resolveCollisionFileName,
+    toArtifactSidecarPath,
     toDiagnosticSidecarPath,
     toSidecarFileName,
     type OutputCollisionPolicy,
@@ -17,6 +18,7 @@ import {
 } from './platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from './tauri-output-adapter'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { sha256Bytes } from '@/lib/binary-digest'
 
 export type OutputWriterPhase =
     | 'resolve-destination'
@@ -54,6 +56,9 @@ export interface OutputWriteResult {
     directory: ResolvedOutputDirectory
     sidecarPath?: string
     diagnosticSidecarPath?: string
+    artifactSidecarPath?: string
+    /** SHA-256 of the exact final image bytes, after any metadata preparation. */
+    contentChecksum?: string
     thumbnailDataUrl?: string
     capabilityFallbackUsed: boolean
     capabilityFallbackReason?: string
@@ -69,6 +74,12 @@ export interface OutputWriterRequest {
     imageBytes: Uint8Array
     imageDataUrl: string
     metadata?: MetadataWriteRequest
+    /**
+     * A non-generation artifact sidecar written in the same journaled
+     * transaction as the image.  This is deliberately bytes-only so callers
+     * cannot bypass OutputWriter with a direct file write.
+     */
+    artifactSidecarBytes?: Uint8Array
     generateThumbnail?: (imageDataUrl: string) => Promise<string>
     canCommit: () => boolean
     commitWorkflow: (result: OutputWriteResult) => void | Promise<void>
@@ -86,7 +97,7 @@ export type OutputWriterOutcome =
     | { status: 'cancelled' }
 
 interface JournalArtifact {
-    kind: 'image' | 'sidecar' | 'diagnostic'
+    kind: 'image' | 'sidecar' | 'diagnostic' | 'artifact-sidecar'
     temp: OutputFileRef
     final: OutputFileRef
     backup?: OutputFileRef
@@ -102,6 +113,7 @@ interface OutputRecoveryJournal {
     updatedAt: string
     phase: RecoveryJournalPhase
     fileName: string
+    contentChecksum?: string
     directory: ResolvedOutputDirectory
     artifacts: JournalArtifact[]
     thumbnailStaged: boolean
@@ -205,7 +217,10 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
     }
     const artifacts = value.artifacts.map(entry => {
         if (!isRecord(entry)
-            || (entry.kind !== 'image' && entry.kind !== 'sidecar' && entry.kind !== 'diagnostic')) {
+            || (entry.kind !== 'image'
+                && entry.kind !== 'sidecar'
+                && entry.kind !== 'diagnostic'
+                && entry.kind !== 'artifact-sidecar')) {
             throw new Error('Invalid output recovery journal artifact')
         }
         return {
@@ -225,6 +240,9 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         updatedAt: value.updatedAt,
         phase: value.phase as RecoveryJournalPhase,
         fileName: value.fileName,
+        ...(typeof value.contentChecksum === 'string' && /^sha256:[a-f0-9]{64}$/i.test(value.contentChecksum)
+            ? { contentChecksum: value.contentChecksum }
+            : {}),
         directory,
         artifacts,
         thumbnailStaged: value.thumbnailStaged === true,
@@ -237,6 +255,7 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
     if (image === undefined) throw new Error('Recovery journal has no image artifact')
     const sidecar = journal.artifacts.find(artifact => artifact.kind === 'sidecar')
     const diagnostic = journal.artifacts.find(artifact => artifact.kind === 'diagnostic')
+    const artifactSidecar = journal.artifacts.find(artifact => artifact.kind === 'artifact-sidecar')
     return {
         transactionId: journal.transactionId,
         fileName: journal.fileName,
@@ -245,6 +264,8 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
         directory: journal.directory,
         ...(sidecar === undefined ? {} : { sidecarPath: sidecar.final.displayPath }),
         ...(diagnostic === undefined ? {} : { diagnosticSidecarPath: diagnostic.final.displayPath }),
+        ...(artifactSidecar === undefined ? {} : { artifactSidecarPath: artifactSidecar.final.displayPath }),
+        ...(journal.contentChecksum === undefined ? {} : { contentChecksum: journal.contentChecksum }),
         capabilityFallbackUsed: journal.directory.capabilityFallbackUsed,
         ...(journal.directory.fallbackReason === undefined
             ? {}
@@ -346,11 +367,16 @@ export class OutputWriter {
             const fileName = await resolveCollisionFileName(requestedFileName, collisionPolicy, async candidate => {
                 const imageExists = await this.platform.exists(childOutputRef(directory, candidate))
                 if (imageExists) return true
-                if (request.metadata === undefined) return false
-                const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
-                    || request.metadata.metadataMode === 'strip-and-sidecar'
-                    || request.metadata.imageFormat === 'webp'
-                return sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))
+                if (request.metadata !== undefined) {
+                    const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
+                        || request.metadata.metadataMode === 'strip-and-sidecar'
+                        || request.metadata.imageFormat === 'webp'
+                    if (sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))) {
+                        return true
+                    }
+                }
+                return request.artifactSidecarBytes !== undefined
+                    && await this.platform.exists(childOutputRef(directory, toArtifactSidecarPath(candidate)))
             })
             const transactionId = request.transactionId ?? this.createTransactionId()
             if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
@@ -364,6 +390,12 @@ export class OutputWriter {
                 throw new OutputWriterError('resolve-destination', 'Source job identity is not bounded')
             }
             const prepared = this.metadataWriter.prepare(request.imageBytes, request.metadata)
+            // Keep the established generation/output scheduling unchanged.
+            // Organizer already opts into a separate artifact sidecar, so only
+            // that new path pays the asynchronous byte-digest cost.
+            const contentChecksum = request.artifactSidecarBytes === undefined
+                ? undefined
+                : await sha256Bytes(prepared.imageBytes)
             const imageFinal = childOutputRef(directory, fileName)
             const artifacts: JournalArtifact[] = [{
                 kind: 'image',
@@ -389,6 +421,15 @@ export class OutputWriter {
                     committed: false,
                 })
             }
+            if (request.artifactSidecarBytes !== undefined) {
+                const artifactSidecarName = toArtifactSidecarPath(fileName)
+                artifacts.push({
+                    kind: 'artifact-sidecar',
+                    temp: childOutputRef(directory, tempName(artifactSidecarName, transactionId, 'artifact-sidecar')),
+                    final: childOutputRef(directory, artifactSidecarName),
+                    committed: false,
+                })
+            }
 
             mark('stage-temp-output')
             const timestamp = this.now().toISOString()
@@ -401,6 +442,7 @@ export class OutputWriter {
                 updatedAt: timestamp,
                 phase: 'staged',
                 fileName,
+                ...(contentChecksum === undefined ? {} : { contentChecksum }),
                 directory: {
                     ...serializeOutputFileRef(directory),
                     capabilityFallbackUsed: directory.capabilityFallbackUsed,
@@ -433,6 +475,10 @@ export class OutputWriter {
             const diagnosticArtifact = artifacts.find(artifact => artifact.kind === 'diagnostic')
             if (diagnosticArtifact !== undefined && prepared.diagnosticSidecarBytes !== undefined) {
                 await this.platform.writeFile(diagnosticArtifact.temp, prepared.diagnosticSidecarBytes)
+            }
+            const artifactSidecarArtifact = artifacts.find(artifact => artifact.kind === 'artifact-sidecar')
+            if (artifactSidecarArtifact !== undefined && request.artifactSidecarBytes !== undefined) {
+                await this.platform.writeFile(artifactSidecarArtifact.temp, request.artifactSidecarBytes)
             }
             journal.phase = 'metadata-written'
             await this.persistJournal(journal)
@@ -495,6 +541,10 @@ export class OutputWriter {
                 ...(diagnosticArtifact === undefined
                     ? {}
                     : { diagnosticSidecarPath: diagnosticArtifact.final.displayPath }),
+                ...(artifactSidecarArtifact === undefined
+                    ? {}
+                    : { artifactSidecarPath: artifactSidecarArtifact.final.displayPath }),
+                ...(contentChecksum === undefined ? {} : { contentChecksum }),
                 ...(thumbnailDataUrl === undefined ? {} : { thumbnailDataUrl }),
                 capabilityFallbackUsed: directory.capabilityFallbackUsed,
                 ...(directory.fallbackReason === undefined

@@ -444,6 +444,46 @@ describe('OutputWriter fault containment', () => {
         expect(adapter.paths()).toEqual(['output/result-2.png', 'output/result.png'])
         expectNoTransactionArtifacts(adapter)
     })
+
+    it('commits an organizer artifact sidecar atomically with a checksum-linked distribution image', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
+
+        const outcome = await writer(adapter).write(request({ artifactSidecarBytes: artifactSidecar }))
+
+        expect(outcome).toMatchObject({
+            status: 'committed',
+            result: {
+                fileName: 'result.png',
+                artifactSidecarPath: '/app-data/output/result.nais2.artifact.json',
+                contentChecksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+            },
+        })
+        expect(bytesEqual(adapter.file('output/result.png'), IMAGE_BYTES)).toBe(true)
+        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), artifactSidecar)).toBe(true)
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const existing = new Uint8Array([7, 7, 7])
+        adapter.seed('output/result.nais2.artifact.json', existing)
+        const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
+        let attemptedFileName = ''
+
+        await expect(writer(adapter).write(request({
+            artifactSidecarBytes: artifactSidecar,
+            commitWorkflow: result => {
+                attemptedFileName = result.fileName
+                throw new Error('store commit failed')
+            },
+        }))).rejects.toBeInstanceOf(OutputWriterError)
+
+        expect(attemptedFileName).toBe('result-2.png')
+        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), existing)).toBe(true)
+        expect(adapter.paths()).toEqual(['output/result.nais2.artifact.json'])
+        expectNoTransactionArtifacts(adapter)
+    })
 })
 
 describe('OutputWriter overwrite rollback safety', () => {

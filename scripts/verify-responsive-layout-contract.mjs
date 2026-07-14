@@ -15,7 +15,7 @@ const VIEWPORTS = [
     { width: 1536, height: 960, minCenterWidth: 680 },
 ]
 
-const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/asset-modules', '/queue']
+const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/asset-modules', '/queue', '/organizer']
 
 // These routes represent each responsive information architecture used by the
 // production shell: command canvas, split editor, dense grids, and settings.
@@ -29,6 +29,7 @@ const routes = [
     '/web',
     '/asset-modules',
     '/queue',
+    '/organizer',
     '/settings',
 ]
 const port = Number(process.env.RESPONSIVE_CONTRACT_PORT || 5177)

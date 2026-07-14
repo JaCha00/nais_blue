@@ -135,6 +135,24 @@ R2ProfileV2/UploadJob을 읽지 않지만 records는 future forward recovery를 
 secret exposure 또는 multipart duplication stop gate가 발생했다면 provider audit 뒤 credential rotation/
 remote multipart cleanup은 사용자의 별도 확인을 받아 수행한다.
 
+## Organizer distribution artifact rollback
+
+Phase 10 rollback은 Organizer에서 새 distribution/R2 enqueue를 중지하고 running OutputWriter transaction이
+cancel/rollback 또는 terminal journal recovery를 끝내도록 한다. Original image, successful distribution variant,
+`.nais2.artifact.json` sidecar, `nais2-organizer-artifacts` IndexedDB, R2 UploadJob/manifest, external folder, managed
+AppData collection, unrelated `AGENTS.md`와 generated `src-tauri/src-tauri/**`/target은 삭제하지 않는다.
+
+Operational fallback은 Organizer route를 사용하지 않고 retained output/library/R2 workflow를 사용한다. Existing
+ArtifactRecord는 future forward recovery를 위해 남기며 raw path를 repository에 주입하거나 direct filesystem
+rename/delete로 cleanup하지 않는다. Metadata/sanitization issue가 발견되면 new execution을 stop하고 failed record와
+OutputWriter journal을 inspect/recover하며, already successful distribution을 automatic destructive rollback 대상으로
+취급하지 않는다.
+
+Source rollback이 필요한 경우 user data와 unrelated working tree를 보존한 채 Phase 10 local commit 하나만
+`git revert`한다. `reset --hard`, `clean`, organizer/R2/queue IndexedDB deletion, artifact/original/output deletion,
+credential rotation 또는 destructive migration은 rollback 절차가 아니다. Revert 뒤 OutputWriter baseline,
+legacy metadata reader, queue/session/cancel contract와 retained R2 workflow를 focused test로 확인한다.
+
 ## Stop conditions
 
 다음이면 cutover 또는 cleanup을 중단하고 compatibility layer를 유지한다.

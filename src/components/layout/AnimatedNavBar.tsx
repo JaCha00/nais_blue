@@ -23,6 +23,7 @@ interface AnimatedNavBarProps {
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+const COMPACT_DESKTOP_VISIBLE_ITEMS = 9
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -90,6 +91,8 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
 
     const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
     const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
+    const compactDesktopItems = items.slice(0, COMPACT_DESKTOP_VISIBLE_ITEMS)
+    const compactDesktopOverflowItems = items.slice(COMPACT_DESKTOP_VISIBLE_ITEMS)
     const moreLabel = t('nav.more', 'More')
     const overflowIsActive = overflowItems.some(item => isRouteActive(location.pathname, item.path))
 
@@ -190,8 +193,50 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                 </DropdownMenu>
             </div>
 
-            <div className="hidden w-full min-w-0 items-center justify-center gap-1 sm:flex">
-                {items.map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+            <div className={cn(
+                'hidden w-full min-w-0 items-center justify-center sm:flex',
+                isCompact ? 'gap-0' : 'gap-1',
+            )}>
+                {(isCompact ? compactDesktopItems : items).map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+                {isCompact && compactDesktopOverflowItems.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                type="button"
+                                aria-label={moreLabel}
+                                title={moreLabel}
+                                className="inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                            >
+                                <Ellipsis className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            align="end"
+                            sideOffset={8}
+                            className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
+                        >
+                            {compactDesktopOverflowItems.map(item => {
+                                const isActive = isRouteActive(location.pathname, item.path)
+                                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
+                                return (
+                                    <DropdownMenuItem
+                                        key={item.path}
+                                        asChild
+                                        className={cn(
+                                            'h-11 rounded-control px-3 focus:bg-accent focus:text-accent-foreground',
+                                            isActive && 'bg-accent text-primary',
+                                        )}
+                                    >
+                                        <NavLink to={item.path} aria-current={isActive ? 'page' : undefined} className="flex w-full items-center gap-3">
+                                            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                            <span className="truncate">{label}</span>
+                                        </NavLink>
+                                    </DropdownMenuItem>
+                                )
+                            })}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
         </nav>
     )

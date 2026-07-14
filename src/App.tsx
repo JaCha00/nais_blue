@@ -23,6 +23,7 @@ const PromptEditor = lazy(() => import('@/pages/PromptEditor'))
 const AssetModuleStudio = lazy(() => import('@/pages/AssetModuleStudio'))
 const StyleLab = lazy(() => import('@/pages/StyleLab'))
 const QueueCenter = lazy(() => import('@/pages/QueueCenter'))
+const Organizer = lazy(() => import('@/pages/Organizer'))
 
 function RouteLoadingFallback() {
     return (
@@ -71,6 +72,7 @@ function AppContent() {
                     <Route path="/asset-modules" element={<AssetModuleStudio />} />
                     <Route path="/style-lab" element={<StyleLab />} />
                     <Route path="/queue" element={<QueueCenter />} />
+                    <Route path="/organizer" element={<Organizer />} />
                     <Route path="/web" element={<WebView />} />
                     <Route path="/library" element={<Library />} />
                     <Route path="/settings" element={<Settings />} />

@@ -112,3 +112,17 @@
 38. Fake R2 server는 SigV4 header, 403/signature/clock skew, 404, 412 conditional conflict와 multipart
     continuation을 검증하지만 live Cloudflare R2 credential, jurisdiction/custom domain, provider-side multipart
     expiry와 1,000-object WAN interruption은 credential opt-in이 없어 실행하지 않았다.
+39. Organizer external folder는 raw absolute path를 persistent authority에 저장하지 않는다. Current desktop process의
+    portable token registry에서만 materialize하므로 restart/다른 platform에서는 명시적으로 folder를 다시 선택해야
+    한다. Managed AppData artifact collection은 이 제한을 받지 않는다.
+40. WebView Canvas는 PNG/WebP conversion quality와 alpha/matte를 제공하지만 lossless WebP encoding 또는 arbitrary
+    ICC color-management parity를 증명하지 않는다. Lossless WebP request는 silent lossy conversion 대신 fail-safe로
+    실패하며 strict workflow는 raw same-format preserve 또는 PNG를 선택해야 한다.
+41. Organizer raw sanitizer는 PNG/WebP/JPEG의 현재 metadata container classes를 대상으로 한다. Future codec,
+    malformed container, unknown metadata encoding은 permissive success로 넘기지 않으며 explicit diagnostic/failure
+    또는 distribution policy 변경이 필요하다.
+42. Organizer R2 action은 existing foreground resumable queue의 enqueue only다. Android/iOS native R2, background
+    upload, live provider WAN restart와 remote completion observation은 Phase 09/12 capability/release gate에 남는다.
+43. 10,000-image browser contract는 fixed-grid window, assignment, repository pagination과 source contract를
+    deterministic test로 검증한다. Actual long-running desktop WebView memory, filesystem watcher behavior, browser
+    quota/eviction과 physical Android organizer flow는 release/authorized device environment 없이는 검증하지 않았다.
