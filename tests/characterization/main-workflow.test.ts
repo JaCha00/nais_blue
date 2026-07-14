@@ -6,6 +6,8 @@ import type { GenerationParams } from '@/services/novelai-types'
 import { readNais2Params } from '@/lib/nais2-png-meta'
 import { buildNais2Params, redactSentPayloadForMetadata } from '@/lib/generation-metadata'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
+import { NaiTransportTimeoutError } from '@/services/nai/transport'
+import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 
 import { assertDeepEqual, loadFixtureJson } from '../helpers'
 import {
@@ -383,6 +385,7 @@ function resetStores(): void {
     runtimeCapture.pendingFinalWrites.length = 0
     runtimeCapture.fetchOverride = null
     runtimeCapture.thumbnailOverride = null
+    useDiagnosticsStore.getState().clear()
 
     stores.useAuthStore.setState({
         token: 'synthetic-token-never-snapshotted',
@@ -1386,6 +1389,44 @@ describe('Main workflow golden characterization', () => {
         expect(runtimeCapture.events).toEqual([])
         expect(stores.useFragmentStore.getState().getSequenceSnapshot().counters['fragment:legacy-api-failure']).toBe(0)
         expect(stores.useGenerationStore.getState().history).toEqual([])
+    })
+
+    it('preserves typed Main transport timeout classification without committing output', async () => {
+        runtimeCapture.fetchOverride = async (input: string | URL | Request, init?: RequestInit) => {
+            runtimeCapture.requests.push({
+                mode: 'non-streaming',
+                endpoint: String(input),
+                payload: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            })
+            throw new NaiTransportTimeoutError(120_000)
+        }
+        stores.useGenerationStore.setState({
+            compositionMode: 'legacy',
+            basePrompt: 'typed timeout boundary',
+        })
+
+        await stores.useGenerationStore.getState().generate()
+
+        const mainEvents = useDiagnosticsStore.getState().events
+            .filter(event => event.operation === 'main.generate')
+        expect(runtimeCapture.requests).toHaveLength(1)
+        expect(mainEvents).toHaveLength(1)
+        expect(mainEvents[0]).toMatchObject({
+            code: 'OPERATION_TIMEOUT',
+            category: 'timeout',
+            stage: 'transport-timeout',
+            timeout: true,
+        })
+        expect(useDiagnosticsStore.getState().events.some(event => event.code === 'UNKNOWN_FAILURE')).toBe(false)
+        expect(runtimeCapture.events).toEqual([])
+        expect(runtimeCapture.writes).toEqual([])
+        expect(stores.useGenerationStore.getState()).toMatchObject({
+            isGenerating: false,
+            generatingMode: null,
+            previewImage: null,
+            history: [],
+            abortController: null,
+        })
     })
 
     it('loads only fragments reachable from the selected recipe, including step-only backslash paths', async () => {

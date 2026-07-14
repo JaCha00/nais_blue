@@ -69,6 +69,21 @@ function hasActiveSceneWorkers(): boolean {
     return activeSceneWorkerCounts.size > 0
 }
 
+function handleSceneCancellationState(): boolean {
+    const sceneStore = useSceneStore.getState()
+    if (!sceneStore.isCancelling) return false
+
+    if (!hasActiveSceneWorkers()) {
+        const generationStore = useGenerationStore.getState()
+        if (generationStore.generatingMode === 'scene') {
+            generationStore.setGeneratingMode(null)
+        }
+        sceneStore.setIsGenerating(false)
+    }
+
+    return true
+}
+
 function releaseImageDataOnce(sessionId: number): void {
     if (releasedImageDataSessionId === sessionId) return
     releasedImageDataSessionId = sessionId
@@ -355,11 +370,7 @@ export function useSceneGeneration() {
                 return
             }
 
-            const sceneState = useSceneStore.getState()
-            if (sceneState.isCancelling) {
-                setIsGenerating(false)
-                return
-            }
+            if (handleSceneCancellationState()) return
 
             const activeGeneratingMode = useGenerationStore.getState().generatingMode
             if (activeGeneratingMode && activeGeneratingMode !== 'scene') {
@@ -463,4 +474,5 @@ export const __sceneGenerationTest = {
     classifyProcessError,
     processSceneWithSlot,
     workerLoop,
+    handleSceneCancellationState,
 }

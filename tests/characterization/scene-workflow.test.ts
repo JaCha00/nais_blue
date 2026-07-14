@@ -759,6 +759,58 @@ describe('Scene Composition v2 caller contract', () => {
         }
     })
 
+    it('releases the shared generation mode when the cancellation effect runs before the last worker finalizes', async () => {
+        resetRuntime(201, [scene('scene-cancel-effect-race', 1)])
+        runtime.useSettingsStore.setState({ useStreaming: false })
+        runtimeCapture.behaviors.push('deferred-success')
+        const worker = runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(201, false))
+
+        await vi.waitFor(() => expect(runtimeCapture.deferredResolve).not.toBeNull())
+        runtime.useSceneStore.getState().cancelSceneGeneration()
+
+        // Model the mounted hook observing isCancelling before the aborted
+        // worker's finally block runs. The UI lock remains until that worker
+        // owns the final cleanup.
+        expect(runtime.sceneTest.handleSceneCancellationState()).toBe(true)
+        expect(runtime.useSceneStore.getState()).toMatchObject({
+            isGenerating: true,
+            isCancelling: true,
+        })
+        expect(runtime.useGenerationStore.getState().generatingMode).toBe('scene')
+        await worker
+
+        expect(runtime.useSceneStore.getState()).toMatchObject({
+            isGenerating: false,
+            isCancelling: false,
+        })
+        expect(runtime.useGenerationStore.getState().generatingMode).toBeNull()
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-cancel-effect-race')?.queueCount).toBe(0)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-cancel-effect-race')?.images).toHaveLength(0)
+        expect(runtime.useGenerationStore.getState().history).toHaveLength(0)
+        expect(runtimeCapture.writes).toHaveLength(0)
+    })
+
+    it('releases an orphaned Scene cancellation when no worker can own final cleanup', () => {
+        resetRuntime(202, [scene('scene-cancel-without-worker', 1)])
+        runtime.useSceneStore.getState().cancelSceneGeneration()
+
+        expect(runtime.useSceneStore.getState()).toMatchObject({
+            isGenerating: true,
+            isCancelling: true,
+        })
+        expect(runtime.sceneTest.handleSceneCancellationState()).toBe(true)
+        expect(runtime.useSceneStore.getState()).toMatchObject({
+            isGenerating: false,
+            isCancelling: false,
+        })
+        expect(runtime.useGenerationStore.getState().generatingMode).toBeNull()
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-cancel-without-worker')?.queueCount).toBe(1)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-cancel-without-worker')?.images).toHaveLength(0)
+        expect(runtime.useGenerationStore.getState().history).toHaveLength(0)
+        expect(runtimeCapture.requests).toHaveLength(0)
+        expect(runtimeCapture.writes).toHaveLength(0)
+    })
+
     it('keeps 429 automatically retryable but preserves timed-out work in the queue without an automatic retry', () => {
         expect(runtime.sceneTest.classifyProcessError(new NovelAIHttpError(429, 'synthetic'))).toMatchObject({
             status: 'retryable',

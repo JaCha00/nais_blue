@@ -193,7 +193,7 @@ export function PromptPanel() {
     const isStyleLabGenerating = generatingMode === 'styleLab'
     const isConflict = isSceneMode
         ? isMainGenerating || isStyleLabGenerating
-        : isSceneGenerating || isStyleLabGenerating
+        : isSceneGenerating
 
     const handleGenerateOrCancel = useCallback(() => {
         if (isConflict) return // Prevent action if conflict exists

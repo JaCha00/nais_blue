@@ -142,6 +142,7 @@ export class MonitoredOperation {
             this.emittedSlow = true
             this.emit?.(createDiagnosticEvent({
                 ...this.options,
+                stage: observation.stage,
                 category: 'stalled',
                 severity: 'warning',
                 code: 'OPERATION_SLOW',
@@ -156,6 +157,7 @@ export class MonitoredOperation {
             this.emittedStalled = true
             this.emit?.(createDiagnosticEvent({
                 ...this.options,
+                stage: observation.stage,
                 category: 'stalled',
                 severity: 'warning',
                 code: 'OPERATION_STALLED',
@@ -171,6 +173,7 @@ export class MonitoredOperation {
             this.emittedTimeout = true
             this.emit?.(createDiagnosticEvent({
                 ...this.options,
+                stage: observation.stage,
                 category: 'timeout',
                 severity: 'error',
                 code: 'OPERATION_TIMEOUT',

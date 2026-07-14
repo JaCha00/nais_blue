@@ -1609,10 +1609,17 @@ export const useGenerationStore = create<GenerationState>()(
                                 await new Promise(resolve => setTimeout(resolve, generationDelay))
                             }
                         } else {
+                            const termination = result.termination
                             const diagnostic = reportDiagnostic(new Error(result.error || 'Main generation failed'), {
                                 operation: 'main.generate',
-                                stage: canUseStreaming ? 'stream' : 'request',
+                                stage: termination === 'timeout'
+                                    ? 'transport-timeout'
+                                    : termination === 'cancelled'
+                                        ? 'transport-cancelled'
+                                        : canUseStreaming ? 'stream' : 'request',
                                 prompt: generationParams.prompt,
+                                cancelled: termination === 'cancelled',
+                                timeout: termination === 'timeout',
                             })
                             toast({
                                 title: i18n.t('toast.generationFailed.title'),

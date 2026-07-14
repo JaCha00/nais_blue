@@ -129,6 +129,40 @@ describe('operation monitoring', () => {
         now = 801
         expect(operation.check().timeout).toBe(true)
     })
+
+    it('reports the active stage when slow, stalled, and timeout transitions are emitted', () => {
+        let now = 0
+        const observations: ReturnType<typeof createDiagnosticEvent>[] = []
+        const monitor = new OperationMonitor({
+            now: () => now,
+            slowThresholdMs: 100,
+            stalledThresholdMs: 300,
+            hardTimeoutMs: 800,
+            onObservation: event => observations.push(event),
+        })
+        const operation = monitor.start({ operation: 'nai.generate', stage: 'prepare' })
+
+        now = 10
+        operation.stageStart('request')
+        now = 101
+        operation.check()
+
+        now = 200
+        operation.stageStart('stream')
+        now = 500
+        operation.check()
+
+        now = 700
+        operation.stageStart('decode')
+        now = 801
+        operation.check()
+
+        expect(observations.map(event => [event.code, event.stage])).toEqual([
+            ['OPERATION_SLOW', 'request'],
+            ['OPERATION_STALLED', 'stream'],
+            ['OPERATION_TIMEOUT', 'decode'],
+        ])
+    })
 })
 
 describe('diagnostic export and clipboard', () => {
