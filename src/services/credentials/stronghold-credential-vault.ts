@@ -1,5 +1,5 @@
 import { isTauri } from '@tauri-apps/api/core'
-import { appDataDir, join } from '@tauri-apps/api/path'
+import { appDataDir, BaseDirectory, join } from '@tauri-apps/api/path'
 import { exists } from '@tauri-apps/plugin-fs'
 import { Stronghold, type Store } from '@tauri-apps/plugin-stronghold'
 
@@ -101,7 +101,10 @@ export class StrongholdCredentialVault implements CredentialVault {
     async availability(): Promise<{ available: boolean; exists: boolean }> {
         if (!isTauri()) return { available: false, exists: false }
         try {
-            return { available: true, exists: await exists(await this.snapshotPath()) }
+            return {
+                available: true,
+                exists: await exists(SNAPSHOT_FILE, { baseDir: BaseDirectory.AppData }),
+            }
         } catch {
             return { available: false, exists: false }
         }

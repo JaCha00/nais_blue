@@ -315,3 +315,44 @@ package manager상 각각 signature/privileged/development, signature/privileged
 internal/privileged 보호 수준이며 NAIS2는 `DEPENDENCY DIED`였다. 따라서 NAIS2 manifest/runtime
 permission request나 try/catch로 해결할 수 없다. Contract는 이 privileged permission들을 NAIS2에
 추가하지 못하게 하고, 정상 ROM/Play Services 조합에서 physical matrix를 다시 실행한다.
+
+## D-026 — durable generation queue는 workflow와 분리된 normalized repository다
+
+상태: Accepted
+
+Generation job은 큰 Zustand JSON이나 Scene queue state에 넣지 않고 별도 IndexedDB database의
+`batches`, `jobs`, `attempts`, `leases`, `resources` store에 저장한다. Enqueue snapshot은 최종
+prompt/params/output policy를 immutable canonical document로 고정하고 hash와 idempotency key를 함께
+commit한다. Token, Authorization, base64와 cache secret은 schema에서 거부한다. Restart 뒤 필요한
+source/mask는 managed AppData digest/reference만 가리키며 volatile memory resource는 명시적으로
+non-resumable/blocked 처리한다.
+
+Repository는 indexed priority/ordinal/id order, CAS lease token, immediate transaction/readback,
+idempotent transition, terminal-state 불변, expiry recovery와 versioned schema upgrade를 소유한다.
+이번 phase는 enqueue caller, network, worker, UI와 OutputWriter를 연결하지 않는다. 따라서 기존
+Scene worker 수, dual-token/streaming/session/cancel/stale/retry/requeue/rotation/image-release 계약과
+generation-store는 그대로다.
+
+## D-027 — IndexedDB behavior test는 exact dev-only fake-indexeddb를 사용한다
+
+상태: Accepted
+
+`fake-indexeddb@6.2.5`를 exact devDependency로 추가한다. License는 Apache-2.0이고 Node >=18 개발
+환경에서만 실행되므로 production/browser/Android bundle에는 포함되지 않는다. Custom in-memory
+repository는 IndexedDB transaction abort, key range, unique index와 version upgrade semantics를
+재구현해야 해 실제 경계를 검증하지 못하므로 거절했다. Browser-only integration test는 10,000-job
+matrix를 느리고 비결정적으로 만들 수 있어 focused repository tests의 기본 대안으로 사용하지 않는다.
+
+## D-028 — Vault availability ACL probe는 BaseDirectory-relative 표현을 사용한다
+
+상태: Accepted
+
+Tauri generated capability의 `$APPDATA/**`와 JS `BaseDirectory.AppData`는 같은 app-specific data
+directory resolver를 사용한다. Isolated production binary에서 resolved directory/snapshot parent
+동일성, absolute/relative `exists` 허용과 동일 존재 결과를 경로 원문 없이 직접 확인했다. 따라서
+이전 `unavailable` 관찰을 ACL expansion mismatch로 분류하지 않는다.
+
+Stronghold load에는 official API가 요구하는 absolute snapshot path를 계속 전달하되 availability의
+filesystem check는 `exists(SNAPSHOT_FILE, { baseDir: BaseDirectory.AppData })`로 수행한다. 이는 ACL과
+동일한 표현을 사용해 directory bootstrap/파일 부재와 permission rejection을 구분하며 snapshot
+format, salt, passphrase, credential persistence를 바꾸지 않는다.

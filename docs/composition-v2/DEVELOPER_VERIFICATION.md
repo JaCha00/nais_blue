@@ -18,6 +18,7 @@ npm run test:migration
 npm run test:diagnostics
 npm run test:persistence
 npm run test:credential-vault
+npm run test:queue
 npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
@@ -31,7 +32,7 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:queue`는 모든 state transition, immutable snapshot/hash, competing CAS lease, expiry/restart recovery, duplicate idempotency, missing resource, 10,000-job indexed pagination, schema upgrade와 transaction abort를 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
 
 Vault restart regression의 focused gate는 `npm run test:credential-vault`와
 `npm run test:persistence`다. Native setup은 `app_data_dir`와 `app_local_data_dir`를 Stronghold plugin
@@ -39,6 +40,11 @@ Vault restart regression의 focused gate는 `npm run test:credential-vault`와
 exit 순서다. History I2I는 metadata hydration과 진행 중 unlock의 terminal state를 await하고
 `unavailable/error`에서는 source image/mode/navigation을 commit하지 않는다. Existing snapshot의
 실제 re-unlock은 passphrase/credential이 명시적으로 opt-in된 isolated profile에서만 수행한다.
+
+Vault ACL regression을 확인할 때는 별도 application identifier의 isolated production binary를 사용한다.
+Generated capability의 `$APPDATA/**` 존재, `BaseDirectory.AppData` resolved directory와 snapshot parent
+동일 여부, absolute/relative `exists` 허용 여부만 boolean으로 기록한다. 실제 resolved path, snapshot
+내용, passphrase와 credential은 terminal/artifact에 남기지 않는다.
 
 ## Phase 06 authority preflight
 

@@ -65,6 +65,18 @@ I2I readiness wait와 privileged-permission manifest gate가 함께 제거되므
 Android system-crash 분류를 다시 검증하기 전 release하지 않는다. Snapshot/salt 삭제, plaintext export,
 Play Services grant/disable/data clear와 app data clear는 rollback 절차가 아니다.
 
+## Durable queue domain rollback
+
+Durable queue phase는 기존 Main/Scene workflow를 cutover하거나 user generation data를 migration하지
+않는다. Rollback은 unrelated `AGENTS.md`, generated caches, existing IndexedDB/Vault/app/output data를
+보존하고 해당 local commit 하나만 `git revert`한다. `reset --hard`, `clean`과 queue database 삭제는
+rollback 절차가 아니다.
+
+현재 runtime caller가 없으므로 source revert만으로 기존 generation behavior로 돌아간다. Future
+cutover 뒤 rollback할 때도 먼저 enqueue/worker authority를 이전 adapter로 되돌리고 committed queue
+records와 managed resource를 보존해야 한다. OutputWriter, Scene worker/session/cancel/requeue 계약이나
+composition/payload repository를 queue rollback 과정에서 별도로 변경하지 않는다.
+
 ## Authority rollback
 
 Repository는 committed v2 document를 지우지 않고 authority만 `legacy`로 변경할 수 있다. Operational hotfix는 `applyCompositionAuthorityFeatureFlag('legacy')`와 repository `setAuthority('legacy')` 경계를 사용하며, 임의로 IndexedDB JSON을 수정하지 않는다. Startup hydration failure도 같은 fail-closed path를 사용한다.

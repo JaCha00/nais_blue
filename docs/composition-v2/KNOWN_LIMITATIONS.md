@@ -77,3 +77,12 @@
     일반 검증에서 credential opt-in이 없어 실행하지 않았다. M500_MIKU는 fresh cold launch 뒤 PID를
     유지하고 새 crash buffer는 비어 있었지만 과거 `DEPENDENCY DIED` exit-info는 남아 있고
     authenticated Android output matrix를 대체하지 않는다.
+27. Durable queue는 독립 domain/repository와 recovery policy까지만 구현됐다. Main/Scene enqueue,
+    network execution, UI와 generation-store cutover는 없으므로 현재 사용자 generation은 queue DB에
+    기록되지 않는다.
+28. Managed AppData resource record는 digest/reference와 missing-resource 판정을 제공하지만 source/mask
+    bytes를 enqueue 시 복사하는 workflow producer는 아직 없다. Volatile memory resource는 restart-safe로
+    가장하지 않고 explicit non-resumable/blocked로만 저장한다.
+29. Queue의 10,000-job, transaction abort와 upgrade 검증은 `fake-indexeddb` 기반 deterministic test다.
+    실제 browser quota/eviction과 multi-tab process scheduling은 아직 별도 integration evidence가 없으며
+    cutover 전 real-browser fault matrix가 필요하다.
