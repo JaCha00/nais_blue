@@ -249,3 +249,54 @@ Phase 11에는 production caller, network transport, user-facing sync control, e
 worker가 없다. 따라서 live NovelAI/R2 credential, Android network output, WAN reconnect를 이 focused gate에서
 사용하지 않으며 local-only source contract을 계속 유지한다. Fixture, terminal, diagnostic에는
 token, Authorization, signed URL, raw path, prompt 전문, image/base64/blob을 남기지 않는다.
+
+## Phase 12 secure LAN transport focused verification
+
+먼저 network-free Phase 11 regression과 새 coordinator/pairing/transport 계약을 실행하고 native TLS/Android
+worker를 각각 검증한다.
+
+```text
+npx --no-install vitest run tests/services/sync tests/domain/sync/local-only.contract.test.ts tests/domain/sync/two-device-simulation.test.ts
+npm run test:sync
+npm run test:android-transfer
+cargo test --manifest-path src-tauri/Cargo.toml sync_transport
+cargo test --manifest-path src-tauri/plugins/nais-android-transfer/Cargo.toml --lib
+npm run test:credential-vault
+npm run test:secret-redaction
+npm run test:android-port
+npm run lint
+npm run build
+```
+
+LAN behavior는 source assertion만으로 통과했다고 보고하지 않는다. Rust loopback/HTTPS test는 다음을 실제
+socket과 bounded timeout으로 확인한다.
+
+- TLS 1.3 mTLS paired client만 manifest/push/pull/ack route에 도달하며 missing/wrong-CA client는 handler count 0
+- Pairing capability/확인 코드가 120초 이내 한 번만 소비되고 두 번째 active peer는 기존 peer revoke 전 거부
+- Certificate fingerprint가 request identity이며 header/body peer ID로 spoof할 수 없음
+- 같은 keepalive connection에서도 revoke 직후 다음 request가 거부됨
+- sequence regression과 nonce/request-ID replay가 durable state reopen 뒤에도 거부됨
+- TLS record/CSR/body tamper, browser Origin, global/wildcard bind, CIDR 밖 source와 2 MiB/100-op 초과가 fail closed
+- Unpaired/expired/revoked denial에 entity ID/type/count/checkpoint/manifest가 없음
+- Pull은 local apply/duplicate receipt 뒤 exact ack 전까지 remote item을 제거하지 않음
+
+TypeScript coordinator test는 interruption-before-ack의 duplicate recovery, timeout/cancel retry lease, checkpoint
+monotonicity, stale upsert의 tombstone non-resurrection, R2-object missing typed failure와 JSON stop-gate를 확인한다.
+`SyncEnvelope.encrypted`는 계속 `false`여야 하며 TLS outer protection을 envelope schema migration으로 바꾸지 않는다.
+
+Android contract는 tracked local plugin source에서 API 34+ UIDT, API 24–33 foreground WorkManager, notification
+pause/cancel, durable secret-free ticket/checkpoint와 process recreation recovery를 확인한다. Generated
+`src-tauri/gen/android/**` 수정만으로 통과했다고 보고하지 않는다. Physical M500_MIKU 검증은 UI tree에서
+notification/action 좌표를 얻고 schedule→notification→pause/resume/cancel→process kill/relaunch를 확인하며
+앱/시스템 crash는 package/process owner로 분리한다. Android 16에서는 WorkManager long-running job quota를
+primary path로 쓰지 않고 user-initiated transfer 대안을 확인한다.
+
+Current Tauri generated Android build는 Kotlin 1.9.25 compiler를 사용하므로 WorkManager는 compatible stable
+2.10.5 exact pin이다. 2.11.2를 그대로 올리면 Kotlin metadata 2.1 mismatch가 발생하며 generated root compiler를
+임의 수정해 우회하지 않는다. Full APK build가 Stronghold의 Windows `libsodium-sys` cross-build에서 먼저 막히면
+R-025로 분리하되, tracked plugin의 최종 Kotlin compile/APK integration이 통과한 것으로 간주하지 않는다.
+
+Live NovelAI/R2 credential은 이 gate에 필요하지 않다. Actual R2/large-LAN byte transfer를 실행하려면 명시적으로
+opt-in한 local profile에서만 수행하고 token, Authorization, certificate private key, signed URL, prompt, image/base64,
+raw path를 terminal/log/artifact에 남기지 않는다. Relay는 local fake contract만 실행하며 production provider
+endpoint를 구성하지 않는다.

@@ -8,6 +8,15 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 
 따라서 이번 최종 정리에서는 caller search로 definition-only임이 확인된 작은 public alias만 제거했다. legacy request builder, shadow 비교, migration projection, authority feature flag와 recovery importer/parser는 삭제하지 않았다.
 
+Phase 12 secure sync transport는 **진행 중이며 지원 완료로 선언하지 않는다.** 현재 source에는 TLS 1.3
+mTLS desktop LAN agent, 120초 이하 pairing, Stronghold-backed device/peer identity, revoke와
+sequence/nonce replay fence, bounded sanitized JSON 교환 경계가 추가됐다. 첫 listener는 사용자가 명시적으로
+시작하고 한 번에 active peer 한 대만 허용한다. 그러나 optional LAN blob은 interface/validation만 있고
+native resumable temp-file channel은 비활성이고, Android transfer plugin도 scheduler/notification lifecycle만
+있으며 process-safe R2/LAN executor가 없어 capability가 계속 unsupported다. Desktop end-to-end loopback과
+M500_MIKU notification/cancel/process-recreation evidence가 완료되기 전에는 production cutover나 Phase 12
+완료 조건 충족으로 간주하지 않는다.
+
 ## 선행 조건 판정
 
 | 조건 | 판정 | 코드·테스트 근거 |
@@ -34,8 +43,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
 - local-first sync: user-scoped 별도 IndexedDB가 sanitized shadow entity, outbox/inbox, tombstone와
-  checkpoint를 소유한다. Phase 11에는 production caller, network transport, user-visible control과
-  encryption implementation이 없다.
+  checkpoint를 소유한다. Phase 12의 in-progress desktop adapter는 audited TLS 1.3 mTLS와 current
+  Stronghold vault identity를 사용하되 한 active peer로 제한되고, Phase 11 repository를 대체하지 않는다.
+  Relay는 interface/test contract뿐이고 optional blob 및 Android execution capability는 아직 비활성이다.
 - UI: desktop command bar/stack/inspector, compact sheets, mobile safe-area command dock, list virtualization과 responsive/accessibility gates.
 
 자세한 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 불변 결정은 [DECISIONS.md](./DECISIONS.md), 위험은 [RISK_REGISTER.md](./RISK_REGISTER.md)를 따른다.
@@ -124,6 +134,40 @@ ordinary local upsert와 stale remote upsert가 삭제를 부활시키지 못한
 이 phase는 network transport, user-facing sync toggle, background worker, encryption/key management와 production
 workflow adapter를 추가하지 않았다. CompositionEngine, repository/migration, OutputWriter, durable queue,
 payload builder와 portable capability authority는 변경되지 않았다.
+
+## Phase 12 — Secure LAN sync transport (진행 중)
+
+Phase 12 source는 명시적으로 시작하는 desktop LAN agent와 paired outbound client를 추가한다. Listener는
+loopback 또는 선택한 private/link-local address와 CIDR allowlist로 제한하고 browser Origin/CORS를 거부한다.
+Pairing은 최대 120초 one-use capability와 6자리 확인 코드, client CSR을 사용하며 rustls/rcgen이 TLS 1.3
+mTLS와 certificate validation/signing을 소유한다. Host/client private identity는 current Credential Vault
+Stronghold에 저장하고 native durable journal에는 fingerprint, revoke state, sequence/nonce high-water와
+checkpoint 같은 non-secret state만 둔다. 첫 구현은 active peer 한 대만 허용하며 revoke 뒤에만 교체한다.
+
+Authenticated manifest/push/pull/ack는 2 MiB/100-operation bound와 Phase 11 sanitizer/envelope validation을
+다시 적용한다. Pull은 local receive/duplicate projection이 성공한 뒤 exact ack하고, request-scoped
+cancel/timeout과 방향별 reconnect checkpoint를 유지한다. `SyncEnvelope.encrypted`는 계속 `false`이고
+wire confidentiality/integrity만 audited TLS outer transport가 담당한다. Relay는 provider-neutral interface와
+local test contract에 머물며 removed catalog/provider runtime이나 production endpoint를 추가하지 않는다.
+
+Image bytes는 JSON에 포함하지 않고 succeeded R2 object reference가 기본이다. R2 object missing은 typed
+failure이며 image fallback이 아니다. Optional LAN blob은 descriptor, original/distribution policy, size/SHA-256와
+resume interface까지만 존재한다. Native partial temp-file write, checksum readback, atomic commit과 interruption
+recovery가 연결되지 않았으므로 capability는 disabled다.
+
+Tracked Android transfer plugin은 API 34+ user-initiated data transfer job과 API 24–33 foreground WorkManager,
+notification pause/cancel/retry 및 secret-free ticket recovery lifecycle을 정의한다. 하지만
+`TransferExecutionRegistry`에 process-safe R2/LAN executor가 설치되지 않아
+`E_TRANSFER_EXECUTOR_UNAVAILABLE`가 정상 blocked 결과이고 `r2ForegroundUpload`, `r2BackgroundUpload`와
+large-LAN capability는 false로 유지한다. Generation request의 장기 background 실행도 활성화하지 않는다.
+
+따라서 Phase 12는 아직 BLOCKED다. Actual native loopback에서 paired/unpaired/expired/replay/revoke, fixed denial,
+Origin/body bound와 keepalive revoke를 통과했고 production TLS 1.3 config를 재사용한 ciphertext bit-flip도 plaintext
+미방출을 확인했다. Native durable peek/ack와 TypeScript apply/receipt restart test도 통과했다. 그러나 production
+source/outbox caller와 vault-lock lifecycle hook, optional blob channel, Android paired JSON client/executor, 최종
+Kotlin/Gradle build 및 M500_MIKU notification→pause/resume/cancel→process-kill/relaunch 실증은 남아 있다. Token, Authorization,
+certificate private key, signed URL, prompt, image/base64와 raw path가 payload/log/artifact에 나타나거나
+tombstone이 다른 장치에서 부활하면 즉시 listener/cutover를 중단한다.
 
 ## 보존한 compatibility
 

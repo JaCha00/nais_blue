@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 mod nai_transport;
 mod r2_native;
+mod sync_transport;
 #[cfg(mobile)]
 use tauri::Manager;
 
@@ -753,8 +754,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(tagger_state)
         .manage(nai_transport::NaiTransportState::default())
+        // Secure LAN transport state joins the explicit Tauri commands to the
+        // live TLS listeners and nonsecret journal. Stronghold remains the only
+        // durable authority for CA/client private bundles supplied per command.
+        .manage(sync_transport::SyncTransportState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
+        // The tracked Android scheduler owns notification/control lifecycle;
+        // its executor remains unavailable until the process-safe transfer gate closes.
+        .plugin(tauri_plugin_nais_android_transfer::init())
         // Production file logging intentionally accepts only the structured,
         // redacted diagnostic target emitted by record_diagnostic_event.
         .plugin(
@@ -808,6 +816,20 @@ pub fn run() {
             r2_native::r2_upload_part,
             r2_native::r2_complete_multipart,
             r2_native::r2_abort_multipart,
+            sync_transport::sync_transport_start,
+            sync_transport::sync_transport_stop,
+            sync_transport::sync_transport_status,
+            sync_transport::sync_transport_open_pairing,
+            sync_transport::sync_transport_close_pairing,
+            sync_transport::sync_transport_pair_client,
+            sync_transport::sync_transport_revoke_device,
+            sync_transport::sync_transport_enqueue_outbound,
+            sync_transport::sync_transport_peek_inbound,
+            sync_transport::sync_transport_ack_inbound,
+            sync_transport::sync_transport_peek_outbound_receipts,
+            sync_transport::sync_transport_ack_outbound_receipt,
+            sync_transport::sync_transport_exchange,
+            sync_transport::sync_transport_cancel_request,
         ])
         .setup(|_app| {
             let credential_vault_data_dir = _app

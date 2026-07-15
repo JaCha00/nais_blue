@@ -166,3 +166,35 @@
     Standalone generic Base64 문법 예외는 exact semantic ID field에만, high-entropy hex 예외는
     ID/checksum/digest/R2-key field에만 적용한다. Prose/ID 예외에도 image/strong-binary/credential/path evidence는
     계속 검사하며, later caller/transport도 sanitizer 이전에 binary를 identifier로 재분류하면 안 된다.
+56. Phase 12의 첫 LAN transport는 사용자가 vault unlock 뒤 명시적으로 시작하는 desktop listener와 active peer
+    한 대만 지원한다. Multi-peer fan-out, automatic discovery/port forwarding, public/WAN bind와 production relay는
+    지원하지 않는다. 새 device를 연결하려면 기존 active peer를 revoke해야 하며 이 제약을 peer 목록이 있는
+    일반 multi-device sync로 표시하면 안 된다.
+57. Host/client private identity는 Stronghold가 authority고 native journal은 fingerprint, revoke,
+    sequence/nonce high-water와 checkpoint 같은 non-secret만 보존한다. 이 split은 private material의 plaintext
+    persistence를 막지만 vault lock/restart, journal reopen, scope mismatch와 revoke 직후 keepalive request의 실제
+    end-to-end evidence가 완료됐다는 뜻은 아니다. Vault가 locked이면 service가 listener/exchange를 새로 시작할
+    수는 없지만, 아직 auth-store lock과 live listener/client instance를 자동 stop/drop하는 production lifecycle
+    hook이 없다. 따라서 caller는 lock 전에 stop/dispose해야 하며 이 hook 전 capability는 disabled다.
+58. Optional LAN image transfer는 `SyncBlobTransport` interface, descriptor validation, original/distribution policy,
+    size/SHA-256와 resume shape까지만 있다. Native chunk receiver, app-scoped partial temp file, full checksum readback,
+    atomic commit과 interruption recovery는 구현·연결되지 않아 capability가 disabled다. 현재 image sync의 유일한
+    기본 경로는 succeeded R2 object reference이며 missing object는 typed failure로 끝나고 JSON image fallback은 없다.
+59. Android tracked transfer plugin은 API 34+ UIDT와 API 24–33 foreground WorkManager scheduling,
+    notification pause/cancel/retry와 secret-free ticket/checkpoint lifecycle을 제공한다. 그러나
+    `TransferExecutionRegistry`에 process-safe R2/LAN executor가 없어 실행은
+    `E_TRANSFER_EXECUTOR_UNAVAILABLE`로 blocked된다. 따라서 `r2ForegroundUpload`,
+    `r2BackgroundUpload`와 large-LAN capability는 false이며 실제 byte transfer를 완료하지 않는다.
+60. M500_MIKU에서 Phase 12 notification action, pause/resume/cancel, process kill/relaunch와 checkpoint recovery를
+    실증하지 않았다. Integrated executor가 없고 기존 R-027 Google Play Services dependency crash가 testbed를
+    막을 수 있으므로 tracked source/contract test를 physical foreground evidence로 대체하지 않는다. 정상화된
+    승인 device가 없다는 이유로 privileged permission grant, service disable/data clear 또는 app-data clear를
+    수행하지 않는다.
+61. Relay는 `RelayTransport` interface와 authenticated/replay-aware local fake server contract뿐이다. Production
+    endpoint, provider credential, removed catalog/provider client, OAuth/deep-link와 relay failover는 없으며
+    LAN 연결 실패 시 이 contract로 자동 전환하지 않는다.
+62. Native TLS listener/client command는 현재 desktop `cfg`에만 구현돼 Android의 `sync_transport_pair_client`와
+    `sync_transport_exchange`는 `E_SYNC_UNSUPPORTED`로 fail closed한다. 따라서 network policy의 mobile paired-outbound
+    client는 아직 target contract이고 M500_MIKU가 sanitized JSON sync를 교환한다는 의미가 아니다. Mobile mTLS client,
+    vault-unlock request lifetime과 Android restart checkpoint를 behavior/physical gate로 통과하기 전
+    `secureLanSyncTransport`는 false로 유지한다.

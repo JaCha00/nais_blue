@@ -2109,3 +2109,147 @@ test artifact/log로 남기지 않았다.
   sync database, rewrite lineage/revision, force-ack attempts or perform destructive schema downgrade
 - Next phase readiness: READY — network-free two-device results converge, forbidden payload canaries are zero and
   tombstone-only resurrection tests pass. Later production caller/transport work remains gated by R-043/R-044/R-049.
+
+## Phase 12 — SECURE SYNC TRANSPORT
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `879ddcca7ca4d515bb570633a981d6ca1089eb82`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 시 HEAD, branch와 `git status --short`를 직접 확인했다. 시작 전부터 있던 unrelated `M AGENTS.md`와
+  generated untracked `src-tauri/src-tauri/**`를 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- 구현 전 Phase 11 sync/Vault/R2/runtime-capability selection은 11 files, 158/158 tests, exit 0으로 고정했다.
+  새 behavior는 paired/unpaired/expired/replay/tamper/revoke, interruption/duplicate/tombstone/R2-missing과
+  Android lifecycle contract test로 먼저 잠근 뒤 source를 연결했다.
+- Live NovelAI/R2 credential, user prompt/image, certificate private key, Authorization, signed URL 또는 provider
+  response body를 사용하거나 test/log artifact에 남기지 않았다.
+
+### Secure desktop LAN boundary
+
+1. Desktop listener는 vault unlock 뒤 explicit start만 받고 loopback/private/link-local bind, explicit CIDR,
+   unprivileged port와 one-active-peer policy를 강제한다. Wildcard/public bind, discovery, port forwarding,
+   browser Origin/CORS와 unauthenticated manifest는 허용하지 않는다.
+2. 최대 120초 one-use pairing capability와 독립 6자리 확인 코드, CSR signing, TLS 1.3 mTLS를 사용한다.
+   `rustls`/`aws-lc-rs`가 key agreement, AEAD/record nonce, certificate validation과 ciphertext integrity를,
+   `rcgen`이 CA/server/client certificate와 CSR을 소유한다. Application-defined crypto primitive 조합은 없다.
+3. Host/client private identity는 Stronghold Credential Vault가 authority다. Native two-slot journal에는 peer
+   fingerprint/revoke, scope, monotonic sequence/recent nonce, inbound/outbound durable queue와 receipt 같은
+   non-secret state만 남긴다. Host-local fingerprint revoke와 authenticated self-revoke를 분리했다.
+4. Authenticated manifest/push/pull/ack/revoke는 2 MiB/100-operation, method/content-type/concurrency/timeout bound,
+   request cancellation과 persistent replay fence를 적용한다. Unknown/revoked/wrong-CA client는 같은 fixed denial로
+   끝나며 entity/count/checkpoint/manifest를 받지 않는다. Production TLS config를 재사용한 in-memory TLS 1.3
+   application record bit-flip test는 authentication failure와 plaintext 0 bytes를 확인한다.
+5. Renderer adapter는 native DTO exact-key/size/endpoint/fingerprint를 다시 검증한다. Server ingress는 native
+   peek → Phase 11 receive/dedupe → exact native ack, egress는 canonical delivery ID enqueue → durable remote receipt
+   → Phase 11 outbox ack → native receipt ack 순서라 interruption은 duplicate replay만 만들고 committed data를
+   제거하지 않는다. Pull/push checkpoint namespace를 분리하고 retry lease CAS를 보존한다.
+
+### Image, relay and Android gates
+
+1. JSON image fallback은 없다. Default image sync는 sanitized succeeded R2 object reference이며 missing object는
+   `E_SYNC_R2_OBJECT_MISSING`이다. Optional blob은 descriptor/policy/size/SHA-256/resume interface뿐이고 native
+   partial temp write/full checksum/atomic commit가 없어 `lanBlobTransfer=false`다.
+2. Relay는 provider-neutral `RelayTransport`와 local authenticated contract뿐이다. Production URL/provider/auth,
+   removed provider/catalog runtime, OAuth/deep-link 또는 silent failover는 추가하지 않았다.
+3. Tracked Android plugin은 API 34+ UIDT와 API 24–33 foreground WorkManager, visible notification,
+   pause/resume/cancel/retry, secret-free ticket/checkpoint와 recovery source를 정의한다. Current Tauri Kotlin 1.9.25와
+   compatible한 Android-only Apache-2.0 WorkManager 2.10.5를 exact pin했다. UIDT pending job을 fallback보다 우선하고
+   default app process의 execution gate로 UIDT/WorkManager 동시 byte execution을 막는다.
+4. `TransferExecutionRegistry`에 Stronghold-safe R2/LAN executor가 없으면 visible
+   `E_TRANSFER_EXECUTOR_UNAVAILABLE`로 blocked된다. Mobile sync client command도 현재 `E_SYNC_UNSUPPORTED`다.
+   따라서 secure LAN, LAN blob, R2 foreground/background capability는 모두 false이고 generation request의
+   장기 background 실행은 활성화하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| pre-change characterization selection | 0 | 11 files, 158/158 | Phase 11/Vault/R2/capability PASS |
+| Phase 12 focused sync Vitest | 0 | 7 files, 36/36 | adapter/pairing/agent/coordinator/restart PASS |
+| focused Android transfer Vitest | 0 | 1 file, 5/5 | tracked plugin/closed capability/single-owner source PASS |
+| focused TLS ciphertext test | 0 | 1/1 | production-config TLS 1.3 bit-flip releases no plaintext |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS; payload source untouched |
+| `npm run test:composition` | 0 | 122 passed/1 skipped files; 957 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | retained importer/reader fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + rescue contract | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | worker/session/output contracts PASS |
+| `npm run test:sync` | 0 | 14 files, 180/180 | Phase 11 + LAN transport contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | payload/worker source contracts PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | existing JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | 49 route/viewport checks | PASS |
+| `npm run test:android-port` | 0 | source contract | PASS |
+| `npm run test:android-transfer` | 0 | 1 file, 5/5 | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 | closure gate PASS |
+| Rust `sync_transport` | 0 | 14/14 | actual TLS loopback + durable/replay/tamper/revoke PASS |
+| Android plugin Rust `--lib` | 0 | 3/3 | bounded secret-free ticket PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | retained transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | retained native R2 PASS |
+| changed-file `rustfmt --check` | 0 | LAN + Android plugin Rust files | PASS |
+| `cargo fmt --all --check` | 1 | pre-existing `build.rs/lib.rs/main.rs` style diff | unrelated baseline; 이번 파일을 재포맷하지 않음 |
+| `git diff --check` | 0 | working phase diff | PASS |
+
+Android full build는 3회 제한 안에서 완료하지 못했다. 첫 process output channel은 유실됐고 새 APK가 없었다.
+두 번째 `aarch64` build는 PATH의 standalone Rust 1.93이 rustup Android sysroot를 보지 못해 `E0463`으로 실패했다.
+세 번째는 rustup 1.96 target을 사용했으나 기존 Stronghold transitive `libsodium-sys-stable`의 Unix `./configure`를
+Windows가 실행하지 못해 Cargo exit 101이었다. 이 failure는 R-025 environment limitation이며 새 LAN server
+dependency는 desktop target table에만 있다.
+
+Tracked Kotlin source의 분리 Gradle compile도 3회에서 중단했다. 첫 시도는 temporary module inclusion ordering,
+둘째는 WorkManager 2.11.2/Kotlin metadata mismatch, 셋째는 2.10.5로 metadata gate를 지난 뒤 final
+`CoroutineWorker.onStopped` override 오류를 발견했다. Final source에서 unsupported override를 제거하고 existing
+`CancellationException` + durable RUNNING recovery로 고쳤지만 제한에 따라 네 번째 compile은 실행하지 않았다.
+따라서 최종 Kotlin compile/APK는 PASS가 아니다. Temporary generated include와 build logs는 제거했고 generated
+source를 tracked authority로 추가하지 않았다.
+
+Physical ADB read-only check는 serial `?`의 M500_MIKU, API 34, online, existing package installed/process stopped를
+확인했다. 새 APK가 없고 executor/capability가 false라 install, UI-tree notification action, pause/cancel/retry,
+process kill/relaunch를 실행하지 않았다. Offline `emulator-5566`은 evidence로 사용하지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 12 — SECURE SYNC TRANSPORT
+- Base HEAD: `879ddcca7ca4d515bb570633a981d6ca1089eb82`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: desktop native LAN TLS/journal/commands; sync transport domain, pairing/agent/client/native queue
+  adapters and ingress/egress/reconnect coordinators; R2 reference guard; tracked Android transfer plugin/capability;
+  focused tests; Cargo/package integration; composition-v2 network policy/decision/risk/limitation/verification/rollback/ledger
+- Behavior added/changed: explicit desktop TLS 1.3 mTLS listener and short-lived pairing; one paired peer/revoke;
+  authenticated bounded manifest/push/pull/ack/replay fence; crash-safe native queue receipts and Phase 11 duplicate-safe
+  apply/ack; R2-reference-only default; provider-free relay/blob contracts; disabled Android UIDT/WorkManager lifecycle shell
+- Preserved contracts: current CompositionEngine/repository/migration, Phase 11 repository/sanitizer/tombstone authority,
+  payload fixture parity, OutputWriter/portable capability, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/
+  rotation/image-release, old backup/v1 profile/legacy metadata readers/fixtures, user data and removed-runtime closure
+- Tests and exit codes: final verification table above. All executable host/source/Rust gates passed; Android full
+  cross-build and final Kotlin compile did not pass for the exact reasons above
+- Artifact paths: ignored `dist/**`, `src-tauri/target/**`, plugin `target/**` and generated Android Gradle cache/report;
+  tracked implementation ledger. No new APK or credential-bearing artifact was produced; temporary build logs were removed
+- Not tested and exact reason: production Composition/Scene/prompt/artifact source caller and source/outbox crash recovery
+  are absent; auth-store lock is not wired to live listener/client disposal; mobile paired JSON client and R2/LAN executor
+  are unsupported; native blob partial/checksum/atomic channel is absent; final Android Kotlin/APK build hit the validation
+  limit after environment/toolchain/source findings; M500_MIKU notification/cancel/process-recreation therefore had no
+  runnable current artifact; Android 16 device was unavailable; live NovelAI/R2 was not opt-in and was unnecessary
+- Remaining risks: R-043, R-044, R-049~R-054 plus limitation 56~62. In particular production caller atomicity,
+  vault-lock lifecycle, mobile mTLS client, Android executor/final build/physical evidence, blob commit and multi-peer remain
+- Rollback procedure: close pairing; stop listener/cancel requests; pause/cancel Android ticket if any; preserve Phase 11
+  sync records/tombstones/checkpoints, native non-secret journal, Stronghold identities, R2 objects, user data, unrelated
+  `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 12 local commit. Never reset/clean/delete/
+  rewrite tombstones, vaults, journals, partials or user data
+- Next phase readiness: BLOCKED — desktop paired sanitized transport and interruption primitives are tested, but the phase
+  completion condition is not met until production caller/vault-lock lifecycle and supported mobile/Android execution,
+  final Android build/physical recovery, and any claimed blob path pass their gates.

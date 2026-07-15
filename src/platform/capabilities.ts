@@ -20,6 +20,8 @@ export interface RuntimeCapabilities {
     readonly r2ProfileRead: RuntimeCapability
     readonly r2ForegroundUpload: RuntimeCapability
     readonly r2BackgroundUpload: RuntimeCapability
+    readonly secureLanSyncTransport: RuntimeCapability
+    readonly lanBlobTransfer: RuntimeCapability
     readonly embeddedPngMetadataWrite: RuntimeCapability
     readonly supportedImageFormats: readonly ('png' | 'webp')[]
 }
@@ -64,6 +66,14 @@ const NO_NATIVE_R2_BACKGROUND = unsupported(
     'Background R2 upload workers are not part of the current capability set.',
     'Keep the desktop app open for foreground upload or wait for the background-worker phase.',
 )
+const NO_SECURE_LAN_SYNC_CUTOVER = unsupported(
+    'Secure LAN sync transport is not enabled as a production source/outbox workflow yet.',
+    'Keep local-first sync data on this device until the explicit pairing and recovery gate is complete.',
+)
+const NO_LAN_BLOB_TRANSFER = unsupported(
+    'Resumable LAN image transfer is not enabled in this build.',
+    'Synchronize the succeeded R2 object reference and transfer image bytes through the existing R2 workflow.',
+)
 
 /**
  * Deterministic platform matrix. Keep platform behavior here rather than placing
@@ -83,6 +93,10 @@ export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCap
         r2ProfileRead: supported(),
         r2ForegroundUpload: mobile ? NO_NATIVE_R2_FOREGROUND : nativeR2Desktop ? supported() : NO_NATIVE_R2_HOST,
         r2BackgroundUpload: NO_NATIVE_R2_BACKGROUND,
+        // These remain false until source/outbox and native temp-file executors
+        // close their respective interruption gates without bypassing this matrix.
+        secureLanSyncTransport: NO_SECURE_LAN_SYNC_CUTOVER,
+        lanBlobTransfer: NO_LAN_BLOB_TRANSFER,
         // PNG metadata insertion is a byte-level TypeScript adapter and works on
         // both desktop and Android; it does not depend on a native image library.
         embeddedPngMetadataWrite: supported(),

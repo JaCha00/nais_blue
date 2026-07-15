@@ -175,6 +175,30 @@ CompositionEngine/repository/migration, payload parity, generation queue/session
 importer/reader fixture를 focused baseline으로 확인한다. Production source + outbox atomic recovery는
 Phase 11 rollback을 넘어서 추정하지 않는다.
 
+## Secure LAN sync transport rollback
+
+Phase 12 operational rollback은 먼저 새 pairing을 닫고 LAN listener와 active sync request를 명시적으로
+stop/cancel한다. Android transfer ticket이 있으면 pause/cancel state와 마지막 checkpoint를 commit한 뒤 worker를
+중지한다. Existing Phase 11 outbox/inbox/checkpoint/tombstone, native non-secret replay journal, resumable partial file,
+Stronghold의 device/peer identity와 R2 object를 삭제하지 않는다. 이전 binary가 이 authority를 사용하지 않더라도
+forward recovery와 duplicate/tombstone 검증을 위해 보존한다.
+
+Operational fallback은 LAN agent를 꺼 둔 local-only Phase 11 shadow와 기존 R2 foreground workflow다. Relay,
+removed provider/catalog runtime, unauthenticated HTTP 또는 JSON image fallback으로 자동 전환하지 않는다. Vault lock 전에
+native listener를 stop해 in-memory identity를 해제하고, stop 실패는 diagnostic typed code로 기록하되 secret이나
+endpoint/path 원문을 기록하지 않는다.
+
+Source rollback은 unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/`src-tauri/gen/android/**`, target/cache,
+user output, Stronghold, Composition/queue/R2/Organizer/sync database와 Android app data를 보존한 채 Phase 12 local
+commit 하나만 `git revert`한다. `reset --hard`, `checkout --`, `clean`, certificate/vault/peer journal/partial file 삭제,
+tombstone rewrite와 destructive migration은 금지한다. Revert 뒤 Phase 11 network-free contract, sanitizer,
+two-device/reconnect/tombstone baseline과 existing credential/R2/NAI/queue/OutputWriter category를 다시 확인한다.
+
+Unpaired metadata disclosure, TLS verification bypass, replay acceptance, ciphertext tamper가 handler에 도달하는 현상,
+revoked device 재접속, JSON token/image/path 또는 tombstone resurrection이 관찰되면 listener를 즉시 끄고 cutover를
+중단한다. Certificate/private identity가 실제로 노출된 경우에만 영향 범위를 먼저 확인하고, remote device revoke나
+credential rotation/destructive cleanup은 사용자의 별도 확인 뒤 수행한다.
+
 ## Stop conditions
 
 다음이면 cutover 또는 cleanup을 중단하고 compatibility layer를 유지한다.
