@@ -1,6 +1,6 @@
 # Composition v2 architecture
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 ```mermaid
 flowchart LR
@@ -18,6 +18,13 @@ flowchart LR
     OUT["OutputWriter\nstage / session gate / atomic commit / recovery"]
     CAP["RuntimeCapabilities\ndesktop / Android adapters"]
     LEGACY["Compatibility import/read layer\nold backup / v1 profile / metadata"]
+
+    subgraph SYNCLOCAL["Phase 11 local-first sync core (no production caller)"]
+        SSAN["Sync sanitizer\nschema validation / allowlist / safety scan"]
+        SDOM["Sync domain\nenvelope / lineage / operation-set resolver"]
+        SDB["User-scoped sync repository\nshadow / outbox / inbox / tombstone / checkpoint"]
+        SSAN --> SDOM --> SDB
+    end
 
     GUI --> CMD --> REPO
     REPO --> ENGINE --> ADAPTER
@@ -58,6 +65,32 @@ flowchart LR
   Organizer distribution은 image/metadata sidecar/organizer artifact sidecar를 같은 recovery journal에서
   commit·rollback하며 output checksum을 result로 반환한다.
 - compatibility layer: historical data를 canonical v2로 import/read하지만 새 authoring write authority가 아니다.
+
+## Phase 11 local-first sync boundary
+
+- `src/domain/sync/**`는 envelope schema, active entity type, deterministic revision, explicit predecessor
+  `baseOpId`, upgrade-only `lineageUnknown`, forbidden-material invariant와 operation record contract를 정의한다.
+  React, transport, Composition repository, generation queue와 filesystem을 import하지 않는다.
+- `src/services/sync/sanitizer.ts`는 Composition document/profile/recipe/module을 current canonical schema로
+  검증하고 entity-specific top-level allowlist를 projection한다. Nested `extensions`는 항상 제거하며
+  Scene/prompt/UI/artifact/R2 projection도 whole-envelope key/string/image-signature safety scan을 통과한다.
+- `src/services/sync/conflict-resolver.ts`는 retained unique operation set에서 ancestry/frontier를 재계산한다.
+  Normal non-root operation은 exact predecessor를 가리키고, migrated unknown lineage는 conservative root로 남는다.
+  Locale-independent UTF-16 code-unit order로 deterministic primary/conflict copy/status를 만들고 simple UI
+  preference 외 complex entity를 field merge하지 않는다.
+- `src/services/sync/outbox-repository.ts`는 `userId` hash로 분리된 물리 IndexedDB와 exact-user
+  binding을 사용한다. Entities/outbox/inbox/tombstones/checkpoints의 retained envelope를 모아
+  mutation/delivery마다 projection을 재계산하고 duplicate/reordering, tombstone dominance, retry,
+  ack/checkpoint와 fail-closed schema upgrade를 소유한다.
+- Local mutation은 sanitized sync shadow, inbox/outbox, tombstone를 하나의 sync database transaction으로
+  commit/readback한다. Production Composition/Scene/prompt/artifact source mutation은 같은 transaction 참여자가
+  아니고 Phase 11 caller도 없으므로, diagram의 disconnected subgraph를 end-user source + outbox
+  atomicity로 해석하지 않는다.
+- Per-entity retained unique operation set은 2,048개로 bounded하고 초과 시 fail closed한다. Phase 11은
+  compaction/retention을 수행하지 않는다. Tombstone은 primary entity가 없어도 authority며 60초
+  outbox lease가 만료된 `in-flight` record는 ready selection에 다시 포함된다.
+- Network transport, background worker, user-facing sync control, encryption/key management은 Phase 11 boundary
+  밖이다. `encrypted` field는 reserved하지만 current envelope는 `false`만 허용한다.
 
 ## Current authority caveat
 

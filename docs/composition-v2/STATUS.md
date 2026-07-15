@@ -1,6 +1,6 @@
 # Composition Domain v2 최종 상태
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 ## 결론
 
@@ -33,6 +33,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
+- local-first sync: user-scoped 별도 IndexedDB가 sanitized shadow entity, outbox/inbox, tombstone와
+  checkpoint를 소유한다. Phase 11에는 production caller, network transport, user-visible control과
+  encryption implementation이 없다.
 - UI: desktop command bar/stack/inspector, compact sheets, mobile safe-area command dock, list virtualization과 responsive/accessibility gates.
 
 자세한 구조는 [ARCHITECTURE.md](./ARCHITECTURE.md), 불변 결정은 [DECISIONS.md](./DECISIONS.md), 위험은 [RISK_REGISTER.md](./RISK_REGISTER.md)를 따른다.
@@ -60,6 +63,8 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 09 native R2 integration: desktop Rust official S3 SDK/SigV4 streaming, OS vault reference, guided setup,
   read-only conflict preview, resumable multipart UploadJob/manifest v2와 foreground restart recovery. 기존
   Python/Wrangler backend와 mobile explicit unsupported boundary는 유지.
+- Phase 11 local-first sync core: SyncEnvelope/sanitizer, user-scoped transactional outbox, operation-set
+  recomputation, tombstone, retry/ack/checkpoint와 network-free two-device behavior contract. Runtime cutover 없음.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -77,6 +82,48 @@ Raw PNG/WebP/JPEG metadata scanner와 decoded alpha/color verification이 strict
 optional R2는 current native queue에 follow-up만 enqueue한다. Canvas lossless WebP와 mobile external/native upload는
 silent fallback 없이 unsupported/fail-safe로 남는다. 기존 Composition authority, repository/migration, queue worker,
 payload, OutputWriter, legacy importer/reader/user data는 이 phase에서 교체하거나 삭제하지 않았다.
+
+## Phase 11 — Local-first sync core
+
+Phase 11은 `src/domain/sync/**`와 `src/services/sync/**`에 network-free local sync domain을 추가했다.
+Envelope schema v1은 `baseRevision + 1`의 revision, exact predecessor `baseOpId`, device/user identity,
+canonical UTC timestamp, `upsert | delete`, sanitized payload와 `encrypted: false`를 고정한다. Schema-v0
+upgrade에서 predecessor를 복원할 수 없을 때만 `baseOpId: null` + `lineageUnknown: true`를 durable
+marker로 쓰며, 새 non-root operation은 explicit predecessor 없이 생성할 수 없다.
+
+Sanitizer는 Composition document/profile/recipe/module을 current canonical schema로 검증한 뒤 top-level
+allowlist를 projection하고, nested `extensions`를 항상 제거한다. Scene text/params/order, prompt
+preset/fragment, allowlisted UI preference, artifact metadata와 succeeded R2 object identity도 entity-specific
+projection 후 whole-envelope safety scan을 다시 통과한다. Secret/credential detail, signed URL,
+cookie/session, image/thumbnail/blob/base64, local absolute path, OutputWriter journal, queue lease/controller,
+raw diagnostic와 platform-only setting은 sync authority data가 아니다. Percent-encoded key/value와 URL
+component는 bounded fixed-point decode 뒤 다시 검사하며, full bounded string/byte-array의 every-offset image
+signature, raw/hex/Base64/MIME-wrapped image와 bounded strong-binary canary, known credential shape를
+persistence 전에 거부한다.
+Standalone generic opaque ID/reference는 exact semantic field allowlist에서만 허용되고 같은 값도
+image/strong-binary/credential/path signature 검사는 면제되지 않는다. Free-form natural prose와 문법적으로
+동일하고 decoded evidence도 없는 unpadded Base64의 불가피한 모호성은 `KNOWN_LIMITATIONS.md` 55에 고정했다.
+
+`nais2-local-sync--<user-hash>` 물리 database는 user별로 entities/outbox/inbox/tombstones/checkpoints를
+분리하고 repository instance를 exact `userId`에 bind한다. Local mutation은 sanitized sync shadow
+projection과 outbox를 한 transaction에 기록하지만, production Composition/Scene/prompt/artifact
+source mutation과 하나의 cross-database transaction으로 commit하지는 않는다. Production caller가
+없으므로 이 atomicity는 sync shadow + outbox 경계에만 해당한다.
+
+모든 local/received operation은 primary, conflict copy, inbox, outbox, tombstone에 보존된 unique operation
+set에서 arrival order와 무관하게 projection을 다시 계산한다. Per-entity unique operation은
+2,048개로 fail-closed cap되며 Phase 11에 compaction/retention은 없다. UI preference만 documented
+LWW를 쓰고 complex Composition/Scene/prompt/artifact conflict는 deterministic primary + conflict copy를
+남긴다. Immutable generation snapshot은 no-merge policy-only entity이며 active outbox target이 아니다.
+
+Tombstone store는 primary entity가 없어도 independent delete authority로 recomputation에 포함되며,
+ordinary local upsert와 stale remote upsert가 삭제를 부활시키지 못한다. Outbox `in-flight`는
+60초 lease를 갖고 unexpired attempt의 중복 claim을 막으며, expiry 후 `listReadyOutbox()`에서
+다시 선택된다. Retry scheduler/backoff와 후속 transport는 Phase 11 repository 밖 caller 책임이다.
+
+이 phase는 network transport, user-facing sync toggle, background worker, encryption/key management와 production
+workflow adapter를 추가하지 않았다. CompositionEngine, repository/migration, OutputWriter, durable queue,
+payload builder와 portable capability authority는 변경되지 않았다.
 
 ## 보존한 compatibility
 

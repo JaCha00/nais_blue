@@ -1,6 +1,6 @@
 # Developer verification guide
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 ## Reproducible baseline
 
@@ -19,6 +19,7 @@ npm run test:diagnostics
 npm run test:persistence
 npm run test:credential-vault
 npm run test:queue
+npm run test:sync
 npm run test:r2
 npm run test:organizer
 npm run test:secret-redaction
@@ -202,3 +203,49 @@ journal collision/rollback path를 사용하는지 확인한다. Responsive matr
 Live NovelAI/R2 credential, actual external user folder mutation, physical Android organizer flow, actual disk-full,
 Canvas/browser color-profile matrix와 WAN R2 completion은 explicit opt-in/isolated environment 없이는 실행하지 않는다.
 Fixture/log/artifact에는 raw path, token, Authorization, signed URL, prompt, image byte/base64를 남기지 않는다.
+
+## Phase 11 local-first sync focused verification
+
+가장 작은 envelope/sanitizer/repository/conflict gate를 먼저 실행한 뒤 전체 sync category와
+existing authority 계약을 확인한다.
+
+```text
+npx --no-install vitest run tests/domain/sync/envelope-and-revision.test.ts tests/domain/sync/sanitizer.test.ts tests/domain/sync/conflict-resolver.test.ts tests/domain/sync/outbox-repository.test.ts
+npm run test:sync
+npm run lint
+npm run build
+npm run test:composition
+npm run test:migration
+npm run test:secret-redaction
+npm run test:remote-runtime-removal
+```
+
+Sync category는 다음 behavior를 source assertion만으로 통과했다고 보고하지 않는다.
+
+- `revision = baseRevision + 1`, normal non-root의 explicit `baseOpId`, schema-v0 upgrade에서만 durable
+  `lineageUnknown: true` marker, unknown envelope key/invalid timestamp/encryption fail-closed
+- current canonical Composition/artifact validation, entity allowlist, nested `extensions` omission, envelope metadata와
+  payload 전체의 secret/path/signed-query/image-signature/base64/blob/thumbnail/journal/lease canary. Encoded key/value와
+  URL query/path/fragment는 bounded fixed-point decode하고, raw/hex/Base64/MIME-wrapped image signature는 full bounded
+  value의 모든 offset, strong-binary evidence는 bounded rolling decode로 검사. Standalone opaque-ID field만 generic syntax
+  예외이고 ordinary free-form prose와 decoded evidence 없는 unpadded encoding의 문법적 모호성은 limitation 55로
+  유지한다. 두 예외에도 known image/strong-binary/JWT/PEM/provider credential/path 검사는 계속 적용
+- user-hashed physical database와 bound-user rejection, 같은 entity/op ID의 cross-user isolation
+- local sync shadow + outbox/inbox/tombstone transaction/readback. Production source edit와 outbox의
+  cross-database atomicity는 Phase 11 성공 항목으로 간주하지 않음
+- duplicate content/id collision, reordered parent/child, reconnect, offline close/reopen, deferred child의 later local-parent
+  recomputation, equivalent operation cohort와 branch-descendant delivery permutation의 canonical convergence
+- locale-independent total order, deterministic/bounded conflict-copy ID, UI preference-only LWW, immutable job
+  snapshot no-merge policy
+- tombstone-only persisted authority, delete-vs-edit, stale/duplicate/reordered upsert의 resurrection prevention
+- 60초 `in-flight` lease, unexpired duplicate claim rejection, reopen 후 expired ready reselection, typed retry state,
+  이전 attempt의 늦은 failure를 막는 attempt-count/lease CAS fence, ack/checkpoint monotonicity
+- retained unique-operation 2,048 cap의 fail-closed behavior와 record 자동 compaction 부재
+- schema-v0 envelope와 schema-v1 authoritative entity/outbox/tombstone/checkpoint record upgrade, 이 store들의
+  malformed record에 대한 upgrade transaction abort와 previous database preservation; v1에는 없던 inbox는
+  빈 current store로 생성
+
+Phase 11에는 production caller, network transport, user-facing sync control, encryption/key management과 background
+worker가 없다. 따라서 live NovelAI/R2 credential, Android network output, WAN reconnect를 이 focused gate에서
+사용하지 않으며 local-only source contract을 계속 유지한다. Fixture, terminal, diagnostic에는
+token, Authorization, signed URL, raw path, prompt 전문, image/base64/blob을 남기지 않는다.

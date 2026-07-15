@@ -1,6 +1,6 @@
 # Known limitations
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 1. Fresh repository와 feature flag 부재의 authority 기본값은 `legacy`다. Production에서 legacy mode가 더 이상 필요 없다는 cutover evidence가 아직 없으므로 Main/Scene/Style Lab legacy builders, shadow path, retained store projections를 삭제할 수 없다.
 2. v2 adapter와 characterization tests가 존재하는 것과 모든 installed user가 v2 authority라는 것은 다르다. 실제 release population의 migration/fallback 관측 자료가 없다.
@@ -126,3 +126,43 @@
 43. 10,000-image browser contract는 fixed-grid window, assignment, repository pagination과 source contract를
     deterministic test로 검증한다. Actual long-running desktop WebView memory, filesystem watcher behavior, browser
     quota/eviction과 physical Android organizer flow는 release/authorized device environment 없이는 검증하지 않았다.
+44. Phase 11 local sync repository는 production Composition/Scene/prompt/artifact caller에 연결되지 않았다.
+    Offline edit는 network-free repository simulation을 뜻하며, 현재 end-user edit가 자동으로 outbox에
+    등록된다는 의미가 아니다.
+45. Local mutation의 transaction은 sanitized sync shadow entity/inbox/outbox/tombstone 사이에만 atomic하다.
+    Production source store와 sync database는 cross-database transaction을 공유하지 않으므로 later caller는
+    source/outbox one-sided commit에 대한 idempotency와 crash recovery를 별도로 갖춰야 한다.
+46. Conflict projection은 primary, conflict copy, inbox, outbox, tombstone에 남은 unique operation set 전체를
+    매번 재계산한다. Entity당 2,048 unique operation을 넘으면 fail closed하며 Phase 11에
+    causality-preserving compaction, retention 또는 garbage collection은 없다.
+47. Normal non-root envelope는 exact `baseOpId`를 필요로 한다. Schema-v0 upgrade는 predecessor identity를
+    복원할 수 없어 `baseOpId: null`, `lineageUnknown: true`를 남기고 conservative independent root로
+    처리하므로, later known-lineage edit보다 conflict copy가 더 많이 생길 수 있다.
+48. Complex Composition/Scene/prompt/artifact conflict copy는 repository에 보존되지만 비교·승격·폐기하는
+    end-user resolution UI와 retention policy는 없다. UI preference만 documented LWW 대상이며 immutable
+    generation snapshot은 no-merge policy-only entity이자 inactive sync target이다.
+49. Sync database는 `userId` hash로 물리 분리되고 repository instance는 exact user에 bind된다. Account
+    switch/delete 후 old user database를 자동 삭제하는 lifecycle/retention UI는 없으므로 user data를
+    별도 확인 없이 cleanup하지 않는다.
+50. `in-flight` outbox는 persisted 60초 lease를 갖고 expiry 이후 ready listing에 다시 나타난다. Repository는
+    expired attempt을 자동으로 `retry`로 바꾸거나 backoff을 계산하지 않으며, caller가 typed failure
+    code, next-at policy와 현재 attempt count/exact lease fence를 commit해야 한다.
+51. `SyncEnvelope.encrypted`는 reserved field이고 Phase 11은 `false`만 허용한다. Network transport,
+    key management, background worker와 user-facing sync control은 구현되지 않았다. Sanitizer는 nested
+    `extensions`를 projection에서 제거하므로 extension-carried domain data는 sync payload에 보존되지 않는다.
+52. Two-device, restart와 cross-user isolation은 fake IndexedDB에서 검증했다. Actual browser quota/eviction,
+    multi-tab/process ownership, account switch/delete lifecycle과 physical Android storage behavior는 아직
+    검증하지 않았다.
+53. Scene/prompt fixture는 sync용 normalized `orderKey`/`presetId` shape를 사용한다. Current runtime stores를
+    이 shape로 변환하는 adapter는 Phase 11에 없으며 later caller가 sanitizer 앞에서 explicit mapping과
+    validation을 제공해야 한다.
+54. Artifact sync target은 metadata와 succeeded R2 object reference만 보존한다. Image/thumbnail/blob/base64,
+    local path, pending upload runtime와 provider failure detail은 의도적으로 sync authority에서 제외된다.
+55. Free-form prompt text와 opaque identifier/reference는 임의 문자열이라 padding 없는 Base64와 문법적으로
+    완전히 구분할 수 없다. Phase 11은 ordinary prose/alphanumeric prompt token을 보존하므로 그와 동일하게
+    보이고 decoded UTF-8/control/high-byte/image evidence도 없는 unpadded non-signature encoding은 통과할 수 있다.
+    대신 data/blob/file URI, padded Base64, decoded text/strong-binary canary, raw/hex/MIME image signature,
+    JWT/PEM/provider credential과 path canary는 fail closed한다.
+    Standalone generic Base64 문법 예외는 exact semantic ID field에만, high-entropy hex 예외는
+    ID/checksum/digest/R2-key field에만 적용한다. Prose/ID 예외에도 image/strong-binary/credential/path evidence는
+    계속 검사하며, later caller/transport도 sanitizer 이전에 binary를 identifier로 재분류하면 안 된다.

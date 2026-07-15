@@ -1,6 +1,6 @@
 # Composition Domain v2 위험 등록부
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 상태 값: `Open`, `Watching`, `Mitigated`. 심각도는 영향과 발생 가능성을 함께 반영한다.
 
@@ -47,6 +47,14 @@
 | R-039 | metadata strip 또는 conversion이 hidden metadata/alpha/color contract를 약화시킬 수 있다 | PNG/WebP/JPEG container metadata와 decoded pixels는 별도 layer이며 Canvas encoder는 codec-specific behavior를 가진다 | High | raw chunk/segment scanner와 decoded alpha LSB/exact-or-bounded-color fixtures를 함께 유지하고 unknown/malformed container는 fail-closed; Canvas lossless WebP는 성공으로 표시하지 않음 | Mitigated |
 | R-040 | external organizer folder reference가 restart/other-platform에서 해석되지 않을 수 있다 | raw folder path를 ArtifactRecord에 저장하지 않고 process-local portable token으로만 materialize한다 | Medium | managed AppData collection은 portable로 유지하고 external selection은 explicit desktop capability/repair explanation을 표시; path persistence 또는 silent fallback 금지 | Watching |
 | R-041 | large organizer collection thumbnail/preview 또는 optional R2 follow-up이 UI/remote state를 과장할 수 있다 | source bytes/thumbnails are loaded on demand and R2 enqueue is not remote completion | Medium | fixed-grid bounded DOM/on-demand preview, 10,000-item contract, conflict recheck at OutputWriter commit, ArtifactRecord queued/failed R2 refs와 failed-only retry를 유지 | Watching |
+| R-042 | Sync sanitizer allowlist가 drift하면 secret/path/image material이 shadow/outbox에 남을 수 있다 | Composition nested shape, Scene composition ref, artifact metadata와 envelope metadata를 다른 projection으로 다루며 unrestricted text와 opaque ID는 encoded material과 문법이 겹칠 수 있다 | Critical | canonical Composition/artifact validation, entity-specific allowlist, nested `extensions` omission, encoded key/value/URL fixed-point scan, full-value every-offset raw/hex/Base64/MIME image 및 bounded binary/credential/path canary, exact opaque-ID field allowlist, natural-text positive regression과 documented unpadded-printable ambiguity를 유지 | Watching |
+| R-043 | Production source edit와 sync outbox가 분리 commit되면 one-sided shadow/outbox가 생길 수 있다 | Phase 11 transaction은 sync shadow entity/inbox/outbox/tombstone만 atomic하고 production caller는 아직 없다 | Critical | caller wiring 전 source commit/outbox commit 순서, idempotency, crash recovery behavior test를 별도로 설계; Phase 11 atomicity를 end-user edit atomicity로 표시 금지 | Open |
+| R-044 | Retained operation set이 커지면 recomputation이 fail closed하고 해당 entity edit/delivery를 막을 수 있다 | Every mutation/delivery가 retained primary/conflict/inbox/outbox/tombstone envelope를 재계산하며 unique-op cap은 2,048이고 compaction은 없다 | High | cap/abort behavior test를 유지하고 ack/tombstone/conflict causality를 보존하는 compaction/retention을 별도 phase에서 설계; 임의 record 삭제 금지 | Open |
+| R-045 | Migrated legacy envelope의 unknown lineage가 인과 관계를 과장하거나 data를 덮어쓸 수 있다 | Schema-v0에는 predecessor op identity가 없다 | High | upgrade-only `lineageUnknown: true`, `baseOpId: null`을 durable marker로 보존하고 conservative independent root/conflict-copy로 처리; normal non-root에 marker 생성 금지 | Watching |
+| R-046 | Tombstone projection 불일치가 stale upsert resurrection을 허용할 수 있다 | Delete authority가 entity와 tombstone store에 동시 나타나며 interrupted/legacy state에는 tombstone만 남을 수 있다 | Critical | recomputation이 tombstone store를 independent authority로 읽고 local upsert를 reject; tombstone-only + stale/duplicate/reordered delivery fixture 유지 | Mitigated |
+| R-047 | Process loss 후 `in-flight` outbox가 영구 stranded되거나 중복 claim될 수 있다 | Attempt ownership은 persisted 60초 `inFlightUntil` lease에 의존한다 | High | unexpired claim reject, expired ready reselection, reopen→retry fixture, typed failure code와 attempt-count/lease CAS fence를 유지; future worker가 expiry 전 force-requeue하거나 이전 attempt failure로 새 lease를 덮지 않도록 검증 | Watching |
+| R-048 | Account switch가 이전 user의 sync shadow를 노출하거나 DB quota를 누적할 수 있다 | Physical database name은 userId hash로 분리되고 repository는 exact user에 bind되지만 focused test는 fake IndexedDB이며 retention/cleanup UI는 없다 | Critical | cross-user same-ID isolation fixture와 bound-user reject를 유지; actual browser account lifecycle/quota를 later integration에서 검증하고 user confirmation/retention 설계 전 자동 삭제하지 않음 | Watching |
+| R-049 | Local-only domain이 network sync/encryption이 준비된 기능으로 과대 표시될 수 있다 | Phase 11은 production caller, transport, background worker, user-visible control과 key management가 없고 `encrypted: false`만 받는다 | High | local-only source contract을 유지하고 later phase가 audited encryption/transport, source-outbox recovery와 opt-in UX를 별도로 검증하기 전 supported sync로 표시 금지 | Open |
 
 ## 공통 stop 조건
 

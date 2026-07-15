@@ -1854,8 +1854,8 @@ use; reconciliation now re-reads the latest job before terminal commit. All fina
   4 files/28 tests exit 0으로 현재 file/sidecar transaction과 portable path 동작을 고정했다.
 - Existing CompositionEngine/repository/migration, current OutputWriter, portable capability, payload builder/fixture,
   Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release, old backup/v1 Asset
-  Profile/legacy metadata/migration fixtures는 교체·삭제하지 않았다. Retired Marketplace/Supabase/catalog runtime과
-  OAuth/deep-link도 재도입하지 않았다.
+  Profile/legacy metadata/migration fixtures는 교체·삭제하지 않았다. Retired online catalog/client runtime과
+  callback/deep-link도 재도입하지 않았다.
 
 ### Artifact authority and distribution boundary
 
@@ -1889,7 +1889,7 @@ use; reconciliation now re-reads the latest job before terminal commit. All fina
 
 ### Dependency decision and implementation diagnostic
 
-- 새 npm/Rust dependency, Electron, Sharp, better-sqlite3, SQLite, Marketplace/Supabase client를 추가하지 않았다.
+- 새 npm/Rust dependency, Electron, Sharp, better-sqlite3, SQLite 또는 retired remote client를 추가하지 않았다.
   Existing browser Canvas와 Tauri file/capability layer를 사용하므로 renderer/mobile bundle graph를 새 codec/native
   library로 확장하지 않는다. License/bundle 영향이 있는 추가 dependency decision은 발생하지 않았다.
 - Initial generic OutputWriter checksum insertion은 every save before staging에 async yield를 추가해 existing Scene
@@ -1961,3 +1961,151 @@ use; reconciliation now re-reads the latest job before terminal commit. All fina
   perform a destructive migration
 - Next phase readiness: READY — deterministic Organizer distribution and retained output/worker/R2 contracts are covered;
   live provider, physical Android and controlled filesystem/browser observation remain explicit release gates.
+
+## Phase 11 — LOCAL-FIRST SYNC CORE
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `619d0d230fad714013c20943a9e19acbc7141f69`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 시 `git status --short`, HEAD와 branch를 직접 확인했다. Unrelated `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`를 보존했으며 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- 구현 전 영향 경계의 existing behavior selection은 5 files, 32/32 tests, exit 0으로 고정했다. 새 sync tests를
+  먼저 추가한 첫 `npm run test:sync`는 source module이 아직 없어 7 files가 collection에서 실패하는 expected
+  RED였다. Source를 추가한 뒤 assertion skip/loosen 또는 catch-and-ignore 없이 최종 7 files, 144/144로 닫았다.
+- 시작 residue gate는 Base HEAD의 Phase 10 ledger 문장 두 곳 때문에 exit 1이었다. Allowlist를 넓히지 않고
+  historical 문장을 neutral wording으로 고쳤으며 final gate는 allowlisted 313, forbidden 0, exit 0이다.
+- 새 npm/Rust dependency와 lockfile 변경은 없다. Production caller, network transport, user-facing sync control,
+  background worker, encryption/key management 또는 existing user-data migration을 연결하지 않았다.
+- 추가 adversarial sanitizer canary는 unpadded/MIME/raw/offset image·binary, encoded key/URL/path, credential shape와
+  opaque-ID 오분류를 실제 envelope/outbox 경계에서 먼저 RED로 재현했다. Broad classifier가 normal prompt/model/ID를
+  막은 중간 regression도 positive fixtures로 드러났으며, skip/loosen/catch-ignore 없이 exact semantic context와
+  structured signature 검사로 좁혔다. Padded/unpadded trailing text, arbitrary whitespace alignment, rolling
+  strong-binary evidence, 최소 PNG signature의 모든 2,048 whitespace partition, high-byte binary의 모든
+  32,768 whitespace partition, Unicode whitespace, wrapped/half-nibble hex와 repository no-write 회귀를 추가한 뒤
+  final focused/full sync suite를 다시 통과했다. Canary는 synthetic 값만 썼고
+  live credential, provider response, user prompt/image/path는 출력하거나 artifact로 남기지 않았다.
+
+### Deterministic envelope and sanitizer boundary
+
+1. `SyncEnvelope` schema v1은 `schemaVersion`, stable op/entity identity, `upsert | delete`,
+   `revision = baseRevision + 1`, exact predecessor `baseOpId`, device/user identity, canonical UTC timestamp,
+   `encrypted: false`와 canonical sanitized payload를 고정한다. Normal non-root operation은 predecessor 없이
+   생성할 수 없다. Schema-v0 upgrade만 `baseOpId: null`, `lineageUnknown: true`를 durable marker로 보존한다.
+2. Whole-envelope safety invariant는 unknown key, forbidden secret/auth/session shape, signed query, absolute/local
+   path, data/blob/content URI, encoded/numeric image signature, thumbnail/base64/blob, OutputWriter journal,
+   queue lease/controller와 raw diagnostic shape를 reject한다. Encoded key/value와 URL component는 bounded
+   fixed-point decode하며 full bounded value의 every-offset raw/hex/Base64/MIME image signature, bounded strong-binary,
+   JWT/PEM/provider credential을 검사한다. Standalone generic opaque ID/reference 예외는 explicit semantic field
+   allowlist만 사용한다. Ordinary prose와 구분 불가능한 unpadded printable encoding limitation은 명시하되
+   prose/ID도 known image/strong-binary/credential/path 검사를 우회하지 않는다. Error는 canary 원문을 echo하지 않는다.
+3. Active target은 Composition document/profile/recipe/module, Scene preset/card, prompt preset/fragment,
+   allowlisted UI preference, artifact metadata와 succeeded R2 object identity다. Composition/artifact는 current
+   canonical validator를 먼저 재사용하며 nested `extensions`와 portable display path는 projection에서 제거한다.
+   Immutable generation snapshot은 no-merge policy-only entity이고 active sanitizer/outbox target이 아니다.
+
+### Operation-set conflict and tombstone authority
+
+1. Conflict result는 pairwise arrival mutation이 아니라 retained primary/conflict/inbox/outbox/tombstone의 unique
+   operation set 전체에서 매번 재계산한다. Exact predecessor ancestry, maximal branch heads, semantic-equivalent
+   cohort 대표와 locale-independent UTF-16 code-unit order가 delivery permutation과 host locale에 무관한
+   primary/conflict/status를 만든다.
+2. UI preference만 documented LWW다. Complex Composition/Scene/prompt/artifact concurrent edit는 field merge하지
+   않고 deterministic primary와 conflict copy를 보존한다. Delete가 하나라도 retained되면 tombstone이 primary며
+   concurrent/descendant upsert는 complex target의 conflict copy일 수 있어도 primary entity를 부활시키지 않는다.
+3. Tombstone store는 entity row가 없어도 independent authority다. Ordinary local upsert는 typed
+   `E_SYNC_TOMBSTONED`로 거부하고 stale/duplicate/reordered remote upsert도 recomputation에서 delete primary를
+   바꾸지 못한다. Per-entity unique operation set은 2,048개를 넘으면 fail closed하며 Phase 11은 causality를
+   추정해 record를 compact하거나 삭제하지 않는다.
+
+### Transactional local repository
+
+1. `nais2-local-sync--<user-hash>` IndexedDB는 account별 physical namespace와 exact bound-user check를 사용한다.
+   Entities/outbox/inbox/tombstones/checkpoints, scoped indexes와 record schema v2를 소유한다. Cross-user same-ID
+   operation/entity/checkpoint는 같은 authority를 공유하지 않는다.
+2. Local mutation은 sanitized sync shadow entity 또는 tombstone, local receipt와 outbox record를 같은 sync DB
+   transaction에서 commit/readback한다. 이 transaction은 production Composition/Scene/prompt/artifact source edit를
+   포함하지 않으며 runtime caller도 없으므로 end-user source + outbox atomicity로 보고하지 않는다.
+3. Inbox는 exact op hash로 duplicate를 판별하고 cross inbox/outbox op collision을 reject한다. Missing-parent
+   upsert는 deferred되고 parent arrival 뒤 같은 transaction에서 reproject된다. Delete는 missing parent에서도
+   resurrection 방지를 위해 authority를 세울 수 있다.
+4. Outbox는 pending/in-flight/retry/acked, attempt count, typed failure code, next attempt, 60-second default lease와
+   monotonic ack/checkpoint를 보존한다. Live lease의 duplicate claim은 거부하고 process reopen 뒤 expired
+   `in-flight`는 ready listing에 다시 나타나 retry 또는 새 attempt로 진행할 수 있다. Ack record는 ancestry
+   compaction 없이 retained된다. Retry transition은 claim에서 받은 attempt count와 exact lease를 CAS fence로
+   요구하므로 이전 attempt의 늦은 failure가 더 새 in-flight attempt를 덮을 수 없다.
+5. Schema upgrade는 v0 envelope와 schema-v1의 authoritative entity/outbox/tombstone/checkpoint records를 current
+   validated record로 올린다. V1에 없던 inbox는 빈 current store로 생성한다. Unknown lineage marker는
+   receive/local child 경계까지 운반되며 이 legacy store의 malformed record가 하나라도 있으면 upgrade
+   transaction을 abort해 previous database를 보존한다. Blocked/timeout open도 upgrade를 계속 성공처럼
+   정착시키지 않는다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| Phase 11 focused Vitest | 0 | 4 files, 134/134 | envelope/sanitizer/conflict/repository PASS |
+| `npm run test:sync` | 0 | 7 files, 144/144 | two-device/offline/duplicate/reorder/reconnect/conflict/delete/upgrade PASS |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS; payload source untouched |
+| `npm run test:composition` | 0 | 114 passed/1 skipped files; 916 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | retained importer/reader fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + rescue contract | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | worker/session/output contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | artifact/sanitizer/retry/UI PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | payload/worker source contracts PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | existing JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | PASS |
+| `npm run test:android-port` | 0 | source contract | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 | closure gate PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | retained transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | retained native R2 PASS |
+| `git diff --check` | 0 | Phase diff | PASS |
+
+`test:composition`, migration과 secret-redaction에서 Node의 invalid empty `--localstorage-file` warning이
+출력됐지만 모든 해당 suite는 exit 0이었다. 이를 code regression이나 PASS 대체 근거로 사용하지 않았다.
+Live credential, provider request, raw prompt, image/base64/blob, Authorization value와 signed URL은 사용하거나
+test artifact/log로 남기지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 11 — LOCAL-FIRST SYNC CORE
+- Base HEAD: `619d0d230fad714013c20943a9e19acbc7141f69`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: `package.json`; `src/domain/sync/**`; `src/services/sync/**`; `tests/domain/sync/**`;
+  composition-v2 status/architecture/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: network-free deterministic envelope/sanitizer; user-scoped transactional sync shadow/outbox;
+  explicit lineage; operation-set conflict projection; independent tombstone; duplicate/deferred/retry/lease/ack/checkpoint;
+  fail-closed upgrade and two-device simulation. No production caller or transport was connected
+- Preserved contracts: current CompositionEngine/repository/migration, payload builder/fixtures, OutputWriter,
+  portable capability, generation queue worker count/dual-token/streaming/session/cancel/stale/retry/requeue/rotation/
+  image release, old backup/v1 profile/legacy metadata readers/fixtures, existing user data and retired runtime removal
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**` and `src-tauri/target/**`; tracked implementation ledger. Pre-existing generated
+  `src-tauri/src-tauri/**` remains unrelated/untracked. No Phase 11 payload or test artifact contains secret/path/image data
+- Not tested and exact reason: real network transport/encryption/WAN reconnect and live credentials were not run because
+  they are outside this local-only phase and no explicit isolated credential opt-in was provided; actual browser quota,
+  eviction, multi-tab/process ownership and account lifecycle were not run because the repository has no production
+  caller and focused simulation uses fake IndexedDB; physical M500_MIKU was not run because Phase 11 adds no Android UI,
+  network path or runtime caller and the known system-service blocker remains
+- Remaining risks: R-042~R-045, R-047~R-049; especially sanitizer/schema drift, production source-outbox crash recovery,
+  2,048-op compaction/retention, conservative migrated lineage, real browser/account lifecycle and later transport UX
+- Rollback procedure: preserve all app/user/output/sync records, tombstones, conflict copies, checkpoints, unrelated
+  `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 11 local commit. Never reset/clean/delete the
+  sync database, rewrite lineage/revision, force-ack attempts or perform destructive schema downgrade
+- Next phase readiness: READY — network-free two-device results converge, forbidden payload canaries are zero and
+  tombstone-only resurrection tests pass. Later production caller/transport work remains gated by R-043/R-044/R-049.
