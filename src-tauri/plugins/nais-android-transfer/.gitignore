@@ -1,3 +1,6 @@
 /target/
 Cargo.lock
 /android/build/
+# Tauri/Gradle regenerates mobile API bindings from the tracked plugin source;
+# Android builds consume this cache locally, so it must never become authority.
+/android/.tauri/

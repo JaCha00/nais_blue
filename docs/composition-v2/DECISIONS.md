@@ -576,3 +576,9 @@ checkpoint recovery가 새 process의 빈 gate에서 재개한다; separate `and
 Stronghold-unlocked secret을 안전하게 사용할 execution credential boundary와 official R2 signer/LAN mTLS adapter가
 behavior/physical-device gate를 통과해야 executor gate를 닫을 수 있다. Generation request의 장기 background 실행은
 이 registry에 설치하지 않는다.
+
+2026-07-15 ARM64 continuation은 공식 crate source에서 NDK 29로 만든 기존 verified AArch64 static archive를
+process-local `SODIUM_LIB_DIR`로 지정해 tracked Kotlin plugin과 WorkManager 2.10.5를 포함한 debug APK build를
+통과했다. APK는 `arm64-v8a` 단일 ABI, 231,398,209 bytes였고 Samsung SM-S928N/API 36 install/start/restart도
+통과했다. 이는 Kotlin/Gradle/APK compatibility와 R-025 workaround를 검증하지만 WorkManager만의 isolated size
+delta, actual executor, notification action 또는 byte transfer 성공 근거는 아니므로 capability gate는 바꾸지 않는다.

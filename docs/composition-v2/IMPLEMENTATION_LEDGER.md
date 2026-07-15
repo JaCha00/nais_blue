@@ -2253,3 +2253,86 @@ process kill/relaunch를 실행하지 않았다. Offline `emulator-5566`은 evid
 - Next phase readiness: BLOCKED — desktop paired sanitized transport and interruption primitives are tested, but the phase
   completion condition is not met until production caller/vault-lock lifecycle and supported mobile/Android execution,
   final Android build/physical recovery, and any claimed blob path pass their gates.
+
+## Phase 12 — Android ARM64 build and SM-S928N verification continuation
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Scope and preserved state
+
+- Base HEAD: `1927824cbbc6d87bbc39f5d1cd787eca336676aa`
+- 시작 시 branch/HEAD/status를 다시 확인했다. Unrelated `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`는 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- User-selected Samsung `SM-S928N` serial `R3CX902QFGM`은 `arm64-v8a` 단일 ABI, API 36/Android 16이었다.
+- Phase 06 NDK 29 archive `liblibsodium.a`는 `llvm-readelf`에서 ELF64/AArch64였고 SHA-256은
+  `DEADF3D53DE1FC933736410A02BE9BF99F0BDDFA4A9CD05647C7EFBA1125A50F`였다. Binary는 ignored
+  `src-tauri/target/**`에만 두고 `SODIUM_LIB_DIR`를 build process에만 설정했다.
+- Tauri/Gradle이 plugin-local `android/.tauri/**` binding을 생성하므로 tracked `.gitignore`에 local cache 경계를
+  추가했다. Generated content 자체는 source authority로 추가하지 않았다.
+
+### Build and physical evidence
+
+| Command/evidence | Exit | Result |
+| --- | ---: | --- |
+| `npx tauri android build --debug --target aarch64 --split-per-abi --apk --ci -vv` | 0 | first attempt; Kotlin/Gradle `BUILD SUCCESSFUL`; tracked transfer plugin compile 포함 |
+| APK metadata/signature/alignment | 0 | `com.sunakgo.nais2.dev`, 2.8.1, minSdk 24, targetSdk 36, `arm64-v8a` only |
+| APK install/cold launch on `R3CX902QFGM` | 0 | overwrite install, launch status OK, stable PID |
+| force-stop/relaunch | 0 | API 36 `topResumedActivity`, new PID, app crash signature 0 |
+| APK manifest/content | 0 | UIDT JobService, BIND_JOB_SERVICE, notification receiver, WorkManager foreground service 포함 |
+| synthetic UIDT registration/cancel | partial PASS | `userInitiatedApproved=true`, active JobService 등록, durable cancel과 active job removal 확인 |
+| cancelled ticket after process recreation | 0 | state `cancelled`, checkpoint 0/2048 유지 |
+| notification permission cleanup | 0 | UI-tree 좌표로 임시 enable 후 원래 `granted=false` 복원 |
+
+### Final source verification
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| `npm run test:android-transfer` | 0 | 1 file, 5/5 |
+| `npm run test:android-port` | 0 | Android source contract PASS |
+| `npm run test:android-release-contract` | 0 | release contract PASS |
+| `npm run lint` | 0 | ESLint PASS |
+| `npm run build` | 0 | Vite production build, 2,399 modules |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13; expected invalid-localstorage warning only |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 |
+| `npm run test:composition` | 0 | 122 passed/1 skipped files; 957 passed/3 skipped tests |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile PASS |
+| Android plugin Rust `cargo test --lib` | 0 | 3/3 |
+| `npm ls --all` | 0 | optional platform packages unmet only |
+| `git diff --check` and generated-binding ignore probe | 0 | whitespace and `.tauri` boundary PASS |
+
+APK path는 ignored
+`src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`, size 231,398,209 bytes,
+SHA-256 `4C007875C6C135C3811169AFD6E8AF7F5E3E03B1E27B6C13C2B2B0DF608D5165`다. Build는 debug-level
+Gradle logging을 사용했으므로 credential을 opt-in하지 않았고, redaction scan 결과
+token/Authorization/signed URL/prompt/image/base64 marker는 0건이었다.
+
+Activity QA helper는 첫 시도에서 PowerShell reserved `$PID`, 둘째에서 API 36의 old `mResumedActivity` key 차이를
+만났고 셋째 `topResumedActivity`로 통과했다. UIDT evaluator는 blocked terminal을 2초 안에 기대한 첫 판정과
+global/historical JobScheduler line을 active job으로 센 두 판정 뒤 3회 제한에서 중단했다. 남은 best evidence는
+active JOB/Service block과 `userInitiatedApproved=true`, cancel state, cancel 뒤 active JOB block 부재다.
+
+### Remaining gate
+
+- `TransferExecutionRegistry`에 executor가 없으므로 UIDT job은 queued에서 byte execution으로 진행하지 않았다.
+  따라서 visible notification action, pause/resume, checkpoint 증가, no-late-commit과 R2/LAN bytes는 PASS가 아니다.
+- Mobile paired JSON/mTLS client, production caller/vault-lock disposal과 native resumable blob channel도 그대로 없다.
+- Synthetic ticket은 credential value/URL/path/payload bytes 없이 opaque test reference만 사용했고 cancelled terminal
+  record로 남겼다. App data clear나 ticket store 직접 삭제는 수행하지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 12 — Android ARM64 build and SM-S928N verification continuation
+- Base HEAD: `1927824cbbc6d87bbc39f5d1cd787eca336676aa`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: plugin `.gitignore`; Phase 12 status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: runtime behavior unchanged; generated `.tauri` cache exclusion and verified ARM64 build/device evidence only
+- Preserved contracts: Phase 12 LAN/Phase 11 sync, capability false gates, vault/payload/output/queue/migration and user data
+- Tests and exit codes: build/device table above plus final source gates below
+- Artifact paths: `.artifacts/phase12-android-arm64-sm-s928n-20260715/**`; ignored ARM64 APK path above
+- Not tested and exact reason: actual notification action/pause/resume/checkpoint/bytes lacked an installed executor; live credentials
+  were unnecessary; production mobile sync/caller/blob boundaries remain absent
+- Remaining risks: R-025, R-049, R-051~R-054; especially reproducible fresh libsodium supply and actual executor lifecycle
+- Rollback procedure: preserve app/user/vault/sync/ticket data; restore temporary permission through UI; revert only this continuation
+  commit and never track/delete generated `.tauri`, target or Android app data
+- Next phase readiness: BLOCKED — Kotlin/Gradle/APK and approved ARM64/API 36 device startup gates pass, but executor-backed
+  notification/cancel/checkpoint/byte transfer and production mobile sync gates do not.

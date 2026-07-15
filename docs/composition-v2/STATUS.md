@@ -13,9 +13,10 @@ mTLS desktop LAN agent, 120초 이하 pairing, Stronghold-backed device/peer ide
 sequence/nonce replay fence, bounded sanitized JSON 교환 경계가 추가됐다. 첫 listener는 사용자가 명시적으로
 시작하고 한 번에 active peer 한 대만 허용한다. 그러나 optional LAN blob은 interface/validation만 있고
 native resumable temp-file channel은 비활성이고, Android transfer plugin도 scheduler/notification lifecycle만
-있으며 process-safe R2/LAN executor가 없어 capability가 계속 unsupported다. Desktop end-to-end loopback과
-M500_MIKU notification/cancel/process-recreation evidence가 완료되기 전에는 production cutover나 Phase 12
-완료 조건 충족으로 간주하지 않는다.
+있으며 process-safe R2/LAN executor가 없어 capability가 계속 unsupported다. Desktop end-to-end loopback은
+통과했고 verified ARM64 libsodium static archive를 process-local로 연결한 Kotlin/Gradle/APK build와 Samsung
+SM-S928N install/start/process-recreation도 통과했다. 그러나 실제 R2/LAN executor와 지속되는 notification action/
+byte-transfer evidence가 완료되기 전에는 production cutover나 Phase 12 완료 조건 충족으로 간주하지 않는다.
 
 ## 선행 조건 판정
 
@@ -163,10 +164,14 @@ large-LAN capability는 false로 유지한다. Generation request의 장기 back
 
 따라서 Phase 12는 아직 BLOCKED다. Actual native loopback에서 paired/unpaired/expired/replay/revoke, fixed denial,
 Origin/body bound와 keepalive revoke를 통과했고 production TLS 1.3 config를 재사용한 ciphertext bit-flip도 plaintext
-미방출을 확인했다. Native durable peek/ack와 TypeScript apply/receipt restart test도 통과했다. 그러나 production
-source/outbox caller와 vault-lock lifecycle hook, optional blob channel, Android paired JSON client/executor, 최종
-Kotlin/Gradle build 및 M500_MIKU notification→pause/resume/cancel→process-kill/relaunch 실증은 남아 있다. Token, Authorization,
-certificate private key, signed URL, prompt, image/base64와 raw path가 payload/log/artifact에 나타나거나
+미방출을 확인했다. Native durable peek/ack와 TypeScript apply/receipt restart test도 통과했다. Samsung SM-S928N
+`arm64-v8a`/API 36에서는 Android Studio JBR/SDK/NDK와 pre-built static libsodium으로 tracked Kotlin plugin을 포함한
+debug APK를 만들고 metadata/install/cold launch/process recreation을 통과했다. Synthetic secret-free ticket은
+UIDT `userInitiatedApproved=true` 등록, cancel과 cancelled-state restart persistence를 확인했다. 하지만 executor가
+없어 job은 queued에서 byte execution/notification action으로 진행하지 않았고 notification permission은 UI-tree
+검증 후 원래 denied 상태로 복원했다. Production source/outbox caller와 vault-lock lifecycle hook, optional blob channel,
+Android paired JSON client/executor 및 실제 notification→pause/resume/cancel→checkpoint transfer는 남아 있다. Token,
+Authorization, certificate private key, signed URL, prompt, image/base64와 raw path가 payload/log/artifact에 나타나거나
 tombstone이 다른 장치에서 부활하면 즉시 listener/cutover를 중단한다.
 
 ## 보존한 compatibility

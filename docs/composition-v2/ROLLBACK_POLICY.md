@@ -193,6 +193,9 @@ user output, Stronghold, Composition/queue/R2/Organizer/sync database와 Android
 commit 하나만 `git revert`한다. `reset --hard`, `checkout --`, `clean`, certificate/vault/peer journal/partial file 삭제,
 tombstone rewrite와 destructive migration은 금지한다. Revert 뒤 Phase 11 network-free contract, sanitizer,
 two-device/reconnect/tombstone baseline과 existing credential/R2/NAI/queue/OutputWriter category를 다시 확인한다.
+Generated plugin `android/.tauri/**`도 authority가 아니며 source rollback을 위해 track하거나 수동 편집하지 않는다.
+Physical QA에서 앱 notification permission을 임시 변경했다면 system UI로 원래 상태를 복원하고, synthetic ticket은
+cancelled terminal record로 남긴다. App data clear나 ticket store 직접 삭제는 rollback 절차가 아니다.
 
 Unpaired metadata disclosure, TLS verification bypass, replay acceptance, ciphertext tamper가 handler에 도달하는 현상,
 revoked device 재접속, JSON token/image/path 또는 tombstone resurrection이 관찰되면 listener를 즉시 끄고 cutover를

@@ -185,11 +185,12 @@
     `TransferExecutionRegistry`에 process-safe R2/LAN executor가 없어 실행은
     `E_TRANSFER_EXECUTOR_UNAVAILABLE`로 blocked된다. 따라서 `r2ForegroundUpload`,
     `r2BackgroundUpload`와 large-LAN capability는 false이며 실제 byte transfer를 완료하지 않는다.
-60. M500_MIKU에서 Phase 12 notification action, pause/resume/cancel, process kill/relaunch와 checkpoint recovery를
-    실증하지 않았다. Integrated executor가 없고 기존 R-027 Google Play Services dependency crash가 testbed를
-    막을 수 있으므로 tracked source/contract test를 physical foreground evidence로 대체하지 않는다. 정상화된
-    승인 device가 없다는 이유로 privileged permission grant, service disable/data clear 또는 app-data clear를
-    수행하지 않는다.
+60. Samsung SM-S928N `arm64-v8a`/API 36에서 tracked Kotlin plugin을 포함한 debug APK build, metadata/install,
+    cold launch, process recreation, synthetic secret-free UIDT registration/cancel과 cancelled-state restart persistence는
+    통과했다. Notification permission은 system UI tree로 임시 허용하고 원래 denied 상태로 복원했다. 그러나
+    integrated R2/LAN executor가 없어 UIDT는 queued에서 실제 byte execution으로 진행하지 않았고 notification
+    pause/resume/cancel action과 checkpoint 증가도 관찰하지 못했다. M500_MIKU의 R-027도 별도로 남으므로 이 부분을
+    physical foreground transfer 완료 근거로 바꾸거나 privileged service grant/data clear로 보완하지 않는다.
 61. Relay는 `RelayTransport` interface와 authenticated/replay-aware local fake server contract뿐이다. Production
     endpoint, provider credential, removed catalog/provider client, OAuth/deep-link와 relay failover는 없으며
     LAN 연결 실패 시 이 contract로 자동 전환하지 않는다.
