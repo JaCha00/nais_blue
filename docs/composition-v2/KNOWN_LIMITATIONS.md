@@ -198,3 +198,8 @@
     client는 아직 target contract이고 M500_MIKU가 sanitized JSON sync를 교환한다는 의미가 아니다. Mobile mTLS client,
     vault-unlock request lifetime과 Android restart checkpoint를 behavior/physical gate로 통과하기 전
     `secureLanSyncTransport`는 false로 유지한다.
+63. Phase 13 cannot provide a reliable numeric NovelAI image token count. Official V4/V4.5 documentation identifies T5 and
+    gives approximate combined guidance, but no versioned tokenizer artifact or reproducible golden endpoint is available;
+    V3 provenance is also insufficient. The UI therefore shows an explicit unavailable classification and payload-expanded
+    character/section lengths only. It does not present 512 as a hard limit, calculate a safety margin, or copy NAIS3 tokenizer
+    files. This limitation applies to all current models and unknown-model fallback until D-039's parity gate is met.

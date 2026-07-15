@@ -23,7 +23,6 @@ export type DiagnosticCategory =
 export interface DiagnosticPromptSummary {
     hash: string
     chars: number
-    estimatedTokens?: number
 }
 
 export interface DiagnosticCause {

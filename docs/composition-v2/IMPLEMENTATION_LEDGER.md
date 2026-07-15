@@ -2384,3 +2384,72 @@ secret-delivery attempts; no device byte transfer was run and capabilities remai
 - Rollback: revert only this commit, preserve app data/R2 objects/DO state and user keystore; do not uninstall or clear data
 - Next session: diagnose only the Worker pairing verifier/secret-version boundary, rotate one-use pairing secret, then execute the
   existing debug QA boundary on SM-S928N for notification pause/resume/retry/cancel, checkpoint recovery and no-late-commit.
+## Phase 13 — Product guidance and token estimation
+
+Date: 2026-07-15 (Asia/Seoul)
+
+Base HEAD was `7d59182c32123dce148f09dd63a03e061face6d1`. The phase began by re-reading the required
+authority documents and checking HEAD/status. Pre-existing changes to `AGENTS.md`, Cloudflare transfer source/tests,
+`package.json`, `wrangler.toml`, the pairing QA script, and generated `src-tauri/src-tauri/**` were preserved and excluded
+from Phase 13 staging.
+
+Behavior was characterized before edits by `phase13-baseline-characterization.test.ts`: payload final base/character
+expansion, explicit Android unsupported capability reason/alternative, Credential Vault unlock, and output choices passed
+3/3. Phase 13 then added a versioned fresh-user cue and user-opened responsive guidance sheet for Credential Vault/NovelAI,
+safe resolved-plan review, output format/metadata privacy, optional R2, Queue Center, and an advanced section. Stable
+DiagnosticCode values route to the relevant localized section. Controls have 44px targets, focus-visible styling,
+`aria-describedby`, Radix focus trap/restore, mobile bottom/desktop side placement, and reduced-motion handling.
+
+Official NovelAI Image Generation Models and Quality Tags documentation was reviewed on 2026-07-15. It identifies T5 for
+V4/V4.5 and approximate combined prompt guidance, but supplies neither a versioned tokenizer artifact nor reproducible
+golden endpoint; V3 provenance is also insufficient. D-039 therefore fails closed: all current/unsupported models show an
+unavailable classification, unchanged model ID, and payload-expanded base/enabled-character section lengths only. Numeric
+count/safety margin are null, 512 is not a hard ceiling, diagnostics no longer emit characters/4, and no NAIS3 file or
+dependency was added.
+
+Verification summary:
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| Phase 13 characterization | 0 | 1 file, 3/3 |
+| Phase 13 focused suite | 0 | 4 files, 20/20 |
+| fixture provenance + Phase 13 | 0 | 5 files, 22/22 |
+| diagnostics | 0 | 3 files, 27/27 |
+| credential vault | 0 | 5 files, 20/20 |
+| queue | 0 | 9 files, 42/42 |
+| payload parity/provenance | 0 | 5 files, 20/20 |
+| migration | 0 | 15 files, 135/135 |
+| secret redaction | 0 | 2 files, 13/13 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 983 passed/3 skipped tests |
+| final lint / build | 0 / 0 | ESLint clean; TypeScript + Vite, 2,404 modules |
+| remote-runtime-removal | 1 | current checkout's pre-existing Phase 12 docs contain two forbidden historical names; Phase 13 introduced neither |
+| responsive layout | 1 | three bounded runs found and fixed auto-modal focus theft, horizontal mobile CTA overlap, then stacked CTA overlap; final shell-toolbar placement was not rerun after the validation limit |
+
+No live NovelAI/R2 credential, token, Authorization header, signed URL, prompt text, or image/base64 artifact was used. The
+ignored `dist/**` output is the only new build artifact. Physical Hiby M500_MIKU touch/focus QA was not run because no final
+Android package/install cycle was authorized or needed for the source/build gates; final responsive browser matrix evidence
+also remains open as stated above.
+
+### HANDOFF REPORT
+
+- Phase: 13 — PRODUCT GUIDANCE AND TOKEN ESTIMATION
+- Base HEAD: `7d59182c32123dce148f09dd63a03e061face6d1`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: guidance services/components; resolved-plan and diagnostics integration; settings version state; ko/en/ja
+  locale trees; diagnostic prompt summary; Phase 13/provenance fixtures and tests; composition-v2 decision/risk/limitation/
+  status/verification/rollback/ledger docs
+- Behavior added/changed: on-demand versioned onboarding cue/sheet, DiagnosticCode recovery routing, output/privacy choices,
+  unsupported mobile alternatives, and fail-closed final-prompt character breakdown with visible accuracy classification
+- Preserved contracts: current CompositionEngine/repository/migration, `payload.ts` and fixture parity, OutputWriter/portable
+  capabilities, Scene workers/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image-release, old importers/readers,
+  user data, and removed Marketplace/Supabase/catalog boundaries
+- Tests and exit codes: table above
+- Artifact paths: ignored `dist/**`; tracked synthetic fixture contains no provider payload or tokenizer file
+- Not tested and exact reason: final responsive matrix after shell-toolbar fix was not rerun because AGENTS.md's three-attempt
+  limit was reached; physical Hiby M500_MIKU UI flow and live generation/R2 were not run; live credentials were not opt-in
+- Remaining risks: R-055 remains monitor-only; final mobile CTA layout and physical touch/focus restore need one clean next-session
+  verification; numeric token parity remains unavailable until D-039's official artifact/golden gate is met
+- Rollback procedure: close guidance, preserve settings/vault/output/queue/R2/sync/user data and unrelated working tree, revert
+  only this Phase 13 local commit; do not reset/clean/clear data or restore characters/4 token heuristics
+- Next phase readiness: BLOCKED — implementation and all source/build/Vitest gates pass, but final responsive placement and
+  physical mobile interaction evidence are not complete.

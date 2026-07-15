@@ -2,6 +2,19 @@
   "schemaVersion": 1,
   "fixtures": [
     {
+      "path": "product-guidance/token-gate-current-models.json",
+      "source": "Synthetic fail-closed model matrix derived from official NovelAI image model and quality-tag documentation; contains no provider payload or tokenizer file.",
+      "model": "current NovelAI image model matrix",
+      "captureDate": "2026-07-15",
+      "captureKind": "synthetic-derived",
+      "transformed": true,
+      "sensitiveDataRemoved": true,
+      "transformations": [
+        "Recorded only model IDs, unavailable classifications, and synthetic prompt character counts.",
+        "Did not copy NAIS3 tokenizer files or claim numeric provider token parity."
+      ]
+    },
+    {
       "path": "payload/v4-5-text.request.json",
       "source": "Derived from scripts/verify-nai-core-phase.mjs and the current src/services/nai/payload.ts request contract.",
       "model": "nai-diffusion-4-5-full",

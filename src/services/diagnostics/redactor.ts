@@ -70,11 +70,9 @@ export function redactDiagnosticText(value: string): string {
 }
 
 export function summarizePrompt(prompt: string): DiagnosticPromptSummary {
-    const chars = prompt.length
     return {
         hash: `sha256:${sha256Utf8(prompt)}`,
-        chars,
-        ...(chars === 0 ? {} : { estimatedTokens: Math.ceil(chars / 4) }),
+        chars: prompt.length,
     }
 }
 

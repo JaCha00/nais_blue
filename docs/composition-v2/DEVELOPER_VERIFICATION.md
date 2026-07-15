@@ -315,3 +315,19 @@ Live NovelAI/R2 credential은 이 gate에 필요하지 않다. Actual R2/large-L
 opt-in한 local profile에서만 수행하고 token, Authorization, certificate private key, signed URL, prompt, image/base64,
 raw path를 terminal/log/artifact에 남기지 않는다. Relay는 local fake contract만 실행하며 production provider
 endpoint를 구성하지 않는다.
+## Phase 13 product guidance and token gate
+
+Run the characterization gate first, then the focused Phase 13 suite:
+
+```text
+npx --no-install vitest run tests/product-guidance/phase13-baseline-characterization.test.ts
+npx --no-install vitest run tests/product-guidance
+npm run lint
+npm run build
+```
+
+The focused suite covers fresh/returning state, locked vault/no credential, optional R2, desktop/mobile sheet placement,
+keyboard/touch target and focus restore source contracts, reduced motion, ko/en/ja key parity, payload-aligned section golden
+fixtures, all current models, unknown-model fallback, and DiagnosticCode guide routing. A passing test must not introduce a
+numeric token result or `512` limit. Official research is recorded in D-039 and the fixture provenance; no live NovelAI/R2
+credential is required or permitted by default. Manual physical Android touch QA remains separate from source/build gates.

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ClipboardCopy, Download, ListTree } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { ClipboardCopy, Download, LifeBuoy, ListTree } from 'lucide-react'
 import {
     Dialog,
     DialogContent,
@@ -15,12 +16,14 @@ import {
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 import { CompositionAuthorityPanel } from './CompositionAuthorityPanel'
 import { getDiagnosticDrawerTriggerProps } from './drawer-contract'
+import { openProductGuidance } from '@/services/guidance/diagnostic-guides'
 
 function elapsed(event: { elapsedMs?: number }): string {
     return event.elapsedMs === undefined ? '-' : `${Math.max(0, Math.round(event.elapsedMs / 1000))}s`
 }
 
 export function DiagnosticDrawer() {
+    const { t } = useTranslation()
     const events = useDiagnosticsStore(state => state.events)
     const selectedEventId = useDiagnosticsStore(state => state.selectedEventId)
     const drawerOpen = useDiagnosticsStore(state => state.drawerOpen)
@@ -95,7 +98,20 @@ export function DiagnosticDrawer() {
                                     <Button variant="ghost" size="sm" onClick={() => setDetailsExpanded(expanded => !expanded)}>
                                         {detailsExpanded ? '세부 정보 접기' : '세부 정보 펼치기'}
                                     </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            closeDrawer()
+                                            window.setTimeout(() => openProductGuidance(selectedEvent.code), 0)
+                                        }}
+                                        aria-describedby={`diagnostic-code-${selectedEvent.eventId}`}
+                                    >
+                                        <LifeBuoy className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                                        {t('productGuidance.openDiagnosticGuide')}
+                                    </Button>
                                 </div>
+                                <span id={`diagnostic-code-${selectedEvent.eventId}`} className="sr-only">{selectedEvent.code}</span>
                                 {detailsExpanded && (
                                     <div className="mt-4 space-y-4 border-t border-border pt-4 text-xs">
                                         <section>

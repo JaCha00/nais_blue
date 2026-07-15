@@ -1318,5 +1318,95 @@
         "generation": {
             "imageFailed": "Image generation failed."
         }
+    },
+    "tokenAssessment": {
+        "title": "Prompt size and token confidence",
+        "unavailable": "Reliable token calculation is unavailable. Character counts reflect the final expanded base and enabled character prompts.",
+        "classification": "Accuracy classification",
+        "classifications": {
+            "exact": "Exact",
+            "estimated": "Estimated",
+            "unavailable": "Unavailable"
+        },
+        "model": "Model",
+        "positiveCombined": "Positive combined",
+        "negativeCombined": "Negative combined",
+        "characters": "{{count}} characters",
+        "breakdown": "Section length breakdown",
+        "expandedBase": "Expanded positive base",
+        "characterPositive": "Enabled character positive",
+        "expandedNegative": "Expanded negative base",
+        "characterNegative": "Enabled character negative",
+        "safetyMargin": "Token safety margin",
+        "notCalculated": "Not calculated"
+    },
+    "productGuidance": {
+        "trigger": "Help",
+        "onboardingAvailable": "Getting-started guidance is available",
+        "title": "Getting started and recovery guide",
+        "description": "Open only the section you need. No live generation or upload runs from this guide.",
+        "diagnosticLinked": "Guide linked to diagnostic code:",
+        "openDiagnosticGuide": "Open resolution guide",
+        "status": {
+            "complete": "Complete",
+            "attention": "Needs attention",
+            "available": "Available",
+            "optional": "Optional"
+        },
+        "steps": {
+            "credential": {
+                "title": "1. Credential Vault and NovelAI",
+                "description": "Unlock the vault and connect a verified credential.",
+                "locked": "The vault is locked. Unlock it before using a saved NovelAI credential.",
+                "missing": "No saved credential is ready. Open the vault to add and verify one.",
+                "ready": "A saved credential is available in the unlocked vault.",
+                "action": "Open Credential Vault"
+            },
+            "validation": {
+                "title": "2. Safe validation",
+                "description": "Review the resolved plan before any network request.",
+                "safe": "Open Main and inspect the resolved plan, prompt sections, warnings, model, and output policy. Reviewing it does not send a NovelAI request.",
+                "action": "Open Main for offline review"
+            },
+            "output": {
+                "title": "3. Output and privacy",
+                "description": "Choose location, format, and metadata handling.",
+                "format": "Image format",
+                "privacy": "Metadata privacy",
+                "location": "Current output location",
+                "action": "Open all output settings",
+                "metadata": {
+                    "embedded": "Embed metadata",
+                    "sidecar": "Sidecar only",
+                    "stripped": "Strip image metadata and write sidecar"
+                }
+            },
+            "r2": {
+                "title": "4. Optional R2",
+                "description": "Configure R2 only if remote asset storage is needed.",
+                "action": "Open R2 setup"
+            },
+            "queue": {
+                "title": "5. Queue Center",
+                "description": "Inspect retries, requeues, cancellations, and terminal outcomes.",
+                "help": "Queue Center exposes durable job state without changing worker, rotation, retry, or stale-result contracts.",
+                "action": "Open Queue Center"
+            }
+        },
+        "capabilities": {
+            "absolutePath": {
+                "reason": "Mobile app sandboxes cannot write to arbitrary absolute desktop paths.",
+                "alternative": "Use an app-scoped destination or the system file picker."
+            },
+            "r2": {
+                "reason": "Native foreground R2 upload is not enabled in this mobile build.",
+                "alternative": "Review the profile on mobile and upload from the desktop app."
+            }
+        },
+        "advanced": {
+            "title": "Advanced settings and diagnostics",
+            "description": "Technical identifiers and recovery context.",
+            "help": "DiagnosticCode values and model IDs remain untranslated so they can be matched in logs and support material."
+        }
     }
 }

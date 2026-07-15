@@ -618,3 +618,21 @@ Exact signed duplicate는 stored response를 재사용하되 conflicting operati
 cancel은 tombstone을 먼저 commit하고 completion race가 확인되면 R2 final object를 삭제한다. Supabase, Marketplace,
 catalog/provider runtime은 재도입하지 않는다. Source/contract/build는 통과했지만 live pairing fixed denial과 실제 Android
 notification/byte checkpoint가 남아 capability는 false다.
+## D-039 — NovelAI token display is fail-closed without reproducible tokenizer parity
+
+- Date: 2026-07-15
+- Decision: Phase 13 does not display a numeric NovelAI token count or safety margin. It displays the unchanged model ID,
+  an explicit `unavailable` accuracy classification, and character counts for the payload-expanded base and enabled
+  character prompt sections.
+- Evidence: NovelAI's official Image Generation Models documentation identifies T5 tokenization and an approximate combined
+  prompt allowance for V4/V4.5. Official Quality Tags documentation confirms that automatic tags consume prompt space.
+  Neither source exposes a versioned image tokenizer artifact or reproducible golden endpoint; V3 documentation also does
+  not provide enough tokenizer provenance for parity.
+- Implementation: `assessPromptLengths` reuses `removeComments`, `mergeQualityTags`, and `mergeUcPreset`, matching the current
+  payload expansion boundary without changing `payload.ts`. V4/V4.5 are classified as T5-family but unavailable; V3 and
+  unsupported models also fail closed. Diagnostics no longer publish the old characters/4 heuristic.
+- Alternatives rejected: copying NAIS3-custom tokenizer data without provenance/license review; adding a generic T5 package
+  without a provider artifact/version; presenting the approximate 512 guidance as a hard limit.
+- Dependency/bundle/mobile impact: no dependency was added, so there is no license, bundle, or mobile runtime increase.
+- Revisit gate: add `estimated` or `exact` only after a model-versioned official artifact or golden service and checked-in,
+  provenance-recorded fixtures demonstrate sufficient parity for the final expanded base plus character prompts.

@@ -1,0 +1,30 @@
+{
+  "provenance": {
+    "retrievedAt": "2026-07-15",
+    "modelDocumentation": "https://docs.novelai.net/en/image/models/",
+    "qualityTagDocumentation": "https://docs.novelai.net/en/image/qualitytags/",
+    "decision": "No official versioned tokenizer artifact or reproducible image-token golden endpoint was available; numeric token output remains unavailable."
+  },
+  "input": {
+    "positivePrompt": "1girl, blue eyes",
+    "negativePrompt": "lowres",
+    "characters": [
+      { "positive": "solo", "negative": "bad hands", "enabled": true },
+      { "positive": "ignored", "negative": "ignored", "enabled": false }
+    ],
+    "qualityToggle": true,
+    "ucPreset": 2
+  },
+  "expectedLengths": {
+    "positive": { "expandedBaseCharacters": 54, "enabledCharacterCharacters": 4, "combinedCharacters": 58 },
+    "negative": { "expandedBaseCharacters": 6, "enabledCharacterCharacters": 9, "combinedCharacters": 15 }
+  },
+  "models": [
+    { "model": "nai-diffusion-4-5-curated", "family": "t5", "classification": "unavailable" },
+    { "model": "nai-diffusion-4-5-full", "family": "t5", "classification": "unavailable" },
+    { "model": "nai-diffusion-4-curated-preview", "family": "t5", "classification": "unavailable" },
+    { "model": "nai-diffusion-4-full", "family": "t5", "classification": "unavailable" },
+    { "model": "nai-diffusion-3", "family": "undocumented", "classification": "unavailable" },
+    { "model": "nai-diffusion-furry-3", "family": "undocumented", "classification": "unavailable" }
+  ]
+}

@@ -71,3 +71,12 @@
 - NAI payload에서 model별 fixture와 설명되지 않는 차이
 - 제거 대상이 아닌 NovelAI auth, system opener 또는 single-instance가 함께 사라지는 현상
 - dependency/lockfile 변경이 phase 범위를 넘어서는 현상
+## R-055 — False precision in NovelAI token guidance
+
+- Status: mitigated, monitor
+- Risk: a generic tokenizer or characters/4 heuristic can disagree with the provider's model-specific image tokenization,
+  hide automatic quality/UC expansion, and make an approximate provider allowance look like a hard ceiling.
+- Mitigation: Phase 13 is fail-closed for every current and unsupported model; it exposes the accuracy classification and
+  only payload-aligned character/section lengths. Numeric token count and safety margin are `null`, diagnostics omit the
+  former heuristic, and golden fixtures lock this behavior.
+- Reopen condition: NovelAI publishes a versioned artifact/golden result, or the payload/model mapping changes.

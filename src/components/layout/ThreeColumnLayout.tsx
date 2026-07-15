@@ -9,6 +9,7 @@ import { CustomTitleBar } from './CustomTitleBar'
 import { LAYOUT_SHEET_EVENTS } from './layout-events'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
 import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
+import { ProductGuidance } from '@/components/guidance/ProductGuidance'
 import { useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { Tip } from '@/components/ui/tooltip'
@@ -315,6 +316,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         <div className="flex min-w-0 flex-1 items-center">
                             <AnimatedNavBar items={navItems} />
                         </div>
+                        <ProductGuidance />
                         <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}>
                             <button
                                 type="button"

@@ -46,6 +46,7 @@ interface SettingsState {
     // Image format setting
     imageFormat: 'png' | 'webp'
     metadataMode: MetadataMode
+    productGuidanceVersion: number
 
     // Actions
     setSavePath: (path: string, useAbsolute?: boolean) => void
@@ -66,6 +67,7 @@ interface SettingsState {
     setLibraryPath: (path: string, useAbsolute?: boolean) => void
     setImageFormat: (format: 'png' | 'webp') => void
     setMetadataMode: (mode: MetadataMode) => void
+    setProductGuidanceVersion: (version: number) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -93,6 +95,7 @@ export const useSettingsStore = create<SettingsState>()(
             useAbsoluteLibraryPath: false, // Default: relative to Pictures folder
             imageFormat: 'png', // Default: PNG format
             metadataMode: DEFAULT_METADATA_MODE,
+            productGuidanceVersion: 0,
 
             setSavePath: (savePath, useAbsolute) => set({
                 savePath,
@@ -136,6 +139,7 @@ export const useSettingsStore = create<SettingsState>()(
             }),
             setImageFormat: (format) => set({ imageFormat: format }),
             setMetadataMode: (metadataMode) => set({ metadataMode }),
+            setProductGuidanceVersion: (productGuidanceVersion) => set({ productGuidanceVersion }),
         }),
         {
             name: 'nais2-settings',

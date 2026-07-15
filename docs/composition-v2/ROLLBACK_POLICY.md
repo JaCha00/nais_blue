@@ -217,3 +217,14 @@ credential rotation/destructive cleanup은 사용자의 별도 확인 뒤 수행
 - credential/Authorization/signed URL이 renderer, terminal, diagnostic 또는 artifact에 노출된다.
 - non-overwrite R2 conflict가 existing object를 변경한다.
 - restart된 multipart가 persisted completed part를 처음부터 다시 보낸다.
+## Product guidance and prompt-sizing rollback
+
+Stop opening new Phase 13 guidance sheets, close the current sheet, and leave Credential Vault, generation, Queue Center, R2,
+output and user data untouched. The persisted `productGuidanceVersion` is non-destructive UI state and may remain for forward
+recovery; do not delete or downgrade the settings database. Revert only the Phase 13 local commit while preserving unrelated
+working-tree changes, generated `.codex/**`, `.omx/**`, `src-tauri/src-tauri/**`, vaults, output files, queue/sync/R2 records,
+and migration fixtures. Do not reset, clean, clear app data, delete credentials, or perform a destructive migration.
+
+After revert, confirm payload fixture parity, diagnostics redaction, current Composition/Scene resolved plans, credential vault,
+output and queue baselines. If a future tokenizer implementation produces unverified numeric output, disable the numeric display
+immediately and fall back to D-039 character counts; do not retain the old characters/4 heuristic.

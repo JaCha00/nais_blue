@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ReadonlyCompositionIssue, ReadonlyCompositionPlan } from './types'
+import { PromptLengthAssessment } from '@/components/guidance/PromptLengthAssessment'
 
 export interface ResolvedPlanViewLabels {
     title: string
@@ -157,6 +158,8 @@ export function ResolvedPlanView({
                     <PlanSection title={labels.negative}>
                         <PlanText>{plan.negativePrompt}</PlanText>
                     </PlanSection>
+
+                    <PromptLengthAssessment plan={plan} />
 
                     <PlanSection title={labels.promptParts} count={Object.keys(plan.promptParts).length}>
                         <dl className="divide-y divide-border border-y border-border">

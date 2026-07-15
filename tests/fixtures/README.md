@@ -71,6 +71,15 @@ Phase 01 이후 engine 비교의 workflow source of truth는 각 workflow의 `cu
 | `payload/gaps/nai-web-vibe.gap.json` | sanitized `payload/nais3-web/nai-web-vibe.json` + target Bearer adapter 결과 | Web session cached-vibe transport와 Bearer pre-encoded-vibe transport 차이 | expected/actual/diff 재구성 | 예 |
 | `payload/gaps/comment-only-character.gap.json` | pinned NAIS3 builder 의미론 + 현재 target builder 결과 | comment-only character의 target bug 가능성 | expected/actual/diff 재구성 | 예 |
 
+## Phase 13 product-guidance fixtures
+
+| Fixture | 근거 | 분류 | 변환 | 민감정보 제거 |
+| --- | --- | --- | --- | --- |
+| `product-guidance/token-gate-current-models.json` | NovelAI 공식 image model/quality-tag 문서 + synthetic prompts | numeric parity가 없는 fail-closed current-model matrix | model ID, accuracy classification, 문자 수만 기록 | 예 |
+
+이 fixture는 provider payload나 tokenizer 파일을 포함하지 않고 512를 확정 상한으로 저장하지 않는다. 공식 artifact와
+golden 결과가 확보되기 전까지 모든 current/unsupported model의 numeric result와 safety margin은 `null`이다.
+
 ## Redaction policy
 
 캡처 또는 파생 데이터를 저장하기 전에 `tests/helpers/redaction.ts`의 `redactSnapshot()` 또는 `redactSnapshotJson()`을 적용한다. fixture review와 provenance test는 다음 값을 허용하지 않는다.
