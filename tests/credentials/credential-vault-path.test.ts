@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const APP_DATA = 'C:/redacted/AppData/Roaming/com.sunakgo.nais2'
+const APP_DATA = 'C:/redacted/AppData/Roaming/com.bluhair.naisblue'
 const SNAPSHOT_FILE = 'nais2-credentials-v1.hold'
 
 const mocks = vi.hoisted(() => ({

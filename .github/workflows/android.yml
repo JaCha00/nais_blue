@@ -290,16 +290,6 @@ jobs:
         working-directory: release-artifacts/android
         run: sha256sum --check --strict "${{ needs.signed-build.outputs.asset_name }}.sha256"
 
-      - name: Download pinned update baseline
-        shell: bash
-        run: |
-          mkdir -p .artifacts/android-update
-          baseline=".artifacts/android-update/NAIS2_2.8.0-baseline.apk"
-          baseline_url="$(node -p "require('./android-release-policy.json').updateBaseline.url")"
-          baseline_sha="$(node -p "require('./android-release-policy.json').updateBaseline.sha256.toLowerCase()")"
-          curl --fail --location --output "$baseline" "$baseline_url"
-          echo "$baseline_sha  $baseline" | sha256sum --check --strict
-
       - name: Enable KVM
         shell: bash
         run: |
@@ -308,14 +298,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify update, install, and launch
+      - name: Verify first install and launch for the final application ID
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_7
           script: |
-            adb install -r .artifacts/android-update/NAIS2_2.8.0-baseline.apk
             npm run test:android-release -- \
               --apk "release-artifacts/android/${{ needs.signed-build.outputs.asset_name }}" \
               --install

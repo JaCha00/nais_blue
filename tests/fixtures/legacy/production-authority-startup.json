@@ -4,9 +4,9 @@
   "scenarios": [
     {
       "id": "fresh-install",
-      "description": "No legacy stores, feature flag, or Composition repository exists.",
-      "expectedRuntimeAuthority": "legacy",
-      "expectedPersistedAuthority": "legacy"
+      "description": "No legacy stores, feature flag, or Composition repository exists; the verified production default activates v2.",
+      "expectedRuntimeAuthority": "v2",
+      "expectedPersistedAuthority": "v2"
     },
     {
       "id": "canonical-v2-only",

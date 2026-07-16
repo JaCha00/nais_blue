@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const root = resolve(scriptDirectory, '..')
 const read = path => readFileSync(join(root, path), 'utf8')
@@ -76,12 +78,15 @@ for (const [source, version] of versions) {
 }
 
 const current = stableSemver(packageJson.version, 'Release version')
-const baselineVersion = policy.updateBaseline.tag.replace(/^v/, '')
-const baseline = stableSemver(baselineVersion, 'Android update baseline')
-if (compareVersion(current, baseline) <= 0) {
-    throw new Error(
-        `Release version ${packageJson.version} must be newer than update baseline ${policy.updateBaseline.tag}`,
-    )
+const baselineTag = resolveAndroidUpdateBaseline(policy, packageJson.version)
+if (baselineTag !== null) {
+    const baselineVersion = baselineTag.replace(/^v/, '')
+    const baseline = stableSemver(baselineVersion, 'Android update baseline')
+    if (compareVersion(current, baseline) <= 0) {
+        throw new Error(
+            `Release version ${packageJson.version} must be newer than update baseline ${baselineTag}`,
+        )
+    }
 }
 
 const versionCode = current[0] * 1_000_000 + current[1] * 1_000 + current[2]

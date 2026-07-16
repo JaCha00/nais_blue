@@ -29,10 +29,19 @@
           "path": "$PICTURE/**"
         },
         {
+          "path": "$PICTURE/**/.*"
+        },
+        {
           "path": "$APPDATA/**"
         },
         {
+          "path": "$APPDATA/**/.*"
+        },
+        {
           "path": "$LOCALAPPDATA/**"
+        },
+        {
+          "path": "$LOCALAPPDATA/**/.*"
         }
       ]
     },

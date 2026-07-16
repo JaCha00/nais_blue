@@ -60,10 +60,12 @@ async function recoverJob(
 
 export async function recoverQueueAfterRestart(
     repository: IndexedDBQueueRepository,
-    options: { now: string },
+    options: { now: string; includeUnexpiredLeases?: boolean },
 ): Promise<QueueRecoveryResult> {
     await repository.initialize()
-    const expired = await repository.recoverExpiredLeases(options.now)
+    const expired = await repository.recoverExpiredLeases(options.now, {
+        includeUnexpired: options.includeUnexpiredLeases,
+    })
     const result: QueueRecoveryResult = {
         recovering: expired.length,
         queued: 0,

@@ -1,6 +1,6 @@
 # Release, data export, and rollback policy
 
-기준일: 2026-07-14 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 ## Release rollback
 
@@ -72,10 +72,31 @@ Durable queue phase는 기존 Main/Scene workflow를 cutover하거나 user gener
 보존하고 해당 local commit 하나만 `git revert`한다. `reset --hard`, `clean`과 queue database 삭제는
 rollback 절차가 아니다.
 
-현재 runtime caller가 없으므로 source revert만으로 기존 generation behavior로 돌아간다. Future
-cutover 뒤 rollback할 때도 먼저 enqueue/worker authority를 이전 adapter로 되돌리고 committed queue
-records와 managed resource를 보존해야 한다. OutputWriter, Scene worker/session/cancel/requeue 계약이나
-composition/payload repository를 queue rollback 과정에서 별도로 변경하지 않는다.
+Phase 07 commit 단독 시점에는 runtime caller가 없었으므로 source revert만으로 기존 generation
+behavior로 돌아갔다. Phase 08 cutover 뒤에는 아래 operational rollback으로 enqueue/worker authority를
+legacy adapter로 먼저 되돌리고 committed queue records와 managed resource를 보존한다. OutputWriter,
+Scene worker/session/cancel/requeue 계약이나 composition/payload repository를 queue rollback 과정에서
+별도로 변경하지 않는다.
+
+## Queue workflow cutover rollback
+
+Phase 08 operational rollback은 먼저 Queue Center에서 execution authority를 `legacy`로 명시적으로
+선택한다. 이 setting은 persisted `nais2-queue-ui` projection의 `executionAuthority`만 바꾸며 durable
+batch/job/attempt/lease/resource, linked OutputWriter journal, managed AppData resource, legacy Scene
+`queueCount`와 user output을 삭제하지 않는다. 이미 running인 durable executor는 정상 cancel/shutdown
+guard로 멈춘 뒤 legacy generation을 시작하고, DB를 직접 편집해 terminal state를 만들지 않는다.
+
+기존 `queueCount`를 durable jobs로 변환하는 UI는 현재 parameter snapshot을 새 batch로 등록하지만 count를
+자동 삭제하거나 decrement하지 않는다. 따라서 rollback을 위해 count를 복원하거나 durable job을
+duplicate enqueue하지 않는다. 성공 job 재실행, output path 존재만으로 success 표시, files-committed
+journal 삭제는 rollback 절차가 아니다.
+
+Source rollback은 unrelated `AGENTS.md`, `src-tauri/src-tauri/**`, generated cache와 모든 app/user/output
+data를 보존하고 Phase 08 local commit 하나만 `git revert`한다. `reset --hard`, `clean`, IndexedDB/AppData
+삭제와 destructive migration은 금지한다. Revert 전에 execution authority가 legacy인지 확인하고 running
+durable work를 cancel/shutdown한 뒤 restart한다. Revert 뒤 Main direct generation, Scene legacy queueCount,
+dual-token/stream/session/cancel/stale/retry/requeue/rotation/image-release와 Android typed timeout/cancel을
+focused characterization으로 다시 확인한다. Phase 07 durable records는 future forward recovery를 위해 남긴다.
 
 ## Authority rollback
 
@@ -100,6 +121,87 @@ working-tree와 user data를 보존한 채 Phase 06 local commit만 `git revert`
 default나 repository schema를 바꾸지 않았으므로 reset/clean, repository/backup 삭제 또는
 destructive migration은 필요하지 않다.
 
+## Native R2 rollback
+
+Phase 09 source rollback은 먼저 새 upload 시작을 중지하고 foreground runtime이 active multipart를 abort하도록
+한다. Existing object, completed manifest, R2 upload IndexedDB와 OS credential vault를 삭제하지 않는다.
+Legacy Python/Wrangler panel과 current-session/delta/full-sync/dry-run backend는 그대로 유지되므로 native
+transport를 사용하지 않고 해당 workflow로 전환할 수 있다.
+
+그 뒤 unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/target, user output, Asset Profile, queue DB와
+vault를 보존하고 Phase 09 local commit 하나만 `git revert`한다. `reset --hard`, `clean`, bucket delete,
+multipart sweeping, credential deletion과 destructive migration은 rollback 절차가 아니다. Revert한 binary는
+R2ProfileV2/UploadJob을 읽지 않지만 records는 future forward recovery를 위해 남긴다. Conditional conflict,
+secret exposure 또는 multipart duplication stop gate가 발생했다면 provider audit 뒤 credential rotation/
+remote multipart cleanup은 사용자의 별도 확인을 받아 수행한다.
+
+## Organizer distribution artifact rollback
+
+Phase 10 rollback은 Organizer에서 새 distribution/R2 enqueue를 중지하고 running OutputWriter transaction이
+cancel/rollback 또는 terminal journal recovery를 끝내도록 한다. Original image, successful distribution variant,
+`.nais2.artifact.json` sidecar, `nais2-organizer-artifacts` IndexedDB, R2 UploadJob/manifest, external folder, managed
+AppData collection, unrelated `AGENTS.md`와 generated `src-tauri/src-tauri/**`/target은 삭제하지 않는다.
+
+Operational fallback은 Organizer route를 사용하지 않고 retained output/library/R2 workflow를 사용한다. Existing
+ArtifactRecord는 future forward recovery를 위해 남기며 raw path를 repository에 주입하거나 direct filesystem
+rename/delete로 cleanup하지 않는다. Metadata/sanitization issue가 발견되면 new execution을 stop하고 failed record와
+OutputWriter journal을 inspect/recover하며, already successful distribution을 automatic destructive rollback 대상으로
+취급하지 않는다.
+
+Source rollback이 필요한 경우 user data와 unrelated working tree를 보존한 채 Phase 10 local commit 하나만
+`git revert`한다. `reset --hard`, `clean`, organizer/R2/queue IndexedDB deletion, artifact/original/output deletion,
+credential rotation 또는 destructive migration은 rollback 절차가 아니다. Revert 뒤 OutputWriter baseline,
+legacy metadata reader, queue/session/cancel contract와 retained R2 workflow를 focused test로 확인한다.
+
+## Local-first sync core rollback
+
+Phase 11은 production Composition/Scene/prompt/artifact caller, network transport, user-facing control,
+encryption/key management 또는 existing user-data migration을 연결하지 않는다. Operational rollback에서
+끄거나 전환할 sync runtime authority가 없으며 current workflow behavior는 계속 existing authority를 사용한다.
+
+Source rollback은 unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`, Composition/queue/R2/Organizer
+database, Stronghold, OutputWriter journal, user output과 existing app data를 보존한 채 Phase 11 local commit
+하나만 `git revert`한다. `reset --hard`, `checkout --`, `clean`을 사용하지 않는다.
+
+User-scoped `nais2-local-sync--<user-hash>` database의 entity, outbox, inbox, tombstone, conflict copy와
+checkpoint를 rollback 과정에서 삭제하거나 직접 편집하지 않는다. 이전 binary는 별도
+database를 사용하지 않으며 records는 forward fix/recovery를 위해 남긴다. Tombstone 삭제,
+revision/`baseOpId` 재작성, `lineageUnknown` marker 제거, `in-flight` record의 임의 ack/requeue,
+2,048 cap을 회피하기 위한 record 삭제와 destructive schema downgrade는 rollback 절차가 아니다.
+
+Forbidden payload, cross-user read, arrival-order divergence, stranded expired attempt 또는 tombstone
+resurrection이 관찰되면 later caller/transport cutover를 중단한다. Revert 전후에 current
+CompositionEngine/repository/migration, payload parity, generation queue/session/cancel, OutputWriter와 old
+importer/reader fixture를 focused baseline으로 확인한다. Production source + outbox atomic recovery는
+Phase 11 rollback을 넘어서 추정하지 않는다.
+
+## Secure LAN sync transport rollback
+
+Phase 12 operational rollback은 먼저 새 pairing을 닫고 LAN listener와 active sync request를 명시적으로
+stop/cancel한다. Android transfer ticket이 있으면 pause/cancel state와 마지막 checkpoint를 commit한 뒤 worker를
+중지한다. Existing Phase 11 outbox/inbox/checkpoint/tombstone, native non-secret replay journal, resumable partial file,
+Stronghold의 device/peer identity와 R2 object를 삭제하지 않는다. 이전 binary가 이 authority를 사용하지 않더라도
+forward recovery와 duplicate/tombstone 검증을 위해 보존한다.
+
+Operational fallback은 LAN agent를 꺼 둔 local-only Phase 11 shadow와 기존 R2 foreground workflow다. Relay,
+removed provider/catalog runtime, unauthenticated HTTP 또는 JSON image fallback으로 자동 전환하지 않는다. Vault lock 전에
+native listener를 stop해 in-memory identity를 해제하고, stop 실패는 diagnostic typed code로 기록하되 secret이나
+endpoint/path 원문을 기록하지 않는다.
+
+Source rollback은 unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/`src-tauri/gen/android/**`, target/cache,
+user output, Stronghold, Composition/queue/R2/Organizer/sync database와 Android app data를 보존한 채 Phase 12 local
+commit 하나만 `git revert`한다. `reset --hard`, `checkout --`, `clean`, certificate/vault/peer journal/partial file 삭제,
+tombstone rewrite와 destructive migration은 금지한다. Revert 뒤 Phase 11 network-free contract, sanitizer,
+two-device/reconnect/tombstone baseline과 existing credential/R2/NAI/queue/OutputWriter category를 다시 확인한다.
+Generated plugin `android/.tauri/**`도 authority가 아니며 source rollback을 위해 track하거나 수동 편집하지 않는다.
+Physical QA에서 앱 notification permission을 임시 변경했다면 system UI로 원래 상태를 복원하고, synthetic ticket은
+cancelled terminal record로 남긴다. App data clear나 ticket store 직접 삭제는 rollback 절차가 아니다.
+
+Unpaired metadata disclosure, TLS verification bypass, replay acceptance, ciphertext tamper가 handler에 도달하는 현상,
+revoked device 재접속, JSON token/image/path 또는 tombstone resurrection이 관찰되면 listener를 즉시 끄고 cutover를
+중단한다. Certificate/private identity가 실제로 노출된 경우에만 영향 범위를 먼저 확인하고, remote device revoke나
+credential rotation/destructive cleanup은 사용자의 별도 확인 뒤 수행한다.
+
 ## Stop conditions
 
 다음이면 cutover 또는 cleanup을 중단하고 compatibility layer를 유지한다.
@@ -112,3 +214,25 @@ destructive migration은 필요하지 않다.
 - authenticated generation/output smoke를 실행하지 못했다.
 - Android request가 success 또는 typed timeout/cancel로 유한 시간 안에 끝나지 않는다.
 - Scene cancel 뒤 sequence proposal, OutputWriter, history/image save 또는 queue resurrection이 발생한다.
+- credential/Authorization/signed URL이 renderer, terminal, diagnostic 또는 artifact에 노출된다.
+- non-overwrite R2 conflict가 existing object를 변경한다.
+- restart된 multipart가 persisted completed part를 처음부터 다시 보낸다.
+## Product guidance and prompt-sizing rollback
+
+Stop opening new Phase 13 guidance sheets, close the current sheet, and leave Credential Vault, generation, Queue Center, R2,
+output and user data untouched. The persisted `productGuidanceVersion` is non-destructive UI state and may remain for forward
+recovery; do not delete or downgrade the settings database. Revert only the Phase 13 local commit while preserving unrelated
+working-tree changes, generated `.codex/**`, `.omx/**`, `src-tauri/src-tauri/**`, vaults, output files, queue/sync/R2 records,
+and migration fixtures. Do not reset, clean, clear app data, delete credentials, or perform a destructive migration.
+
+After revert, confirm payload fixture parity, diagnostics redaction, current Composition/Scene resolved plans, credential vault,
+output and queue baselines. If a future tokenizer implementation produces unverified numeric output, disable the numeric display
+immediately and fall back to D-039 character counts; do not retain the old characters/4 heuristic.
+
+The 2026-07-16 Android verification-tool continuation is independently reversible only after policy has a verified stable
+update baseline, `firstReleaseForApplicationId: false`, and the immutable `firstReleaseVersion` record remains intact.
+Restoring the prior release/APK verifier while `updateBaseline` is null reintroduces the known `.tag` crash, so release
+verification and publication must instead remain BLOCKED. After any allowed revert, rerun the stable `v<version>` tag,
+certificate, package/versionCode, SDK, ABI and alignment gates. Never replace the null-baseline branch with a verifier bypass. Preserve the
+`/keystore_base64.txt` ignore rule (or relocate the file outside the checkout before any source revert); do not stage, delete,
+print or decode signing material into a tracked or retained artifact. Generated APKs and Android build caches are not authority.

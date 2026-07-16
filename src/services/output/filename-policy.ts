@@ -128,6 +128,15 @@ export function toDiagnosticSidecarPath(imagePath: string): string {
     return imagePath.replace(/\.[^./\\]+$/, '.nais2.diagnostic.json')
 }
 
+/**
+ * Artifact distribution uses a separate, non-generation sidecar.  Keep its
+ * name derived from the final image so OutputWriter can commit it atomically
+ * with the image and any legacy metadata sidecars.
+ */
+export function toArtifactSidecarPath(imagePath: string): string {
+    return imagePath.replace(/\.[^./\\]+$/, '.nais2.artifact.json')
+}
+
 export function splitFileName(fileName: string): { stem: string; extension: string } {
     const match = /^(.*?)(\.[^.]*)$/.exec(fileName)
     return match === null

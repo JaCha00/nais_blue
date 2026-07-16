@@ -81,6 +81,8 @@ export interface GenerationParams {
     /** Metadata provenance fields; optional for legacy adapters. */
     engineVersion?: string
     sourceRevision?: number | null
+    /** Durable queue provenance. Never sent as a provider request field. */
+    sourceJobId?: string
     /** Closed, credential-free summary. Never pass an OutputPolicy object here. */
     outputPolicySummary?: Nais2OutputPolicySummary
     /** Local platform materialization hint; the NAI request adapter never serializes it. */

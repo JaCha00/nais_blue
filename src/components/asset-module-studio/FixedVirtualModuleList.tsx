@@ -2,51 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, CircleAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CompositionModule, EntityId } from '@/domain/composition/types'
+import { calculateFixedVirtualRange } from '@/lib/virtualization/fixed-range'
+
+export { calculateFixedVirtualRange } from '@/lib/virtualization/fixed-range'
 
 export const FIXED_MODULE_ROW_HEIGHT = 68
 export const FIXED_MODULE_OVERSCAN = 5
-
-export interface FixedVirtualRange {
-    start: number
-    end: number
-}
-
-/**
- * Calculates an end-exclusive window for the fixed-height module list.
- *
- * This is deliberately DOM-free so the 500+ item behavior can be verified in
- * Node tests and reused by future platform-specific list shells.
- */
-export function calculateFixedVirtualRange({
-    itemCount,
-    scrollTop,
-    viewportHeight,
-    rowHeight = FIXED_MODULE_ROW_HEIGHT,
-    overscan = FIXED_MODULE_OVERSCAN,
-}: {
-    itemCount: number
-    scrollTop: number
-    viewportHeight: number
-    rowHeight?: number
-    overscan?: number
-}): FixedVirtualRange {
-    const count = Number.isFinite(itemCount) ? Math.max(0, Math.trunc(itemCount)) : 0
-    if (count === 0) return { start: 0, end: 0 }
-
-    const height = Number.isFinite(rowHeight) && rowHeight > 0
-        ? rowHeight
-        : FIXED_MODULE_ROW_HEIGHT
-    const padding = Number.isFinite(overscan) ? Math.max(0, Math.trunc(overscan)) : 0
-    const top = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0
-    const viewport = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0
-    const firstVisible = Math.min(count - 1, Math.floor(top / height))
-    const visibleCount = Math.max(1, Math.ceil(viewport / height))
-
-    return {
-        start: Math.max(0, firstVisible - padding),
-        end: Math.min(count, firstVisible + visibleCount + padding),
-    }
-}
 
 export interface VirtualModuleRow {
     module: CompositionModule

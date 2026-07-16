@@ -93,6 +93,7 @@ export interface Nais2ParamsV2 extends Nais2ParamsCommon {
     version: 2
     engineVersion: string
     sourceRevision: number | null
+    sourceJobId?: string
     recipeId: string | null
     planHash: CompositionPlanHash | null
     promptParts: Nais2PromptParts
@@ -293,6 +294,7 @@ function isNais2ParamsV2(value: Record<string, unknown>): boolean {
         'version',
         'engineVersion',
         'sourceRevision',
+        'sourceJobId',
         'recipeId',
         'planHash',
         'promptParts',
@@ -316,6 +318,8 @@ function isNais2ParamsV2(value: Record<string, unknown>): boolean {
         && value.version === 2
         && typeof value.engineVersion === 'string'
         && (value.sourceRevision === null || (Number.isInteger(value.sourceRevision) && Number(value.sourceRevision) >= 0))
+        && (value.sourceJobId === undefined
+            || (typeof value.sourceJobId === 'string' && value.sourceJobId.length > 0 && value.sourceJobId.length <= 256))
         && (value.recipeId === null || typeof value.recipeId === 'string')
         && (value.planHash === null || isPlanHash(value.planHash))
         && isPromptParts(value.promptParts)

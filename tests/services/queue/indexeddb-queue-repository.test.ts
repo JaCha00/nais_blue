@@ -114,12 +114,13 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
 
         const schema = await queue.inspectSchema()
-        expect(schema.version).toBe(2)
+        expect(schema.version).toBe(3)
         expect(schema.stores).toEqual(['attempts', 'batches', 'jobs', 'leases', 'resources'])
         expect(schema.indexes.jobs).toEqual([
             'by-batch-order',
             'by-global-order',
             'by-idempotency-key',
+            'by-output-transaction',
             'by-state-order',
         ])
         expect(schema.indexes.leases).toContain('by-expires-at')
@@ -182,12 +183,13 @@ describe('normalized IndexedDB durable queue repository', () => {
         await beforeRestart.initialize()
         await beforeRestart.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
         await beforeRestart.enqueue(jobInput())
-        await beforeRestart.acquireLease({ jobId: 'job:1', owner: 'worker:old', now: NOW, ttlMs: 1_000 })
+        const lease = await beforeRestart.acquireLease({ jobId: 'job:1', owner: 'worker:old', now: NOW, ttlMs: 1_000 })
         await beforeRestart.transitionJob({
             jobId: 'job:1',
             to: 'running',
             now: NOW,
             leaseOwner: 'worker:old',
+            leaseToken: lease?.leaseToken ?? '',
         })
         beforeRestart.close()
 
@@ -278,13 +280,20 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
         await queue.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
         await queue.enqueue(jobInput())
-        await queue.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 5_000 })
-        await queue.transitionJob({ jobId: 'job:1', to: 'running', now: NOW, leaseOwner: 'worker:1' })
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 5_000 })
+        await queue.transitionJob({
+            jobId: 'job:1',
+            to: 'running',
+            now: NOW,
+            leaseOwner: 'worker:1',
+            leaseToken: lease?.leaseToken ?? '',
+        })
         const succeeded = await queue.transitionJob({
             jobId: 'job:1',
             to: 'succeeded',
             now: LATER,
             leaseOwner: 'worker:1',
+            leaseToken: lease?.leaseToken ?? '',
             outputTransactionId: 'output-transaction:1',
             artifactReference: {
                 kind: 'output-writer',

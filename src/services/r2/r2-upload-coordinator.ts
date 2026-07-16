@@ -1,0 +1,285 @@
+import type {
+    NativeR2ScannedArtifact,
+    R2ManifestV2,
+    R2ManifestV2Item,
+    R2ProfileV2,
+    UploadJob,
+} from '@/domain/r2/types'
+import { deterministicR2Suffix } from '@/domain/r2/types'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import {
+    appendCompletedPart,
+    createUploadJob,
+    IndexedDBR2UploadRepository,
+    R2UploadRepositoryError,
+} from './indexeddb-r2-upload-repository'
+import {
+    NativeR2Error,
+    nativeR2UploadAdapter,
+    type NativeR2UploadAdapter,
+} from './native-r2-adapter'
+
+export type R2UploadMode = 'current-session' | 'delta' | 'full-sync' | 'dry-run'
+
+export interface R2UploadPlan {
+    readonly mode: R2UploadMode
+    readonly total: number
+    readonly alreadyCompleted: number
+    readonly jobs: readonly UploadJob[]
+}
+
+export interface R2UploadRunSummary {
+    readonly succeeded: number
+    readonly failed: number
+    readonly queued: number
+    readonly cancelled: number
+}
+
+export interface R2ConflictPreview {
+    readonly examined: number
+    readonly missing: number
+    readonly alreadySame: number
+    readonly conflicts: number
+    readonly overwrites: number
+    readonly suffixAvailable: number
+}
+
+const MULTIPART_THRESHOLD_BYTES = 8 * 1024 * 1024
+
+function retryAt(attempt: number, now: Date): string {
+    const delayMs = Math.min(60_000, 1_000 * (2 ** Math.max(0, attempt - 1)))
+    return new Date(now.getTime() + delayMs).toISOString()
+}
+
+function isRetryable(error: unknown): boolean {
+    return error instanceof NativeR2Error && error.retryable
+}
+
+function diagnosticId(error: unknown, job: UploadJob): string {
+    return reportDiagnostic(error, {
+        operation: 'r2.native-upload',
+        stage: job.multipart.uploadId ? 'multipart' : 'put',
+        jobId: job.id,
+    }).eventId
+}
+
+function manifestItem(job: UploadJob, completedAt: string): R2ManifestV2Item {
+    return {
+        profileId: job.profileId,
+        artifactId: job.artifactId,
+        localVariant: job.localVariant,
+        remoteKey: job.remoteKey,
+        contentSha256: job.contentSha256,
+        size: job.size,
+        completedAt,
+    }
+}
+
+export class R2UploadCoordinator {
+    constructor(
+        private readonly repository: IndexedDBR2UploadRepository,
+        private readonly adapter: NativeR2UploadAdapter = nativeR2UploadAdapter,
+        private readonly now: () => Date = () => new Date(),
+    ) {}
+
+    async plan(
+        profile: R2ProfileV2,
+        artifacts: readonly NativeR2ScannedArtifact[],
+        mode: R2UploadMode,
+    ): Promise<R2UploadPlan> {
+        const manifest = await this.repository.getManifest(profile)
+        const completed = new Map(manifest.items.map(item => [item.remoteKey, item]))
+        const candidates = mode === 'delta'
+            ? artifacts.filter(artifact => {
+                const prior = completed.get(artifact.remoteKey)
+                return prior?.contentSha256 !== artifact.contentSha256 || prior.size !== artifact.size
+            })
+            : [...artifacts]
+        const alreadyCompleted = artifacts.length - candidates.length
+        const timestamp = this.now().toISOString()
+        const jobs = candidates.map((artifact, index) => createUploadJob(profile.id, artifact, {
+            id: `${profile.id}:${timestamp}:${String(index).padStart(6, '0')}`,
+            now: timestamp,
+        }))
+        return { mode, total: artifacts.length, alreadyCompleted, jobs }
+    }
+
+    async enqueuePlan(plan: R2UploadPlan): Promise<UploadJob[]> {
+        if (plan.mode === 'dry-run') return []
+        return this.repository.enqueue(plan.jobs)
+    }
+
+    /** Read-only remote HEAD preview. It never PUTs, DELETEs, or creates multipart state. */
+    async previewConflicts(profile: R2ProfileV2, plan: R2UploadPlan): Promise<R2ConflictPreview> {
+        const preview = {
+            examined: 0,
+            missing: 0,
+            alreadySame: 0,
+            conflicts: 0,
+            overwrites: 0,
+            suffixAvailable: 0,
+        }
+        for (const job of plan.jobs) {
+            preview.examined += 1
+            const existing = await this.adapter.headObject(profile, job.remoteKey)
+            if (!existing.exists) {
+                preview.missing += 1
+                continue
+            }
+            if (existing.contentSha256 === job.contentSha256 && existing.size === job.size) {
+                preview.alreadySame += 1
+                continue
+            }
+            if (profile.conflictPolicy === 'overwrite') {
+                preview.overwrites += 1
+                continue
+            }
+            if (profile.conflictPolicy === 'suffix') {
+                const suffixKey = deterministicR2Suffix(job.remoteKey, job.contentSha256)
+                const suffixed = await this.adapter.headObject(profile, suffixKey)
+                if (!suffixed.exists) preview.suffixAvailable += 1
+                else if (suffixed.contentSha256 === job.contentSha256 && suffixed.size === job.size) preview.alreadySame += 1
+                else preview.conflicts += 1
+                continue
+            }
+            preview.conflicts += 1
+        }
+        return preview
+    }
+
+    async recoverAfterRestart(): Promise<number> {
+        return this.repository.recoverInterrupted(this.now().toISOString())
+    }
+
+    async runUntilIdle(profile: R2ProfileV2): Promise<R2UploadRunSummary> {
+        while (true) {
+            const now = this.now()
+            const ready = (await this.repository.listJobs(profile.id))
+                .filter(job => job.state === 'queued' && Date.parse(job.nextAttemptAt) <= now.getTime())
+            if (ready.length === 0) break
+
+            // The repository snapshot supplies stable job versions to the sequential executor.
+            // Processing the whole ready set avoids re-reading every profile job after each object,
+            // while the outer loop still picks up jobs enqueued during the batch before reporting idle.
+            for (const job of ready) {
+                try {
+                    await this.runJob(profile, job)
+                } catch (error) {
+                    // Cancellation or another coordinator may update a snapshotted job first.
+                    // The next outer snapshot observes that authoritative state without aborting the batch.
+                    if (error instanceof R2UploadRepositoryError && error.code === 'E_R2_VERSION_CONFLICT') continue
+                    throw error
+                }
+            }
+        }
+        const jobs = await this.repository.listJobs(profile.id)
+        return {
+            succeeded: jobs.filter(job => job.state === 'succeeded').length,
+            failed: jobs.filter(job => job.state === 'failed').length,
+            queued: jobs.filter(job => job.state === 'queued' || job.state === 'running').length,
+            cancelled: jobs.filter(job => job.state === 'cancelled').length,
+        }
+    }
+
+    async cancel(profile: R2ProfileV2, jobId: string): Promise<UploadJob> {
+        const job = await this.repository.getJob(jobId)
+        if (!job) throw new Error('R2 upload job was not found.')
+        if (job.state === 'succeeded' || job.state === 'failed' || job.state === 'cancelled') return job
+        if (job.multipart.uploadId) {
+            await this.adapter.abortMultipart(profile, {
+                remoteKey: job.remoteKey,
+                uploadId: job.multipart.uploadId,
+            })
+        }
+        return this.repository.updateJob(job.id, job.version, { state: 'cancelled' }, this.now().toISOString())
+    }
+
+    async manifest(profile: R2ProfileV2): Promise<R2ManifestV2> {
+        return this.repository.getManifest(profile)
+    }
+
+    private async runJob(profile: R2ProfileV2, initial: UploadJob): Promise<void> {
+        const startedAt = this.now()
+        let job = await this.repository.updateJob(initial.id, initial.version, {
+            state: 'running',
+            attempt: initial.attempt + 1,
+        }, startedAt.toISOString())
+
+        try {
+            if (job.size < MULTIPART_THRESHOLD_BYTES) {
+                const result = await this.adapter.putObject(profile, job)
+                if (result.remoteKey !== job.remoteKey) {
+                    job = await this.repository.updateJob(job.id, job.version, { remoteKey: result.remoteKey }, this.now().toISOString())
+                }
+            } else {
+                job = await this.runMultipart(profile, job)
+            }
+            const completedAt = this.now().toISOString()
+            const succeeded = await this.repository.updateJob(job.id, job.version, { state: 'succeeded' }, completedAt)
+            await this.repository.putManifestItem(profile, manifestItem(succeeded, completedAt))
+        } catch (error) {
+            if (error instanceof NativeR2Error && error.code === 'E_R2_ALREADY_COMPLETE') {
+                const completedAt = this.now().toISOString()
+                const reconciled = await this.repository.getJob(job.id)
+                if (!reconciled) throw error
+                const succeeded = await this.repository.updateJob(reconciled.id, reconciled.version, { state: 'succeeded' }, completedAt)
+                await this.repository.putManifestItem(profile, manifestItem(succeeded, completedAt))
+                return
+            }
+            const current = await this.repository.getJob(job.id)
+            if (!current || current.state === 'cancelled') return
+            const eventId = diagnosticId(error, current)
+            const retry = isRetryable(error) && current.attempt < current.maxAttempts
+            await this.repository.updateJob(current.id, current.version, {
+                state: retry ? 'queued' : 'failed',
+                nextAttemptAt: retry ? retryAt(current.attempt, this.now()) : current.nextAttemptAt,
+                diagnosticEventId: eventId,
+            }, this.now().toISOString())
+        }
+    }
+
+    private async runMultipart(profile: R2ProfileV2, initial: UploadJob): Promise<UploadJob> {
+        let job = initial
+        if (!job.multipart.uploadId) {
+            const created = await this.adapter.createMultipart(profile, job)
+            job = await this.repository.updateJob(job.id, job.version, {
+                remoteKey: created.remoteKey,
+                multipart: {
+                    ...job.multipart,
+                    uploadId: created.uploadId,
+                },
+            }, this.now().toISOString())
+        }
+        const uploadId = job.multipart.uploadId
+        if (!uploadId) throw new NativeR2Error('E_R2_MULTIPART', 'Multipart upload did not start.', true, null)
+
+        const partCount = Math.ceil(job.size / job.multipart.partSize)
+        const completed = new Set(job.multipart.completedParts.map(part => part.partNumber))
+        for (let partNumber = 1; partNumber <= partCount; partNumber += 1) {
+            if (completed.has(partNumber)) continue
+            const offset = (partNumber - 1) * job.multipart.partSize
+            const length = Math.min(job.multipart.partSize, job.size - offset)
+            const part = await this.adapter.uploadPart(profile, {
+                localVariant: job.localVariant,
+                remoteKey: job.remoteKey,
+                uploadId,
+                partNumber,
+                offset,
+                length,
+            })
+            job = await this.repository.updateJob(job.id, job.version, {
+                multipart: appendCompletedPart(job, part),
+            }, this.now().toISOString())
+        }
+        const result = await this.adapter.completeMultipart(profile, {
+            remoteKey: job.remoteKey,
+            uploadId,
+            contentSha256: job.contentSha256,
+            completedParts: job.multipart.completedParts,
+        })
+        if (result.remoteKey !== job.remoteKey) {
+            job = await this.repository.updateJob(job.id, job.version, { remoteKey: result.remoteKey }, this.now().toISOString())
+        }
+        return job
+    }
+}

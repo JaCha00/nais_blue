@@ -222,6 +222,62 @@ beforeEach(() => {
 })
 
 describe('OutputWriter fault containment', () => {
+    it('uses a pre-bound queue transaction and exposes its files-committed recovery link', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'factory-id-must-not-win')
+        let pending: Awaited<ReturnType<OutputWriter['inspectPendingQueueTransactions']>> = []
+
+        const outcome = await outputWriter.write(request({
+            transactionId: 'txn-bound-to-job',
+            sourceJobId: 'job:durable:1',
+            commitWorkflow: async () => {
+                pending = await outputWriter.inspectPendingQueueTransactions()
+            },
+        }))
+
+        expect(outcome).toMatchObject({
+            status: 'committed',
+            result: { transactionId: 'txn-bound-to-job' },
+        })
+        expect(pending).toEqual([{
+            transactionId: 'txn-bound-to-job',
+            sourceJobId: 'job:durable:1',
+            phase: 'files-committed',
+        }])
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('retains a terminal queue artifact when only post-commit journal persistence fails', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-terminal')
+        const rollbackWorkflow = vi.fn()
+
+        await expect(outputWriter.write(request({
+            sourceJobId: 'job:terminal',
+            terminalWorkflowCommit: true,
+            commitWorkflow: () => {
+                adapter.fault = { operation: 'write-journal' }
+            },
+            rollbackWorkflow,
+        }))).rejects.toBeInstanceOf(OutputWriterError)
+
+        expect(rollbackWorkflow).not.toHaveBeenCalled()
+        expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
+        expect(await outputWriter.inspectPendingQueueTransactions()).toEqual([{
+            transactionId: 'txn-terminal',
+            sourceJobId: 'job:terminal',
+            phase: 'files-committed',
+        }])
+
+        await expect(outputWriter.recoverTransaction('txn-terminal', {
+            mode: 'retry-workflow',
+            canCommit: () => true,
+            commitWorkflow: () => undefined,
+        })).resolves.toEqual({ transactionId: 'txn-terminal', action: 'retried' })
+        expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
+        expectNoTransactionArtifacts(adapter)
+    })
+
     it('cancels before destination staging without creating files or a journal', async () => {
         const adapter = new InMemoryOutputAdapter()
 
@@ -386,6 +442,46 @@ describe('OutputWriter fault containment', () => {
         expect(bytesEqual(adapter.file('output/result.png'), original)).toBe(true)
         expect(bytesEqual(adapter.file('output/result-2.png'), IMAGE_BYTES)).toBe(true)
         expect(adapter.paths()).toEqual(['output/result-2.png', 'output/result.png'])
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('commits an organizer artifact sidecar atomically with a checksum-linked distribution image', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
+
+        const outcome = await writer(adapter).write(request({ artifactSidecarBytes: artifactSidecar }))
+
+        expect(outcome).toMatchObject({
+            status: 'committed',
+            result: {
+                fileName: 'result.png',
+                artifactSidecarPath: '/app-data/output/result.nais2.artifact.json',
+                contentChecksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+            },
+        })
+        expect(bytesEqual(adapter.file('output/result.png'), IMAGE_BYTES)).toBe(true)
+        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), artifactSidecar)).toBe(true)
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const existing = new Uint8Array([7, 7, 7])
+        adapter.seed('output/result.nais2.artifact.json', existing)
+        const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
+        let attemptedFileName = ''
+
+        await expect(writer(adapter).write(request({
+            artifactSidecarBytes: artifactSidecar,
+            commitWorkflow: result => {
+                attemptedFileName = result.fileName
+                throw new Error('store commit failed')
+            },
+        }))).rejects.toBeInstanceOf(OutputWriterError)
+
+        expect(attemptedFileName).toBe('result-2.png')
+        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), existing)).toBe(true)
+        expect(adapter.paths()).toEqual(['output/result.nais2.artifact.json'])
         expectNoTransactionArtifacts(adapter)
     })
 })

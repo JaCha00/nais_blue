@@ -2,6 +2,10 @@ export const CREDENTIAL_KINDS = [
     'novelai-token',
     'r2-access-key',
     'r2-secret-key',
+    // Native mTLS consumes the secret only while paired sync is explicitly active.
+    'sync-device-identity',
+    'sync-pairing-secret',
+    'sync-peer-identity',
 ] as const
 
 export type CredentialKind = typeof CREDENTIAL_KINDS[number]

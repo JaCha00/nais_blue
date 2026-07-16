@@ -1,6 +1,6 @@
 # Composition Domain v2 결정 기록
 
-기준일: 2026-07-13 (Asia/Seoul)
+기준일: 2026-07-15 (Asia/Seoul)
 
 이 문서의 결정은 이후 phase의 기본 gate다. 변경이 필요하면 기존 항목을 묵시적으로 덮어쓰지 말고, 근거·fixture·rollback을 포함한 새 decision record로 대체한다.
 
@@ -8,7 +8,7 @@
 
 상태: Accepted
 
-`E:\AI_Project_Library\projects\nais\nais2-main` checkout의 runtime 코드와 테스트를 source of truth로 사용한다. C 드라이브/OneDrive의 NAIS checkout과 거기서 생성된 지침은 명시적으로 다시 활성화되지 않는 한 legacy다. README, 과거 integration 계획, legacy 디렉터리, 비교 저장소가 충돌하면 현재 E 드라이브 runtime 코드, 최신 사용자 지시, fresh verification 결과를 우선한다. NAIS3는 비교 참고 자료일 뿐 wholesale port의 원본이 아니다.
+`E:\AI_Project_Library\projects\nais\nais_blue` checkout의 runtime 코드와 테스트를 source of truth로 사용한다. C 드라이브/OneDrive의 NAIS checkout과 거기서 생성된 지침은 명시적으로 다시 활성화되지 않는 한 legacy다. README, 과거 integration 계획, legacy 디렉터리, 비교 저장소가 충돌하면 현재 E 드라이브 runtime 코드, 최신 사용자 지시, fresh verification 결과를 우선한다. NAIS3는 비교 참고 자료일 뿐 wholesale port의 원본이 아니다.
 
 ## D-002 — Asset Profile을 출발점으로 사용
 
@@ -356,3 +356,302 @@ Stronghold load에는 official API가 요구하는 absolute snapshot path를 계
 filesystem check는 `exists(SNAPSHOT_FILE, { baseDir: BaseDirectory.AppData })`로 수행한다. 이는 ACL과
 동일한 표현을 사용해 directory bootstrap/파일 부재와 permission rejection을 구분하며 snapshot
 format, salt, passphrase, credential persistence를 바꾸지 않는다.
+
+## D-029 — durable queue가 Main/Scene claim·snapshot·status authority다
+
+상태: Accepted
+
+Phase 08부터 일반 Main/Scene generation command는 current Composition resolve/preview 결과를 capture한
+뒤 immutable batch/job snapshot을 durable repository에 등록한다. Zustand에는 selected batch와 operation
+projection만 저장하며 새 enqueue의 authoritative job count/state를 `queueCount`에 이중 기록하지 않는다.
+Process restart는 linked OutputWriter recovery, prior-process lease recovery, executor start 순서로 진행한다.
+
+Executor는 current NovelAI transport, Main/Scene save API, dual-token scheduler, streaming T2I single-worker,
+source-edit non-streaming, generationSessionId/cancel/stale guard, retry/requeue, token rotation과 image release를
+adapter로 재사용한다. Cross-workflow slot arbitration만 durable coordinator가 소유한다. CompositionEngine,
+composition repository/migration, payload builder와 portable capability를 queue 구현으로 대체하지 않는다.
+
+## D-030 — queue resource와 output 성공은 content/transaction identity로 연결한다
+
+상태: Accepted
+
+Restart 가능한 source/mask/character/vibe byte는 enqueue 전에 SHA-256 content address로 managed AppData에
+temp-write/rename하고 digest를 다시 검증한다. Queue record에는 reference/digest만 남기며 raw byte, base64,
+token, Authorization, signed URL과 prompt 전문을 diagnostic에 기록하지 않는다. 같은 content는 operation
+간 재사용하고 concurrent writer는 기존 verified winner를 받아들인다. 새 production dependency는 없다.
+
+Enqueue idempotency는 immutable operation identity와 repository unique key로 보장한다. UI는 pending
+operation ID를 DB commit acknowledgement 전까지 재사용하고 성공 확인 뒤에만 회전한다. OutputWriter는
+prebound `outputTransactionId`/`sourceJobId`를 사용하며 files-committed journal이 있으면 startup recovery가
+artifact와 job을 함께 조정한다. 성공 판정은 output path 존재가 아니라 journal/transaction/job terminal
+commit에 근거한다. Terminal durable success 뒤 journal cleanup만 실패한 경우 이미 committed artifact를
+rollback하지 않는다.
+
+## D-031 — Queue Center와 legacy 변환/rollback은 비파괴적 explicit control이다
+
+상태: Accepted
+
+Queue Center는 lightweight projection을 fixed-range virtualization하여 10,000 job에서도 DOM node 수를
+bounded하게 유지한다. Batch summary, item/batch cancel, pause/resume, retry-failed, skip, failure policy,
+fractional/total progress, recent throughput와 bounded ETA, redacted diagnostic drawer를 desktop keyboard와
+mobile 44px touch target으로 제공한다.
+
+기존 Scene `queueCount`는 사용자가 confirmation을 승인한 경우에만 현재 parameter snapshot으로 durable
+jobs로 변환한다. 변환은 legacy count를 삭제하거나 줄이지 않는다. Persisted queue UI authority의 기본은
+`durable`이고 `legacy`는 한 release 동안의 명시적 rollback flag다. Source rollback도 durable DB,
+managed resource, OutputWriter journal, legacy count와 user output을 삭제하지 않는다.
+
+## D-032 — native R2는 desktop Rust SDK, one-way OS vault와 별도 resumable repository를 사용한다
+
+상태: Accepted
+
+Native R2 transport는 official maintained `aws-sdk-s3=1.122.0`을 exact pin한다. 이 line은 crate의
+Rust 1.88 MSRV와 맞는 마지막 S3 SDK release이며 Apache-2.0이다. `default-features=false`에서
+Tokio, rustls, HTTP/1.x와 default HTTPS client만 켜고 SigV4 signing, streamed `ByteStream`, conditional
+request와 multipart lifecycle을 SDK가 소유한다. Latest SDK는 Rust 1.94.1을 요구해 현재 toolchain
+contract를 깨고, handwritten SigV4/lower-level signer는 canonicalization, retry, error parsing과
+multipart state를 다시 구현해야 하므로 선택하지 않았다. Compatible Smithy/AWS transitive versions는
+Cargo.lock에 고정한다.
+
+Credential은 desktop-only `keyring=4.1.4`(MIT OR Apache-2.0)에 access/secret pair를 저장한다. Renderer는
+one-way store, availability와 delete command만 호출하며 secret read command는 제공하지 않는다. Profile,
+job, manifest와 diagnostics에는 `credentialRef`만 둔다. AWS SDK와 keyring은 Windows/macOS/Linux target
+dependency이므로 Android/iOS native binary graph에는 들어가지 않는다. `sha2=0.10`(MIT OR Apache-2.0)은
+1 MiB file streaming hash를 위해 direct dependency로 선언한다. Official SDK는 desktop binary/compile graph를
+키우지만 renderer bundle에는 포함되지 않는다. Clean base binary가 없어 exact size delta는 release artifact
+관찰 gate로 남긴다.
+
+R2 queue는 generation queue schema를 확장하지 않고 같은 normalized IndexedDB/CAS/terminal-state 패턴을
+별도 `nais2-r2-upload-queue` database에 적용한다. Multipart upload ID와 completed part를 part 성공 직후
+commit해 restart가 missing part만 전송한다. Manifest v2 checksum이 완료 object 재업로드를 막는다.
+Conflict `fail`/`skip-same`/`suffix`는 preflight와 `If-None-Match: *`를 유지하고 `overwrite`만 명시적
+unconditional write다. Dry-run은 HEAD만 수행한다. Legacy Python/Wrangler mode와 manifest 의미는 유지하며
+native directory UI는 current-session을 전체 directory로 재해석하지 않고 explicit artifact set을 요구한다.
+
+Mobile은 profile read capability만 지원한다. Native foreground upload와 Phase 12 background worker는
+명시적 unsupported capability이며 silent Wrangler/native fallback을 하지 않는다.
+
+## D-033 — Organizer distribution authority는 portable ArtifactRecord와 OutputWriter transaction으로 분리한다
+
+상태: Accepted
+
+Organizer의 separate `nais2-organizer-artifacts` IndexedDB는 artifactId, source job/scene identity, immutable
+original checksum/portable file ref, thumbnail cache identity, distribution variant, sidecar digest/ref와 R2 object
+ref만 저장한다. Raw absolute path, opaque platform token, image/base64, prompt, credential, Authorization 또는 signed
+URL은 이 authority에 넣지 않는다. External folder의 raw path는 RuntimeCapabilities가 허용한 current-process token
+registry에서만 materialize하며 app restart 뒤에는 다시 선택해야 한다.
+
+Original record는 content checksum, size, portable file ref와 format이 immutable이다. Distribution file/sidecar는
+OutputWriter가 image와 같은 recovery journal로 stage/rename/rollback하며 commit callback이 성공 record를 쓴다.
+Artifact sidecar collision도 image collision과 동일하게 preflight한다. Interrupted write/rename, workflow failure와
+retry-failed는 existing OutputWriter/repository boundary를 사용하고 original을 copy·rename·strip 대상으로 만들지
+않는다.
+
+Metadata strict mode는 raw PNG tEXt/iTXt/zTXt/eXIf/iCCP/app chunks, WebP EXIF/XMP/ICCP flags/chunks, JPEG APP/COM을
+scan/strip하고 decode-level alpha LSB/color verification을 함께 요구한다. Same-format preserve operation은 raw
+container path를 우선 사용한다. PNG/WebP conversion은 existing WebView Canvas라 dependency를 추가하지 않으며,
+Canvas가 lossless WebP를 증명하지 못하므로 lossless WebP request는 fail-safe typed error다. Sharp/Electron/native
+image dependency는 bundle/mobile graph와 codec parity를 넓히므로 거절했다.
+
+Optional R2 follow-up은 non-secret profile ID와 key prefix만 policy에 저장하고 existing R2 upload coordinator에
+enqueue한다. Organizer가 credential, upload protocol, multipart/manifest 또는 background runtime을 재구현하지 않는다.
+새 npm/Rust dependency는 추가하지 않았다.
+
+## D-034 — local-first sync는 user-scoped operation-set shadow authority를 사용한다
+
+상태: Accepted
+
+Phase 11 sync는 current Composition repository, Scene/prompt store, artifact repository를 대체하거나
+production write authority로 동작하지 않는다. `nais2-local-sync--<user-hash>` 별도 IndexedDB에
+sanitized shadow entity, outbox/inbox, tombstone와 checkpoint만 보존하고 repository instance를 exact
+`userId`에 bind한다. 다른 account의 같은 entity/op/checkpoint ID는 서로 다른 물리 database에
+저장된다.
+
+Local mutation은 sanitized shadow projection, local envelope와 outbox record를 같은 sync database
+transaction에 commit/readback한다. 다만 production source edit와 sync outbox는 한 cross-database
+transaction이 아니다. Phase 11에 production caller가 없으므로 이 atomicity를 end-user edit + outbox
+atomicity로 과대 해석하지 않는다. Later caller는 source commit 실패와 outbox commit 실패 사이의
+recovery/idempotency를 별도로 설계해야 한다.
+
+Normal non-root envelope는 scalar revision만으로 ancestry를 추론하지 않고 exact predecessor
+`baseOpId`를 저장한다. Schema-v0 record에 predecessor identity가 없을 때만 upgrade path가
+`baseOpId: null`, `lineageUnknown: true`를 남기고 conservative independent root로 projection한다. Primary,
+conflict copy, inbox, outbox, tombstone에 보존된 unique operation set 전체를 매 mutation/delivery마다
+재계산해 arrival-order-independent frontier를 만든다. Tie-break는 locale/ICU가 아닌 UTF-16
+code-unit order를 사용한다.
+
+Per-entity unique operation set은 2,048개를 넘으면 fail closed한다. Phase 11은 acknowledged
+operation, conflict copy와 tombstone을 compact/garbage-collect하지 않는다. Delete tombstone은 primary entity가
+없어도 independent authority며 ordinary/stale upsert로 부활하지 않는다. Outbox attempt은 60초
+lease를 갖고, unexpired `in-flight`는 중복 claim을 막으며 expired record는 ready listing에서
+다시 선택된다. 실패를 retry로 기록할 때는 caller가 claim에서 받은 attempt count와 exact lease
+timestamp를 함께 제시해야 하며, repository가 현재 in-flight record와 CAS 비교해 이전 attempt의 늦은
+failure가 새 attempt를 덮지 못하게 한다. Backoff policy와 transport retry scheduling은 repository caller
+책임이다.
+
+Sanitizer는 current canonical Composition schema validation, entity-specific allowlist projection, nested
+`extensions` omission과 whole-envelope forbidden-material scan을 결합한다. Encoded key/value와 URL component를
+bounded fixed-point decode하고 full bounded value의 every-offset raw/hex/Base64/MIME image signature, bounded
+strong-binary evidence와 known credential/path shape를 검사한다. Standalone Base64처럼 보일 수 있는 opaque
+identifier 예외는 exact semantic field allowlist에만 적용한다. Free-form prose와 구분 불가능하고 decoded
+evidence도 없는 unpadded encoding limitation은 명시하되 prose/ID가 image/strong-binary/credential/path 검사를 우회하지 않는다.
+UI preference만 documented LWW이며 complex entity는 silent field merge 대신 deterministic conflict copy를 남긴다. Immutable
+generation snapshot은 no-merge policy만 갖고 Phase 11 active target에서 제외한다.
+
+Network transport, user-facing sync control, encryption/key management와 background worker는 추가하지
+않는다. `encrypted` field는 later audited transport를 위한 reserved shape이며 Phase 11은 `false`만
+받는다. 새 production dependency는 추가하지 않았다.
+
+## D-035 — 첫 production sync transport는 TLS 1.3 mTLS 기반 opt-in LAN agent다
+
+상태: Accepted
+
+Phase 12 network capability는 [NETWORK_CAPABILITY_POLICY.md](./NETWORK_CAPABILITY_POLICY.md)에 고정한다.
+Desktop listener는 사용자가 명시적으로 시작한 loopback 또는 private/link-local interface에만 bind하고
+CIDR allowlist를 함께 적용한다. Browser `Origin`/preflight는 거부하며 CORS header를 내보내지 않는다.
+Pairing listener는 최대 120초, one-use OS CSPRNG capability와 6자리 확인 코드를 요구하고 data listener는
+TLS가 검증한 client certificate fingerprint를 active/revoked peer state와 대조하기 전 route를 실행하지 않는다.
+Unpaired/expired/revoked request는 entity metadata, count, checkpoint 또는 manifest를 반환하지 않는다.
+Host-local admin revoke와 client-certificate-authenticated self-revoke를 분리하며, self-revoke는 호출한
+fingerprint만 비활성화하고 이후 요청은 unknown peer와 같은 fixed denial로 끝난다.
+
+TLS key agreement, record nonce, AEAD, certificate validation과 tamper rejection은 `rustls=0.23.41`
+(MIT OR Apache-2.0 OR ISC)과 `aws-lc-rs=1.17.1`(Apache-2.0 OR ISC)이 소유한다.
+`rcgen=0.14.8`(MIT OR Apache-2.0)은 local CA,
+server/client certificate와 CSR signing만 담당한다. HTTP/1 routing/bounds는 `axum=0.8.9`,
+`axum-server=0.8.0`, `tower=0.5.3`(MIT), CIDR validation은 `ipnet=2.12.0`(MIT OR Apache-2.0)을 exact pin한다.
+Pairing capability/code 비교는 `subtle=2.6.1`(BSD-3-Clause)의 constant-time equality를 사용하고,
+command lifetime의 private key/capability buffer 해제는 `zeroize=1.9.0`(Apache-2.0 OR MIT)이 담당한다.
+이 버전들은 current Rust 1.88 MSRV 안에 있다. Dependency는 desktop target table에만 두므로 Android/iOS와
+renderer bundle에는 들어가지 않지만 desktop binary/compile graph 증가는 release artifact 관찰 gate로 남긴다.
+
+`axum-server` handler가 verified peer certificate를 직접 노출하지 않는 공백은 rustls handshake 직후
+`peer_certificates()`를 읽어 immutable fingerprint connect identity로 전달하는 작은 local accept adapter로
+해결한다. Header/peerId body를 인증 identity로 신뢰하거나 검증 이력이 짧은 helper crate를 보안 경계에
+추가하지 않는다. Client는 pairing CA를 normal trust anchor로 등록하며 `danger_accept_invalid_*`, bearer-only
+LAN auth, raw X25519/AEAD, Noise/OPAQUE session key의 custom record framing, OpenSSL/QUIC/relay provider를 사용하지 않는다.
+
+장기 host/client private identity는 current Stronghold Credential Vault가 authority다. Native durable journal에는
+peer fingerprint, revoke state, request sequence/nonce high-water와 checkpoint 같은 non-secret만 저장한다. Vault가
+locked이면 service가 listener/exchange를 새로 시작하지 않으며 explicit runtime 동안 전달된 secret은
+stop/revoke에서 memory에서 해제한다. Auth-store lock과 live instance stop을 연결하는 production caller 전에는
+capability를 false로 유지한다. Phase 11 `SyncEnvelope.encrypted`는 storage schema가 아니라 inner sanitized document marker이므로 계속
+`false`다. Wire confidentiality/integrity는 audited TLS outer transport가 제공한다.
+
+JSON은 2 MiB/100-operation으로 제한하고 Phase 11 sanitizer/envelope validator를 다시 적용한다. Image bytes는
+JSON과 섞지 않고 기본적으로 succeeded R2 reference만 교환한다. Relay는 provider-neutral interface와 local
+test server contract만 정의하며 production URL/provider/auth dependency를 만들지 않는다.
+
+## D-036 — Android large-transfer lifecycle은 tracked mobile plugin과 UIDT/WorkManager로 격리한다
+
+상태: Accepted (executor gate open)
+
+Ignored/generated `src-tauri/gen/android/**`에 worker를 직접 추가하지 않고 tracked local
+`tauri-plugin-nais-android-transfer`(MIT)를 사용한다. Plugin은 secret-free bounded execution ticket,
+checkpoint, pause/resume/cancel/retry/recover command와 notification lifecycle만 소유하며 R2 repository,
+multipart manifest, LAN mTLS protocol 또는 generation executor를 대체하지 않는다. Ticket은 transfer ID/kind,
+portable resource reference, declared size/checksum와 numeric checkpoint만 허용하고 token, Authorization,
+credential/private key, signed URL, prompt, image/thumbnail/base64/bytes와 absolute path를 거부한다.
+
+Android 14/API 34+에서 사용자가 시작한 transfer는 platform JobScheduler user-initiated data transfer job과
+`RUN_USER_INITIATED_JOBS`/visible notification을 우선한다. API 24–33 process-recreation fallback은
+`androidx.work:work-runtime-ktx=2.10.5`(Apache-2.0)를 exact Android-only dependency로 사용하고
+`CoroutineWorker.setForeground()`/unique work/checkpoint를 연결한다. Android 16에서 long-running WorkManager
+foreground work도 ordinary job quota를 소비하므로 API 34+ primary로 쓰지 않는다. Direct `dataSync` foreground
+service만 사용하는 안은 Android 15 timeout/quota와 restart scheduler를 다시 구현해야 하고, UIDT만 사용하는 안은
+minSdk 24–33을 지원하지 못하므로 거절했다. WorkManager transitive code는 Android bundle만 늘리며 desktop,
+renderer와 iOS graph에는 포함하지 않는다. Exact APK size delta는 generated Android build artifact gate로 남긴다.
+
+Official stable 2.11.2는 current generated Tauri Android compiler Kotlin 1.9.25가 읽을 수 없는 Kotlin metadata 2.1을
+사용해 direct Gradle compile이 fail했다. Generated Kotlin toolchain 전체를 2.1로 올리는 대안은 Tauri template과 기존
+plugin graph를 함께 바꾸고 tracked authority가 아니므로 이 phase에서 거절했다. Official 2.10 stable line의 마지막
+bugfix release 2.10.5는 같은 foreground/recovery API를 제공하며 current compiler metadata gate를 통과해 선택했다.
+UIDT와 recovery WorkManager가 동시에 같은 ticket을 실행하지 않도록 pending UIDT를 fallback보다 우선하고 default
+app process의 process-local execution gate를 `finally`에서 해제한다. Abrupt process death 뒤에는 durable RUNNING/
+checkpoint recovery가 새 process의 빈 gate에서 재개한다; separate `android:process` service는 허용하지 않는다.
+
+현재 plugin의 `TransferExecutionRegistry`는 process-safe R2 또는 LAN executor가 설치되지 않으면
+`E_TRANSFER_EXECUTOR_UNAVAILABLE`로 visible blocked state를 남긴다. 따라서 scheduling source가 존재한다는 이유로
+`r2ForegroundUpload`, `r2BackgroundUpload` 또는 large-LAN capability를 supported로 바꾸지 않는다. Headless worker가
+Stronghold-unlocked secret을 안전하게 사용할 execution credential boundary와 official R2 signer/LAN mTLS adapter가
+behavior/physical-device gate를 통과해야 executor gate를 닫을 수 있다. Generation request의 장기 background 실행은
+이 registry에 설치하지 않는다.
+
+2026-07-15 ARM64 continuation은 공식 crate source에서 NDK 29로 만든 기존 verified AArch64 static archive를
+process-local `SODIUM_LIB_DIR`로 지정해 tracked Kotlin plugin과 WorkManager 2.10.5를 포함한 debug APK build를
+통과했다. APK는 `arm64-v8a` 단일 ABI, 231,398,209 bytes였고 Samsung SM-S928N/API 36 install/start/restart도
+통과했다. 이는 Kotlin/Gradle/APK compatibility와 R-025 workaround를 검증하지만 WorkManager만의 isolated size
+delta, actual executor, notification action 또는 byte transfer 성공 근거는 아니므로 capability gate는 바꾸지 않는다.
+## D-037 — 최종 Android identity와 artifact signing은 request signing에서 분리한다
+
+상태: Accepted
+
+Release/debug application ID는 `com.bluhair.naisblue` 하나로 고정하고 tracked Tauri identifier와 release policy를
+authority로 삼아 ignored Android project를 재생성한다. 새 ID의 첫 release이므로 retired package update baseline은
+없고 기존 앱 삭제나 app-data clear를 하지 않는다. User-owned APK keystore는 OS 임시 복사와 process environment로만
+Gradle에 전달하며 tracked file/log에는 path, alias password 또는 key bytes를 쓰지 않는다. `.env` alias 불일치는
+keytool로 확인한 유일 alias `release`를 우선하고 정책에 기록한다.
+
+APK signer는 배포 artifact identity만 보증한다. Cloudflare request는 Android Keystore의 non-exportable P-256 device
+key가 sequence/nonce/timestamp/idempotency/body digest를 ECDSA 서명하며, Worker pairing capability와 Cloudflare CLI
+credential은 APK keystore와 공유하지 않는다. 이 분리는 APK key 노출이 remote device identity가 되거나 그 반대가
+되는 결합을 막는다.
+
+## D-038 — mobile R2 executor는 Worker + SQLite Durable Object + R2로 구성한다
+
+상태: Accepted (live Android gate pending)
+
+Cloudflare Worker는 paired request 검증과 bounded routing, SQLite Durable Object는 device별 sequence/nonce replay fence,
+idempotency result, sanitized job/checkpoint/tombstone metadata의 serialized authority, R2 `prime` bucket의 `nais/` prefix는
+multipart bytes authority를 맡는다. D1은 per-device coordination에 별도 transaction/routing 계층을 더하므로 선택하지
+않았고, Durable Object의 single-threaded coordination과 strongly consistent storage가 cancel/no-late-commit race에 더
+직접 맞는다. Image bytes, prompt, token, Authorization, signed URL과 local path는 DO/JSON에 저장하지 않는다.
+
+Dependencies는 dev-only `wrangler=4.110.0`, `@cloudflare/workers-types=5.20260715.1`과 기존 Android Web/crypto API다.
+별도 mobile Cloudflare SDK는 추가하지 않았다. Worker Paid plan은 최소 월 비용이 있고 Worker request/CPU, Durable Object
+request/storage, R2 Class A/B/storage 사용량이 증가한다. R2 internet egress는 무료지만 5 MiB part는 mobile radio wake,
+battery와 metered upload를 소비하므로 UIDT visible notification, 15s connect/60s read timeout, bounded retry/checkpoint를
+유지한다. 공식 근거는 Cloudflare Durable Objects, R2 multipart, Workers pricing 문서를 따른다.
+
+Pairing은 one-use expiring capability로 public key만 등록하고 이후 모든 route가 authenticated signature를 요구한다.
+Exact signed duplicate는 stored response를 재사용하되 conflicting operation은 409, 새 stale sequence/nonce는 fixed denial,
+cancel은 tombstone을 먼저 commit하고 completion race가 확인되면 R2 final object를 삭제한다. 제거된 원격
+catalog/provider runtime은 재도입하지 않는다. Source/contract/build는 통과했지만 live pairing fixed denial과 실제 Android
+notification/byte checkpoint가 남아 capability는 false다.
+
+## D-039 — NovelAI token display is fail-closed without reproducible tokenizer parity
+
+- Date: 2026-07-15
+- Decision: Phase 13 distinguishes the confirmed model context limit from calculated usage. Current supported models expose
+  a confirmed 512-token upper limit, while calculated usage and safety margin remain unavailable. The UI also displays the
+  unchanged model ID, explicit usage-accuracy classification, and payload-expanded base/character section lengths.
+- Evidence: NovelAI's official Image Generation Models documentation identifies T5 tokenization and an approximate combined
+  prompt allowance for V4/V4.5. Official Quality Tags documentation confirms that automatic tags consume prompt space.
+  Neither source exposes a versioned image tokenizer artifact or reproducible golden endpoint; V3 documentation also does
+  not provide enough tokenizer provenance for parity.
+- Product authority clarification: the registered current-model upper limit is confirmed as 512; this is independent of the
+  unavailable calculated-usage parity. Future V5 limits must be registered per model rather than inheriting 512 implicitly.
+- Implementation: `assessPromptLengths` reuses `removeComments`, `mergeQualityTags`, and `mergeUcPreset`, matching the current
+  payload expansion boundary without changing `payload.ts`. A model capability registry owns the current 512 limit so a
+  future V5 entry can select a larger limit without changing prompt expansion. Unknown models have no asserted limit and
+  calculated usage still fails closed. Diagnostics no longer publish the old characters/4 heuristic.
+- Alternatives rejected: copying NAIS3-custom tokenizer data without provenance/license review; adding a generic T5 package
+  without a provider artifact/version; hardcoding 512 inside calculation/UI logic where a V5 change would require rewrites.
+- Dependency/bundle/mobile impact: no dependency was added, so there is no license, bundle, or mobile runtime increase.
+- Revisit gate: add `estimated` or `exact` only after a model-versioned official artifact or golden service and checked-in,
+  provenance-recorded fixtures demonstrate sufficient parity for the final expanded base plus character prompts.
+
+## D-040 — First-application-ID baseline absence does not relax release tags
+
+- Date: 2026-07-16
+- Decision: `android-release-policy.json` may set `updateBaseline` to `null` only when
+  `firstReleaseForApplicationId` is exactly `true` and immutable `firstReleaseVersion` equals the current package version.
+  This means there is no prior same-ID APK to compare for that one version; it does not remove the release ruleset. Release
+  validation still requires an exact stable `v<version>` tag, and every future update baseline must use stable
+  `v<major>.<minor>.<patch>` form with the repository's versionCode component bounds.
+- Implementation: release-version and APK verification share a small policy resolver. A null first-release baseline skips
+  only the newer-than-prior-APK comparison; malformed, unprefixed or contradictory policies fail closed. No signing,
+  package identity, versionCode, SDK, ABI, certificate or alignment check is bypassed.
+- Alternatives rejected: inventing a pre-existing baseline for the new application ID; treating null as an unchecked
+  verifier bypass; accepting unprefixed baseline versions that diverge from the repository's `v*` release ruleset.
+- Dependency/bundle/mobile impact: no dependency or runtime bundle code was added; the resolver is build/release tooling.

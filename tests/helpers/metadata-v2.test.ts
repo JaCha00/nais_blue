@@ -41,6 +41,7 @@ describe('NAIS2 Metadata v2', () => {
     it('builds the required portable fields and omits the payload by default', () => {
         const redactedPayload = JSON.stringify({ parameters: { prompt: 'secret-ish details' } })
         const metadata = buildNais2Params(baseParams({
+            sourceJobId: 'job:durable:1',
             engineVersion: 'composition-engine-v1',
             sourceRevision: 12,
             compositionRecipeId: 'recipe:portrait',
@@ -65,6 +66,7 @@ describe('NAIS2 Metadata v2', () => {
         if (metadata.version !== 2) throw new Error('expected v2')
         expect(metadata.engineVersion).toBe('composition-engine-v1')
         expect(metadata.sourceRevision).toBe(12)
+        expect(metadata.sourceJobId).toBe('job:durable:1')
         expect(metadata.recipeId).toBe('recipe:portrait')
         expect(metadata.characters[0]).toMatchObject({ stableId: 'character:alice' })
         expect(metadata.resolvedParams).toMatchObject({ width: 832, height: 1216, seed: 77 })

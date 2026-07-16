@@ -11,6 +11,10 @@ import { parseMetadataFromBase64 } from '@/lib/metadata-parser'
 import { generateImage } from '@/services/novelai-api'
 import { createThumbnail } from '@/lib/image-utils'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
+import {
+    cancelMainGenerationCommand,
+    startMainGenerationCommand,
+} from '@/services/queue/generation-command'
 import { toast } from '@/components/ui/use-toast'
 import {
     ContextMenu,
@@ -115,8 +119,6 @@ export default function MainMode() {
         compositionWarnings,
         compositionErrors,
         lastResolvedPlan,
-        generate,
-        cancelGeneration,
         setCompositionMode,
         setSelectedRecipeId,
         setSourceImage,
@@ -563,11 +565,11 @@ export default function MainMode() {
 
     const handlePrimaryGeneration = () => {
         if (isGenerating && generatingMode === 'main') {
-            cancelGeneration()
+            void cancelMainGenerationCommand()
             return
         }
         if (!isGenerating) {
-            generate()
+            void startMainGenerationCommand()
         }
     }
 
@@ -699,7 +701,7 @@ export default function MainMode() {
         generateLabel: t('generate.button', '생성'),
         cancelLabel: t('generate.cancel', '취소'),
         onGenerate: handlePrimaryGeneration,
-        onCancel: cancelGeneration,
+        onCancel: () => void cancelMainGenerationCommand(),
         actionTestId: 'main-generate-action',
         cancelTestId: 'main-generate-action',
     }

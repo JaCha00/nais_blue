@@ -4,6 +4,10 @@ import { useShortcutStore, matchesBinding, ShortcutAction } from '@/stores/short
 import { useGenerationStore } from '@/stores/generation-store'
 import { useFragmentStore } from '@/stores/fragment-store'
 import { supportsKeyboardShortcuts } from '@/platform/runtime'
+import {
+    cancelMainGenerationCommand,
+    startMainGenerationCommand,
+} from '@/services/queue/generation-command'
 
 // 커스텀 이벤트 (다이얼로그 열기용)
 export const SHORTCUT_EVENTS = {
@@ -17,14 +21,12 @@ export const SHORTCUT_EVENTS = {
 }
 
 // 메뉴 순서 정의
-const MENU_ROUTES = ['/', '/scenes', '/tools', '/web', '/library', '/settings']
+const MENU_ROUTES = ['/', '/scenes', '/tools', '/queue', '/web', '/library', '/settings']
 
 export function useShortcuts() {
     const navigate = useNavigate()
     const location = useLocation()
     const { bindings, enabled } = useShortcutStore()
-    const generate = useGenerationStore(state => state.generate)
-    const cancelGeneration = useGenerationStore(state => state.cancelGeneration)
     const isGenerating = useGenerationStore(state => state.isGenerating)
     const resetSequentialCounter = useFragmentStore(state => state.resetSequentialCounter)
 
@@ -137,9 +139,9 @@ export function useShortcuts() {
                         if (location.pathname === '/') {
                             e.preventDefault()
                             if (isGenerating) {
-                                cancelGeneration()
+                                void cancelMainGenerationCommand()
                             } else {
-                                generate()
+                                void startMainGenerationCommand()
                             }
                             return
                         }
@@ -158,5 +160,5 @@ export function useShortcuts() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [bindings, enabled, navigate, location.pathname, generate, cancelGeneration, isGenerating, resetSequentialCounter])
+    }, [bindings, enabled, navigate, location.pathname, isGenerating, resetSequentialCounter])
 }

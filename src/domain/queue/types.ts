@@ -27,6 +27,18 @@ export type SnapshotResourceRole = 'source' | 'mask' | 'character-reference' | '
 export type SnapshotResourcePersistence = 'managed-app-data' | 'portable' | 'volatile'
 export type SnapshotResumability = 'resumable' | 'non-resumable'
 export type QueueBlockReason = 'missing-resource' | 'digest-mismatch' | 'non-resumable-resource'
+export type QueueFailurePolicy = 'continue' | 'pause-on-fatal' | 'stop-on-first-error'
+export type GenerationBatchState = 'active' | 'paused' | 'stopped'
+export type QueuePauseReason = 'user' | 'authentication' | 'local-io' | 'fatal' | 'first-error'
+export type QueueBatchOrigin = 'fresh' | 'legacy-conversion' | 'retry'
+export type QueueFailureKind =
+    | 'transient'
+    | 'rate-limited'
+    | 'timeout'
+    | 'authentication'
+    | 'decode'
+    | 'local-io'
+    | 'fatal'
 
 export interface GenerationSnapshotPrompt {
     readonly positive: string
@@ -91,6 +103,13 @@ export interface GenerationJob {
     readonly outputTransactionId: string | null
     readonly artifactReference: QueueArtifactReference | null
     readonly blockReason: QueueBlockReason | null
+    /** Earliest durable claim time. This is the authority for retry/backoff after restart. */
+    readonly readyAt: string
+    readonly cancelRequestedAt: string | null
+    readonly cancelReason: 'user' | 'batch' | 'shutdown' | null
+    /** Terminal jobs remain immutable; manual retries are linked successor jobs. */
+    readonly retryOfJobId: string | null
+    readonly rootJobId: string
     readonly version: number
 }
 
@@ -99,6 +118,12 @@ export interface GenerationBatch {
     readonly workflow: GenerationWorkflow
     readonly createdAt: string
     readonly updatedAt: string
+    readonly state: GenerationBatchState
+    readonly failurePolicy: QueueFailurePolicy
+    readonly pauseReason: QueuePauseReason | null
+    readonly origin: QueueBatchOrigin
+    readonly idempotencyKey: string
+    readonly version: number
 }
 
 export type QueueResourceAvailability = 'available' | 'missing' | 'volatile'
@@ -123,4 +148,36 @@ export interface GenerationAttempt {
     readonly finishedAt: string | null
     readonly outcome: GenerationAttemptOutcome
     readonly diagnosticEventId: string | null
+    readonly failureKind?: QueueFailureKind | null
+}
+
+export interface GenerationJobProjection {
+    readonly id: string
+    readonly batchId: string
+    readonly workflow: GenerationWorkflow
+    readonly sceneId: string | null
+    readonly state: GenerationJobState
+    readonly createdAt: string
+    readonly updatedAt: string
+    readonly priority: number
+    readonly ordinal: number
+    readonly attemptCount: number
+    readonly maxAttempts: number
+    readonly progress: GenerationJobProgress
+    readonly readyAt: string
+    readonly cancelRequestedAt: string | null
+    readonly retryOfJobId: string | null
+    readonly lastDiagnosticEventId: string | null
+    readonly outputTransactionId: string | null
+    readonly version: number
+}
+
+export interface GenerationBatchSummary {
+    readonly batchId: string
+    readonly total: number
+    readonly completed: number
+    readonly progressCurrent: number
+    readonly progressTotal: number
+    readonly states: Readonly<Record<GenerationJobState, number>>
+    readonly recentCompletedAt: readonly string[]
 }

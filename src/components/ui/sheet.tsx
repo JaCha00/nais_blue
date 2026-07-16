@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { isAndroidRuntime } from "@/platform/runtime"
 
 const Sheet = SheetPrimitive.Root
 
@@ -59,17 +60,29 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
     React.ElementRef<typeof SheetPrimitive.Content>,
     SheetContentProps
->(({ side = "right", className, children, closeLabel = "Close", ...props }, ref) => (
+>(({ side = "right", className, children, closeLabel = "Close", style, ...props }, ref) => (
     <SheetPortal>
         <SheetOverlay />
         <SheetPrimitive.Content
             ref={ref}
             className={cn(sheetVariants({ side }), className)}
+            // Portals do not inherit the mobile shell padding. Android OEM WebViews may also report
+            // zero env() insets, so the common sheet boundary keeps all sheet actions above system bars.
+            style={isAndroidRuntime ? {
+                ...style,
+                paddingTop: 'max(1.5rem, env(safe-area-inset-top))',
+                paddingBottom: 'max(3.5rem, env(safe-area-inset-bottom))',
+            } : style}
             {...props}
         >
             <SheetPrimitive.Close
                 aria-label={closeLabel}
-                className="absolute right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] z-10 inline-flex h-11 w-11 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-50"
+                className={cn(
+                    "absolute right-[max(1rem,env(safe-area-inset-right))] z-10 inline-flex h-11 w-11 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-50",
+                    isAndroidRuntime
+                        ? "top-[max(1.5rem,env(safe-area-inset-top))]"
+                        : "top-[max(1rem,env(safe-area-inset-top))]",
+                )}
             >
                 <X className="h-4 w-4" aria-hidden="true" />
                 <span className="sr-only">{closeLabel}</span>

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 
 const fsCapture = vi.hoisted(() => ({
     calls: [] as Array<{ operation: string; path?: string; to?: string; options?: unknown }>,
@@ -71,6 +73,34 @@ beforeEach(() => {
 })
 
 describe('Tauri output platform adapters', () => {
+    it('grants atomic temp files only inside the existing output roots on Unix-like runtimes', async () => {
+        const capabilityPaths = async (relativePath: string): Promise<string[]> => {
+            const parsed = JSON.parse(await readFile(resolve(process.cwd(), relativePath), 'utf8')) as {
+                permissions: Array<string | { identifier: string, allow?: Array<{ path: string }> }>
+            }
+            return parsed.permissions
+                .filter((permission): permission is { identifier: string, allow?: Array<{ path: string }> } => (
+                    typeof permission === 'object' && permission.identifier === 'fs:scope'
+                ))
+                .flatMap(permission => permission.allow ?? [])
+                .map(entry => entry.path)
+        }
+
+        const [desktop, mobile, tauriConfig] = await Promise.all([
+            capabilityPaths('src-tauri/capabilities/default.json'),
+            capabilityPaths('src-tauri/capabilities/mobile.json'),
+            readFile(resolve(process.cwd(), 'src-tauri/tauri.conf.json'), 'utf8'),
+        ])
+
+        // OutputWriter journals and commit siblings depend on a literal leading dot;
+        // keeping explicit scoped patterns avoids globally exposing unrelated hidden files.
+        expect(desktop).toEqual(expect.arrayContaining([
+            '$PICTURE/**/.*', '$APPDATA/**/.*', '$LOCALAPPDATA/**/.*',
+        ]))
+        expect(mobile).toContain('$APPDATA/**/.*')
+        expect(tauriConfig).not.toContain('requireLiteralLeadingDot')
+    })
+
     it('uses Pictures-relative paths on desktop and preserves explicit absolute paths', async () => {
         const adapter = new DesktopOutputPlatformAdapter()
         const relative = await adapter.resolveDirectory({

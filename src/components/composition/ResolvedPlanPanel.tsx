@@ -12,6 +12,7 @@ import type {
     ResolvedPromptParts,
 } from '@/domain/composition'
 import { ValidationBadge } from './ValidationBadge'
+import { PromptLengthAssessment } from '@/components/guidance/PromptLengthAssessment'
 
 const PROMPT_SLOTS: ReadonlyArray<{
     key: keyof Pick<ResolvedPromptParts, 'base' | 'inpainting' | 'additional' | 'workflow' | 'detail' | 'negative'>
@@ -97,6 +98,8 @@ function ResolvedPlanDetails({ plan }: { plan: DeepReadonly<CompositionEnginePla
         <div className="space-y-3">
             <PromptBlock label={t('composition.plan.finalPositive', 'Final positive')} value={plan.positivePrompt} />
             <PromptBlock label={t('composition.plan.finalNegative', 'Final negative')} value={plan.negativePrompt} />
+
+            <PromptLengthAssessment plan={plan} />
 
             <section className="border-t border-border pt-3">
                 <h4 className="text-xs font-semibold">{t('composition.plan.promptParts', 'Prompt parts')}</h4>

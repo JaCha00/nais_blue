@@ -161,6 +161,7 @@ export function buildNais2Params(
         engineVersion: params.engineVersion
             ?? (params.compositionMode === 'v2' ? 'composition-engine-v1' : 'legacy-compatible'),
         sourceRevision: params.sourceRevision ?? null,
+        ...(params.sourceJobId === undefined ? {} : { sourceJobId: params.sourceJobId }),
         recipeId: params.compositionRecipeId ?? params.assetModulePlan?.recipeId ?? null,
         planHash: params.compositionPlanHash ?? null,
         qualityToggle: params.qualityToggle,

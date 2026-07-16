@@ -40,6 +40,10 @@ import {
 
 const STARTUP_MIGRATION_OWNER = 'nais2-startup'
 
+// The production default feeds startup migration and every Main/Scene/Style Lab authority gate.
+// Explicit rollback flags and startup safety overrides still win, so v2 is used only after transaction verification.
+const DEFAULT_PRODUCTION_COMPOSITION_AUTHORITY: CompositionAuthority = 'v2'
+
 export type CompositionAuthorityFallbackReason =
     | 'migration-failed'
     | 'repository-verification-failed'
@@ -173,7 +177,8 @@ export async function runStartupCompositionMigration(
         : async () => options.source!
     const materializeSidecars = options.materializeSidecars
         ?? (options.source === undefined ? materializeCompositionMigrationSidecars : undefined)
-    let activateAuthority: CompositionAuthority = options.authority ?? 'legacy'
+    let activateAuthority: CompositionAuthority = options.authority
+        ?? DEFAULT_PRODUCTION_COMPOSITION_AUTHORITY
     let requestedAuthority: CompositionAuthority = activateAuthority
     let repositoryVerificationFailed = false
     const executeMigration = () => runCompositionMigrationTransaction({
@@ -200,7 +205,7 @@ export async function runStartupCompositionMigration(
         await repository.cleanupInterruptedMigration(now)
         activateAuthority = options.authority
             ?? configuredAuthority()
-            ?? (await repository.read(now)).authority
+            ?? DEFAULT_PRODUCTION_COMPOSITION_AUTHORITY
         requestedAuthority = activateAuthority
         result = await executeMigration()
         if (result.failureCode === COMPOSITION_MIGRATION_POST_COMMIT_SOURCE_CHANGED) {

@@ -3,6 +3,7 @@ import { MetadataWriter } from './metadata-writer'
 import {
     ensureImageFileExtension,
     resolveCollisionFileName,
+    toArtifactSidecarPath,
     toDiagnosticSidecarPath,
     toSidecarFileName,
     type OutputCollisionPolicy,
@@ -17,6 +18,7 @@ import {
 } from './platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from './tauri-output-adapter'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { sha256Bytes } from '@/lib/binary-digest'
 
 export type OutputWriterPhase =
     | 'resolve-destination'
@@ -54,6 +56,9 @@ export interface OutputWriteResult {
     directory: ResolvedOutputDirectory
     sidecarPath?: string
     diagnosticSidecarPath?: string
+    artifactSidecarPath?: string
+    /** SHA-256 of the exact final image bytes, after any metadata preparation. */
+    contentChecksum?: string
     thumbnailDataUrl?: string
     capabilityFallbackUsed: boolean
     capabilityFallbackReason?: string
@@ -61,14 +66,29 @@ export interface OutputWriteResult {
 }
 
 export interface OutputWriterRequest {
+    /** Pre-bound by durable queue before any file is staged. */
+    transactionId?: string
+    /** Stable queue linkage only; never contains prompt or credential material. */
+    sourceJobId?: string
     destination: OutputWriterDestination
     imageBytes: Uint8Array
     imageDataUrl: string
     metadata?: MetadataWriteRequest
+    /**
+     * A non-generation artifact sidecar written in the same journaled
+     * transaction as the image.  This is deliberately bytes-only so callers
+     * cannot bypass OutputWriter with a direct file write.
+     */
+    artifactSidecarBytes?: Uint8Array
     generateThumbnail?: (imageDataUrl: string) => Promise<string>
     canCommit: () => boolean
     commitWorkflow: (result: OutputWriteResult) => void | Promise<void>
     rollbackWorkflow?: (result: OutputWriteResult, cause: unknown) => void | Promise<void>
+    /**
+     * The workflow callback commits an immutable durable authority. Once it
+     * succeeds, journal cleanup may be retried but files must never roll back.
+     */
+    terminalWorkflowCommit?: boolean
     onPhase?: (phase: OutputWriterPhase) => void
 }
 
@@ -77,7 +97,7 @@ export type OutputWriterOutcome =
     | { status: 'cancelled' }
 
 interface JournalArtifact {
-    kind: 'image' | 'sidecar' | 'diagnostic'
+    kind: 'image' | 'sidecar' | 'diagnostic' | 'artifact-sidecar'
     temp: OutputFileRef
     final: OutputFileRef
     backup?: OutputFileRef
@@ -88,10 +108,12 @@ interface OutputRecoveryJournal {
     format: 'nais2-output-transaction'
     version: 1
     transactionId: string
+    sourceJobId?: string
     createdAt: string
     updatedAt: string
     phase: RecoveryJournalPhase
     fileName: string
+    contentChecksum?: string
     directory: ResolvedOutputDirectory
     artifacts: JournalArtifact[]
     thumbnailStaged: boolean
@@ -102,6 +124,12 @@ export interface OutputRecoveryResult {
     transactionId: string
     action: 'rolled-back' | 'retried' | 'cleaned' | 'missing' | 'failed'
     error?: string
+}
+
+export interface PendingQueueOutputTransaction {
+    transactionId: string
+    sourceJobId: string
+    phase: RecoveryJournalPhase
 }
 
 export interface RetryRecoveryOptions {
@@ -122,6 +150,24 @@ export class OutputWriterError extends Error {
             ;(this as Error & { cause?: unknown }).cause = options.cause
         }
     }
+}
+
+/**
+ * Links the transaction failure to the cleanup failure using the standard Error.cause chain.
+ * Diagnostics depend on that linear chain, so preserving both failures here explains why a
+ * recovery journal remains without logging raw platform values or weakening rollback safety.
+ */
+function rollbackFailureCause(transactionError: unknown, cleanupError: unknown): Error {
+    const transactionCause = transactionError instanceof Error
+        ? transactionError
+        : new Error(`Output transaction failed: ${String(transactionError)}`)
+    const cleanupCause = cleanupError instanceof Error
+        ? cleanupError
+        : new Error(`Output rollback cleanup failed: ${String(cleanupError)}`)
+    const linked = new Error(`Rollback cleanup failed: ${cleanupCause.message}`) as Error & { cause?: unknown }
+    linked.name = 'OutputRollbackCleanupError'
+    linked.cause = transactionCause
+    return linked
 }
 
 function randomTransactionId(): string {
@@ -161,6 +207,10 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         || typeof value.createdAt !== 'string'
         || typeof value.updatedAt !== 'string'
         || typeof value.fileName !== 'string'
+        || (value.sourceJobId !== undefined
+            && (typeof value.sourceJobId !== 'string'
+                || value.sourceJobId.length === 0
+                || value.sourceJobId.length > 256))
         || !Array.isArray(value.artifacts)
         || !isRecord(value.directory)) {
         throw new Error('Invalid output recovery journal')
@@ -185,7 +235,10 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
     }
     const artifacts = value.artifacts.map(entry => {
         if (!isRecord(entry)
-            || (entry.kind !== 'image' && entry.kind !== 'sidecar' && entry.kind !== 'diagnostic')) {
+            || (entry.kind !== 'image'
+                && entry.kind !== 'sidecar'
+                && entry.kind !== 'diagnostic'
+                && entry.kind !== 'artifact-sidecar')) {
             throw new Error('Invalid output recovery journal artifact')
         }
         return {
@@ -200,10 +253,14 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         format: 'nais2-output-transaction',
         version: 1,
         transactionId: value.transactionId,
+        ...(typeof value.sourceJobId === 'string' ? { sourceJobId: value.sourceJobId } : {}),
         createdAt: value.createdAt,
         updatedAt: value.updatedAt,
         phase: value.phase as RecoveryJournalPhase,
         fileName: value.fileName,
+        ...(typeof value.contentChecksum === 'string' && /^sha256:[a-f0-9]{64}$/i.test(value.contentChecksum)
+            ? { contentChecksum: value.contentChecksum }
+            : {}),
         directory,
         artifacts,
         thumbnailStaged: value.thumbnailStaged === true,
@@ -216,6 +273,7 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
     if (image === undefined) throw new Error('Recovery journal has no image artifact')
     const sidecar = journal.artifacts.find(artifact => artifact.kind === 'sidecar')
     const diagnostic = journal.artifacts.find(artifact => artifact.kind === 'diagnostic')
+    const artifactSidecar = journal.artifacts.find(artifact => artifact.kind === 'artifact-sidecar')
     return {
         transactionId: journal.transactionId,
         fileName: journal.fileName,
@@ -224,6 +282,8 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
         directory: journal.directory,
         ...(sidecar === undefined ? {} : { sidecarPath: sidecar.final.displayPath }),
         ...(diagnostic === undefined ? {} : { diagnosticSidecarPath: diagnostic.final.displayPath }),
+        ...(artifactSidecar === undefined ? {} : { artifactSidecarPath: artifactSidecar.final.displayPath }),
+        ...(journal.contentChecksum === undefined ? {} : { contentChecksum: journal.contentChecksum }),
         capabilityFallbackUsed: journal.directory.capabilityFallbackUsed,
         ...(journal.directory.fallbackReason === undefined
             ? {}
@@ -325,14 +385,35 @@ export class OutputWriter {
             const fileName = await resolveCollisionFileName(requestedFileName, collisionPolicy, async candidate => {
                 const imageExists = await this.platform.exists(childOutputRef(directory, candidate))
                 if (imageExists) return true
-                if (request.metadata === undefined) return false
-                const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
-                    || request.metadata.metadataMode === 'strip-and-sidecar'
-                    || request.metadata.imageFormat === 'webp'
-                return sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))
+                if (request.metadata !== undefined) {
+                    const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
+                        || request.metadata.metadataMode === 'strip-and-sidecar'
+                        || request.metadata.imageFormat === 'webp'
+                    if (sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))) {
+                        return true
+                    }
+                }
+                return request.artifactSidecarBytes !== undefined
+                    && await this.platform.exists(childOutputRef(directory, toArtifactSidecarPath(candidate)))
             })
-            const transactionId = this.createTransactionId()
+            const transactionId = request.transactionId ?? this.createTransactionId()
+            if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
+                throw new OutputWriterError(
+                    'resolve-destination',
+                    'Output transaction identity is not a safe bounded filename component',
+                )
+            }
+            if (request.sourceJobId !== undefined
+                && (request.sourceJobId.length === 0 || request.sourceJobId.length > 256)) {
+                throw new OutputWriterError('resolve-destination', 'Source job identity is not bounded')
+            }
             const prepared = this.metadataWriter.prepare(request.imageBytes, request.metadata)
+            // Keep the established generation/output scheduling unchanged.
+            // Organizer already opts into a separate artifact sidecar, so only
+            // that new path pays the asynchronous byte-digest cost.
+            const contentChecksum = request.artifactSidecarBytes === undefined
+                ? undefined
+                : await sha256Bytes(prepared.imageBytes)
             const imageFinal = childOutputRef(directory, fileName)
             const artifacts: JournalArtifact[] = [{
                 kind: 'image',
@@ -358,6 +439,15 @@ export class OutputWriter {
                     committed: false,
                 })
             }
+            if (request.artifactSidecarBytes !== undefined) {
+                const artifactSidecarName = toArtifactSidecarPath(fileName)
+                artifacts.push({
+                    kind: 'artifact-sidecar',
+                    temp: childOutputRef(directory, tempName(artifactSidecarName, transactionId, 'artifact-sidecar')),
+                    final: childOutputRef(directory, artifactSidecarName),
+                    committed: false,
+                })
+            }
 
             mark('stage-temp-output')
             const timestamp = this.now().toISOString()
@@ -365,10 +455,12 @@ export class OutputWriter {
                 format: 'nais2-output-transaction',
                 version: 1,
                 transactionId,
+                ...(request.sourceJobId === undefined ? {} : { sourceJobId: request.sourceJobId }),
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 phase: 'staged',
                 fileName,
+                ...(contentChecksum === undefined ? {} : { contentChecksum }),
                 directory: {
                     ...serializeOutputFileRef(directory),
                     capabilityFallbackUsed: directory.capabilityFallbackUsed,
@@ -401,6 +493,10 @@ export class OutputWriter {
             const diagnosticArtifact = artifacts.find(artifact => artifact.kind === 'diagnostic')
             if (diagnosticArtifact !== undefined && prepared.diagnosticSidecarBytes !== undefined) {
                 await this.platform.writeFile(diagnosticArtifact.temp, prepared.diagnosticSidecarBytes)
+            }
+            const artifactSidecarArtifact = artifacts.find(artifact => artifact.kind === 'artifact-sidecar')
+            if (artifactSidecarArtifact !== undefined && request.artifactSidecarBytes !== undefined) {
+                await this.platform.writeFile(artifactSidecarArtifact.temp, request.artifactSidecarBytes)
             }
             journal.phase = 'metadata-written'
             await this.persistJournal(journal)
@@ -463,6 +559,10 @@ export class OutputWriter {
                 ...(diagnosticArtifact === undefined
                     ? {}
                     : { diagnosticSidecarPath: diagnosticArtifact.final.displayPath }),
+                ...(artifactSidecarArtifact === undefined
+                    ? {}
+                    : { artifactSidecarPath: artifactSidecarArtifact.final.displayPath }),
+                ...(contentChecksum === undefined ? {} : { contentChecksum }),
                 ...(thumbnailDataUrl === undefined ? {} : { thumbnailDataUrl }),
                 capabilityFallbackUsed: directory.capabilityFallbackUsed,
                 ...(directory.fallbackReason === undefined
@@ -491,6 +591,7 @@ export class OutputWriter {
             try {
                 await this.persistJournal(journal)
             } catch (error) {
+                if (request.terminalWorkflowCommit === true) throw error
                 try { await request.rollbackWorkflow?.(result, error) } catch { /* file rollback remains mandatory */ }
                 journal.phase = 'rollback-required'
                 try { await this.persistJournal(journal) } catch { /* previous files-committed journal remains */ }
@@ -511,7 +612,7 @@ export class OutputWriter {
                     journal.phase = 'rollback-required'
                     try { await this.persistJournal(journal) } catch { /* retain earlier journal */ }
                     const rollbackError = new OutputWriterError('rollback-cleanup', 'Output failed and rollback is pending', {
-                        cause: { transactionError: error, cleanupError },
+                        cause: rollbackFailureCause(error, cleanupError),
                     })
                     reportDiagnostic(rollbackError, {
                         operation: 'output.write',
@@ -578,6 +679,29 @@ export class OutputWriter {
             results.push(await this.recoverTransaction(transactionId, options))
         }
         return results
+    }
+
+    async inspectPendingQueueTransactions(): Promise<PendingQueueOutputTransaction[]> {
+        const transactionIds = await this.platform.listJournalIds()
+        const result: PendingQueueOutputTransaction[] = []
+        for (const transactionId of transactionIds) {
+            const bytes = await this.platform.readJournal(transactionId)
+            if (bytes === null) continue
+            try {
+                const journal = parseJournal(bytes)
+                if (journal.sourceJobId !== undefined) {
+                    result.push({
+                        transactionId: journal.transactionId,
+                        sourceJobId: journal.sourceJobId,
+                        phase: journal.phase,
+                    })
+                }
+            } catch {
+                // Generic recovery owns malformed/orphan journals. Queue recovery
+                // must not guess ownership from a filename or output path.
+            }
+        }
+        return result.sort((left, right) => left.transactionId.localeCompare(right.transactionId))
     }
 }
 

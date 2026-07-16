@@ -1,0 +1,23 @@
+name = "nais-transfer-executor"
+main = "cloudflare/nais-transfer-worker/src/index.ts"
+compatibility_date = "2026-07-15"
+
+# /v1/ready returns only this public version ID so rotation can wait for the exact edge version
+# that owns the freshly changed pairing secrets before sending the one-use capability.
+[version_metadata]
+binding = "CF_VERSION_METADATA"
+
+[[durable_objects.bindings]]
+name = "TRANSFER_STATE"
+class_name = "TransferStateObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TransferStateObject"]
+
+[[r2_buckets]]
+binding = "PRIME"
+bucket_name = "prime"
+
+[vars]
+R2_PREFIX = "nais"

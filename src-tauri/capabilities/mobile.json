@@ -25,6 +25,9 @@
       "allow": [
         {
           "path": "$APPDATA/**"
+        },
+        {
+          "path": "$APPDATA/**/.*"
         }
       ]
     },
@@ -51,6 +54,7 @@
     "stronghold:allow-save-store-record",
     "stronghold:allow-remove-store-record",
     "stronghold:allow-save",
-    "stronghold:allow-destroy"
+    "stronghold:allow-destroy",
+    "nais-android-transfer:default"
   ]
 }

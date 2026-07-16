@@ -9,6 +9,8 @@ import { useSceneGeneration } from '@/hooks/useSceneGeneration'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
+import { useDurableQueueRuntime } from '@/hooks/useDurableQueueRuntime'
+import { useR2UploadRuntime } from '@/hooks/useR2UploadRuntime'
 import MainMode from '@/pages/MainMode'
 
 const SceneMode = lazy(() => import('@/pages/SceneMode'))
@@ -20,6 +22,8 @@ const ToolsMode = lazy(() => import('@/pages/ToolsMode'))
 const PromptEditor = lazy(() => import('@/pages/PromptEditor'))
 const AssetModuleStudio = lazy(() => import('@/pages/AssetModuleStudio'))
 const StyleLab = lazy(() => import('@/pages/StyleLab'))
+const QueueCenter = lazy(() => import('@/pages/QueueCenter'))
+const Organizer = lazy(() => import('@/pages/Organizer'))
 
 function RouteLoadingFallback() {
     return (
@@ -32,6 +36,8 @@ function RouteLoadingFallback() {
 function AppContent() {
     // Scene generation hook at App level - persists across page navigation
     useSceneGeneration()
+    useDurableQueueRuntime()
+    useR2UploadRuntime()
     useUpdateChecker()
     useShortcuts()
     useWindowResizePerformanceMode()
@@ -65,6 +71,8 @@ function AppContent() {
                     <Route path="/prompts" element={<PromptEditor />} />
                     <Route path="/asset-modules" element={<AssetModuleStudio />} />
                     <Route path="/style-lab" element={<StyleLab />} />
+                    <Route path="/queue" element={<QueueCenter />} />
+                    <Route path="/organizer" element={<Organizer />} />
                     <Route path="/web" element={<WebView />} />
                     <Route path="/library" element={<Library />} />
                     <Route path="/settings" element={<Settings />} />

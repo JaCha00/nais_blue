@@ -61,6 +61,9 @@ import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { useGenerationStore } from '@/stores/generation-store'
+import { useQueueStore } from '@/stores/queue-store'
+import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
+import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import type { CharacterPosition, CharacterSlotPatch } from '@/domain/composition'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
@@ -142,6 +145,7 @@ export default function SceneDetail() {
     const setSeedLocked = useGenerationStore(state => state.setSeedLocked)
     const steps = useGenerationStore(state => state.steps)
     const generatingMode = useGenerationStore(state => state.generatingMode)
+    const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
 
     // --- Resolution Logic ---
     const currentWidth = scene?.width || 832
@@ -187,6 +191,10 @@ export default function SceneDetail() {
     const [compositionPreview, setCompositionPreview] = useState<SceneCompositionResolution | null>(null)
     const [compositionPreviewError, setCompositionPreviewError] = useState<string | null>(null)
     const [activeModuleId, setActiveModuleId] = useState<string | null>(null)
+    const [durableGenerationPending, setDurableGenerationPending] = useState(false)
+    const [durableGenerationCancelling, setDurableGenerationCancelling] = useState(false)
+    const durableBatchIdRef = useRef<string | null>(null)
+    const durableCancelRequestedRef = useRef(false)
 
     // Auto-save prompt logic - hooks must be before conditional return
     const updateScenePrompt = useSceneStore(state => state.updateScenePrompt)
@@ -387,11 +395,76 @@ export default function SceneDetail() {
         }
     }
 
+    const startDurableSceneGeneration = async () => {
+        const coordinator = getRuntimeDurableQueueCoordinator()
+        durableBatchIdRef.current = null
+        durableCancelRequestedRef.current = false
+        setDurableGenerationPending(true)
+        setDurableGenerationCancelling(false)
+
+        try {
+            const result = await enqueueCurrentSceneQueue()
+            if (result === null) return
+
+            durableBatchIdRef.current = result.batch.id
+            toast({
+                title: t('queue.enqueued', 'Added to durable queue'),
+                description: t('queue.enqueuedCount', '{{count}} jobs are ready in Queue Center.', {
+                    count: result.jobs.length,
+                }),
+            })
+
+            // The durable repository owns cancellation after enqueue. The ref also
+            // bridges a click that races snapshot creation, so that job can never
+            // start after the detail view has already acknowledged cancellation.
+            if (durableCancelRequestedRef.current) {
+                await coordinator.cancelBatch(result.batch.id)
+                return
+            }
+
+            await coordinator.drain()
+        } catch (error) {
+            if (!durableCancelRequestedRef.current) {
+                toast({
+                    title: t('common.error', 'Error'),
+                    description: error instanceof Error ? error.message : t('queue.enqueueFailed', 'Queue enqueue failed'),
+                    variant: 'destructive',
+                })
+            }
+        } finally {
+            durableBatchIdRef.current = null
+            setDurableGenerationPending(false)
+            setDurableGenerationCancelling(false)
+        }
+    }
+
+    const cancelDurableSceneGeneration = () => {
+        durableCancelRequestedRef.current = true
+        setDurableGenerationCancelling(true)
+        const coordinator = getRuntimeDurableQueueCoordinator()
+        const batchId = durableBatchIdRef.current
+
+        void (batchId === null
+            ? coordinator.cancelWorkflow('scene')
+            : coordinator.cancelBatch(batchId)
+        ).catch(error => {
+            toast({
+                title: t('common.error', 'Error'),
+                description: error instanceof Error ? error.message : String(error),
+                variant: 'destructive',
+            })
+        })
+    }
+
     const handleGenerate = () => {
         if (!activePresetId || !scene) return
 
-        if (sceneIsGenerating || sceneIsCancelling) {
+        if (queueExecutionAuthority === 'legacy' && (sceneIsGenerating || sceneIsCancelling)) {
             cancelSceneGeneration()
+            return
+        }
+        if (queueExecutionAuthority !== 'legacy' && durableGenerationPending) {
+            cancelDurableSceneGeneration()
             return
         }
 
@@ -401,8 +474,12 @@ export default function SceneDetail() {
             incrementQueue(activePresetId, scene.id)
         }
 
-        // Start a new generation session to properly track and allow cancellation
-        startNewGenerationSession()
+        if (queueExecutionAuthority === 'legacy') {
+            startNewGenerationSession()
+            return
+        }
+
+        void startDurableSceneGeneration()
     }
 
     const handleOpenFolder = async () => {
@@ -524,6 +601,12 @@ export default function SceneDetail() {
                 : sceneCompositionMode === 'legacy'
                     ? { severity: 'disabled', label: 'legacy' }
                     : { severity: 'valid' }
+    const effectiveSceneGenerating = queueExecutionAuthority === 'legacy'
+        ? sceneIsGenerating
+        : durableGenerationPending
+    const effectiveSceneCancelling = queueExecutionAuthority === 'legacy'
+        ? sceneIsCancelling
+        : durableGenerationCancelling
     const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')
     const conflict: CompositionConflictSummary | null = assetHasConflict
         ? {
@@ -620,7 +703,7 @@ export default function SceneDetail() {
                 label: t('scene.composition.mode', 'Mode'),
                 options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode })),
                 onChange: value => setSceneCompositionMode(value as SceneCompositionMode),
-                disabled: sceneIsGenerating,
+                disabled: effectiveSceneGenerating,
             }}
             recipe={{
                 value: displayedRecipeId,
@@ -637,7 +720,7 @@ export default function SceneDetail() {
                     })),
                 ],
                 onChange: handleSceneRecipeChange,
-                disabled: sceneIsGenerating,
+                disabled: effectiveSceneGenerating,
             }}
             validation={validation}
             cost={{ value: String(estimatedCost), label: 'Anlas', severity: estimatedCost > 0 ? 'warning' : 'normal' }}
@@ -653,9 +736,9 @@ export default function SceneDetail() {
                 wildcardPreviewLabel: t('scene.wildcardPreview', 'Wildcard preview'),
             }}
             generation={{
-                generating: sceneIsGenerating || sceneIsCancelling,
-                disabled: sceneIsCancelling || (!sceneIsGenerating && generationConflict),
-                progressLabel: sceneIsCancelling ? t('generate.cancelling', 'Cancelling…') : undefined,
+                generating: effectiveSceneGenerating || effectiveSceneCancelling,
+                disabled: effectiveSceneCancelling || (!effectiveSceneGenerating && generationConflict),
+                progressLabel: effectiveSceneCancelling ? t('generate.cancelling', 'Cancelling…') : undefined,
                 generateLabel: t('generate.button', 'Generate'),
                 cancelLabel: t('generate.cancel', 'Cancel'),
                 actionTestId: 'scene-detail-generate-action',
@@ -678,7 +761,7 @@ export default function SceneDetail() {
                         <CharacterLayoutEditor
                             characters={characterLayoutItems}
                             title={t('scene.characterLayout', 'Character layout')}
-                            disabled={sceneIsGenerating}
+                            disabled={effectiveSceneGenerating}
                             className="rounded-none border-x-0 border-b-0 shadow-none"
                             onChangePosition={handleCharacterPositionChange}
                         />

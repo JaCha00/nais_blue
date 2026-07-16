@@ -1,8 +1,8 @@
 import { mergeQualityTags, mergeUcPreset, removeComments, type UcPresetIndex } from '@/services/nai/presets'
 
-// Current verified parity scope is V4/V4.5. V3/Furry V3 remain selectable in
-// the UI, but byte-level parity needs dedicated web/NAIS3 fixtures for sm,
-// sm_dyn, prompt shape, and UC behavior before this builder claims it.
+// Release-supported builder authority is V4/V4.5. Retired model identifiers
+// may still be parsed from old metadata, but the selectable model boundary
+// normalizes them before a new provider request is created.
 export interface CharacterPromptInput {
     prompt: string
     negativePrompt: string

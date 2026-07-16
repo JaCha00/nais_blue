@@ -13,6 +13,7 @@ NAIS_KEYSTORE_BASE64.txt
 keystore.properties
 *.jks
 *.keystore
+/keystore_base64.txt
 *.p12
 *.pfx
 

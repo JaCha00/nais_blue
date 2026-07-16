@@ -120,6 +120,9 @@ import { previewSceneComposition } from '@/lib/scene-generation/build-scene-para
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
+import { useQueueStore } from '@/stores/queue-store'
+import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
+import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import type {
     CompositionConflictSummary,
     CompositionOverrideDiffItem,
@@ -262,6 +265,7 @@ export default function SceneMode() {
     const isGenerating = useSceneStore(s => s.isGenerating)
     const isCancelling = useSceneStore(s => s.isCancelling)
     const startNewGenerationSession = useSceneStore(s => s.startNewGenerationSession)
+    const queueExecutionAuthority = useQueueStore(s => s.executionAuthority)
     const cancelSceneGeneration = useSceneStore(s => s.cancelSceneGeneration)
     const importPreset = useSceneStore(s => s.importPreset)
     const rotationActive = useRotationStore(s => s.active)
@@ -568,7 +572,27 @@ export default function SceneMode() {
             cancelSceneGeneration()
             return
         }
-        if (totalQueue > 0) startNewGenerationSession()
+        if (totalQueue <= 0) return
+        if (queueExecutionAuthority === 'legacy') {
+            startNewGenerationSession()
+            return
+        }
+        void enqueueCurrentSceneQueue().then(result => {
+            if (result === null) return
+            toast({
+                title: t('queue.enqueued', 'Added to durable queue'),
+                description: t('queue.enqueuedCount', '{{count}} jobs are ready in Queue Center.', {
+                    count: result.jobs.length,
+                }),
+            })
+            return getRuntimeDurableQueueCoordinator().drain()
+        }).catch(error => {
+            toast({
+                title: t('common.error', 'Error'),
+                description: error instanceof Error ? error.message : t('queue.enqueueFailed', 'Queue enqueue failed'),
+                variant: 'destructive',
+            })
+        })
     }
 
     const [newPresetName, setNewPresetName] = useState('')

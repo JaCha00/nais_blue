@@ -270,14 +270,15 @@ async function runPostRenderStartupTasks(): Promise<void> {
         { startAssetProfileDiskSync },
         { useCharacterStore },
         { startStoreSnapshotScheduler },
-        { getRuntimeOutputWriter },
+        { initializeQueueAfterRestart },
     ] = await Promise.all([
         import('./stores/asset-module-store'),
         import('./stores/character-store'),
         import('./lib/store-snapshots'),
-        import('./services/output/output-writer'),
+        import('./services/queue/queue-startup'),
     ])
-    void getRuntimeOutputWriter().recoverPending().then(results => {
+    void initializeQueueAfterRestart().then(recovery => {
+        const results = [...recovery.linkedOutputs, ...recovery.orphanOutputs]
         const failures = results.filter(result => result.action === 'failed')
         if (results.length > 0) {
             console.log(`[Startup] Recovered ${results.length - failures.length}/${results.length} output transactions`)

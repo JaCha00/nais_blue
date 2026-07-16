@@ -152,7 +152,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
         expect(loaded.scenarios.every(scenario => scenario.description.trim().length > 0)).toBe(true)
     })
 
-    it('keeps an unapproved fresh install on the legacy default', async () => {
+    it('activates the verified v2 production default for a fresh install without an override', async () => {
         const storage = new MemoryStorage()
 
         const result = await runStartupCompositionMigration({
@@ -163,6 +163,18 @@ describe('Phase 06 production-like authority startup matrix', () => {
         })
 
         expect(result.status).toBe('committed')
+        await expectAuthority('fresh-install', storage)
+        expect(featureFlags.get('nais2-composition-authority')).toBeUndefined()
+
+        setRuntimeCompositionAuthority('legacy')
+        const restarted = await runStartupCompositionMigration({
+            now: LATER,
+            clock: () => LATER,
+            storage,
+            source: EMPTY_SOURCE,
+        })
+
+        expect(restarted.status).toBe('already-current')
         await expectAuthority('fresh-install', storage)
     })
 
@@ -188,16 +200,29 @@ describe('Phase 06 production-like authority startup matrix', () => {
         await expectAuthority('canonical-v2-only', storage)
     })
 
-    it('upgrades current legacy stores only under an explicit verified v2 request', async () => {
+    it('upgrades current legacy stores under the verified v2 default without an override', async () => {
         const storage = new MemoryStorage()
 
-        await applyCompositionAuthorityFeatureFlag('v2', START, storage, {
+        const upgraded = await runStartupCompositionMigration({
+            now: START,
+            storage,
             source: LEGACY_SOURCE,
             clock: () => START,
         })
 
+        expect(upgraded.status).toBe('committed')
         await expectAuthority('upgrade-current-legacy-stores', storage)
-        expect(featureFlags.get('nais2-composition-authority')).toBe('v2')
+        expect(featureFlags.get('nais2-composition-authority')).toBeUndefined()
+
+        setRuntimeCompositionAuthority('legacy')
+        const restarted = await runStartupCompositionMigration({
+            now: LATER,
+            storage,
+            source: LEGACY_SOURCE,
+            clock: () => LATER,
+        })
+        expect(restarted.status).toBe('already-current')
+        await expectAuthority('upgrade-current-legacy-stores', storage)
     })
 
     it('keeps matching legacy and canonical v2 sources without deleting either authority source', async () => {
@@ -241,14 +266,27 @@ describe('Phase 06 production-like authority startup matrix', () => {
             'supabase.auth.session',
             'sb-obsolete-project-auth-token',
         ]))
-        await applyCompositionAuthorityFeatureFlag('v2', START, storage, {
+        const migrated = await runStartupCompositionMigration({
+            now: START,
+            storage,
             source,
             clock: () => START,
         })
 
+        expect(migrated.status).toBe('committed')
         await expectAuthority('old-backup-retired-remote-keys', storage)
         expect(source.serializedStores).not.toHaveProperty('nais2-marketplace-cache')
         expect(source.serializedStores).not.toHaveProperty('supabase.auth.session')
+
+        setRuntimeCompositionAuthority('legacy')
+        const restarted = await runStartupCompositionMigration({
+            now: LATER,
+            storage,
+            source,
+            clock: () => LATER,
+        })
+        expect(restarted.status).toBe('already-current')
+        await expectAuthority('old-backup-retired-remote-keys', storage)
     })
 
     it('cleans an expired interrupted migration before v2 repository verification', async () => {

@@ -1,0 +1,152 @@
+{
+  "case": "release-online-matrix-v1",
+  "sourceKind": "synthetic-target-bearer-covering-matrix",
+  "captureDate": "2026-07-16",
+  "requiredModels": [
+    "nai-diffusion-4-5-curated",
+    "nai-diffusion-4-5-full",
+    "nai-diffusion-4-curated-preview",
+    "nai-diffusion-4-full"
+  ],
+  "requiredFormats": [
+    "png",
+    "webp"
+  ],
+  "cases": [
+    {
+      "id": "core-main-v45-curated-standard-png",
+      "workflow": "main",
+      "model": "nai-diffusion-4-5-curated",
+      "transport": "standard",
+      "format": "png",
+      "seed": 26071601
+    },
+    {
+      "id": "core-scene-v45-curated-stream-webp",
+      "workflow": "scene",
+      "model": "nai-diffusion-4-5-curated",
+      "transport": "stream",
+      "format": "webp",
+      "seed": 26071602
+    },
+    {
+      "id": "core-style-v45-full-stream-png",
+      "workflow": "style-lab",
+      "model": "nai-diffusion-4-5-full",
+      "transport": "stream",
+      "format": "png",
+      "seed": 26071603
+    },
+    {
+      "id": "core-main-v45-full-standard-webp",
+      "workflow": "main",
+      "model": "nai-diffusion-4-5-full",
+      "transport": "standard",
+      "format": "webp",
+      "seed": 26071604
+    },
+    {
+      "id": "core-scene-v4-curated-standard-png",
+      "workflow": "scene",
+      "model": "nai-diffusion-4-curated-preview",
+      "transport": "standard",
+      "format": "png",
+      "seed": 26071605
+    },
+    {
+      "id": "core-style-v4-curated-stream-webp",
+      "workflow": "style-lab",
+      "model": "nai-diffusion-4-curated-preview",
+      "transport": "stream",
+      "format": "webp",
+      "seed": 26071606
+    },
+    {
+      "id": "core-main-v4-full-stream-png",
+      "workflow": "main",
+      "model": "nai-diffusion-4-full",
+      "transport": "stream",
+      "format": "png",
+      "seed": 26071607
+    },
+    {
+      "id": "core-scene-v4-full-standard-webp",
+      "workflow": "scene",
+      "model": "nai-diffusion-4-full",
+      "transport": "standard",
+      "format": "webp",
+      "seed": 26071608
+    }
+  ],
+  "retiredLegacyEvidence": [
+    {
+      "id": "legacy-v3-anime-standard-png",
+      "workflow": "main",
+      "model": "nai-diffusion-3",
+      "transport": "standard",
+      "format": "png",
+      "seed": 26071609,
+      "observedResult": "pass",
+      "releaseAuthority": "retired-with-family"
+    },
+    {
+      "id": "legacy-v3-furry-stream-webp",
+      "workflow": "scene",
+      "model": "nai-diffusion-furry-3",
+      "transport": "stream",
+      "format": "webp",
+      "seed": 26071610,
+      "observedResult": "provider-http-400",
+      "releaseAuthority": "retired"
+    }
+  ],
+  "actualAppCases": [
+    {
+      "id": "app-main-standard-png",
+      "workflow": "main",
+      "model": "nai-diffusion-4-5-curated",
+      "transport": "standard",
+      "format": "png",
+      "expectedCommit": "output-history-file"
+    },
+    {
+      "id": "app-scene-stream-webp",
+      "workflow": "scene",
+      "model": "nai-diffusion-4-5-full",
+      "transport": "stream",
+      "format": "webp",
+      "expectedCommit": "scene-output-file-sidecar"
+    },
+    {
+      "id": "app-style-standard-png",
+      "workflow": "style-lab",
+      "model": "nai-diffusion-4-curated-preview",
+      "transport": "standard",
+      "format": "png",
+      "expectedCommit": "preview-file"
+    },
+    {
+      "id": "app-main-source-edit-webp",
+      "workflow": "main",
+      "model": "nai-diffusion-4-5-full",
+      "transport": "source-zip",
+      "format": "webp",
+      "sourceFrom": "app-main-standard-png",
+      "expectedCommit": "output-history-file-sidecar"
+    },
+    {
+      "id": "app-style-cancel-no-late-save",
+      "workflow": "style-lab",
+      "model": "nai-diffusion-4-full",
+      "transport": "stream",
+      "format": "webp",
+      "expectedCommit": "none-after-cancel"
+    }
+  ],
+  "provenance": {
+    "webCapture": false,
+    "liveResponseStored": false,
+    "sensitiveDataRemoved": true,
+    "notes": "The required matrix is a covering matrix. One bounded V3-family probe found Furry V3 stream/WebP rejected with HTTP 400, so both V3 models were retired from release authority."
+  }
+}

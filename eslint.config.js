@@ -51,6 +51,20 @@ export default [
         },
     },
     {
+        files: ['cloudflare/**/*.ts'],
+        languageOptions: {
+            parser: tsParser,
+            parserOptions: {
+                ecmaVersion: 'latest',
+                sourceType: 'module',
+            },
+            globals: {
+                ...globals.es2020,
+                ...globals.worker,
+            },
+        },
+    },
+    {
         files: ['scripts/**/*.mjs', 'eslint.config.js'],
         languageOptions: {
             ecmaVersion: 'latest',

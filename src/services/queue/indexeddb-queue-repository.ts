@@ -1,20 +1,27 @@
-import { canonicalSerialize } from '@/domain/composition/canonical-serialize'
+import { canonicalSerialize, hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import {
     assertJobTransition,
     isGenerationJobState,
     isTerminalJobState,
     QueueStateTransitionError,
 } from '@/domain/queue/state-machine'
+import { GENERATION_JOB_STATES } from '@/domain/queue/types'
 import type {
     GenerationAttempt,
     GenerationBatch,
+    GenerationBatchSummary,
     GenerationJob,
+    GenerationJobProjection,
     GenerationJobProgress,
     GenerationJobSnapshot,
     GenerationJobState,
     GenerationWorkflow,
     QueueArtifactReference,
+    QueueBatchOrigin,
     QueueBlockReason,
+    QueueFailureKind,
+    QueueFailurePolicy,
+    QueuePauseReason,
     QueueResourceRecord,
 } from '@/domain/queue/types'
 import {
@@ -24,7 +31,7 @@ import {
 } from './job-snapshot'
 
 export const QUEUE_DATABASE_NAME = 'nais2-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 2
+export const QUEUE_DATABASE_VERSION = 3
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
@@ -42,6 +49,7 @@ export type QueueRepositoryErrorCode =
     | 'E_QUEUE_INVALID_TRANSITION'
     | 'E_QUEUE_TERMINAL_IMMUTABLE'
     | 'E_QUEUE_LEASE_LOST'
+    | 'E_QUEUE_CANCEL_REQUESTED'
 
 export class QueueRepositoryError extends Error {
     constructor(readonly code: QueueRepositoryErrorCode, message: string) {
@@ -51,7 +59,7 @@ export class QueueRepositoryError extends Error {
 }
 
 interface StoredJobRecord {
-    recordSchemaVersion: 2
+    recordSchemaVersion: 3
     id: string
     batchId: string
     workflow: GenerationWorkflow
@@ -73,6 +81,11 @@ interface StoredJobRecord {
     outputTransactionId: string | null
     artifactReference: QueueArtifactReference | null
     blockReason: QueueBlockReason | null
+    readyAt: string
+    cancelRequestedAt: string | null
+    cancelReason: 'user' | 'batch' | 'shutdown' | null
+    retryOfJobId: string | null
+    rootJobId: string
     version: number
     globalOrderKey: IDBValidKey
     batchOrderKey: IDBValidKey
@@ -105,6 +118,15 @@ export interface CreateGenerationBatchInput {
     id: string
     workflow: GenerationWorkflow
     createdAt: string
+    failurePolicy?: QueueFailurePolicy
+    origin?: QueueBatchOrigin
+    idempotencyKey?: string
+}
+
+export interface DurableGenerationBatchInput extends CreateGenerationBatchInput {
+    failurePolicy: QueueFailurePolicy
+    origin: QueueBatchOrigin
+    idempotencyKey: string
 }
 
 export interface EnqueueGenerationJobInput {
@@ -119,6 +141,9 @@ export interface EnqueueGenerationJobInput {
     compositionPlanHash: string | null
     maxAttempts: number
     idempotencyKey: string
+    readyAt?: string
+    retryOfJobId?: string | null
+    rootJobId?: string
 }
 
 export interface AcquireQueueLeaseInput {
@@ -137,11 +162,13 @@ export interface TransitionGenerationJobInput {
     to: GenerationJobState
     now: string
     leaseOwner?: string
+    leaseToken?: string
     expectedVersion?: number
     lastDiagnosticEventId?: string | null
     outputTransactionId?: string | null
     artifactReference?: QueueArtifactReference | null
     blockReason?: QueueBlockReason | null
+    failureKind?: QueueFailureKind | null
 }
 
 export interface ListGenerationJobsInput {
@@ -154,6 +181,22 @@ export interface ListGenerationJobsInput {
 export interface GenerationJobPage {
     items: GenerationJob[]
     nextCursor: string | null
+}
+
+export interface GenerationJobProjectionPage {
+    items: GenerationJobProjection[]
+    nextCursor: string | null
+}
+
+export interface CreateBatchAndEnqueueInput {
+    batch: DurableGenerationBatchInput
+    jobs: readonly EnqueueGenerationJobInput[]
+    resources?: readonly QueueResourceRecord[]
+}
+
+export interface CreateBatchAndEnqueueResult {
+    batch: GenerationBatch
+    jobs: GenerationJob[]
 }
 
 export interface QueueRepositorySchemaInspection {
@@ -184,6 +227,102 @@ function assertWorkflow(value: unknown): asserts value is GenerationWorkflow {
     }
 }
 
+function assertFailurePolicy(value: unknown): asserts value is QueueFailurePolicy {
+    if (value !== 'continue' && value !== 'pause-on-fatal' && value !== 'stop-on-first-error') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'failure policy is invalid')
+    }
+}
+
+function assertBatchOrigin(value: unknown): asserts value is QueueBatchOrigin {
+    if (value !== 'fresh' && value !== 'legacy-conversion' && value !== 'retry') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch origin is invalid')
+    }
+}
+
+function parseBatch(value: unknown): GenerationBatch {
+    if (!isRecord(value)) throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch record is invalid')
+    assertIdentifier(value.id, 'batch id')
+    assertWorkflow(value.workflow)
+    assertTimestamp(value.createdAt, 'batch createdAt')
+    assertTimestamp(value.updatedAt, 'batch updatedAt')
+    if (value.state !== 'active' && value.state !== 'paused' && value.state !== 'stopped') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch state is invalid')
+    }
+    assertFailurePolicy(value.failurePolicy)
+    if (value.pauseReason !== null
+        && value.pauseReason !== 'user'
+        && value.pauseReason !== 'authentication'
+        && value.pauseReason !== 'local-io'
+        && value.pauseReason !== 'fatal'
+        && value.pauseReason !== 'first-error') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch pause reason is invalid')
+    }
+    assertBatchOrigin(value.origin)
+    assertIdentifier(value.idempotencyKey, 'batch idempotency key')
+    if (!Number.isSafeInteger(value.version) || (value.version as number) < 1) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch version is invalid')
+    }
+    return value as unknown as GenerationBatch
+}
+
+function batchFromInput(input: CreateGenerationBatchInput): GenerationBatch {
+    assertIdentifier(input.id, 'batch id')
+    assertWorkflow(input.workflow)
+    assertTimestamp(input.createdAt, 'batch createdAt')
+    const failurePolicy = input.failurePolicy ?? 'continue'
+    const origin = input.origin ?? 'fresh'
+    const idempotencyKey = input.idempotencyKey ?? `batch:${input.id}`
+    assertFailurePolicy(failurePolicy)
+    assertBatchOrigin(origin)
+    assertIdentifier(idempotencyKey, 'batch idempotency key')
+    return {
+        id: input.id,
+        workflow: input.workflow,
+        createdAt: input.createdAt,
+        updatedAt: input.createdAt,
+        state: 'active',
+        failurePolicy,
+        pauseReason: null,
+        origin,
+        idempotencyKey,
+        version: 1,
+    }
+}
+
+/**
+ * Batch controls are intentionally mutable. Replaying an enqueue after pause,
+ * resume, or a failure-policy edit must resolve to the original immutable
+ * batch identity instead of being mistaken for different work.
+ */
+function hasSameBatchIdentity(left: GenerationBatch, right: GenerationBatch): boolean {
+    return left.id === right.id
+        && left.workflow === right.workflow
+        && left.origin === right.origin
+        && left.idempotencyKey === right.idempotencyKey
+}
+
+function hasSameResourceIdentity(left: QueueResourceRecord, right: QueueResourceRecord): boolean {
+    return left.id === right.id
+        && left.persistence === right.persistence
+        && left.digest === right.digest
+        && canonicalSerialize(left.reference) === canonicalSerialize(right.reference)
+}
+
+function selectResourceRecord(
+    existing: QueueResourceRecord,
+    candidate: QueueResourceRecord,
+): QueueResourceRecord {
+    if (!hasSameResourceIdentity(existing, candidate)) {
+        throw new QueueRepositoryError(
+            'E_QUEUE_IDEMPOTENCY_CONFLICT',
+            'Resource identity already represents different content',
+        )
+    }
+    return existing.availability === 'available' || candidate.availability !== 'available'
+        ? existing
+        : { ...existing, availability: 'available', updatedAt: candidate.updatedAt }
+}
+
 function assertProgress(value: unknown): asserts value is GenerationJobProgress {
     if (!isRecord(value)
         || typeof value.stage !== 'string'
@@ -192,7 +331,8 @@ function assertProgress(value: unknown): asserts value is GenerationJobProgress 
         || !Number.isFinite(value.current)
         || !Number.isFinite(value.total)
         || value.current < 0
-        || value.total < 0) {
+        || value.total < 0
+        || value.current > value.total) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job progress is invalid')
     }
 }
@@ -236,7 +376,7 @@ function orderKeys(input: Pick<StoredJobRecord, 'batchId' | 'state' | 'priority'
 }
 
 function parseStoredJob(value: unknown): StoredJobRecord {
-    if (!isRecord(value) || value.recordSchemaVersion !== 2) {
+    if (!isRecord(value) || value.recordSchemaVersion !== 3) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job record schema is invalid')
     }
     assertIdentifier(value.id, 'job id')
@@ -269,6 +409,16 @@ function parseStoredJob(value: unknown): StoredJobRecord {
     }
     assertIdentifier(value.idempotencyKey, 'idempotency key')
     assertProgress(value.progress)
+    assertTimestamp(value.readyAt, 'readyAt')
+    if (value.cancelRequestedAt !== null) assertTimestamp(value.cancelRequestedAt, 'cancelRequestedAt')
+    if (value.cancelReason !== null
+        && value.cancelReason !== 'user'
+        && value.cancelReason !== 'batch'
+        && value.cancelReason !== 'shutdown') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'cancel reason is invalid')
+    }
+    if (value.retryOfJobId !== null) assertIdentifier(value.retryOfJobId, 'retry source job id')
+    assertIdentifier(value.rootJobId, 'root job id')
     const snapshot = snapshotFromRecord(value.snapshot, value.snapshotHash)
     const parsed = {
         ...value,
@@ -321,6 +471,11 @@ function aggregateJob(stored: StoredJobRecord, lease: LeaseRecord | null): Gener
         outputTransactionId: stored.outputTransactionId,
         artifactReference: stored.artifactReference === null ? null : { ...stored.artifactReference },
         blockReason: stored.blockReason,
+        readyAt: stored.readyAt,
+        cancelRequestedAt: stored.cancelRequestedAt,
+        cancelReason: stored.cancelReason,
+        retryOfJobId: stored.retryOfJobId,
+        rootJobId: stored.rootJobId,
         version: stored.version,
     }
 }
@@ -330,7 +485,12 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
     assertIdentifier(input.batchId, 'batch id')
     assertWorkflow(input.workflow)
     assertTimestamp(input.createdAt, 'createdAt')
+    assertTimestamp(input.readyAt ?? input.createdAt, 'readyAt')
     assertIdentifier(input.idempotencyKey, 'idempotency key')
+    if (input.retryOfJobId !== undefined && input.retryOfJobId !== null) {
+        assertIdentifier(input.retryOfJobId, 'retry source job id')
+    }
+    if (input.rootJobId !== undefined) assertIdentifier(input.rootJobId, 'root job id')
     if (!Number.isSafeInteger(input.priority)
         || !Number.isSafeInteger(input.ordinal)
         || input.ordinal < 0
@@ -340,7 +500,7 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
     }
     assertGenerationJobSnapshotSafe(input.snapshot)
     const base = {
-        recordSchemaVersion: 2 as const,
+        recordSchemaVersion: 3 as const,
         id: input.id,
         batchId: input.batchId,
         workflow: input.workflow,
@@ -362,18 +522,28 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
         outputTransactionId: null,
         artifactReference: null,
         blockReason: null,
+        readyAt: input.readyAt ?? input.createdAt,
+        cancelRequestedAt: null,
+        cancelReason: null,
+        retryOfJobId: input.retryOfJobId ?? null,
+        rootJobId: input.rootJobId ?? input.retryOfJobId ?? input.id,
         version: 1,
     }
     return { ...base, ...orderKeys(base) }
 }
 
-function migrateV1Job(value: unknown): { job: StoredJobRecord; lease: LeaseRecord | null } {
-    if (!isRecord(value) || value.recordSchemaVersion !== 1) {
+function migrateLegacyJob(value: unknown): { job: StoredJobRecord; lease: LeaseRecord | null } {
+    if (!isRecord(value) || (value.recordSchemaVersion !== 1 && value.recordSchemaVersion !== 2)) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy queue job is invalid')
     }
     const candidate: Record<string, unknown> = {
         ...value,
-        recordSchemaVersion: 2,
+        recordSchemaVersion: 3,
+        readyAt: typeof value.readyAt === 'string' ? value.readyAt : value.createdAt,
+        cancelRequestedAt: null,
+        cancelReason: null,
+        retryOfJobId: null,
+        rootJobId: value.id,
     }
     delete candidate.leaseOwner
     delete candidate.leaseToken
@@ -389,9 +559,9 @@ function migrateV1Job(value: unknown): { job: StoredJobRecord; lease: LeaseRecor
         Object.assign(orderingCandidate, orderKeys(orderingCandidate as unknown as StoredJobRecord))
     }
     const job = parseStoredJob(candidate)
-    const hasLease = typeof value.leaseOwner === 'string'
+    const hasLease = value.recordSchemaVersion === 1 && (typeof value.leaseOwner === 'string'
         || typeof value.leaseExpiresAt === 'string'
-        || typeof value.heartbeatAt === 'string'
+        || typeof value.heartbeatAt === 'string')
     if (!hasLease) return { job, lease: null }
     if (typeof value.leaseOwner !== 'string'
         || typeof value.leaseExpiresAt !== 'string'
@@ -410,6 +580,19 @@ function migrateV1Job(value: unknown): { job: StoredJobRecord; lease: LeaseRecor
     }
 }
 
+function migrateLegacyBatch(value: unknown): GenerationBatch {
+    if (!isRecord(value)) throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy batch is invalid')
+    return parseBatch({
+        ...value,
+        state: value.state ?? 'active',
+        failurePolicy: value.failurePolicy ?? 'continue',
+        pauseReason: value.pauseReason ?? null,
+        origin: value.origin ?? 'fresh',
+        idempotencyKey: value.idempotencyKey ?? `batch:${String(value.id ?? '')}`,
+        version: value.version ?? 1,
+    })
+}
+
 function ensureIndex(store: IDBObjectStore, name: string, keyPath: string, options?: IDBIndexParameters): void {
     if (!store.indexNames.contains(name)) store.createIndex(name, keyPath, options)
 }
@@ -420,6 +603,7 @@ function ensureCurrentIndexes(transaction: IDBTransaction): void {
     ensureIndex(jobs, 'by-global-order', 'globalOrderKey')
     ensureIndex(jobs, 'by-batch-order', 'batchOrderKey')
     ensureIndex(jobs, 'by-state-order', 'stateOrderKey')
+    ensureIndex(jobs, 'by-output-transaction', 'outputTransactionId', { unique: true })
     const attempts = transaction.objectStore('attempts')
     ensureIndex(attempts, 'by-job-attempt', 'jobAttemptKey', { unique: true })
     const leases = transaction.objectStore('leases')
@@ -428,6 +612,7 @@ function ensureCurrentIndexes(transaction: IDBTransaction): void {
     ensureIndex(resources, 'by-digest', 'digest')
     const batches = transaction.objectStore('batches')
     ensureIndex(batches, 'by-created-at', 'createdAt')
+    ensureIndex(batches, 'by-idempotency-key', 'idempotencyKey', { unique: true })
 }
 
 function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction, oldVersion: number): void {
@@ -446,7 +631,7 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
     }
     ensureCurrentIndexes(transaction)
 
-    if (oldVersion === 1) {
+    if (oldVersion < 3) {
         const jobs = transaction.objectStore('jobs')
         const leases = transaction.objectStore('leases')
         const cursorRequest = jobs.openCursor()
@@ -454,7 +639,7 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
             const cursor = cursorRequest.result
             if (cursor === null) return
             try {
-                const migrated = migrateV1Job(cursor.value)
+                const migrated = migrateLegacyJob(cursor.value)
                 cursor.update(migrated.job)
                 if (migrated.lease !== null) leases.put(migrated.lease)
                 cursor.continue()
@@ -463,6 +648,20 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
             }
         }
         cursorRequest.onerror = () => transaction.abort()
+
+        const batches = transaction.objectStore('batches')
+        const batchCursorRequest = batches.openCursor()
+        batchCursorRequest.onsuccess = () => {
+            const cursor = batchCursorRequest.result
+            if (cursor === null) return
+            try {
+                cursor.update(migrateLegacyBatch(cursor.value))
+                cursor.continue()
+            } catch {
+                transaction.abort()
+            }
+        }
+        batchCursorRequest.onerror = () => transaction.abort()
     }
 }
 
@@ -642,30 +841,79 @@ export class IndexedDBQueueRepository {
     }
 
     async createBatch(input: CreateGenerationBatchInput): Promise<GenerationBatch> {
-        assertIdentifier(input.id, 'batch id')
-        assertWorkflow(input.workflow)
-        assertTimestamp(input.createdAt, 'batch createdAt')
-        const batch: GenerationBatch = {
-            id: input.id,
-            workflow: input.workflow,
-            createdAt: input.createdAt,
-            updatedAt: input.createdAt,
-        }
-        await this.runTransaction(['batches'], 'readwrite', async transaction => {
+        const batch = batchFromInput(input)
+        const selected = await this.runTransaction(['batches'], 'readwrite', async transaction => {
             const store = transaction.objectStore('batches')
-            const existing = await requestResult(store.get(batch.id)) as GenerationBatch | undefined
-            if (existing !== undefined && canonicalSerialize(existing) !== canonicalSerialize(batch)) {
+            const existingValue = await requestResult(store.get(batch.id))
+            const existing = existingValue === undefined ? undefined : parseBatch(existingValue)
+            if (existing !== undefined && !hasSameBatchIdentity(existing, batch)) {
                 throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Batch identity already has different content')
             }
-            if (existing === undefined) await requestResult(store.add(batch))
+            if (existing === undefined) {
+                await requestResult(store.add(batch))
+                return batch
+            }
+            return existing
         })
         const readback = await this.runTransaction(['batches'], 'readonly', transaction => (
             requestResult(transaction.objectStore('batches').get(batch.id))
         ))
-        if (canonicalSerialize(readback) !== canonicalSerialize(batch)) {
+        if (readback === undefined
+            || canonicalSerialize(parseBatch(readback)) !== canonicalSerialize(selected)) {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Batch readback mismatch')
         }
-        return structuredClone(batch)
+        return structuredClone(selected)
+    }
+
+    async getBatch(id: string): Promise<GenerationBatch | null> {
+        const value = await this.runTransaction(['batches'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('batches').get(id))
+        ))
+        return value === undefined ? null : structuredClone(parseBatch(value))
+    }
+
+    async listBatches(): Promise<GenerationBatch[]> {
+        const values = await this.runTransaction(['batches'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('batches').index('by-created-at').getAll())
+        )) as unknown[]
+        return values.map(value => structuredClone(parseBatch(value))).reverse()
+    }
+
+    async setBatchControl(input: {
+        batchId: string
+        state: GenerationBatch['state']
+        now: string
+        reason?: QueuePauseReason | null
+        failurePolicy?: QueueFailurePolicy
+    }): Promise<GenerationBatch> {
+        assertTimestamp(input.now, 'batch control time')
+        if (input.state !== 'active' && input.state !== 'paused' && input.state !== 'stopped') {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch state is invalid')
+        }
+        if (input.failurePolicy !== undefined) assertFailurePolicy(input.failurePolicy)
+        const version = await this.runTransaction(['batches'], 'readwrite', async transaction => {
+            const store = transaction.objectStore('batches')
+            const value = await requestResult(store.get(input.batchId))
+            if (value === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(value)
+            const next: GenerationBatch = {
+                ...batch,
+                state: input.state,
+                updatedAt: input.now,
+                pauseReason: input.state === 'active' ? null : input.reason ?? batch.pauseReason ?? 'user',
+                failurePolicy: input.failurePolicy ?? batch.failurePolicy,
+                version: batch.version + 1,
+            }
+            await requestResult(store.put(next))
+            return next.version
+        })
+        const readback = await this.getBatch(input.batchId)
+        if (readback === null || readback.version !== version || readback.state !== input.state) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Batch control readback mismatch')
+        }
+        return readback
     }
 
     async putResource(resource: QueueResourceRecord): Promise<QueueResourceRecord> {
@@ -683,11 +931,164 @@ export class IndexedDBQueueRepository {
         return readback
     }
 
+    async ensureResource(resource: QueueResourceRecord): Promise<QueueResourceRecord> {
+        assertIdentifier(resource.id, 'resource id')
+        assertTimestamp(resource.createdAt, 'resource createdAt')
+        assertTimestamp(resource.updatedAt, 'resource updatedAt')
+        assertGenerationJobSnapshotSafe({ reference: resource.reference })
+        await this.runTransaction(['resources'], 'readwrite', async transaction => {
+            const store = transaction.objectStore('resources')
+            const existing = await requestResult(store.get(resource.id))
+            if (existing === undefined) {
+                await requestResult(store.add(resource))
+                return
+            }
+            const selected = selectResourceRecord(existing as QueueResourceRecord, resource)
+            if (canonicalSerialize(selected) !== canonicalSerialize(existing)) await requestResult(store.put(selected))
+        })
+        const readback = await this.getResource(resource.id)
+        if (readback === null) throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Resource readback missing')
+        return readback
+    }
+
     async getResource(id: string): Promise<QueueResourceRecord | null> {
         const value = await this.runTransaction(['resources'], 'readonly', transaction => (
             requestResult(transaction.objectStore('resources').get(id))
         )) as QueueResourceRecord | undefined
         return value === undefined ? null : structuredClone(value)
+    }
+
+    async createBatchAndEnqueue(input: CreateBatchAndEnqueueInput): Promise<CreateBatchAndEnqueueResult> {
+        const batch = batchFromInput(input.batch)
+        const candidates = input.jobs.map(storedJobFromInput)
+        const resources = [...(input.resources ?? [])]
+        if (candidates.length === 0) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'A durable batch must contain at least one job')
+        }
+        if (new Set(candidates.map(job => job.id)).size !== candidates.length
+            || new Set(candidates.map(job => job.idempotencyKey)).size !== candidates.length) {
+            throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate identity')
+        }
+        if (new Set(resources.map(resource => resource.id)).size !== resources.length) {
+            throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate resources')
+        }
+        for (const candidate of candidates) {
+            if (candidate.batchId !== batch.id || candidate.workflow !== batch.workflow) {
+                throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Job does not match its atomic batch')
+            }
+        }
+        for (const resource of resources) {
+            assertIdentifier(resource.id, 'resource id')
+            assertTimestamp(resource.createdAt, 'resource createdAt')
+            assertTimestamp(resource.updatedAt, 'resource updatedAt')
+            assertGenerationJobSnapshotSafe({ reference: resource.reference })
+        }
+
+        const selected = await this.runTransaction(
+            ['batches', 'jobs', 'resources'],
+            'readwrite',
+            async transaction => {
+                const batches = transaction.objectStore('batches')
+                const jobs = transaction.objectStore('jobs')
+                const resourceStore = transaction.objectStore('resources')
+                const existingBatchValue = await requestResult(batches.get(batch.id))
+                const existingByBatchKey = await requestResult(
+                    batches.index('by-idempotency-key').get(batch.idempotencyKey),
+                )
+                if (existingByBatchKey !== undefined
+                    && parseBatch(existingByBatchKey).id !== batch.id) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Batch idempotency key already represents different work',
+                    )
+                }
+                if (existingBatchValue !== undefined
+                    && !hasSameBatchIdentity(parseBatch(existingBatchValue), batch)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Batch identity already represents different work',
+                    )
+                }
+
+                const existingResources = new Map<string, QueueResourceRecord>()
+                for (const resource of resources) {
+                    const existing = await requestResult(resourceStore.get(resource.id)) as QueueResourceRecord | undefined
+                    existingResources.set(
+                        resource.id,
+                        existing === undefined ? resource : selectResourceRecord(existing, resource),
+                    )
+                }
+                const requiredIds = [...new Set(candidates.flatMap(candidate => (
+                    candidate.snapshot.resources.map(resource => resource.resourceId)
+                )))]
+                for (const id of requiredIds) {
+                    if (!existingResources.has(id)) {
+                        const existing = await requestResult(resourceStore.get(id)) as QueueResourceRecord | undefined
+                        if (existing !== undefined) existingResources.set(id, existing)
+                    }
+                }
+                for (const candidate of candidates) {
+                    for (const requirement of candidate.snapshot.resources) {
+                        const materialized = existingResources.get(requirement.resourceId)
+                        if (materialized === undefined
+                            || materialized.digest !== requirement.digest
+                            || materialized.persistence !== requirement.persistence
+                            || canonicalSerialize(materialized.reference) !== canonicalSerialize(requirement.reference)) {
+                            throw new QueueRepositoryError(
+                                'E_QUEUE_RECORD_INVALID',
+                                'Snapshot resource was not materialized with matching immutable content',
+                            )
+                        }
+                    }
+                }
+
+                const idempotency = jobs.index('by-idempotency-key')
+                const result: StoredJobRecord[] = []
+                const additions: StoredJobRecord[] = []
+                for (const candidate of candidates) {
+                    const existingValue = await requestResult(idempotency.get(candidate.idempotencyKey))
+                    if (existingValue === undefined) {
+                        additions.push(candidate)
+                        result.push(candidate)
+                        continue
+                    }
+                    const existing = parseStoredJob(existingValue)
+                    if (existing.snapshotHash !== candidate.snapshotHash
+                        || existing.batchId !== candidate.batchId
+                        || existing.workflow !== candidate.workflow
+                        || existing.sceneId !== candidate.sceneId
+                        || existing.compositionPlanHash !== candidate.compositionPlanHash) {
+                        throw new QueueRepositoryError(
+                            'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                            'Idempotency key already represents different immutable work',
+                        )
+                    }
+                    result.push(existing)
+                }
+                if (existingBatchValue === undefined) await requestResult(batches.add(batch))
+                for (const resource of resources) {
+                    const existing = await requestResult(resourceStore.get(resource.id)) as QueueResourceRecord | undefined
+                    if (existing === undefined) {
+                        await requestResult(resourceStore.add(resource))
+                    } else {
+                        const selectedResource = existingResources.get(resource.id) as QueueResourceRecord
+                        if (canonicalSerialize(existing) !== canonicalSerialize(selectedResource)) {
+                            await requestResult(resourceStore.put(selectedResource))
+                        }
+                    }
+                }
+                await Promise.all(additions.map(candidate => requestResult(jobs.add(candidate))))
+                return result
+            },
+        )
+        const [readbackBatch, readbackJobs] = await Promise.all([
+            this.getBatch(batch.id),
+            this.getJobsByIds(selected.map(job => job.id)),
+        ])
+        if (readbackBatch === null || readbackJobs.some(job => job === null)) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Atomic enqueue readback mismatch')
+        }
+        return { batch: readbackBatch, jobs: readbackJobs as GenerationJob[] }
     }
 
     enqueue(input: EnqueueGenerationJobInput): Promise<GenerationJob> {
@@ -708,7 +1109,10 @@ export class IndexedDBQueueRepository {
             const idempotency = jobs.index('by-idempotency-key')
             const batchIds = [...new Set(candidates.map(job => job.batchId))]
             const batchValues = await Promise.all(batchIds.map(id => requestResult(batches.get(id))))
-            const batchById = new Map(batchIds.map((id, index) => [id, batchValues[index] as GenerationBatch | undefined]))
+            const batchById = new Map(batchIds.map((id, index) => [
+                id,
+                batchValues[index] === undefined ? undefined : parseBatch(batchValues[index]),
+            ]))
             for (const candidate of candidates) {
                 const batch = batchById.get(candidate.batchId)
                 if (batch === undefined) {
@@ -784,14 +1188,23 @@ export class IndexedDBQueueRepository {
         if (!Number.isSafeInteger(input.ttlMs) || input.ttlMs < 1) {
             throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Lease ttl is invalid')
         }
-        const result = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+        const result = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const storedValue = await requestResult(jobs.get(input.jobId))
             if (storedValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(storedValue)
+            const batchValue = await requestResult(transaction.objectStore('batches').get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             const existing = parseLease(await requestResult(leases.get(input.jobId)))
-            if (existing !== null || (stored.state !== 'queued' && stored.state !== 'recovering')) return null
+            if (existing !== null
+                || stored.state !== 'queued'
+                || batch.state !== 'active'
+                || stored.cancelRequestedAt !== null
+                || Date.parse(stored.readyAt) > Date.parse(input.now)) return null
             assertJobTransition(stored.state, 'leased')
             const lease: LeaseRecord = {
                 jobId: stored.id,
@@ -815,6 +1228,31 @@ export class IndexedDBQueueRepository {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Lease readback mismatch')
         }
         return readback
+    }
+
+    async claimNext(input: {
+        owner: string
+        now: string
+        ttlMs: number
+        workflow?: GenerationWorkflow
+    }): Promise<GenerationJob | null> {
+        let cursor: string | null = null
+        do {
+            const page = await this.listJobs({ states: ['queued'], cursor, limit: 250 })
+            for (const job of page.items) {
+                if (input.workflow !== undefined && job.workflow !== input.workflow) continue
+                if (job.cancelRequestedAt !== null || Date.parse(job.readyAt) > Date.parse(input.now)) continue
+                const claimed = await this.acquireLease({
+                    jobId: job.id,
+                    owner: input.owner,
+                    now: input.now,
+                    ttlMs: input.ttlMs,
+                })
+                if (claimed !== null) return claimed
+            }
+            cursor = page.nextCursor
+        } while (cursor !== null)
+        return null
     }
 
     async heartbeatLease(input: HeartbeatQueueLeaseInput): Promise<GenerationJob> {
@@ -859,7 +1297,32 @@ export class IndexedDBQueueRepository {
             if (storedValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(storedValue)
             const lease = parseLease(await requestResult(leases.get(input.jobId)))
-            if (stored.state === input.to) return { stored, lease, idempotent: true }
+            if (stored.state === input.to) {
+                if ((stored.state === 'leased' || stored.state === 'running')
+                    && (lease === null
+                        || input.leaseOwner === undefined
+                        || input.leaseToken === undefined
+                        || lease.owner !== input.leaseOwner
+                        || lease.token !== input.leaseToken
+                        || Date.parse(lease.expiresAt) < Date.parse(input.now))) {
+                    throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
+                }
+                if (input.outputTransactionId !== undefined
+                    && stored.outputTransactionId !== input.outputTransactionId) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Terminal output transaction does not match the committed job',
+                    )
+                }
+                if (input.artifactReference !== undefined
+                    && canonicalSerialize(stored.artifactReference) !== canonicalSerialize(input.artifactReference)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Terminal artifact does not match the committed job',
+                    )
+                }
+                return { stored, lease, idempotent: true }
+            }
             if (isTerminalJobState(stored.state)) {
                 throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
             }
@@ -874,10 +1337,25 @@ export class IndexedDBQueueRepository {
             if (input.to === 'leased') {
                 throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Leases must be acquired through CAS')
             }
+            if (input.to === 'succeeded' && stored.cancelRequestedAt !== null) {
+                throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before output commit')
+            }
+            if (input.to === 'succeeded'
+                && (input.outputTransactionId === undefined
+                    || input.outputTransactionId === null
+                    || input.artifactReference === undefined
+                    || input.artifactReference === null)) {
+                throw new QueueRepositoryError(
+                    'E_QUEUE_RECORD_INVALID',
+                    'Succeeded queue jobs require OutputWriter transaction and artifact linkage',
+                )
+            }
             if (stored.state === 'leased' || stored.state === 'running') {
                 if (lease === null
                     || input.leaseOwner === undefined
+                    || input.leaseToken === undefined
                     || lease.owner !== input.leaseOwner
+                    || lease.token !== input.leaseToken
                     || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
                     throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
                 }
@@ -923,6 +1401,7 @@ export class IndexedDBQueueRepository {
                     finishedAt: input.now,
                     outcome,
                     diagnosticEventId: input.lastDiagnosticEventId ?? null,
+                    failureKind: input.failureKind ?? null,
                 }))
             }
 
@@ -954,8 +1433,10 @@ export class IndexedDBQueueRepository {
     async updateProgress(input: {
         jobId: string
         leaseOwner: string
+        leaseToken: string
         now: string
         progress: GenerationJobProgress
+        expectedVersion?: number
         lastDiagnosticEventId?: string | null
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'progress time')
@@ -973,7 +1454,14 @@ export class IndexedDBQueueRepository {
             if (isTerminalJobState(stored.state)) {
                 throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
             }
-            if (lease === null || lease.owner !== input.leaseOwner || stored.state !== 'running') {
+            if (input.expectedVersion !== undefined && stored.version !== input.expectedVersion) {
+                throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Queue job version changed')
+            }
+            if (lease === null
+                || lease.owner !== input.leaseOwner
+                || lease.token !== input.leaseToken
+                || Date.parse(lease.expiresAt) < Date.parse(input.now)
+                || stored.state !== 'running') {
                 throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
             }
             const next = {
@@ -995,15 +1483,341 @@ export class IndexedDBQueueRepository {
         return readback
     }
 
-    async recoverExpiredLeases(now: string): Promise<string[]> {
+    async bindOutputTransaction(input: {
+        jobId: string
+        leaseOwner: string
+        leaseToken: string
+        now: string
+        outputTransactionId: string
+        artifactReference: QueueArtifactReference
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'output bind time')
+        assertIdentifier(input.outputTransactionId, 'output transaction id')
+        const version = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+            const jobs = transaction.objectStore('jobs')
+            const [jobValue, leaseValue] = await Promise.all([
+                requestResult(jobs.get(input.jobId)),
+                requestResult(transaction.objectStore('leases').get(input.jobId)),
+            ])
+            if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+            const stored = parseStoredJob(jobValue)
+            const lease = parseLease(leaseValue)
+            if (stored.cancelRequestedAt !== null) {
+                throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before output bind')
+            }
+            if (stored.state !== 'running'
+                || lease === null
+                || lease.owner !== input.leaseOwner
+                || lease.token !== input.leaseToken
+                || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
+                throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
+            }
+            if (stored.outputTransactionId !== null) {
+                if (stored.outputTransactionId !== input.outputTransactionId) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Queue job is already bound to another output transaction',
+                    )
+                }
+                if (canonicalSerialize(stored.artifactReference) !== canonicalSerialize(input.artifactReference)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Queue job is already bound to another output artifact',
+                    )
+                }
+                return stored.version
+            }
+            const next: StoredJobRecord = {
+                ...stored,
+                outputTransactionId: input.outputTransactionId,
+                artifactReference: { ...input.artifactReference },
+                updatedAt: input.now,
+                version: stored.version + 1,
+            }
+            await requestResult(jobs.put(next))
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version
+            || readback.outputTransactionId !== input.outputTransactionId
+            || canonicalSerialize(readback.artifactReference) !== canonicalSerialize(input.artifactReference)) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Output bind readback mismatch')
+        }
+        return readback
+    }
+
+    async recoverFilesCommittedSuccess(input: {
+        jobId: string
+        now: string
+        outputTransactionId: string
+        artifactReference: QueueArtifactReference
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'output recovery time')
+        const version = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const jobs = transaction.objectStore('jobs')
+            const value = await requestResult(jobs.get(input.jobId))
+            if (value === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+            const stored = parseStoredJob(value)
+            if (stored.state === 'succeeded') {
+                if (stored.outputTransactionId !== input.outputTransactionId
+                    || canonicalSerialize(stored.artifactReference) !== canonicalSerialize(input.artifactReference)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Recovered output linkage differs from terminal queue state',
+                    )
+                }
+                return stored.version
+            }
+            if (isTerminalJobState(stored.state)) {
+                throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
+            }
+            if (stored.cancelRequestedAt !== null) {
+                throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before recovery')
+            }
+            if (stored.outputTransactionId !== input.outputTransactionId
+                || canonicalSerialize(stored.artifactReference) !== canonicalSerialize(input.artifactReference)) {
+                throw new QueueRepositoryError(
+                    'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                    'Files-committed journal is not pre-bound to this queue job',
+                )
+            }
+            let next = updateJobState(stored, 'succeeded', input.now)
+            next = {
+                ...next,
+                outputTransactionId: input.outputTransactionId,
+                artifactReference: { ...input.artifactReference },
+            }
+            if (stored.attemptCount > 0) {
+                const attemptId = `${stored.id}:${stored.attemptCount}`
+                const attempt = await requestResult(transaction.objectStore('attempts').get(attemptId))
+                if (isRecord(attempt) && attempt.outcome === 'running') {
+                    await requestResult(transaction.objectStore('attempts').put({
+                        ...attempt,
+                        finishedAt: input.now,
+                        outcome: 'succeeded',
+                    }))
+                }
+            }
+            await Promise.all([
+                requestResult(jobs.put(next)),
+                requestResult(transaction.objectStore('leases').delete(stored.id)),
+            ])
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version || readback.state !== 'succeeded') {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Output recovery readback mismatch')
+        }
+        return readback
+    }
+
+    completeSucceeded(input: {
+        jobId: string
+        leaseOwner: string
+        leaseToken: string
+        now: string
+        outputTransactionId: string
+        artifactReference: QueueArtifactReference
+        lastDiagnosticEventId?: string | null
+    }): Promise<GenerationJob> {
+        return this.transitionJob({ ...input, to: 'succeeded' })
+    }
+
+    async requestCancel(input: {
+        jobId: string
+        now: string
+        reason?: 'user' | 'batch' | 'shutdown'
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'cancel request time')
+        const result = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+            const jobs = transaction.objectStore('jobs')
+            const leases = transaction.objectStore('leases')
+            const value = await requestResult(jobs.get(input.jobId))
+            if (value === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+            const stored = parseStoredJob(value)
+            if (isTerminalJobState(stored.state)) return stored
+            if (stored.cancelRequestedAt !== null) return stored
+            const reason = input.reason ?? 'user'
+            if (stored.state === 'running') {
+                const next: StoredJobRecord = {
+                    ...stored,
+                    cancelRequestedAt: input.now,
+                    cancelReason: reason,
+                    updatedAt: input.now,
+                    version: stored.version + 1,
+                }
+                await requestResult(jobs.put(next))
+                return next
+            }
+            const next = {
+                ...updateJobState(stored, 'cancelled', input.now),
+                cancelRequestedAt: input.now,
+                cancelReason: reason,
+            }
+            if (stored.state === 'leased') await requestResult(leases.delete(stored.id))
+            await requestResult(jobs.put(next))
+            return next
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== result.version) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Cancel request readback mismatch')
+        }
+        return readback
+    }
+
+    async requestCancelBatch(input: {
+        batchId?: string
+        now: string
+        reason?: 'user' | 'batch' | 'shutdown'
+    }): Promise<number> {
+        let cursor: string | null = null
+        let changed = 0
+        do {
+            const page = await this.listJobs({ batchId: input.batchId, cursor, limit: 250 })
+            for (const job of page.items) {
+                if (isTerminalJobState(job.state)) continue
+                const cancelled = await this.requestCancel({
+                    jobId: job.id,
+                    now: input.now,
+                    reason: input.reason ?? 'batch',
+                })
+                if (cancelled.cancelRequestedAt !== null) changed += 1
+            }
+            cursor = page.nextCursor
+        } while (cursor !== null)
+        return changed
+    }
+
+    async skipJob(input: { jobId: string; now: string; expectedVersion?: number }): Promise<GenerationJob> {
+        const job = await this.getJob(input.jobId)
+        if (job === null) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+        if (job.state === 'running' || job.state === 'leased') {
+            return this.requestCancel({ jobId: job.id, now: input.now, reason: 'user' })
+        }
+        return this.transitionJob({
+            jobId: input.jobId,
+            to: 'skipped',
+            now: input.now,
+            expectedVersion: input.expectedVersion,
+        })
+    }
+
+    async requeueAfterFailure(input: {
+        jobId: string
+        leaseOwner: string
+        leaseToken: string
+        now: string
+        readyAt: string
+        failureKind: QueueFailureKind
+        lastDiagnosticEventId?: string | null
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'retry transition time')
+        assertTimestamp(input.readyAt, 'retry readyAt')
+        const version = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const jobs = transaction.objectStore('jobs')
+            const leases = transaction.objectStore('leases')
+            const attempts = transaction.objectStore('attempts')
+            const [jobValue, leaseValue] = await Promise.all([
+                requestResult(jobs.get(input.jobId)),
+                requestResult(leases.get(input.jobId)),
+            ])
+            if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+            const stored = parseStoredJob(jobValue)
+            const lease = parseLease(leaseValue)
+            if (stored.cancelRequestedAt !== null) {
+                throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before retry')
+            }
+            if (stored.state !== 'running'
+                || lease === null
+                || lease.owner !== input.leaseOwner
+                || lease.token !== input.leaseToken
+                || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
+                throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
+            }
+            const attemptId = `${stored.id}:${stored.attemptCount}`
+            const attempt = await requestResult(attempts.get(attemptId))
+            if (!isRecord(attempt)) {
+                throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Active queue attempt is missing')
+            }
+            await requestResult(attempts.put({
+                ...attempt,
+                finishedAt: input.now,
+                outcome: 'interrupted',
+                diagnosticEventId: input.lastDiagnosticEventId ?? null,
+                failureKind: input.failureKind,
+            }))
+            const terminal = stored.attemptCount >= stored.maxAttempts
+            let next = updateJobState(stored, terminal ? 'failed' : 'recovering', input.now)
+            if (!terminal) next = updateJobState(next, 'queued', input.now)
+            next = {
+                ...next,
+                readyAt: input.readyAt,
+                lastDiagnosticEventId: input.lastDiagnosticEventId ?? stored.lastDiagnosticEventId,
+            }
+            await Promise.all([
+                requestResult(jobs.put(next)),
+                requestResult(leases.delete(stored.id)),
+            ])
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Retry transition readback mismatch')
+        }
+        return readback
+    }
+
+    async retryFailedJobs(input: {
+        sourceBatchId: string
+        targetBatch: DurableGenerationBatchInput
+    }): Promise<CreateBatchAndEnqueueResult> {
+        const sourceJobs: GenerationJob[] = []
+        let cursor: string | null = null
+        do {
+            const page = await this.listJobs({ batchId: input.sourceBatchId, states: ['failed'], cursor, limit: 250 })
+            sourceJobs.push(...page.items)
+            cursor = page.nextCursor
+        } while (cursor !== null)
+        if (sourceJobs.length === 0) {
+            const existing = await this.getBatch(input.targetBatch.id)
+            if (existing === null) {
+                throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'There are no failed jobs to retry')
+            }
+            return { batch: existing, jobs: [] }
+        }
+        const jobs = sourceJobs.map((source, index): EnqueueGenerationJobInput => {
+            const retryDigest = hashCanonicalValue({ targetBatchId: input.targetBatch.id, sourceJobId: source.id })
+            return {
+                id: `retry-job-${retryDigest}`,
+                batchId: input.targetBatch.id,
+                workflow: source.workflow,
+                sceneId: source.sceneId,
+                createdAt: input.targetBatch.createdAt,
+                priority: source.priority,
+                ordinal: index,
+                snapshot: source.snapshot,
+                compositionPlanHash: source.compositionPlanHash,
+                maxAttempts: source.maxAttempts,
+                idempotencyKey: `retry-enqueue-${retryDigest}`,
+                retryOfJobId: source.id,
+                rootJobId: source.rootJobId,
+            }
+        })
+        return this.createBatchAndEnqueue({ batch: input.targetBatch, jobs })
+    }
+
+    async recoverExpiredLeases(
+        now: string,
+        options: { includeUnexpired?: boolean } = {},
+    ): Promise<string[]> {
         assertTimestamp(now, 'recovery time')
         const recoveredIds = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const attempts = transaction.objectStore('attempts')
-            const expired = await requestResult(
-                leases.index('by-expires-at').getAll(this.keyRange.upperBound(now)),
-            ) as LeaseRecord[]
+            const expired = await requestResult(options.includeUnexpired === true
+                ? leases.getAll()
+                : leases.index('by-expires-at').getAll(this.keyRange.upperBound(now))) as LeaseRecord[]
             const values = await Promise.all(expired.map(lease => requestResult(jobs.get(lease.jobId))))
             const ids: string[] = []
             for (let index = 0; index < expired.length; index += 1) {
@@ -1139,4 +1953,87 @@ export class IndexedDBQueueRepository {
                 : null,
         }
     }
+
+    async listJobProjections(input: ListGenerationJobsInput = {}): Promise<GenerationJobProjectionPage> {
+        const page = await this.listJobs(input)
+        return {
+            items: page.items.map(job => ({
+                id: job.id,
+                batchId: job.batchId,
+                workflow: job.workflow,
+                sceneId: job.sceneId,
+                state: job.state,
+                createdAt: job.createdAt,
+                updatedAt: job.updatedAt,
+                priority: job.priority,
+                ordinal: job.ordinal,
+                attemptCount: job.attemptCount,
+                maxAttempts: job.maxAttempts,
+                progress: { ...job.progress },
+                readyAt: job.readyAt,
+                cancelRequestedAt: job.cancelRequestedAt,
+                retryOfJobId: job.retryOfJobId,
+                lastDiagnosticEventId: job.lastDiagnosticEventId,
+                outputTransactionId: job.outputTransactionId,
+                version: job.version,
+            })),
+            nextCursor: page.nextCursor,
+        }
+    }
+
+    async getBatchSummary(batchId: string): Promise<GenerationBatchSummary> {
+        if (await this.getBatch(batchId) === null) {
+            throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+        }
+        const states = Object.fromEntries(GENERATION_JOB_STATES.map(state => [state, 0])) as Record<
+            GenerationJobState,
+            number
+        >
+        let total = 0
+        let completed = 0
+        let progressCurrent = 0
+        let progressTotal = 0
+        const recentCompletedAt: string[] = []
+        let cursor: string | null = null
+        do {
+            const page = await this.listJobProjections({ batchId, cursor, limit: 1_000 })
+            for (const job of page.items) {
+                total += 1
+                states[job.state] += 1
+                progressTotal += 1
+                progressCurrent += isTerminalJobState(job.state)
+                    ? 1
+                    : job.progress.total <= 0
+                        ? 0
+                        : Math.min(1, job.progress.current / job.progress.total)
+                if (isTerminalJobState(job.state)) {
+                    completed += 1
+                    recentCompletedAt.push(job.updatedAt)
+                }
+            }
+            cursor = page.nextCursor
+        } while (cursor !== null)
+        recentCompletedAt.sort((left, right) => right.localeCompare(left))
+        return {
+            batchId,
+            total,
+            completed,
+            progressCurrent,
+            progressTotal,
+            states,
+            recentCompletedAt: recentCompletedAt.slice(0, 20),
+        }
+    }
+}
+
+let runtimeQueueRepository: IndexedDBQueueRepository | null = null
+
+export function getRuntimeQueueRepository(): IndexedDBQueueRepository {
+    runtimeQueueRepository ??= new IndexedDBQueueRepository()
+    return runtimeQueueRepository
+}
+
+export function resetRuntimeQueueRepositoryForTests(): void {
+    runtimeQueueRepository?.close()
+    runtimeQueueRepository = null
 }

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { patchAndroidSigning } from './patch-android-signing.mjs'
+import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
 
 const root = process.cwd()
 const read = path => readFileSync(join(root, path), 'utf8')
@@ -13,13 +14,65 @@ const tauri = JSON.parse(read('src-tauri/tauri.conf.json'))
 const android = JSON.parse(read('src-tauri/tauri.android.conf.json'))
 
 assert.equal(policy.applicationId, tauri.identifier)
-assert.equal(policy.debugApplicationIdSuffix, '.dev')
+assert.equal(policy.debugApplicationIdSuffix, '')
 assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.match(policy.updateBaseline.sha256, /^[A-F0-9]{64}$/)
-assert.equal(policy.updateBaseline.tag, 'v2.8.0')
-assert.match(policy.updateBaseline.url, /\/v2\.8\.0\/NAIS2_2\.8\.0-universal\.apk$/)
+assert.equal(policy.updateBaseline, null)
+assert.equal(policy.firstReleaseForApplicationId, true)
+assert.equal(policy.firstReleaseVersion, pkg.version)
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), null)
+assert.throws(
+    () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
+    /first release of an applicationId/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline(
+            {
+                updateBaseline: null,
+                firstReleaseForApplicationId: true,
+                firstReleaseVersion: pkg.version,
+            },
+            '2.8.2',
+        ),
+    /limited to firstReleaseVersion/,
+)
+assert.equal(
+    resolveAndroidUpdateBaseline({
+        updateBaseline: { tag: 'v2.8.0' },
+        firstReleaseForApplicationId: false,
+    }, pkg.version),
+    'v2.8.0',
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline({
+            updateBaseline: { tag: 'v2.8.0' },
+            firstReleaseForApplicationId: true,
+        }, pkg.version),
+    /requires firstReleaseForApplicationId to be false/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline({
+            updateBaseline: { tag: '2.8.0' },
+            firstReleaseForApplicationId: false,
+        }, pkg.version),
+    /stable v<major>\.<minor>\.<patch> form/,
+)
+assert.throws(
+    () => resolveAndroidUpdateBaseline({ updateBaseline: { tag: 'v2.8.0' } }, pkg.version),
+    /requires firstReleaseForApplicationId to be false/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline(
+            { updateBaseline: { tag: 'v2.1000.0' }, firstReleaseForApplicationId: false },
+            pkg.version,
+        ),
+    /outside the supported versionCode range/,
+)
 assert.ok(policy.signing.keyAlias)
 assert.deepEqual(policy.requiredAbis, ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
 assert.match(pkg.devDependencies.playwright, /^\d+\.\d+\.\d+$/)
@@ -38,6 +91,7 @@ assert.equal(pkg.scripts['test:android-debug'], 'node scripts/verify-android-apk
 
 for (const path of [
     'scripts/verify-release-version.mjs',
+    'scripts/android-update-baseline.mjs',
     'scripts/patch-android-signing.mjs',
     'scripts/prepare-android-release.mjs',
     'scripts/verify-android-apk.mjs',
@@ -65,8 +119,6 @@ for (const requiredText of [
     'contents: write',
     'outputs/apk/universal/debug/app-universal-debug.apk',
     'android-release-policy.json',
-    'updateBaseline.url',
-    'updateBaseline.sha256',
     'npm run test:responsive-layout',
     'playwright install --with-deps chromium',
     'verify_or_upload',
@@ -77,11 +129,8 @@ assert.ok(
     workflow.indexOf('Remove signing material') < workflow.indexOf('signed-install:'),
     'Signing material must be removed before the no-secret emulator job starts',
 )
-assert.ok(
-    workflow.indexOf('NAIS2_2.8.0-baseline.apk') <
-        workflow.lastIndexOf('npm run test:android-release'),
-    'The pinned baseline must be installed before the current release APK',
-)
+assert.ok(!workflow.includes('Download pinned update baseline'))
+assert.ok(!workflow.includes('NAIS2_2.8.0-baseline.apk'))
 
 const desktopWorkflow = read('.github/workflows/build.yml')
 for (const requiredText of [
@@ -125,6 +174,7 @@ for (const ignoredSecret of [
     'keystore.properties',
     '*.jks',
     '*.keystore',
+    '/keystore_base64.txt',
     '*.p12',
     '*.pfx',
     '.env.*',
@@ -175,8 +225,8 @@ android {
     assert.equal((twice.match(/NAIS_ANDROID_SIGNING_START/g) ?? []).length, 1)
     assert.equal((twice.match(/NAIS_ANDROID_SIGNING_CONFIG/g) ?? []).length, 1)
     assert.equal((twice.match(/NAIS_ANDROID_DEBUG_ID/g) ?? []).length, 1)
-    assert.match(twice, /naisReleaseSigningConfig\?\.let \{ signingConfig = it \}/)
-    assert.match(twice, /applicationIdSuffix = "\.dev"/)
+    assert.equal((twice.match(/naisUserSigningConfig\?\.let \{ signingConfig = it \}/g) ?? []).length, 2)
+    assert.doesNotMatch(twice, /applicationIdSuffix\s*=/)
 } finally {
     rmSync(temporaryRoot, { recursive: true, force: true })
 }

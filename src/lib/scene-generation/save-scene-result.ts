@@ -2,7 +2,7 @@ import { createThumbnail } from '@/lib/image-utils'
 import { getRotationCharacterFolderName, sanitizePathComponent } from '@/lib/scene-output-path'
 import { type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
-import { getRuntimeOutputWriter } from '@/services/output/output-writer'
+import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useSceneStore, type SceneCard } from '@/stores/scene-store'
@@ -17,7 +17,7 @@ export interface SaveSceneResultContext {
     rotationCharacterFolderName?: string
 }
 
-interface SaveSceneResultOptions {
+export interface SaveSceneResultOptions {
     canSave?: () => boolean
     sentPayloadSummary?: string
     /**
@@ -26,6 +26,16 @@ interface SaveSceneResultOptions {
      * scene/history publication below.
      */
     beforeFinalize?: () => boolean
+    outputTransactionId?: string
+    sourceJobId?: string
+    commitDurable?: (result: OutputWriteResult) => void | Promise<void>
+    /** Immutable enqueue-time output context for durable execution. */
+    outputContext?: {
+        useAbsoluteScenePath: boolean
+        metadataMode: GenerationParams['metadataMode']
+        presetName: string
+        sceneName: string
+    }
 }
 
 const toDataUrl = (imageData: string, mimeType: string): string =>
@@ -77,7 +87,7 @@ function sceneOutputDirectory(params: {
 // HistoryPanel's newImageGenerated event, generation history thumbnail, and
 // encoded-vibe cache updates back into CharacterStore.
 export async function saveSceneResult(
-    scene: SceneCard,
+    scene: Pick<SceneCard, 'id' | 'name'>,
     ctx: SaveSceneResultContext,
     finalPrompt: string,
     params: GenerationParams,
@@ -93,8 +103,13 @@ export async function saveSceneResult(
     const metadataParams: GenerationParams = {
         ...params,
         sentPayloadSummary: options.sentPayloadSummary,
+        ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
     }
-    const { useAbsoluteScenePath, metadataMode } = useSettingsStore.getState()
+    const liveSettings = useSettingsStore.getState()
+    const useAbsoluteScenePath = options.outputContext?.useAbsoluteScenePath ?? liveSettings.useAbsoluteScenePath
+    const metadataMode = options.outputContext?.metadataMode ?? liveSettings.metadataMode
+    const presetName = options.outputContext?.presetName ?? currentPreset?.name ?? 'Default'
+    const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fallbackFileName = `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
     const policyFileName = params.outputPolicySummary?.filenameTemplateId
@@ -118,8 +133,8 @@ export async function saveSceneResult(
     const destination = sceneOutputDirectory({
         sceneSavePath: ctx.sceneSavePath,
         useAbsoluteScenePath,
-        presetName: currentPreset?.name || 'Default',
-        sceneName: scene.name,
+        presetName,
+        sceneName,
         rotationCharacterId: ctx.rotationCharacterId,
         rotationCharacterFolderName: ctx.rotationCharacterFolderName,
     })
@@ -130,6 +145,11 @@ export async function saveSceneResult(
     let workflowCommitted = false
     try {
         const output = await getRuntimeOutputWriter().write({
+            ...(options.outputTransactionId === undefined
+                ? {}
+                : { transactionId: options.outputTransactionId }),
+            ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
+            terminalWorkflowCommit: options.sourceJobId !== undefined,
             destination: {
                 ...(params.portableOutputDirectory === undefined
                     ? {}
@@ -171,7 +191,7 @@ export async function saveSceneResult(
             },
             generateThumbnail: createThumbnail,
             canCommit: canSave,
-            commitWorkflow: outputResult => {
+            commitWorkflow: async outputResult => {
                 if (!canSave()) {
                     sessionInvalid = true
                     throw new Error('Scene generation session changed before output publication')
@@ -200,6 +220,7 @@ export async function saveSceneResult(
                 } catch (eventError) {
                     console.warn('[SceneGeneration] Failed to publish the committed output event.', eventError)
                 }
+                await options.commitDurable?.(outputResult)
                 workflowCommitted = true
             },
             rollbackWorkflow: () => {

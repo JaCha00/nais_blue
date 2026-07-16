@@ -282,7 +282,7 @@ comparison/integration이다. `tests/fixtures/README.md`에 따라 Phase 01 이�
 | Android init/signing patch | 0 | generated debug project | PASS |
 | first Android x86_64 debug build | 1 | Rust cross-build | standalone Rust PATH가 rustup target sysroot를 보지 못한 environment failure |
 | rustup-shim Android x86_64 debug build | 0 | 1 universal debug APK | PASS; source 변경 없이 PATH precedence만 교정 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
 
 ### Artifacts and gaps
 
@@ -643,7 +643,7 @@ import regex 1건이 실패했고 계약/fixture를 고친 뒤 final pass했다.
 | WSL+NDK libsodium prebuild attempt 2 | 1 | install step | static library 생성 성공 후 dependency-file path 때문에 `make install`만 실패 |
 | first `SODIUM_LIB_DIR` link | 1 | native link | crate host cfg가 `liblibsodium.a` 이름을 요구함을 확인 |
 | final process-local static link + Android build | 0 | 1 universal debug APK | Stronghold/libsodium/NAIS2 x86_64 Rust와 Gradle APK PASS; tracked binary 없음 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
 | emulator vault UI/lifecycle | 0 | create → unlocked → lock | Android API 35; privacy warning, password input, two slots, encrypted snapshot names와 final locked state 확인 |
 
 Android emulator QA는 installed debug user data를 보존하고 `pm clear`를 실행하지 않았다.
@@ -792,7 +792,7 @@ repository schema는 변경하지 않았다.
 | `rustfmt --edition 2021 --check src-tauri/src/nai_transport.rs` | 0 | new Rust source | PASS |
 | first repository-wide `cargo fmt --check` | 1 | existing Rust files + initial new file | 새 파일 formatting은 교정해 독립 check 0; pre-existing `build.rs`, `lib.rs`, `main.rs`는 broad unrelated reformat하지 않음 |
 | final Android x86_64 debug build | 0 | 1 universal debug APK | process-local generated libsodium link; tracked binary/dependency 없음 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 PASS |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 PASS |
 | final emulator install/start/Scene route | 0 | API 35 x86_64 | `install -r`, Main foreground, UI-tree Scene route, run/force-stop crash buffer empty |
 | `git diff --check` | 0 | worktree diff | whitespace error 없음; line-ending warnings only |
 
@@ -1572,3 +1572,1116 @@ line은 기존 passing contract의 expected diagnostic이다.
   payload/OutputWriter/Scene contracts
 - Next phase readiness: READY — pure durable queue acceptance is complete; workflow cutover requires a separately
   scoped phase with characterization/shadow enqueue and must not be inferred from this commit.
+
+## Phase 08 — QUEUE WORKFLOW CUTOVER
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `6b45a81ed37f9eed1972ca4d2579e46cfa04e7ba`
+- Branch: `agent/public-release-sync-20260714`
+- Phase 시작 working tree에는 unrelated user change `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`가 있었다. 둘 다 읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전 `npm run test:queue`는 exit 0, 4 files/20 tests였고 기존 domain/repository behavior를 고정했다.
+  Main/Scene/OutputWriter characterization도 exit 0, 3 files/47 tests로 current transport/save/session/
+  cancel/output ordering을 고정했다. 새 failure/virtualization/recovery acceptance는 production assertion을
+  완화하거나 skip하지 않고 Phase 08 source와 함께 추가했다.
+- `src/services/nai/payload.ts`, CompositionEngine/repository/migration, portable capability, old backup/v1
+  Asset Profile/legacy metadata reader와 migration fixture는 교체·삭제하지 않았다. Electron,
+  better-sqlite3, Sharp와 retired remote catalog dependency/runtime도 추가하지 않았다.
+
+### Durable enqueue, execution and recovery
+
+1. Main의 `generate({ capturePrepared: true })`와 Scene adapter가 current Composition plan, wildcard/seed,
+   parameters와 output policy를 transport 전에 capture한다. Required resource를 content-addressed managed
+   AppData에 materialize한 뒤 batch/jobs/resources를 한 IndexedDB transaction으로 등록한다.
+2. Operation ID는 DB commit acknowledgement 전까지 persisted pending identity로 재사용하고 성공 확인
+   뒤에만 회전한다. Repository unique idempotency key가 concurrent double-click과 uncertain restart replay를
+   중복 batch/artifact 없이 수렴시킨다.
+3. Queue coordinator는 Main 1 slot, active NovelAI token별 Scene 2 slots와 streaming T2I 1-slot 제한을
+   유지하며 workflow 간 slot을 직렬화한다. Lease/attempt/heartbeat, generationSessionId/cancel AbortSignal,
+   current transport/save, fragment sequence CAS와 token balance/release를 executor adapter에서 실행한다.
+4. 401/auth와 typed local I/O/ENOSPC는 batch를 pause한다. 429/timeout/transient failure는 bounded ready-at
+   backoff로 requeue하고 decode item failure는 다음 job을 계속한다. Continue/pause-on-fatal/
+   stop-on-first-error policy, item cancel/skip와 retry-failed-only lineage가 repository state를 소유한다.
+5. OutputWriter transaction과 artifact는 terminal job commit 전에 prebind된다. `sourceJobId`는 metadata와
+   diagnostic sidecar에 전달되고 path 존재만으로 success를 판단하지 않는다. files-committed journal은
+   startup에서 generic orphan보다 먼저 queue-linked recovery되고 성공 job 재실행은 output을 만들지 않는다.
+6. Startup gate는 queue-linked output recovery → generic OutputWriter orphan recovery → prior-process lease
+   recovery → runtime start 순서다. Active request cancel signal을 DB round trip보다 먼저 abort하고 terminal
+   commit에 session/lease를 재검사하므로 cancel 뒤 late response가 저장되지 않는다.
+
+### Queue Center and compatibility release
+
+- `/queue` Queue Center는 fixed-range list virtualization, batch summary, queued/running/succeeded/failed/
+  cancelled/skipped/blocked projection, pause/resume, item/batch cancel, retry failed, skip, failure policy,
+  item/total progress, recent throughput, bounded ETA와 redacted diagnostic drawer를 제공한다.
+- Keyboard Home/End/Arrow navigation, visible focus와 44px mobile touch target/safe-area를 contract로 고정했다.
+  10,000 lightweight projections에서 rendered row를 bounded하게 유지한다.
+- Main page, shared PromptPanel과 shortcuts는 durable generation command를 사용한다. Scene page도 durable
+  batch를 enqueue하되 legacy rollback flag에서는 retained `useSceneGeneration` worker를 사용한다.
+- 기존 Scene `queueCount`는 UI confirmation 뒤 현재 parameters를 snapshot하여 durable jobs로 변환할 수
+  있지만 자동 삭제/decrement하지 않는다. Queue execution authority default는 `durable`이고 `legacy`는
+  compatibility release의 explicit rollback이다. Rotation은 기존 worker/session 계약을 계속 사용한다.
+- Asset Studio의 기존 virtual list 계산을 shared fixed-range utility로 옮겨 Queue Center와 재사용했다.
+  새 runtime 또는 test dependency는 추가하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| initial `npm run test:queue` before implementation | 0 | 4 files, 20/20 | Phase 07 repository baseline PASS |
+| initial Main/Scene/OutputWriter characterization | 0 | 3 files, 47/47 | executor boundary baseline PASS |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,382 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | unexplained payload diff 0 |
+| `npm run test:composition` | 0 | 98 passed/1 skipped files; 732 passed/3 skipped tests | aggregate PASS; live opt-in only skipped |
+| `npm run test:migration` | 0 | 15 files, 135/135 | legacy/migration fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | cutover/recovery/concurrency/UI store PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | legacy/current workflow behavior PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload/source-edit contract PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | browser/desktop/Android typed cancel/timeout PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected BRIA fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix + 5 Queue Center sizes | PASS |
+| `npm run test:android-port` | 0 | source/generated manifest contract | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | forbidden runtime/tracked tooling gate | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | loopback cancel/timeout PASS |
+| `git diff --check` | 0 | tracked Phase diff | PASS |
+
+`test:queue`의 behavior matrix는 atomic enqueue/resource reuse, pause/restart/resume, immediate old lease
+recovery, dual-slot max concurrency, streaming single slot, retry failed only, 401 pause, 429 backoff, decode
+continue, missing resource blocked, wrapped ENOSPC pause, cancel no-late-output, output recovery linkage,
+idempotent operation ID와 legacy rollback을 포함한다. Responsive authoritative rerun은 `/queue`를
+390×844, 412×915, 768×1024, 1280×800, 1536×960에서 검사했다. Test skip, assertion loosen,
+catch-and-ignore 또는 failure 숨김은 추가하지 않았다.
+
+### Known residual constraints
+
+- Multi-job sequential wildcard snapshot은 앞 job commit 전에 같은 sequence proposal base를 가질 수 있다.
+  Fragment CAS는 stale publication과 duplicate artifact를 차단하지만 job 간 durable dependency projection은
+  없으므로 conflict item이 retry/fail될 수 있다(R-031).
+- Managed resource는 content-deduplicated지만 reference-aware GC가 없고, Queue Center는 DOM을 virtualize해도
+  selected batch lightweight projection을 polling한다(R-032, R-034).
+- Startup lease invalidation은 single desktop app process를 가정한다. Multi-process execution fencing,
+  real-browser quota/eviction/background throttle과 장시간 10,000+ profiling은 별도 evidence가 없다(R-033).
+- Live credential을 사용한 NovelAI kill/restart recovery, actual disk-full와 Android APK/emulator/physical
+  output은 opt-in 환경이 아니어서 실행하지 않았다. Synthetic/fault-injected code gates는 모두 통과했다.
+
+### HANDOFF REPORT
+
+- Phase: 08 — QUEUE WORKFLOW CUTOVER
+- Base HEAD: `6b45a81ed37f9eed1972ca4d2579e46cfa04e7ba`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: durable queue domain/repository/coordinator/startup/recovery/resource materializer and Main/Scene
+  adapters; queue UI store/runtime hook/Queue Center/route/shortcuts/layout/i18n; Main/Scene command callers;
+  OutputWriter/metadata/scene save linkage; shared virtualization/responsive gate; queue/output/UI/metadata/
+  characterization tests; composition-v2 architecture/status/decision/risk/limitation/verification/rollback/ledger
+- Behavior added/changed: Main/Scene durable immutable enqueue; managed resumable resources; lease/attempt executor;
+  restart recovery and idempotent output transaction; 10,000-job Queue Center; explicit non-destructive legacy
+  conversion/rollback
+- Preserved contracts: CompositionEngine and composition repository/migration; portable capability; payload source/
+  fixtures; current dual-token/streaming/source-edit/session/cancel/stale/retry/requeue/rotation/image release;
+  OutputWriter boundary; old backup/v1 Asset Profile/legacy metadata/migration fixtures; all existing user data
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; this tracked ledger. No token, prompt, signed URL,
+  image/base64 or response body artifact was created
+- Not tested and exact reason: live NovelAI/R2 was not used because this checkout had no explicit credential opt-in;
+  Android init/build/APK/emulator/physical install was not run because no isolated device/release environment was
+  authorized; actual disk-full, browser quota/eviction and multi-process fencing need controlled destructive or
+  multi-runtime environments. Static Android gates, typed JS/Rust transport tests and fault injection passed
+- Remaining risks: R-015, R-016, R-019, R-024, R-026, R-027, R-028, R-031, R-032, R-033, R-034; especially
+  sequential fragment dependency projection, managed resource retention and live restart/device release evidence
+- Rollback procedure: stop/cancel durable runtime, select Queue Center `legacy` execution authority, restart and verify
+  retained direct Main/Scene behavior; preserve queue DB, managed AppData, journals, legacy queueCount, user output,
+  unrelated `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 08 local commit. Never
+  reset/clean/delete DB/resources/user data or alter payload/Composition/OutputWriter/Scene contracts
+- Next phase readiness: READY — durable queue recovery, failed-only retry, duplicate-output prevention and both stop
+  gates are covered by deterministic behavior tests; opt-in live/release evidence remains an external gate, not a
+  Phase 08 code regression.
+
+## Phase 09 — NATIVE R2 INTEGRATION
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `69566af4a6d5f5f89b5c7c077a105d7f1f81da74`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 working tree의 unrelated `M AGENTS.md`와 generated untracked `src-tauri/src-tauri/**`를 보존했고
+  읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전에 legacy Python/Wrangler의 current-session/delta/full-sync/dry-run exact request와 non-secret
+  Asset Profile R2 projection을 characterization test로 고정했다. 최초 hoisted mock ordering failure는 test
+  harness 문제였고 `vi.hoisted`로 수정한 뒤 focused baseline 3 files/38 tests가 exit 0이었다.
+- Existing CompositionEngine/repository/migration, OutputWriter, portable capability, payload builder/fixtures,
+  Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release와 legacy importer/
+  reader/migration fixtures를 교체·삭제하지 않았다. Retired remote catalog runtime도 재도입하지 않았다.
+
+### Native profile, credential and upload boundaries
+
+1. `R2ProfileV2`는 account/jurisdiction/endpoint/bucket/prefix, `credentialRef`, transport, conflict policy와
+   public mode만 저장한다. Existing Asset Profile에는 bucket/keyPrefix/publicBaseUrl/accountId non-secret
+   projection만 기록한다.
+2. Renderer는 credential pair를 OS vault에 one-way 등록한 뒤 입력 state를 지운다. Rust만 `credentialRef`로
+   keyring secret을 resolve하며 renderer secret read command가 없다. Repository는 secret-shaped field,
+   Bearer value와 signed URL을 거부하고 diagnostics는 fixed typed error만 받는다.
+3. Desktop Rust adapter는 official `aws-sdk-s3=1.122.0`의 SigV4, rustls, streamed ByteStream, conditional
+   request와 multipart API를 사용한다. `keyring=4.1.4`와 AWS SDK는 desktop target dependency이고 Android
+   dependency tree에는 없다. File hashing은 1 MiB chunks, upload는 file/range stream이다.
+4. Guided setup은 transport, account/jurisdiction/endpoint, OS vault, connection HEAD, bucket/prefix,
+   temporary put→head→delete, path preview, conflict, public/custom domain, save의 10단계를 제공한다. Relay,
+   mobile native upload와 background worker는 explicit unsupported다.
+5. Existing Python/Wrangler panel과 네 deploy mode는 그대로다. Native directory UI는 current-session을
+   전체 directory로 재해석하지 않고 generation output의 explicit artifact set이 필요하다고 안내한다.
+
+### Conflict, queue and restart safety
+
+- Dry-run은 local scan/hash와 remote HEAD만 수행해 new/same/conflict/explicit overwrite/suffix availability를
+  표시하며 object나 multipart state를 만들지 않는다.
+- `fail`, `skip-same`, `suffix`의 single PUT과 multipart complete는 `If-None-Match: *`를 사용한다.
+  `skip-same`은 `x-amz-meta-nais2-sha256`, suffix는 content hash 첫 12자리의 deterministic key를 쓴다.
+  `overwrite`만 명시적 unconditional policy다.
+- Separate normalized IndexedDB repository가 profile, UploadJob과 manifest v2를 immediate transaction/readback,
+  unique dedupe key, CAS version과 terminal immutability로 저장한다. Retry는 bounded exponential ready-at이며
+  foreground runtime이 1초 간격으로 ready job을 다시 claim한다. Partial failure는 다음 object를 계속한다.
+- Multipart upload ID와 each completed part를 즉시 commit한다. Startup은 running을 queued로 회수하고 같은
+  upload ID에서 missing part만 전송한다. Cancel은 active multipart abort 뒤 terminal state를 쓴다. Complete
+  response가 유실되고 remote object가 checksum상 완료된 경우 `E_R2_ALREADY_COMPLETE`로 manifest를
+  reconcile해 처음부터 재업로드하지 않는다.
+- Manifest v2의 remote key/hash/size가 completed object를 delta plan에서 제외한다. Mobile은 profile read만
+  지원하고 foreground/background upload는 silent fallback 없이 unsupported다.
+
+### Dependency decision and impact
+
+- Selected: exact official AWS S3 SDK 1.122.0, Apache-2.0, Rust 1.88 compatible; minimal HTTP1/Tokio/rustls
+  features. Compatible AWS/Smithy transitive releases는 lockfile에 exact resolution됐다.
+- Selected: keyring 4.1.4, MIT OR Apache-2.0, desktop OS vault. Selected direct sha2 0.10,
+  MIT OR Apache-2.0, streaming digest.
+- Rejected: latest AWS S3 SDK because it requires Rust 1.94.1; handwritten SigV4/lower-level signer because request
+  canonicalization, conditional/multipart lifecycle와 safe error parsing을 재구현해야 한다.
+- Bundle/mobile: Rust dependencies do not enter the renderer bundle and `cargo tree --target aarch64-linux-android
+  -i aws-sdk-s3` prints no dependency. Desktop cold compile/binary graph grows; same-options clean Phase 08 binary가
+  없어 exact size delta는 측정하지 않았고 release artifact observation gate로 남겼다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform optional만 unmet |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart/1,000 partial/legacy parity PASS |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,389 modules | tsc + Vite PASS |
+| `npm run test:composition` | 0 | 102 passed/1 skipped files; 750 passed/3 skipped tests | aggregate PASS; opt-in live only skipped |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | payload diff 0 |
+| `npm run test:migration` | 0 | 15 files, 135/135 | compatibility fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | existing vault contracts PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | generation queue regression PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | legacy/current workflow PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload/source-edit PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | Asset Modules 포함 PASS |
+| `npm run test:android-port` | 0 | contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | forbidden 0; allowlisted 313; tracked tooling 0 | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | existing transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | SigV4/403/clock/404/412/multipart PASS |
+| Android-target inverse AWS dependency tree | 0 | no dependency printed | desktop-only boundary PASS |
+| `git diff --check` | 0 | tracked Phase diff | PASS |
+
+Diagnostic runs during implementation found three code/test issues and did not hide them: initial Rust fake server
+classified HEAD clock-skew as generic 403 because HEAD has no parsed body; the fixture now uses GET and provider code
+precedes status classification. A new adapter mock was first inserted into a profile fixture and caused DataCloneError;
+it was moved to the adapter. Aggregate source-contract wording expected English while UI text was Korean; the assertion
+now checks the language-independent artifact-set contract. A multipart lost-complete test then exposed stale CAS version
+use; reconciliation now re-reads the latest job before terminal commit. All final commands above were rerun at exit 0.
+
+### HANDOFF REPORT
+
+- Phase: 09 — NATIVE R2 INTEGRATION
+- Base HEAD: `69566af4a6d5f5f89b5c7c077a105d7f1f81da74`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Rust native R2 adapter/commands and Cargo pins; R2 domain/profile/upload repository/coordinator/runtime;
+  guided setup UI and platform capabilities; R2/legacy/fake server tests; package script; composition-v2 architecture,
+  status, decision, risk, limitation, verification, rollback and ledger docs
+- Behavior added/changed: desktop one-way OS-vault setup, SDK-signed streamed native upload, read-only conflict preview,
+  conditional policy enforcement, resumable multipart/retry/abort, manifest v2 dedupe and foreground restart recovery
+- Preserved contracts: existing Python/Wrangler backend and four modes; Asset Profile non-secret projection;
+  CompositionEngine/repository/migration, OutputWriter, portable capability, payload fixture parity, Scene worker/
+  dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release; legacy importers/readers/fixtures; user data
+- Tests and exit codes: final verification table above; every final executable gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; tracked implementation ledger. No credential,
+  Authorization, signed URL, local file content or image/base64 artifact was created
+- Not tested and exact reason: live Cloudflare R2/jurisdiction/custom domain and real WAN restart were not used because
+  no explicit isolated credential opt-in was provided; Android APK/emulator/physical M500_MIKU was not run because
+  native upload is intentionally unsupported on mobile and the existing device system-service blocker remains;
+  background upload is Phase 12; exact desktop binary delta lacks a same-options clean Phase 08 artifact
+- Remaining risks: R-015, R-016, R-019, R-024, R-026, R-027, R-031~R-034, R-037, R-038; provider-side multipart
+  expiry/reconciliation, live R2 evidence and desktop binary size observation remain open
+- Rollback procedure: stop/resume no new native work and abort active multipart; preserve R2 DB/manifest, OS vault,
+  Asset Profile, remote objects, user output, unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/target and all
+  other user data; switch to retained Wrangler workflow and revert only this Phase 09 local commit. Never reset/clean,
+  delete bucket/DB/vault, sweep multipart or perform destructive migration without separate user confirmation
+- Next phase readiness: READY — native desktop upload, conditional safety, restart missing-part resume and all three stop
+  gates have deterministic coverage; live provider and background-worker evidence remain explicit later gates.
+
+## Phase 10 — ORGANIZER AND DISTRIBUTION ARTIFACTS
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `ac3612e0d633cba67e38c67943185a0ed91c92d4`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 working tree의 unrelated `M AGENTS.md`와 generated untracked `src-tauri/src-tauri/**`를 보존했고
+  읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전 `OutputWriter`, filename policy, metadata v2와 existing R2 coordinator focused suite를 실행해
+  4 files/28 tests exit 0으로 현재 file/sidecar transaction과 portable path 동작을 고정했다.
+- Existing CompositionEngine/repository/migration, current OutputWriter, portable capability, payload builder/fixture,
+  Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release, old backup/v1 Asset
+  Profile/legacy metadata/migration fixtures는 교체·삭제하지 않았다. Retired online catalog/client runtime과
+  callback/deep-link도 재도입하지 않았다.
+
+### Artifact authority and distribution boundary
+
+1. Separate `nais2-organizer-artifacts` repository는 `ArtifactRecord`의 immutable original variant, source
+   job/scene identity, content checksum, portable file/thumbnail/sidecar reference, distribution variants와 remote
+   object reference만 저장한다. Raw absolute path, opaque platform token, image/base64, prompt, credential,
+   Authorization 및 signed URL은 repository validation에서 거부한다.
+2. Managed collection은 portable AppData ref를 사용한다. External folder는 current desktop process의 explicit
+   capability token registry에서만 materialize하며 authority data에 raw path를 남기지 않는다. Restart 또는
+   다른 platform에서는 silent fallback 없이 folder reselect/repair가 필요하다.
+3. Original checksum, size, format, portable ref는 immutable이다. Rename/convert/metadata strip은 distribution
+   variant만 만든다. Image, metadata와 artifact sidecar는 OutputWriter의 같은 journal/stage/rename/rollback
+   transaction으로 commit되며 artifact sidecar도 filename collision preflight에 포함된다.
+4. Metadata strict mode는 PNG/WebP/JPEG raw metadata container와 decoded alpha-LSB/color 결과를 모두 검증한다.
+   Same-format preserve는 raw path를 우선하고 Canvas conversion은 PNG/WebP만 지원한다. Canvas가 lossless WebP
+   또는 arbitrary ICC parity를 증명할 수 없으므로 lossless WebP request는 typed failure로 끝난다.
+5. Optional R2 action은 non-secret profile/key policy로 existing foreground R2 coordinator에 enqueue만 한다.
+   Organizer는 credential, signing, multipart/manifest, mobile upload 또는 background worker를 재구현하지 않는다.
+
+### Organizer interaction and responsive contract
+
+- `/organizer`는 managed/external collection, sibling folder PageUp/PageDown, adaptive thumbnail fixed-grid window,
+  keyboard Enter 다음 빈 slot, pointer/touch drag slot assignment와 duplicate block을 제공한다. 10,000 item은
+  bounded range/thumbnail cache로 필요한 tile만 materialize한다.
+- Policy panel은 actual filename, R2 key와 collision preview, copy/rename/strip/convert path, PNG/WebP,
+  quality/alpha/matte, strict metadata와 foreground R2 availability를 표시한다. Progress는 OutputWriter commit 및
+  enqueue 상태를 분리해 표시하고 failed-only distribution/R2 retry만 허용한다.
+- Organizer route를 responsive matrix에 넣었고, mobile diagnostic launcher의 safe-area position과 compact desktop
+  navigation overflow를 보정했다. 새 nav item 때문에 1536px Asset Modules tab이 clip되는 중간 failure를 발견해
+  compact desktop에서 ninth item 뒤 `More` overflow를 사용하도록 수정했다.
+
+### Dependency decision and implementation diagnostic
+
+- 새 npm/Rust dependency, Electron, Sharp, better-sqlite3, SQLite 또는 retired remote client를 추가하지 않았다.
+  Existing browser Canvas와 Tauri file/capability layer를 사용하므로 renderer/mobile bundle graph를 새 codec/native
+  library로 확장하지 않는다. License/bundle 영향이 있는 추가 dependency decision은 발생하지 않았다.
+- Initial generic OutputWriter checksum insertion은 every save before staging에 async yield를 추가해 existing Scene
+  concurrent golden의 collision ordering을 흔들었다. Full composition suite가 이를 발견했고, checksum calculation을
+  `artifactSidecarBytes`가 있는 Organizer transaction으로만 제한했다. Re-run scene characterization과 aggregate
+  suite가 통과했으며 existing generation timing/worker contract에는 추가 await가 남지 않았다.
+- Test skip, assertion loosen, catch-and-ignore 또는 failure masking은 추가하지 않았다. Live NovelAI/R2 credential,
+  external user folder mutation, raw prompt/image/secret artifact는 사용하거나 생성하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS |
+| `npm run test:composition` | 0 | 107 passed/1 skipped files; 772 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | compatibility fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | vault/legacy scan PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | retained worker/output contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | virtualization/assignment/artifact/sanitize/retry/UI PASS |
+| Phase 10 OutputWriter focus | 0 | 4 files, 30/30 | image/metadata/artifact-sidecar journal/collision/rollback PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload source untouched/PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | `/organizer` 포함 PASS |
+| `npm run test:android-port` | 0 | contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; tracked tooling 0 | forbidden runtime/dependency residue 없음 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | existing transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | existing R2 native PASS |
+| `git diff --check` | 0 | Phase diff | PASS |
+
+### HANDOFF REPORT
+
+- Phase: 10 — ORGANIZER AND DISTRIBUTION ARTIFACTS
+- Base HEAD: `ac3612e0d633cba67e38c67943185a0ed91c92d4`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Organizer artifact domain/repository/sanitizer/coordinator/runtime/collection adapter and route UI;
+  fixed-grid utility; OutputWriter/filename artifact-sidecar transaction support; nav/layout/responsive contract;
+  organizer/output tests; composition-v2 architecture/status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: immutable originals linked by artifactId to distribution variants/sidecar/R2 refs; managed and
+  explicit-capability external collections; 10,000-item virtual browser; keyboard/touch assignment; strict metadata
+  sanitation; policy/conflict/R2 preview; OutputWriter-owned copy/rename/convert/strip transaction and failed-only retry
+- Preserved contracts: CompositionEngine/repository/migration, current OutputWriter ownership, portable capability,
+  payload fixture parity, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release,
+  retained old importers/readers/fixtures, user data and retired remote-runtime removal
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; tracked implementation ledger. No token, prompt,
+  Authorization, signed URL, raw external path, image/base64 or provider response-body artifact was created
+- Not tested and exact reason: live NovelAI/R2 and WAN R2 completion were not used because no explicit isolated
+  credential opt-in was provided; actual external user folder mutation, actual disk-full and long-running WebView
+  color/profile/quota observations need a controlled environment; Android APK/emulator/physical M500_MIKU Organizer flow
+  was not run because no isolated release/device authorization was provided and the known system-service blocker remains
+- Remaining risks: R-015, R-016, R-019, R-024~R-028, R-031~R-034, R-037~R-041; especially Canvas ICC/lossless limits,
+  external-token repair, long-running thumbnail memory and live R2/device observation remain open
+- Rollback procedure: stop/cancel Organizer distribution and R2 follow-up; allow OutputWriter journal recovery; preserve
+  organizer/R2 DB, managed artifacts, originals, sidecars, remote objects, user output, unrelated `AGENTS.md` and
+  generated `src-tauri/src-tauri/**`; revert only this Phase 10 local commit. Never reset/clean/delete DB/artifacts or
+  perform a destructive migration
+- Next phase readiness: READY — deterministic Organizer distribution and retained output/worker/R2 contracts are covered;
+  live provider, physical Android and controlled filesystem/browser observation remain explicit release gates.
+
+## Phase 11 — LOCAL-FIRST SYNC CORE
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `619d0d230fad714013c20943a9e19acbc7141f69`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 시 `git status --short`, HEAD와 branch를 직접 확인했다. Unrelated `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`를 보존했으며 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- 구현 전 영향 경계의 existing behavior selection은 5 files, 32/32 tests, exit 0으로 고정했다. 새 sync tests를
+  먼저 추가한 첫 `npm run test:sync`는 source module이 아직 없어 7 files가 collection에서 실패하는 expected
+  RED였다. Source를 추가한 뒤 assertion skip/loosen 또는 catch-and-ignore 없이 최종 7 files, 144/144로 닫았다.
+- 시작 residue gate는 Base HEAD의 Phase 10 ledger 문장 두 곳 때문에 exit 1이었다. Allowlist를 넓히지 않고
+  historical 문장을 neutral wording으로 고쳤으며 final gate는 allowlisted 313, forbidden 0, exit 0이다.
+- 새 npm/Rust dependency와 lockfile 변경은 없다. Production caller, network transport, user-facing sync control,
+  background worker, encryption/key management 또는 existing user-data migration을 연결하지 않았다.
+- 추가 adversarial sanitizer canary는 unpadded/MIME/raw/offset image·binary, encoded key/URL/path, credential shape와
+  opaque-ID 오분류를 실제 envelope/outbox 경계에서 먼저 RED로 재현했다. Broad classifier가 normal prompt/model/ID를
+  막은 중간 regression도 positive fixtures로 드러났으며, skip/loosen/catch-ignore 없이 exact semantic context와
+  structured signature 검사로 좁혔다. Padded/unpadded trailing text, arbitrary whitespace alignment, rolling
+  strong-binary evidence, 최소 PNG signature의 모든 2,048 whitespace partition, high-byte binary의 모든
+  32,768 whitespace partition, Unicode whitespace, wrapped/half-nibble hex와 repository no-write 회귀를 추가한 뒤
+  final focused/full sync suite를 다시 통과했다. Canary는 synthetic 값만 썼고
+  live credential, provider response, user prompt/image/path는 출력하거나 artifact로 남기지 않았다.
+
+### Deterministic envelope and sanitizer boundary
+
+1. `SyncEnvelope` schema v1은 `schemaVersion`, stable op/entity identity, `upsert | delete`,
+   `revision = baseRevision + 1`, exact predecessor `baseOpId`, device/user identity, canonical UTC timestamp,
+   `encrypted: false`와 canonical sanitized payload를 고정한다. Normal non-root operation은 predecessor 없이
+   생성할 수 없다. Schema-v0 upgrade만 `baseOpId: null`, `lineageUnknown: true`를 durable marker로 보존한다.
+2. Whole-envelope safety invariant는 unknown key, forbidden secret/auth/session shape, signed query, absolute/local
+   path, data/blob/content URI, encoded/numeric image signature, thumbnail/base64/blob, OutputWriter journal,
+   queue lease/controller와 raw diagnostic shape를 reject한다. Encoded key/value와 URL component는 bounded
+   fixed-point decode하며 full bounded value의 every-offset raw/hex/Base64/MIME image signature, bounded strong-binary,
+   JWT/PEM/provider credential을 검사한다. Standalone generic opaque ID/reference 예외는 explicit semantic field
+   allowlist만 사용한다. Ordinary prose와 구분 불가능한 unpadded printable encoding limitation은 명시하되
+   prose/ID도 known image/strong-binary/credential/path 검사를 우회하지 않는다. Error는 canary 원문을 echo하지 않는다.
+3. Active target은 Composition document/profile/recipe/module, Scene preset/card, prompt preset/fragment,
+   allowlisted UI preference, artifact metadata와 succeeded R2 object identity다. Composition/artifact는 current
+   canonical validator를 먼저 재사용하며 nested `extensions`와 portable display path는 projection에서 제거한다.
+   Immutable generation snapshot은 no-merge policy-only entity이고 active sanitizer/outbox target이 아니다.
+
+### Operation-set conflict and tombstone authority
+
+1. Conflict result는 pairwise arrival mutation이 아니라 retained primary/conflict/inbox/outbox/tombstone의 unique
+   operation set 전체에서 매번 재계산한다. Exact predecessor ancestry, maximal branch heads, semantic-equivalent
+   cohort 대표와 locale-independent UTF-16 code-unit order가 delivery permutation과 host locale에 무관한
+   primary/conflict/status를 만든다.
+2. UI preference만 documented LWW다. Complex Composition/Scene/prompt/artifact concurrent edit는 field merge하지
+   않고 deterministic primary와 conflict copy를 보존한다. Delete가 하나라도 retained되면 tombstone이 primary며
+   concurrent/descendant upsert는 complex target의 conflict copy일 수 있어도 primary entity를 부활시키지 않는다.
+3. Tombstone store는 entity row가 없어도 independent authority다. Ordinary local upsert는 typed
+   `E_SYNC_TOMBSTONED`로 거부하고 stale/duplicate/reordered remote upsert도 recomputation에서 delete primary를
+   바꾸지 못한다. Per-entity unique operation set은 2,048개를 넘으면 fail closed하며 Phase 11은 causality를
+   추정해 record를 compact하거나 삭제하지 않는다.
+
+### Transactional local repository
+
+1. `nais2-local-sync--<user-hash>` IndexedDB는 account별 physical namespace와 exact bound-user check를 사용한다.
+   Entities/outbox/inbox/tombstones/checkpoints, scoped indexes와 record schema v2를 소유한다. Cross-user same-ID
+   operation/entity/checkpoint는 같은 authority를 공유하지 않는다.
+2. Local mutation은 sanitized sync shadow entity 또는 tombstone, local receipt와 outbox record를 같은 sync DB
+   transaction에서 commit/readback한다. 이 transaction은 production Composition/Scene/prompt/artifact source edit를
+   포함하지 않으며 runtime caller도 없으므로 end-user source + outbox atomicity로 보고하지 않는다.
+3. Inbox는 exact op hash로 duplicate를 판별하고 cross inbox/outbox op collision을 reject한다. Missing-parent
+   upsert는 deferred되고 parent arrival 뒤 같은 transaction에서 reproject된다. Delete는 missing parent에서도
+   resurrection 방지를 위해 authority를 세울 수 있다.
+4. Outbox는 pending/in-flight/retry/acked, attempt count, typed failure code, next attempt, 60-second default lease와
+   monotonic ack/checkpoint를 보존한다. Live lease의 duplicate claim은 거부하고 process reopen 뒤 expired
+   `in-flight`는 ready listing에 다시 나타나 retry 또는 새 attempt로 진행할 수 있다. Ack record는 ancestry
+   compaction 없이 retained된다. Retry transition은 claim에서 받은 attempt count와 exact lease를 CAS fence로
+   요구하므로 이전 attempt의 늦은 failure가 더 새 in-flight attempt를 덮을 수 없다.
+5. Schema upgrade는 v0 envelope와 schema-v1의 authoritative entity/outbox/tombstone/checkpoint records를 current
+   validated record로 올린다. V1에 없던 inbox는 빈 current store로 생성한다. Unknown lineage marker는
+   receive/local child 경계까지 운반되며 이 legacy store의 malformed record가 하나라도 있으면 upgrade
+   transaction을 abort해 previous database를 보존한다. Blocked/timeout open도 upgrade를 계속 성공처럼
+   정착시키지 않는다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| Phase 11 focused Vitest | 0 | 4 files, 134/134 | envelope/sanitizer/conflict/repository PASS |
+| `npm run test:sync` | 0 | 7 files, 144/144 | two-device/offline/duplicate/reorder/reconnect/conflict/delete/upgrade PASS |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS; payload source untouched |
+| `npm run test:composition` | 0 | 114 passed/1 skipped files; 916 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | retained importer/reader fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + rescue contract | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | worker/session/output contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | artifact/sanitizer/retry/UI PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | payload/worker source contracts PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | existing JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected provider fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | PASS |
+| `npm run test:android-port` | 0 | source contract | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 | closure gate PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | retained transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | retained native R2 PASS |
+| `git diff --check` | 0 | Phase diff | PASS |
+
+`test:composition`, migration과 secret-redaction에서 Node의 invalid empty `--localstorage-file` warning이
+출력됐지만 모든 해당 suite는 exit 0이었다. 이를 code regression이나 PASS 대체 근거로 사용하지 않았다.
+Live credential, provider request, raw prompt, image/base64/blob, Authorization value와 signed URL은 사용하거나
+test artifact/log로 남기지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 11 — LOCAL-FIRST SYNC CORE
+- Base HEAD: `619d0d230fad714013c20943a9e19acbc7141f69`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: `package.json`; `src/domain/sync/**`; `src/services/sync/**`; `tests/domain/sync/**`;
+  composition-v2 status/architecture/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: network-free deterministic envelope/sanitizer; user-scoped transactional sync shadow/outbox;
+  explicit lineage; operation-set conflict projection; independent tombstone; duplicate/deferred/retry/lease/ack/checkpoint;
+  fail-closed upgrade and two-device simulation. No production caller or transport was connected
+- Preserved contracts: current CompositionEngine/repository/migration, payload builder/fixtures, OutputWriter,
+  portable capability, generation queue worker count/dual-token/streaming/session/cancel/stale/retry/requeue/rotation/
+  image release, old backup/v1 profile/legacy metadata readers/fixtures, existing user data and retired runtime removal
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**` and `src-tauri/target/**`; tracked implementation ledger. Pre-existing generated
+  `src-tauri/src-tauri/**` remains unrelated/untracked. No Phase 11 payload or test artifact contains secret/path/image data
+- Not tested and exact reason: real network transport/encryption/WAN reconnect and live credentials were not run because
+  they are outside this local-only phase and no explicit isolated credential opt-in was provided; actual browser quota,
+  eviction, multi-tab/process ownership and account lifecycle were not run because the repository has no production
+  caller and focused simulation uses fake IndexedDB; physical M500_MIKU was not run because Phase 11 adds no Android UI,
+  network path or runtime caller and the known system-service blocker remains
+- Remaining risks: R-042~R-045, R-047~R-049; especially sanitizer/schema drift, production source-outbox crash recovery,
+  2,048-op compaction/retention, conservative migrated lineage, real browser/account lifecycle and later transport UX
+- Rollback procedure: preserve all app/user/output/sync records, tombstones, conflict copies, checkpoints, unrelated
+  `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 11 local commit. Never reset/clean/delete the
+  sync database, rewrite lineage/revision, force-ack attempts or perform destructive schema downgrade
+- Next phase readiness: READY — network-free two-device results converge, forbidden payload canaries are zero and
+  tombstone-only resurrection tests pass. Later production caller/transport work remains gated by R-043/R-044/R-049.
+
+## Phase 12 — SECURE SYNC TRANSPORT
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `879ddcca7ca4d515bb570633a981d6ca1089eb82`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 시 HEAD, branch와 `git status --short`를 직접 확인했다. 시작 전부터 있던 unrelated `M AGENTS.md`와
+  generated untracked `src-tauri/src-tauri/**`를 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- 구현 전 Phase 11 sync/Vault/R2/runtime-capability selection은 11 files, 158/158 tests, exit 0으로 고정했다.
+  새 behavior는 paired/unpaired/expired/replay/tamper/revoke, interruption/duplicate/tombstone/R2-missing과
+  Android lifecycle contract test로 먼저 잠근 뒤 source를 연결했다.
+- Live NovelAI/R2 credential, user prompt/image, certificate private key, Authorization, signed URL 또는 provider
+  response body를 사용하거나 test/log artifact에 남기지 않았다.
+
+### Secure desktop LAN boundary
+
+1. Desktop listener는 vault unlock 뒤 explicit start만 받고 loopback/private/link-local bind, explicit CIDR,
+   unprivileged port와 one-active-peer policy를 강제한다. Wildcard/public bind, discovery, port forwarding,
+   browser Origin/CORS와 unauthenticated manifest는 허용하지 않는다.
+2. 최대 120초 one-use pairing capability와 독립 6자리 확인 코드, CSR signing, TLS 1.3 mTLS를 사용한다.
+   `rustls`/`aws-lc-rs`가 key agreement, AEAD/record nonce, certificate validation과 ciphertext integrity를,
+   `rcgen`이 CA/server/client certificate와 CSR을 소유한다. Application-defined crypto primitive 조합은 없다.
+3. Host/client private identity는 Stronghold Credential Vault가 authority다. Native two-slot journal에는 peer
+   fingerprint/revoke, scope, monotonic sequence/recent nonce, inbound/outbound durable queue와 receipt 같은
+   non-secret state만 남긴다. Host-local fingerprint revoke와 authenticated self-revoke를 분리했다.
+4. Authenticated manifest/push/pull/ack/revoke는 2 MiB/100-operation, method/content-type/concurrency/timeout bound,
+   request cancellation과 persistent replay fence를 적용한다. Unknown/revoked/wrong-CA client는 같은 fixed denial로
+   끝나며 entity/count/checkpoint/manifest를 받지 않는다. Production TLS config를 재사용한 in-memory TLS 1.3
+   application record bit-flip test는 authentication failure와 plaintext 0 bytes를 확인한다.
+5. Renderer adapter는 native DTO exact-key/size/endpoint/fingerprint를 다시 검증한다. Server ingress는 native
+   peek → Phase 11 receive/dedupe → exact native ack, egress는 canonical delivery ID enqueue → durable remote receipt
+   → Phase 11 outbox ack → native receipt ack 순서라 interruption은 duplicate replay만 만들고 committed data를
+   제거하지 않는다. Pull/push checkpoint namespace를 분리하고 retry lease CAS를 보존한다.
+
+### Image, relay and Android gates
+
+1. JSON image fallback은 없다. Default image sync는 sanitized succeeded R2 object reference이며 missing object는
+   `E_SYNC_R2_OBJECT_MISSING`이다. Optional blob은 descriptor/policy/size/SHA-256/resume interface뿐이고 native
+   partial temp write/full checksum/atomic commit가 없어 `lanBlobTransfer=false`다.
+2. Relay는 provider-neutral `RelayTransport`와 local authenticated contract뿐이다. Production URL/provider/auth,
+   removed provider/catalog runtime, OAuth/deep-link 또는 silent failover는 추가하지 않았다.
+3. Tracked Android plugin은 API 34+ UIDT와 API 24–33 foreground WorkManager, visible notification,
+   pause/resume/cancel/retry, secret-free ticket/checkpoint와 recovery source를 정의한다. Current Tauri Kotlin 1.9.25와
+   compatible한 Android-only Apache-2.0 WorkManager 2.10.5를 exact pin했다. UIDT pending job을 fallback보다 우선하고
+   default app process의 execution gate로 UIDT/WorkManager 동시 byte execution을 막는다.
+4. `TransferExecutionRegistry`에 Stronghold-safe R2/LAN executor가 없으면 visible
+   `E_TRANSFER_EXECUTOR_UNAVAILABLE`로 blocked된다. Mobile sync client command도 현재 `E_SYNC_UNSUPPORTED`다.
+   따라서 secure LAN, LAN blob, R2 foreground/background capability는 모두 false이고 generation request의
+   장기 background 실행은 활성화하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| pre-change characterization selection | 0 | 11 files, 158/158 | Phase 11/Vault/R2/capability PASS |
+| Phase 12 focused sync Vitest | 0 | 7 files, 36/36 | adapter/pairing/agent/coordinator/restart PASS |
+| focused Android transfer Vitest | 0 | 1 file, 5/5 | tracked plugin/closed capability/single-owner source PASS |
+| focused TLS ciphertext test | 0 | 1/1 | production-config TLS 1.3 bit-flip releases no plaintext |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform/peer optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,399 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | fixture parity PASS; payload source untouched |
+| `npm run test:composition` | 0 | 122 passed/1 skipped files; 957 passed/3 skipped tests | aggregate PASS |
+| `npm run test:migration` | 0 | 15 files, 135/135 | retained importer/reader fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + rescue contract | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | worker/session/output contracts PASS |
+| `npm run test:sync` | 0 | 14 files, 180/180 | Phase 11 + LAN transport contracts PASS |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart PASS |
+| `npm run test:organizer` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | existing workflow/output PASS |
+| `npm run test:nai-core` | 0 | 50/50 checks | payload/worker source contracts PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | existing JS transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | 49 route/viewport checks | PASS |
+| `npm run test:android-port` | 0 | source contract | PASS |
+| `npm run test:android-transfer` | 0 | 1 file, 5/5 | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 | closure gate PASS |
+| Rust `sync_transport` | 0 | 14/14 | actual TLS loopback + durable/replay/tamper/revoke PASS |
+| Android plugin Rust `--lib` | 0 | 3/3 | bounded secret-free ticket PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | retained transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | retained native R2 PASS |
+| changed-file `rustfmt --check` | 0 | LAN + Android plugin Rust files | PASS |
+| `cargo fmt --all --check` | 1 | pre-existing `build.rs/lib.rs/main.rs` style diff | unrelated baseline; 이번 파일을 재포맷하지 않음 |
+| `git diff --check` | 0 | working phase diff | PASS |
+
+Android full build는 3회 제한 안에서 완료하지 못했다. 첫 process output channel은 유실됐고 새 APK가 없었다.
+두 번째 `aarch64` build는 PATH의 standalone Rust 1.93이 rustup Android sysroot를 보지 못해 `E0463`으로 실패했다.
+세 번째는 rustup 1.96 target을 사용했으나 기존 Stronghold transitive `libsodium-sys-stable`의 Unix `./configure`를
+Windows가 실행하지 못해 Cargo exit 101이었다. 이 failure는 R-025 environment limitation이며 새 LAN server
+dependency는 desktop target table에만 있다.
+
+Tracked Kotlin source의 분리 Gradle compile도 3회에서 중단했다. 첫 시도는 temporary module inclusion ordering,
+둘째는 WorkManager 2.11.2/Kotlin metadata mismatch, 셋째는 2.10.5로 metadata gate를 지난 뒤 final
+`CoroutineWorker.onStopped` override 오류를 발견했다. Final source에서 unsupported override를 제거하고 existing
+`CancellationException` + durable RUNNING recovery로 고쳤지만 제한에 따라 네 번째 compile은 실행하지 않았다.
+따라서 최종 Kotlin compile/APK는 PASS가 아니다. Temporary generated include와 build logs는 제거했고 generated
+source를 tracked authority로 추가하지 않았다.
+
+Physical ADB read-only check는 serial `?`의 M500_MIKU, API 34, online, existing package installed/process stopped를
+확인했다. 새 APK가 없고 executor/capability가 false라 install, UI-tree notification action, pause/cancel/retry,
+process kill/relaunch를 실행하지 않았다. Offline `emulator-5566`은 evidence로 사용하지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 12 — SECURE SYNC TRANSPORT
+- Base HEAD: `879ddcca7ca4d515bb570633a981d6ca1089eb82`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: desktop native LAN TLS/journal/commands; sync transport domain, pairing/agent/client/native queue
+  adapters and ingress/egress/reconnect coordinators; R2 reference guard; tracked Android transfer plugin/capability;
+  focused tests; Cargo/package integration; composition-v2 network policy/decision/risk/limitation/verification/rollback/ledger
+- Behavior added/changed: explicit desktop TLS 1.3 mTLS listener and short-lived pairing; one paired peer/revoke;
+  authenticated bounded manifest/push/pull/ack/replay fence; crash-safe native queue receipts and Phase 11 duplicate-safe
+  apply/ack; R2-reference-only default; provider-free relay/blob contracts; disabled Android UIDT/WorkManager lifecycle shell
+- Preserved contracts: current CompositionEngine/repository/migration, Phase 11 repository/sanitizer/tombstone authority,
+  payload fixture parity, OutputWriter/portable capability, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/
+  rotation/image-release, old backup/v1 profile/legacy metadata readers/fixtures, user data and removed-runtime closure
+- Tests and exit codes: final verification table above. All executable host/source/Rust gates passed; Android full
+  cross-build and final Kotlin compile did not pass for the exact reasons above
+- Artifact paths: ignored `dist/**`, `src-tauri/target/**`, plugin `target/**` and generated Android Gradle cache/report;
+  tracked implementation ledger. No new APK or credential-bearing artifact was produced; temporary build logs were removed
+- Not tested and exact reason: production Composition/Scene/prompt/artifact source caller and source/outbox crash recovery
+  are absent; auth-store lock is not wired to live listener/client disposal; mobile paired JSON client and R2/LAN executor
+  are unsupported; native blob partial/checksum/atomic channel is absent; final Android Kotlin/APK build hit the validation
+  limit after environment/toolchain/source findings; M500_MIKU notification/cancel/process-recreation therefore had no
+  runnable current artifact; Android 16 device was unavailable; live NovelAI/R2 was not opt-in and was unnecessary
+- Remaining risks: R-043, R-044, R-049~R-054 plus limitation 56~62. In particular production caller atomicity,
+  vault-lock lifecycle, mobile mTLS client, Android executor/final build/physical evidence, blob commit and multi-peer remain
+- Rollback procedure: close pairing; stop listener/cancel requests; pause/cancel Android ticket if any; preserve Phase 11
+  sync records/tombstones/checkpoints, native non-secret journal, Stronghold identities, R2 objects, user data, unrelated
+  `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 12 local commit. Never reset/clean/delete/
+  rewrite tombstones, vaults, journals, partials or user data
+- Next phase readiness: BLOCKED — desktop paired sanitized transport and interruption primitives are tested, but the phase
+  completion condition is not met until production caller/vault-lock lifecycle and supported mobile/Android execution,
+  final Android build/physical recovery, and any claimed blob path pass their gates.
+
+## Phase 12 — Android ARM64 build and SM-S928N verification continuation
+
+기준 시각: 2026-07-15 (Asia/Seoul)
+
+### Scope and preserved state
+
+- Base HEAD: `1927824cbbc6d87bbc39f5d1cd787eca336676aa`
+- 시작 시 branch/HEAD/status를 다시 확인했다. Unrelated `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`는 reset, checkout, clean, overwrite 또는 stage하지 않았다.
+- User-selected Samsung `SM-S928N` serial `R3CX902QFGM`은 `arm64-v8a` 단일 ABI, API 36/Android 16이었다.
+- Phase 06 NDK 29 archive `liblibsodium.a`는 `llvm-readelf`에서 ELF64/AArch64였고 SHA-256은
+  `DEADF3D53DE1FC933736410A02BE9BF99F0BDDFA4A9CD05647C7EFBA1125A50F`였다. Binary는 ignored
+  `src-tauri/target/**`에만 두고 `SODIUM_LIB_DIR`를 build process에만 설정했다.
+- Tauri/Gradle이 plugin-local `android/.tauri/**` binding을 생성하므로 tracked `.gitignore`에 local cache 경계를
+  추가했다. Generated content 자체는 source authority로 추가하지 않았다.
+
+### Build and physical evidence
+
+| Command/evidence | Exit | Result |
+| --- | ---: | --- |
+| `npx tauri android build --debug --target aarch64 --split-per-abi --apk --ci -vv` | 0 | first attempt; Kotlin/Gradle `BUILD SUCCESSFUL`; tracked transfer plugin compile 포함 |
+| APK metadata/signature/alignment | 0 | retired development package ID, 2.8.1, minSdk 24, targetSdk 36, `arm64-v8a` only |
+| APK install/cold launch on `R3CX902QFGM` | 0 | overwrite install, launch status OK, stable PID |
+| force-stop/relaunch | 0 | API 36 `topResumedActivity`, new PID, app crash signature 0 |
+| APK manifest/content | 0 | UIDT JobService, BIND_JOB_SERVICE, notification receiver, WorkManager foreground service 포함 |
+| synthetic UIDT registration/cancel | partial PASS | `userInitiatedApproved=true`, active JobService 등록, durable cancel과 active job removal 확인 |
+| cancelled ticket after process recreation | 0 | state `cancelled`, checkpoint 0/2048 유지 |
+| notification permission cleanup | 0 | UI-tree 좌표로 임시 enable 후 원래 `granted=false` 복원 |
+
+### Final source verification
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| `npm run test:android-transfer` | 0 | 1 file, 5/5 |
+| `npm run test:android-port` | 0 | Android source contract PASS |
+| `npm run test:android-release-contract` | 0 | release contract PASS |
+| `npm run lint` | 0 | ESLint PASS |
+| `npm run build` | 0 | Vite production build, 2,399 modules |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13; expected invalid-localstorage warning only |
+| `npm run test:remote-runtime-removal` | 0 | allowlisted 313; forbidden 0; tracked tooling 0 |
+| `npm run test:composition` | 0 | 122 passed/1 skipped files; 957 passed/3 skipped tests |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile PASS |
+| Android plugin Rust `cargo test --lib` | 0 | 3/3 |
+| `npm ls --all` | 0 | optional platform packages unmet only |
+| `git diff --check` and generated-binding ignore probe | 0 | whitespace and `.tauri` boundary PASS |
+
+APK path는 ignored
+`src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`, size 231,398,209 bytes,
+SHA-256 `4C007875C6C135C3811169AFD6E8AF7F5E3E03B1E27B6C13C2B2B0DF608D5165`다. Build는 debug-level
+Gradle logging을 사용했으므로 credential을 opt-in하지 않았고, redaction scan 결과
+token/Authorization/signed URL/prompt/image/base64 marker는 0건이었다.
+
+Activity QA helper는 첫 시도에서 PowerShell reserved `$PID`, 둘째에서 API 36의 old `mResumedActivity` key 차이를
+만났고 셋째 `topResumedActivity`로 통과했다. UIDT evaluator는 blocked terminal을 2초 안에 기대한 첫 판정과
+global/historical JobScheduler line을 active job으로 센 두 판정 뒤 3회 제한에서 중단했다. 남은 best evidence는
+active JOB/Service block과 `userInitiatedApproved=true`, cancel state, cancel 뒤 active JOB block 부재다.
+
+### Remaining gate
+
+- `TransferExecutionRegistry`에 executor가 없으므로 UIDT job은 queued에서 byte execution으로 진행하지 않았다.
+  따라서 visible notification action, pause/resume, checkpoint 증가, no-late-commit과 R2/LAN bytes는 PASS가 아니다.
+- Mobile paired JSON/mTLS client, production caller/vault-lock disposal과 native resumable blob channel도 그대로 없다.
+- Synthetic ticket은 credential value/URL/path/payload bytes 없이 opaque test reference만 사용했고 cancelled terminal
+  record로 남겼다. App data clear나 ticket store 직접 삭제는 수행하지 않았다.
+
+### HANDOFF REPORT
+
+- Phase: 12 — Android ARM64 build and SM-S928N verification continuation
+- Base HEAD: `1927824cbbc6d87bbc39f5d1cd787eca336676aa`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: plugin `.gitignore`; Phase 12 status/decision/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: runtime behavior unchanged; generated `.tauri` cache exclusion and verified ARM64 build/device evidence only
+- Preserved contracts: Phase 12 LAN/Phase 11 sync, capability false gates, vault/payload/output/queue/migration and user data
+- Tests and exit codes: build/device table above plus final source gates below
+- Artifact paths: `.artifacts/phase12-android-arm64-sm-s928n-20260715/**`; ignored ARM64 APK path above
+- Not tested and exact reason: actual notification action/pause/resume/checkpoint/bytes lacked an installed executor; live credentials
+  were unnecessary; production mobile sync/caller/blob boundaries remain absent
+- Remaining risks: R-025, R-049, R-051~R-054; especially reproducible fresh libsodium supply and actual executor lifecycle
+- Rollback procedure: preserve app/user/vault/sync/ticket data; restore temporary permission through UI; revert only this continuation
+  commit and never track/delete generated `.tauri`, target or Android app data
+- Next phase readiness: BLOCKED — Kotlin/Gradle/APK and approved ARM64/API 36 device startup gates pass, but executor-backed
+  notification/cancel/checkpoint/byte transfer and production mobile sync gates do not.
+
+## Phase 12 continuation — final Android identity/signing and Cloudflare executor
+
+Date: 2026-07-15 (Asia/Seoul)
+Base HEAD: `a56a540b1f59a2e1181733d2b1448839341a28a9`
+
+Tracked Android identity authorities now use `com.bluhair.naisblue`; release and debug share the identity and user-owned signer.
+The ignored Android project was regenerated from Tauri, then the tracked Gradle patch used a process-scoped OS-temp keystore copy.
+Keytool characterized the `.env` alias as stale and the sole verified alias as `release`; passwords, keystore path and bytes were not
+written to tracked files or logs. Existing apps/data were not uninstalled or cleared.
+
+Cloudflare Worker + SQLite Durable Object + R2 `prime/nais` source was added with Android Keystore ECDSA pairing/request signing,
+sequence/nonce/replay, signed idempotent duplicate, tombstone/no-late-commit, bounded 2 MiB JSON/5 MiB part, timeout/retry and
+checkpoint-after-R2-ack contracts. The Android executor is installed in UI, UIDT, WorkManager and notification process recovery;
+pause/resume/retry/cancel notification actions and pending remote cancel persistence are tracked. Removed remote catalog/provider runtime
+was not added. Wrangler deployed the Worker and created `prime/nais/.keep`, but live pairing returned fixed 403 after three bounded
+secret-delivery attempts; no device byte transfer was run and capabilities remain false.
+
+### Verification
+
+| Gate | Exit | Evidence |
+| --- | ---: | --- |
+| stale tracked development ID scan | 0 | 0 occurrences |
+| Worker TypeScript + contract | 0 | 1 file, 3/3 |
+| Android transfer contract | 0 | 1 file, 5/5 |
+| sync/R2 categories | 0 | sync 14 files/180; R2 4 files/18 |
+| credential/redaction/characterization | 0 | credential 5 files/20; redaction 2 files/13; characterization 7 files/50 |
+| `npm run lint` / `npm run build` | 0 / 0 | ESLint clean; Vite 2,399 modules |
+| full `npm run test:composition` | 0 | 124 passed/1 skipped files; 963 passed/3 skipped tests |
+| Rust sync transport / Android plugin | 0 / 0 | 14/14 TLS/replay/revoke; 3/3 plugin |
+| ARM64 debug/release APK | 0 / 0 | final package ID, user signer SHA-256 `6E20E760…41A65` |
+| SM-S928N install/cold launch | 0 | API 36, arm64-v8a, new package install; no uninstall/data clear |
+| debug QA boundary | 0 | DUMP-protected receiver present only in debug; Android Keystore public key generated |
+| artifact credential/material scan | 0 | env value hits 0; Authorization/signed URL/prompt/image markers 0 |
+| live Worker deploy / R2 prefix | 0 / 0 | deployed; `prime/nais/.keep` created without touching `ent` |
+| live paired transfer | 1 | pairing fixed 403 after three attempts; stopped per validation limit |
+
+### HANDOFF REPORT
+
+- Phase: 12 — final application identity/signing + Cloudflare executor continuation
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Behavior: final-ID signed APKs, paired Cloudflare protocol/executor source, headless recovery and notification control wiring
+- External state: Worker deployed and R2 `nais` prefix sentinel created; secrets remain Cloudflare-managed, not tracked
+- Preserved: false capability gates, LAN/mTLS and Phase 11 contracts, app/user/vault/sync data, `ent` R2 prefix
+- Not completed: live pairing, executor-backed notification/bytes/checkpoint/process-death resume; Phase 12 remains BLOCKED
+- Rollback: revert only this commit, preserve app data/R2 objects/DO state and user keystore; do not uninstall or clear data
+- Next session: diagnose only the Worker pairing verifier/secret-version boundary, rotate one-use pairing secret, then execute the
+  existing debug QA boundary on SM-S928N for notification pause/resume/retry/cancel, checkpoint recovery and no-late-commit.
+## Phase 13 — Product guidance and token estimation
+
+Date: 2026-07-15 (Asia/Seoul)
+
+Base HEAD was `7d59182c32123dce148f09dd63a03e061face6d1`. The phase began by re-reading the required
+authority documents and checking HEAD/status. Pre-existing changes to `AGENTS.md`, Cloudflare transfer source/tests,
+`package.json`, `wrangler.toml`, the pairing QA script, and generated `src-tauri/src-tauri/**` were preserved and excluded
+from Phase 13 staging.
+
+Behavior was characterized before edits by `phase13-baseline-characterization.test.ts`: payload final base/character
+expansion, explicit Android unsupported capability reason/alternative, Credential Vault unlock, and output choices passed
+3/3. Phase 13 then added a versioned fresh-user cue and user-opened responsive guidance sheet for Credential Vault/NovelAI,
+safe resolved-plan review, output format/metadata privacy, optional R2, Queue Center, and an advanced section. Stable
+DiagnosticCode values route to the relevant localized section. Controls have 44px targets, focus-visible styling,
+`aria-describedby`, Radix focus trap/restore, mobile bottom/desktop side placement, and reduced-motion handling.
+
+Official NovelAI Image Generation Models and Quality Tags documentation was reviewed on 2026-07-15. It identifies T5 for
+V4/V4.5 and approximate combined prompt guidance, but supplies neither a versioned tokenizer artifact nor reproducible
+golden endpoint; V3 provenance is also insufficient. D-039 therefore fails closed: all current/unsupported models show an
+unavailable classification, unchanged model ID, and payload-expanded base/enabled-character section lengths only. Numeric
+count/safety margin are null; registered current models display a separate confirmed 512 upper limit, unknown models have no
+asserted limit, diagnostics no longer emit characters/4, and no NAIS3 file or dependency was added.
+
+Verification summary:
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| Phase 13 characterization | 0 | 1 file, 3/3 |
+| Phase 13 focused suite | 0 | 4 files, 20/20 |
+| fixture provenance + Phase 13 | 0 | 5 files, 22/22 |
+| diagnostics | 0 | 3 files, 27/27 |
+| credential vault | 0 | 5 files, 20/20 |
+| queue | 0 | 9 files, 42/42 |
+| payload parity/provenance | 0 | 5 files, 20/20 |
+| migration | 0 | 15 files, 135/135 |
+| secret redaction | 0 | 2 files, 13/13 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 983 passed/3 skipped tests |
+| final lint / build | 0 / 0 | ESLint clean; TypeScript + Vite, 2,404 modules |
+| remote-runtime-removal | 1 | current checkout's pre-existing Phase 12 docs contain two forbidden historical names; Phase 13 introduced neither |
+| responsive layout | 1 | three bounded runs found and fixed auto-modal focus theft, horizontal mobile CTA overlap, then stacked CTA overlap; final shell-toolbar placement was not rerun after the validation limit |
+
+No live NovelAI/R2 credential, token, Authorization header, signed URL, prompt text, or image/base64 artifact was used. The
+ignored `dist/**` output is the only new build artifact. Physical Hiby M500_MIKU touch/focus QA was not run because no final
+Android package/install cycle was authorized or needed for the source/build gates; final responsive browser matrix evidence
+also remains open as stated above.
+
+### HANDOFF REPORT
+
+- Phase: 13 — PRODUCT GUIDANCE AND TOKEN ESTIMATION
+- Base HEAD: `7d59182c32123dce148f09dd63a03e061face6d1`
+- Resulting local commit: `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`
+- Changed files: guidance services/components; resolved-plan and diagnostics integration; settings version state; ko/en/ja
+  locale trees; diagnostic prompt summary; Phase 13/provenance fixtures and tests; composition-v2 decision/risk/limitation/
+  status/verification/rollback/ledger docs
+- Behavior added/changed: on-demand versioned onboarding cue/sheet, DiagnosticCode recovery routing, output/privacy choices,
+  unsupported mobile alternatives, and fail-closed final-prompt character breakdown with visible accuracy classification
+- Preserved contracts: current CompositionEngine/repository/migration, `payload.ts` and fixture parity, OutputWriter/portable
+  capabilities, Scene workers/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image-release, old importers/readers,
+  user data, and removed remote catalog/provider boundaries
+- Tests and exit codes: table above
+- Artifact paths: ignored `dist/**`; tracked synthetic fixture contains no provider payload or tokenizer file
+- Not tested and exact reason: final responsive matrix after shell-toolbar fix was not rerun because AGENTS.md's three-attempt
+  limit was reached; physical Hiby M500_MIKU UI flow and live generation/R2 were not run; live credentials were not opt-in
+- Remaining risks: R-055 remains monitor-only; final mobile CTA layout and physical touch/focus restore need one clean next-session
+  verification; numeric token parity remains unavailable until D-039's official artifact/golden gate is met
+- Rollback procedure: close guidance, preserve settings/vault/output/queue/R2/sync/user data and unrelated working tree, revert
+  only this Phase 13 local commit; do not reset/clean/clear data or restore characters/4 token heuristics
+- Next phase readiness: BLOCKED — implementation and all source/build/Vitest gates pass, but final responsive placement and
+  physical mobile interaction evidence are not complete.
+
+## Phase 13 continuation — confirmed 512 limit, V5 capability, and physical Android QA
+
+Date: 2026-07-15 (Asia/Seoul)
+
+Base HEAD was `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`. Product authority clarified that 512 is the
+confirmed current-model upper limit and future V5 may expand it. Phase 13 now separates this model capability from calculated
+usage: all registered current models report limit 512, unknown models report no limit, and a synthetic V5 registry injection
+reports 1024 without changing payload expansion. Calculated usage classification remains unavailable, safety margin remains
+null, diagnostics retain no characters/4 heuristic, and no tokenizer dependency or NAIS3 file was added.
+
+The responsive continuation ran three bounded matrices. A 44px header help button first clipped navigation; compacting its cue
+still consumed header width; moving two 44px icons to the lower-left row left a 6.3px `/tools` overlap. Following the validation
+limit, the best bounded workaround moved them to a left-edge vertical rail (x=0–44 based on the observed conflicting CTA
+starting at x=51). That final layout was not rerun and is not claimed PASS.
+
+Android Studio SDK/ADB detected physical `SM-S928N`, serial `R3CX902QFGM`, API 36. The installed final-ID 2.8.1 app and data
+were preserved. ARM64 build attempt 1 stopped immediately because `.env` referenced the retired checkout keystore path.
+Attempt 2 restored the user-owned signer only to an OS temp file and reached Kotlin/Gradle, then exited 1 without an APK.
+Attempt 3 ran direct cached `assembleArm64Debug` and timed out after 604 seconds without an APK. One scoped build child and one
+temporary keystore were removed; remaining temp keystores were 0. No install, launch, tap, screenshot, or UI-tree evidence was
+claimed because the existing installed binary predates this continuation.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| Phase 13 focused | 0 | 4 files, 21/21 including current 512, unknown fallback, synthetic V5=1024 |
+| payload parity/provenance | 0 | 5 files, 20/20 |
+| diagnostics | 0 | 3 files, 27/27 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 984 passed/3 skipped tests |
+| final lint / build | 0 / 0 | ESLint clean; TypeScript + Vite, 2,404 modules |
+| responsive layout | 1 | three bounded runs; final left-edge vertical rail not rerun |
+| Android current APK | 1 / 124 | wrapper build exit 1; direct assemble timeout 604s; APK absent |
+| physical update install/UI tree | not run | no current APK; old installed binary was not used as evidence |
+
+### HANDOFF REPORT
+
+- Phase: 13 continuation — confirmed limit and physical mobile QA
+- Base HEAD: `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`
+- Resulting local commit: `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`
+- Changed files: model prompt capability/assessment/UI; ko/en/ja; responsive help/diagnostic placement; golden fixtures/tests;
+  Phase 13 decision/status/risk/limitation/verification/ledger docs
+- Behavior added/changed: registered current models show confirmed 512 upper limit; unknown/future models show no asserted
+  limit until registered; V5 can provide a larger value without prompt-expansion changes
+- Preserved contracts: payload expansion/parity, unavailable calculated usage, CompositionEngine/repository/migration,
+  OutputWriter/capabilities, Scene orchestration, credentials/user data/importers/readers and removed-runtime boundaries
+- Tests and exit codes: table above
+- Artifact paths: ignored `dist/**`; no new APK; temporary keystore removed (remaining 0)
+- Not tested and exact reason: final responsive vertical rail was applied after the third allowed matrix; physical sheet/touch/
+  focus QA had no current APK because ARM64 builds failed/timed out; live NovelAI/R2 was not opt-in or needed
+- Remaining risks: limitation 64; physical mobile layout/focus/touch and a clean Android Studio update-install remain open
+- Rollback procedure: preserve device/app/user/vault/output/queue/R2/sync data and unrelated working tree; revert only this
+  continuation commit; do not uninstall, clear app data, delete signer material, or collapse per-model limits into one constant
+- Next phase readiness: BLOCKED — corrected 512/V5 contract and source gates pass, but final responsive and physical QA do not.
+
+## Phase 13 continuation — signed Android closure and first-release verifier
+
+Date: 2026-07-16 (Asia/Seoul)
+
+Base HEAD was `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`. The user repaired `KEYSTORE_PATH` and the local
+Base64 source. Validation compared only resolved paths, decoded bytes, alias readability and certificate policy; password,
+Base64 and private key material were not printed. The two signing inputs matched, alias `release` was readable, and the
+certificate matched `android-release-policy.json`. `/keystore_base64.txt` is now explicitly ignored and neither signing file
+was staged. Final cleanup found one stale `nais-signing-*.jks` from the prior 2026-07-15 attempt inside the OS temp directory;
+that single temp copy was removed after path containment verification, leaving zero temp signing files.
+
+The existing signed-local script produced the current ARM64 debug APK. Before install, the APK verifier exposed a separate
+first-release policy defect: `updateBaseline` is intentionally null for the new application ID, but both release-version and
+APK verification unconditionally dereferenced `.tag`. The failing CLI behavior was reproduced, then a shared fail-closed
+resolver was added. Null is accepted only with `firstReleaseForApplicationId: true` and `firstReleaseVersion` equal to the
+current package version; a future baseline must use stable `v<major>.<minor>.<patch>` within versionCode bounds, and the
+release command retains the exact `v<version>` rule. Package identity, versionCode, signer,
+SDK, ABI and alignment checks remain unchanged.
+
+The verified ARM64 APK was update-installed with `adb install -r` on `SM-S928N`/API 36. First-install time, data directory,
+104 files and 5312 KiB were unchanged; only `lastUpdateTime` advanced. UI-tree-derived taps opened Korean guidance and its
+output/privacy and unsupported R2 sections. TAB/Enter opened the sheet, Escape closed it, and focus returned to Help. Android
+hardware Back backgrounded the Activity rather than closing the sheet, so explicit Close/Escape remains the verified focus
+path.
+
+The user then required remaining Android tests on Hiby M500_MIKU or an emulator. Hiby was not attached at test-bed selection,
+so Android Studio AVD `nais2-api35` (`emulator-5554`, x86_64, API 35) was started without wiping it. Hiby appeared in ADB only
+after the permitted AVD matrix and shutdown were complete, when no remaining test required a second device run. A
+process-scoped OS-temp signer and the existing
+x86_64 libsodium archive produced a signed universal debug APK. Verify/install/launch passed; English locked-vault guidance,
+output/R2 reason and alternative, touch expansion, Enter/Escape focus restoration and force-stop cold process recreation all
+passed. The cold Activity started in 775ms; the WebView accessibility tree settled after an additional five seconds. No raw
+UI XML, screenshot, app log, prompt, token, signed URL, Authorization header or image/Base64 artifact was retained.
+
+The responsive gate remains the only Phase 13 implementation blocker. Three bounded 390px runs found: (1) the current x=0
+vertical rail loses 8px to a clipping ancestor, (2) an 8px inset overlaps an organizer slot by 23x11px, and (3) lowering the
+inset rail clips the diagnostic button by 8px at the bottom. The organizer-safe vertical interval is 89px, less than the 96px
+needed for two 44px targets plus an 8px gap. Experimental runtime changes were reverted after the third attempt. A
+route-specific horizontal organizer rail is the next-session candidate; tests must not be loosened.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| first-release APK verifier characterization | 1 | reproduced null `.tag` dereference before fix |
+| Android release contract / release version / exact tag | 0 / 0 / 0 | first-release null accepted; `v2.8.1` retained |
+| signed ARM64 debug build | 0 | current `app-arm64-debug.apk`, 231,551,469 bytes |
+| ARM64 APK verify | 0 | final ID, 2.8.1/2008001, min 24, target 36, arm64-v8a, signer and alignment |
+| SM-S928N update install / launch | 0 / 0 | same-signer `install -r`; app data preserved; crash buffer clean |
+| SM-S928N touch / keyboard | 0 / 0 | Korean guidance, output/R2 alternatives, TAB/Enter/Escape focus restore |
+| signed x86_64 debug build | 0 | current `app-universal-debug.apk` |
+| AVD verify/install/launch/recreation | 0 | API 35 x86_64; English guidance and crash-free cold recreation |
+| Phase 13 + Android characterization | 0 | 5 files, 24/24 |
+| lint / TypeScript + Vite build | 0 / 0 | ESLint clean; 2,404 modules |
+| unit / payload parity | 0 / 0 | 12 files 42/42; 5 files 20/20 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 984 passed/3 skipped tests |
+| migration / diagnostics / persistence / vault | 0 / 0 / 0 / 0 | 135/135; 27/27; 15/15 + rescue; 20/20 |
+| queue / sync / R2 / organizer | 0 / 0 / 0 / 0 | 42/42; 180/180; 18/18; 20/20 |
+| redaction / characterization / NAI core / transport | 0 / 0 / 0 / 0 | 13/13; 50/50; 50/50; 14/14 |
+| smart tools / Android port / removed-runtime gate | 0 / 0 / 0 | 3/3; source contract PASS; search gate PASS |
+| responsive layout | 1 | three bounded runs; R-056 remains Open and experiments were reverted |
+
+### HANDOFF REPORT
+
+- Phase: 13 — PRODUCT GUIDANCE AND TOKEN ESTIMATION, signed Android/verifier continuation
+- Base HEAD: `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`
+- Resulting local commit: `SELF` (report the resolved hash from `git rev-parse HEAD`)
+- Changed files: exact local signing-source ignore; `android-release-policy.json` version-pinned first-release marker; shared
+  Android first-release baseline resolver; release-version/APK and Android release contract scripts; composition-v2
+  decision/status/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: build verification accepts the explicit first-application-ID null baseline only for version 2.8.1,
+  without relaxing `v*` release tags, versionCode bounds or any APK identity/signing gate; no product runtime behavior changed
+- Preserved contracts: current CompositionEngine/repository/migration, `payload.ts` and fixture parity, OutputWriter/portable
+  capability, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release, importers/readers,
+  user/app/vault/output/queue/sync/R2 data and removed remote catalog/provider boundaries
+- Tests and exit codes: table above; every executable baseline gate passed except unchanged responsive layout
+- Artifact paths: ignored `src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`, ignored
+  `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`, ignored `dist/**` and target/build cache
+- Not tested and exact reason: Hiby M500_MIKU was absent at test-bed selection, so remaining device QA completed on the
+  approved AVD; its late appearance after AVD shutdown did not require duplicating the completed permitted matrix. Live
+  NovelAI/R2 generation/upload was not opt-in and was unnecessary; no release-publication or rollback-install drill ran
+- Remaining risks: R-056 responsive rail placement is Open; physical Android hardware Back exits/backgrounds the Activity
+  instead of proving sheet-close focus restoration; Hiby-specific layout remains unobserved
+- Rollback procedure: preserve device/app/user/vault/output/queue/sync/R2 data, signer files, immutable
+  `firstReleaseVersion`, unrelated working tree and the `/keystore_base64.txt` safety ignore. Do not revert the resolver while
+  `updateBaseline` is null; that restores the known verifier crash, so keep release verification/publication BLOCKED until a
+  verified stable prior tag exists. Never uninstall, clear app data, delete signing material, relax `v*` tags, or invent a baseline
+- Next phase readiness: BLOCKED — signed ARM64/x86_64 build and mobile touch/keyboard evidence now pass, but the unchanged
+  responsive overlap/clipping gate is still exit 1 under R-056.
+
+## Phase 14 — LEGACY RETIREMENT AND RELEASE HARDENING
+
+Date: 2026-07-16 (Asia/Seoul)
+
+Base HEAD was `59b5920a5f4c8ff911d2b35d451eb22fc1bad89e` on
+`agent/public-release-sync-20260714`, 10 commits ahead of the configured public branch. The phase began by
+reading the required authority documents, direct runtime builders, startup authority, migration, payload,
+OutputWriter and durable queue tests. `git status` already contained unrelated changes to `AGENTS.md`,
+Cloudflare transfer source/test/config, `package.json`, responsive UI and generated/untracked tooling; none
+was reset, overwritten or attributed to Phase 14.
+
+The conjunctive retirement gate is closed. Fresh startup still defaults to legacy, actual upgrade/old-backup
+production-v2 observation is absent, the host online matrix is partial, authenticated post-fix Android output
+is absent, no signed desktop/Android rollback install/restore/forward drill exists, and no release observation
+window has elapsed. A current M500_MIKU/API 34 connection and installed 2.8.1 package were observed read-only,
+but no live credential opt-in existed and device presence was not promoted to transport evidence.
+
+Targeted `rg` and a TypeScript-resolved import graph from `src/main.tsx` show active production edges to the
+Main inline legacy materialization, Scene and Style Lab legacy builders, and migration shadow comparison.
+Old backup, v1 Asset Profile, legacy metadata/PNG/sidecar, raw migration archive/recovery journal and payload
+provenance fixtures remain intentional compatibility. No definition-only runtime function/module candidate
+exists; cosmetic type export modifiers were not treated as retirement work. Consequently source deletion,
+legacy-authority-not-needed decision records, dependency/version changes, tags and release publication are all
+zero. The complete matrix and caller classification are recorded in
+`docs/composition-v2/LEGACY_RETIREMENT_GATE.md`.
+
+### Gate verdict
+
+| Gate | Result |
+| --- | --- |
+| fresh/upgrade/old-backup production authority v2 | MISSING; fixture-only explicit v2 does not replace production evidence |
+| supported Main/Scene/Style Lab online matrix | MISSING; last actual matrix is partial and source edit was blocked before request |
+| authenticated post-fix Android transport | MISSING; source/mock/APK evidence only |
+| signed desktop/Android rollback drill | MISSING; no immutable signed desktop rollback baseline or executed drill |
+| one release observation window | MISSING; no released-population migration/fallback aggregate |
+| rollback-external production legacy caller 0 | FAIL; Main/Scene/Style Lab/migration shadow are reachable |
+| unexplained payload diff 0 | PASS within checked-in fixture scope |
+| old backup restore | PASS in deterministic behavior tests |
+| OutputWriter recovery | PASS in fault-injected behavior tests |
+| durable queue recovery | PASS in deterministic IndexedDB/restart tests |
+
+### Verification
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| pre-change focused authority/workflow/OutputWriter/queue recovery Vitest | 0 | 7 files, 76/76 tests |
+| `npm ci`; `npm ls --all` | 0; 0 | 423 packages, audit 0 vulnerabilities; host-excluded optional dependencies only |
+| focused backup/OutputWriter/durable queue recovery Vitest | 0 | 5 files, 57/57 tests |
+| `npm run lint`; `npm run build` | 0; 0 | lint clean; npm-ci production bundle, 2,404 modules |
+| payload; characterization; migration; queue | 0 each | 20; 50; 135; 42 tests passed |
+| full `test:composition` | 0 | 128 passed + 1 skipped files; 984 passed + 3 skipped tests |
+| unit; diagnostics; vault; sync; R2; organizer; redaction | 0 each | 42; 27; 20; 180; 18; 20; 13 tests passed |
+| NAI core; NAI transport; smart tools | 0 each | 50; 14; 3 tests passed |
+| persistence; rescue-mode browser; responsive layout | 0 each | 15 tests; contract PASS; 50 route/viewport checks |
+| Android source/release/transfer; Cloudflare transfer; release-version; remote-runtime-removal | 0 each | all contracts PASS; tracked local tooling 0 |
+| default Cargo check | 1 | pre-existing target cache referenced removed `nais2-main` checkout |
+| isolated fresh-target Cargo check | 0 | PASS without source changes |
+| Rust NAI transport; R2; sync transport; Android transfer | 0 each | 5; 7; 14; 3 tests passed |
+
+Responsive PASS는 Phase 14 변경이 아니라 시작부터 존재한 out-of-scope UI 변경이 포함된 현재 checkout
+결과다. Default Cargo failure는 existing `src-tauri/target`을 보존한 채 process-local fresh target에서
+재검증하여 stale build artifact로 분리했다.
+
+### HANDOFF REPORT
+
+- Phase: 14 — LEGACY RETIREMENT AND RELEASE HARDENING
+- Base HEAD: `59b5920a5f4c8ff911d2b35d451eb22fc1bad89e`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: `docs/composition-v2/LEGACY_RETIREMENT_GATE.md` and this ledger only
+- Behavior added/changed: none; runtime/test source deletion 0 and existing authority behavior unchanged
+- Preserved contracts: CompositionEngine, repository/migration, OutputWriter, portable capability,
+  `payload.ts`/fixtures, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release,
+  old backup/v1/metadata compatibility, migration archives/journals, NAI auth, system opener, single-instance,
+  updater and platform adapters
+- Tests and exit codes: deterministic JS/TS and Rust baseline above passed except default Cargo check exit 1 from
+  a stale existing target path; the identical source passed fresh-target Cargo check and all four Rust categories
+- Artifact paths: `docs/composition-v2/LEGACY_RETIREMENT_GATE.md`; no runtime/release artifact created
+- Not tested and exact reason: live NovelAI workflow/Android matrix lacked explicit credential opt-in; signed
+  rollback drill lacks immutable signed desktop/Android rollback baseline and release authority; release
+  observation requires an actual released population/window and cannot be synthesized by local tests
+- Remaining risks: R-015/R-016/R-019 remain open; production legacy callers are nonzero; V3/Furry V3 payload
+  parity remains unverified; live process-kill/disk-full recovery remains outside deterministic recovery evidence
+- Rollback procedure: revert only this documentation-only Phase 14 commit while preserving unrelated working
+  tree, runtime source/tests, app/user/vault/output/queue/sync/R2 data, backup/importer/parser/fixtures and generated
+  tooling; do not reset, clean, clear data, delete artifacts or perform a destructive migration
+- Next phase readiness: BLOCKED

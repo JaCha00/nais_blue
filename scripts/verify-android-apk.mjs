@@ -4,6 +4,8 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
+
 function option(name) {
     const index = process.argv.indexOf(name)
     return index >= 0 ? process.argv[index + 1] : undefined
@@ -295,11 +297,14 @@ if (metadata.versionName !== packageJson.version) {
 if (metadata.versionCode !== expectedVersionCode(packageJson.version)) {
     throw new Error(`APK versionCode ${metadata.versionCode} does not match the configured version`)
 }
-const baselineVersion = policy.updateBaseline.tag.replace(/^v/, '')
-if (metadata.versionCode <= expectedVersionCode(baselineVersion)) {
-    throw new Error(
-        `APK versionCode ${metadata.versionCode} must be newer than update baseline ${policy.updateBaseline.tag}`,
-    )
+const baselineTag = resolveAndroidUpdateBaseline(policy, packageJson.version)
+if (baselineTag !== null) {
+    const baselineVersion = baselineTag.replace(/^v/, '')
+    if (metadata.versionCode <= expectedVersionCode(baselineVersion)) {
+        throw new Error(
+            `APK versionCode ${metadata.versionCode} must be newer than update baseline ${baselineTag}`,
+        )
+    }
 }
 if (metadata.minSdkVersion !== policy.minSdkVersion) {
     throw new Error(`APK minSdkVersion ${metadata.minSdkVersion} does not match policy`)

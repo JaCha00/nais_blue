@@ -1,0 +1,13 @@
+[default]
+description = "Allows the NAIS UI to control bounded Android R2 and paired-LAN transfers."
+permissions = [
+  "allow-schedule",
+  "allow-pause",
+  "allow-resume",
+  "allow-cancel",
+  "allow-retry",
+  "allow-checkpoint",
+  "allow-status",
+  "allow-recover",
+  "allow-configure-cloudflare",
+]

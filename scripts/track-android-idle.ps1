@@ -15,7 +15,7 @@ the app restarted, CPU stayed busy, or PSS grew beyond the configured idle limit
 [CmdletBinding()]
 param(
     [string]$Serial = $env:ANDROID_SERIAL,
-    [string]$Package = 'com.sunakgo.nais2',
+    [string]$Package = 'com.bluhair.naisblue',
     [ValidateRange(10, 3600)]
     [int]$DurationSeconds = 60,
     [ValidateRange(1, 60)]

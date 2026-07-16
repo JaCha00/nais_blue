@@ -1,10 +1,17 @@
 # Composition v2 현행 workflow 동작
 
-기준일: 2026-07-11 (Asia/Seoul)
+기준일: 2026-07-14 (Asia/Seoul)
 
 이 문서는 공통 `CompositionEngine` 도입 전 Main, Scene, Style Lab의 현행 조합·요청·저장 동작을 고정한다. 이후 engine의 결과는 아래 golden fixture와 비교한다. 이 단계는 제품 runtime 결과를 바꾸지 않으며, 관찰된 불일치와 비결정성도 호환성 기준에 포함한다.
 
 2026-07-12부터 Main과 Scene의 기본 caller는 Composition v2다. 이 문서의 Main/Scene 섹션과 golden은 rollback용 `legacy` 기준선으로 계속 보존한다. Production cutover 계약과 승인된 차이는 [MAIN_V2_CUTOVER.md](./MAIN_V2_CUTOVER.md)와 [SCENE_V2_CUTOVER.md](./SCENE_V2_CUTOVER.md)를 따른다. Style Lab 표는 아직 현행 production 동작이다.
+
+2026-07-14 Phase 08부터 Main/Scene의 기본 generation command는 이 문서의 조합 경계를 capture한 뒤
+durable queue에 immutable job을 등록한다. 아래 worker/queueCount 설명은 retained legacy rollback 및
+executor compatibility의 기준선이다. Durable executor는 current transport/save/session 기능을 재사용하되
+claim/status/retry authority는 queue repository에 둔다. Queue Center에서 execution authority를 `legacy`로
+명시적으로 바꾼 경우에만 기존 direct Main/Scene launch가 사용된다. Scene rotation은 compatibility release
+동안 retained legacy session/worker를 계속 사용한다.
 
 ## 실행 가능한 기준선
 

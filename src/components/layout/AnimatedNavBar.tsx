@@ -23,6 +23,7 @@ interface AnimatedNavBarProps {
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+const LABELED_NAV_MIN_WIDTH = 1360
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -53,8 +54,9 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             rafId = requestAnimationFrame(() => {
                 const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
                 const nextMode = {
-                    // Labels are reserved for a genuinely roomy center panel; icons always fit from sm upward.
-                    isCompact: window.innerWidth < 1536 || availableWidth < 1200,
+                    // Eleven translated labels need the measured center-panel width, not the viewport
+                    // breakpoint. Below this bound the four primary icons plus More remain fully visible.
+                    isCompact: window.innerWidth < 1536 || availableWidth < LABELED_NAV_MIN_WIDTH,
                     isTiny: availableWidth < 320 || window.innerWidth < 480,
                 }
 
@@ -134,7 +136,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             ref={navRef}
             aria-label={t('nav.navigation', 'Primary navigation')}
             className={cn(
-                'flex w-full min-w-0 items-center overflow-hidden',
+                'flex w-full min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
                 isTiny ? "justify-start" : "justify-center",
             )}
         >
@@ -190,8 +192,56 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                 </DropdownMenu>
             </div>
 
-            <div className="hidden w-full min-w-0 items-center justify-center gap-1 sm:flex">
-                {items.map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+            {/* Compact desktop shares the four core routes with mobile; the overflow menu prevents utility controls from squeezing eleven tabs. */}
+            <div className={cn(
+                'hidden w-full min-w-0 items-center justify-center sm:flex',
+                isCompact ? 'gap-0' : 'gap-1',
+            )}>
+                {(isCompact ? primaryItems : items).map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+                {isCompact && overflowItems.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                type="button"
+                                aria-label={moreLabel}
+                                title={moreLabel}
+                                className={cn(
+                                    'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                    overflowIsActive
+                                        ? 'border-primary/30 bg-accent text-primary'
+                                        : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground',
+                                )}
+                            >
+                                <Ellipsis className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            align="end"
+                            sideOffset={8}
+                            className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
+                        >
+                            {overflowItems.map(item => {
+                                const isActive = isRouteActive(location.pathname, item.path)
+                                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
+                                return (
+                                    <DropdownMenuItem
+                                        key={item.path}
+                                        asChild
+                                        className={cn(
+                                            'h-11 rounded-control px-3 focus:bg-accent focus:text-accent-foreground',
+                                            isActive && 'bg-accent text-primary',
+                                        )}
+                                    >
+                                        <NavLink to={item.path} aria-current={isActive ? 'page' : undefined} className="flex w-full items-center gap-3">
+                                            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                            <span className="truncate">{label}</span>
+                                        </NavLink>
+                                    </DropdownMenuItem>
+                                )
+                            })}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </div>
         </nav>
     )

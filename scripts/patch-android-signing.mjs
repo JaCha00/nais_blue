@@ -23,7 +23,7 @@ function removeManagedSigning(content) {
         )
 }
 
-export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '.dev') {
+export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '') {
     const absolutePath = resolve(gradleFile)
     const original = readFileSync(absolutePath, 'utf8')
     const newline = original.includes('\r\n') ? '\r\n' : '\n'
@@ -38,7 +38,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '.dev
             `Refusing to replace an unmanaged Android signing or debug ID configuration in ${absolutePath}`,
         )
     }
-    if (!/^\.[a-z][a-z0-9_.]*$/i.test(debugApplicationIdSuffix)) {
+    if (debugApplicationIdSuffix !== '' && !/^\.[a-z][a-z0-9_.]*$/i.test(debugApplicationIdSuffix)) {
         throw new Error(`Invalid Android debug application ID suffix: ${debugApplicationIdSuffix}`)
     }
 
@@ -68,7 +68,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '.dev
         '        ?: naisKeystoreProperties.getProperty("password")',
         '        ?: naisKeystoreProperties.getProperty("storePassword")',
         '',
-        '    val naisReleaseSigningConfig = if (naisStoreFile != null && naisKeyAlias != null && naisPassword != null) {',
+        '    val naisUserSigningConfig = if (naisStoreFile != null && naisKeyAlias != null && naisPassword != null) {',
         '        signingConfigs.create("release") {',
         '            keyAlias = naisKeyAlias',
         '            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")',
@@ -99,7 +99,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '.dev
     const releaseConfig = [
         releaseAnchor,
         `            ${CONFIG_MARKER}`,
-        '            naisReleaseSigningConfig?.let { signingConfig = it }',
+        '            naisUserSigningConfig?.let { signingConfig = it }',
     ].join(newline)
     content =
         content.slice(0, releaseIndex) +
@@ -114,7 +114,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '.dev
     const debugConfig = [
         debugAnchor,
         `            ${DEBUG_ID_MARKER}`,
-        `            applicationIdSuffix = "${debugApplicationIdSuffix}"`,
+        '            naisUserSigningConfig?.let { signingConfig = it }',
     ].join(newline)
     content =
         content.slice(0, debugIndex) +
@@ -138,7 +138,7 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
         '--gradle-file',
         resolve('src-tauri', 'gen', 'android', 'app', 'build.gradle.kts'),
     )
-    const debugSuffix = readOption('--debug-suffix', '.dev')
+    const debugSuffix = readOption('--debug-suffix', '')
     const changed = patchAndroidSigning(gradleFile, debugSuffix)
     console.log(`Android signing configuration ${changed ? 'updated' : 'already current'}: ${gradleFile}`)
 }

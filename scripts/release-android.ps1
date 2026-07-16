@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ProjectRoot,
-    [string]$Repository = 'JaCha00/nais2-integration-complete',
+    [string]$Repository = 'JaCha00/nais_blue',
     [string]$Tag,
     [switch]$Publish,
     [switch]$AllowProjectSecrets

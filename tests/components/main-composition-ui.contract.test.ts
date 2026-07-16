@@ -21,15 +21,21 @@ describe('Main composition UI contract', () => {
         expect(workspaceLayout).toContain('overflow-x-hidden')
     })
 
-    it('keeps generation and cancellation as the existing store commands with a one-action control', async () => {
-        const mainMode = await source('src/pages/MainMode.tsx')
+    it('routes the one-action generation control through the durable command with legacy rollback', async () => {
+        const [mainMode, command] = await Promise.all([
+            source('src/pages/MainMode.tsx'),
+            source('src/services/queue/generation-command.ts'),
+        ])
 
-        expect(mainMode).toMatch(/const handlePrimaryGeneration = \(\) => \{[\s\S]*?cancelGeneration\(\)[\s\S]*?generate\(\)/)
+        expect(mainMode).toMatch(/const handlePrimaryGeneration = \(\) => \{[\s\S]*?cancelMainGenerationCommand\(\)[\s\S]*?startMainGenerationCommand\(\)/)
         expect(mainMode).toContain("actionTestId: 'main-generate-action'")
         expect(mainMode).toContain('onGenerate: handlePrimaryGeneration')
-        expect(mainMode).toContain('onCancel: cancelGeneration')
+        expect(mainMode).toContain('onCancel: () => void cancelMainGenerationCommand()')
         expect(mainMode).toContain('<MobileCommandDock')
         expect(mainMode).toContain('safe-area-inset-bottom')
+        expect(command).toContain("executionAuthority === 'legacy'")
+        expect(command).toContain('useGenerationStore.getState().generate()')
+        expect(command).toContain('enqueueCurrentMainBatch()')
     })
 
     it('moves compact module, inspector, and resolved content into focus-managed sheets', async () => {
@@ -69,7 +75,7 @@ describe('Main composition UI contract', () => {
         expect(promptPanel).toContain("const isStyleLabGenerating = generatingMode === 'styleLab'")
         expect(promptPanel).toMatch(/const isConflict = isSceneMode[\s\S]*?: isSceneGenerating\s/)
         expect(promptPanel).not.toMatch(/: isSceneGenerating \|\| isStyleLabGenerating/)
-        expect(promptPanel).toMatch(/if \(isGenerating\) \{[\s\S]*?cancelGeneration\(\)/)
+        expect(promptPanel).toMatch(/if \(isGenerating\) \{[\s\S]*?cancelMainGenerationCommand\(\)/)
     })
 
     it('does not connect the Main composition controls to Scene or Style Lab', async () => {

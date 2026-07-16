@@ -63,7 +63,7 @@ check('Tauri sidecar executable exists for Windows cargo checks', existsSync(joi
 )))
 check('Tauri updater is preserved without the retired URL callback config',
   JSON.stringify(tauriConfig).includes(
-    'https://github.com/JaCha00/nais2-integration-complete/releases/latest/download/latest.json',
+    'https://github.com/JaCha00/nais_blue/releases/latest/download/latest.json',
   ) && tauriConfig.plugins?.[retiredUrlPluginKey] === undefined)
 
 const permissions = defaultCapability.permissions ?? []

@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "fixtures": [
     {
+      "path": "payload/supported-online-matrix.json",
+      "source": "Synthetic release covering matrix derived from the current selectable V4/V4.5 model registry, PNG/WebP output settings, production standard/stream transports, and Main/Scene/Style Lab/source-edit/cancel workflow contracts.",
+      "model": "V4/V4.5 required; V3/Furry V3 non-blocking probes",
+      "captureDate": "2026-07-16",
+      "captureKind": "synthetic-derived",
+      "transformed": true,
+      "sensitiveDataRemoved": true,
+      "transformations": [
+        "Used fixed synthetic seeds and workflow labels without storing credentials, provider responses, image bytes, or user prompts.",
+        "Classified V3/Furry V3 as probe-only and outside required release authority."
+      ]
+    },
+    {
+      "path": "product-guidance/token-gate-current-models.json",
+      "source": "Synthetic fail-closed model matrix derived from official NovelAI image model and quality-tag documentation; contains no provider payload or tokenizer file.",
+      "model": "current NovelAI image model matrix",
+      "captureDate": "2026-07-15",
+      "captureKind": "synthetic-derived",
+      "transformed": true,
+      "sensitiveDataRemoved": true,
+      "transformations": [
+        "Recorded model IDs, confirmed current context limits, unavailable usage classifications, and synthetic prompt character counts.",
+        "Did not copy NAIS3 tokenizer files or claim numeric provider token parity."
+      ]
+    },
+    {
       "path": "payload/v4-5-text.request.json",
       "source": "Derived from scripts/verify-nai-core-phase.mjs and the current src/services/nai/payload.ts request contract.",
       "model": "nai-diffusion-4-5-full",

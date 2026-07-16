@@ -21,15 +21,23 @@
     "test:nai-transport": "vitest run tests/transport",
     "test:persistence": "vitest run tests/persistence && node scripts/verify-rescue-mode.mjs",
     "test:queue": "vitest run tests/domain/queue tests/services/queue",
+    "test:sync": "vitest run tests/domain/sync tests/services/sync",
+    "test:organizer": "vitest run tests/domain/organizer tests/services/organizer tests/components/organizer.contract.test.ts",
+    "test:r2": "vitest run tests/domain/r2 tests/services/r2",
     "test:secret-redaction": "node scripts/verify-secret-redaction.mjs",
     "test:credential-vault": "vitest run tests/credentials",
     "test:characterization": "vitest run tests/characterization",
     "test:android-port": "node scripts/verify-android-port-contract.mjs",
+    "test:android-transfer": "vitest run tests/services/android-transfer",
+    "test:cloudflare-transfer": "vitest run tests/services/cloudflare-transfer && tsc -p cloudflare/nais-transfer-worker/tsconfig.json",
+    "qa:cloudflare-transfer:live": "node scripts/qa-cloudflare-transfer-live.mjs",
+    "qa:cloudflare-transfer:rotate-live": "node scripts/rotate-cloudflare-pairing-and-qa.mjs",
     "test:release-version": "node scripts/verify-release-version.mjs",
     "test:android-idle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/track-android-idle.ps1",
     "smoke:nai-subscription": "node scripts/smoke-nai-subscription.mjs",
     "smoke:nai-endpoints": "node scripts/smoke-nai-endpoints.mjs",
     "smoke:nai-client": "vitest run tests/live/nai-client-live.test.ts",
+    "smoke:nai-matrix": "vitest run tests/live/nai-online-matrix-live.test.ts",
     "tauri": "npx tauri",
     "tauri:dev": "npx tauri dev",
     "tauri:build": "npx tauri build",
@@ -100,6 +108,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260715.1",
     "@tauri-apps/cli": "^2.10.1",
     "@types/jszip": "^3.4.0",
     "@types/react": "^18.3.17",
@@ -117,6 +126,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "wrangler": "4.110.0"
   }
 }

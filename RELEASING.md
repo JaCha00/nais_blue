@@ -8,41 +8,37 @@ artifact.
 
 ## Release identity
 
-The public `v2.8.0` APK is the first JaCha00 Android release and establishes this
-update identity:
+Phase 12 establishes a new, independent Android application identity:
 
-- application ID: `com.sunakgo.nais2`
-- debug application ID: `com.sunakgo.nais2.dev`
+- release/debug application ID: `com.bluhair.naisblue`
 - signer certificate SHA-256:
   `6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65`
 - Android version code scheme: `major * 1,000,000 + minor * 1,000 + patch`
 
-These public values, minimum SDK, and required ABIs are pinned in
-`android-release-policy.json`. Never replace the signing key in place. A new key
-would make the APK unable to update `v2.8.0` installations.
+These values, minimum SDK, and required ABIs are pinned in
+`android-release-policy.json`. Debug device QA and release artifacts use the
+same user-owned signer when the process-scoped signing environment is present.
 
-The package ID predates this fork. An APK signed by this project cannot update a
-different developer's `com.sunakgo.nais2` installation. Such a device must
-uninstall the conflicting app first, or a future fork release must deliberately
-move to a new package ID. Changing the ID also creates a separate app and does
-not migrate existing data.
+This is the first release for the final package ID, so no retired-package APK is
+installed as an update baseline. Existing retired app data is not migrated or
+cleared. If an install reports a signer collision, stop and obtain explicit
+approval before uninstalling anything.
 
 ## GitHub Actions
 
 `.github/workflows/android.yml` provides three gates:
 
-- pull requests, `main` pushes, and standalone manual runs create an isolated
-  `com.sunakgo.nais2.dev` x86_64 debug APK and install/launch it on an emulator;
+- pull requests, `main` pushes, and standalone manual runs create an x86_64
+  debug APK with the final application ID and install/launch it on an emulator;
 - a `v*` tag runs the desktop workflow first, then calls the Android workflow
   to build a signed APK;
 - the signing job deletes its key material before a separate no-secret emulator
   job tests the update, after which a write-only job uploads the Android assets
   and publishes the cross-platform draft Release.
 
-The signed job downloads the public `v2.8.0` APK by its pinned SHA-256, installs
-that baseline first, and then uses `adb install -r` for the newly built APK. This
-turns signer continuity and version monotonicity into an executable update test,
-not just a comparison against the key supplied during the current build.
+The signed job treats this package as a first install, then launches it and
+verifies signer/package metadata. Future releases can add an immutable baseline
+only after a public artifact exists for this exact application ID.
 
 Configure these `android-release` Environment secrets before enabling signed
 builds. Keeping the Android key in the protected Environment ensures the
@@ -70,7 +66,7 @@ replaced with different content; release a new version instead.
 
 ## Local signed build
 
-Keep the keystore outside the repository and shared workspace when possible:
+Keep the keystore outside the repository and shared workspace:
 
 ```powershell
 $env:APK_RELEASE_KEYSTORE_PATH = "$env:USERPROFILE\.nais2\nais2-release.jks"
@@ -84,6 +80,12 @@ directly to `scripts/release-android.ps1`, but this is only a migration escape
 hatch for the existing ignored `nais-release-key` and `.env`. The alias and
 expected certificate are read from `android-release-policy.json`; a substituted
 keystore fails before the APK is published.
+
+For local Phase 12 verification, `scripts/build-android-signed-local.ps1` reads
+the ignored `.env` without interpreting Windows backslashes, copies the source
+keystore to an OS temporary file, sets Gradle signing values only in the child
+process, and deletes the copy in `finally`. The `.env` alias was characterized as
+stale; the sole keytool-verified user key and tracked policy alias are `release`.
 
 The command verifies version agreement, initializes Android when necessary,
 applies the idempotent signing patch, reads CI signing credentials from

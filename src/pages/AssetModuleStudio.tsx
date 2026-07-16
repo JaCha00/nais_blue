@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CompositionStudioV2 } from '@/components/asset-module-studio/CompositionStudioV2'
+import { NativeR2SetupPanel } from '@/components/r2/NativeR2SetupPanel'
 import { CapabilityNotice } from '@/components/platform/CapabilityBadge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -675,6 +676,11 @@ function R2DeployPanel({
                     </div>
                 )}
                 {error && <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
+                <NativeR2SetupPanel
+                    assetProfile={profile}
+                    localRoot={localRoot}
+                    onPersistAssetProfile={saveProfile}
+                />
             </div>
         </SectionPanel>
     )

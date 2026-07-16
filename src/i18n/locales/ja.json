@@ -316,7 +316,21 @@
         "library": "ライブラリ",
         "settings": "設定",
         "styleLab": "画風研究所",
-        "promptEditor": "プロンプトエディター"
+        "promptEditor": "プロンプトエディター",
+        "queue": "キューセンター"
+    },
+    "queue": {
+        "title": "キューセンター",
+        "enqueued": "永続キューに追加しました",
+    "enqueuedCount": "{{count}}件のジョブをキューセンターに追加しました。",
+    "enqueueFailed": "キューへの追加に失敗しました",
+    "legacyPending": "従来のScene待機項目が{{count}}件あります。",
+    "legacyRetained": "変換時に現在のパラメーターをスナップショットし、ロールバック用に従来の件数を保持します。",
+    "convertLegacy": "永続ジョブに変換",
+    "convertLegacyTitle": "従来のSceneキューを変換しますか？",
+    "convertLegacyDescription": "現在のパラメーターと必要なリソースを永続ジョブとしてスナップショットします。ロールバック用に従来のqueueCountは保持されます。",
+    "convertLegacyConfirm": "変換",
+    "failureSummary": "失敗またはブロック {{count}}件 · 診断を開く"
     },
     "assetModuleStudioV2": {
         "wrapper": {
@@ -1301,6 +1315,99 @@
         },
         "generation": {
             "imageFailed": "画像生成に失敗しました。"
+        }
+    },
+    "tokenAssessment": {
+        "title": "プロンプトサイズとトークン信頼度",
+        "unavailable": "信頼できるトークン計算は利用できません。文字数は最終展開済みベースと有効なキャラクタープロンプトを反映します。",
+        "classification": "精度分類",
+        "classifications": {
+            "exact": "正確",
+            "estimated": "推定",
+            "unavailable": "利用不可"
+        },
+        "model": "モデル",
+        "contextLimit": "確定トークン上限",
+        "limitUnavailable": "このモデルでは未確認",
+        "tokens": "{{count}}トークン",
+        "positiveCombined": "ポジティブ合計",
+        "negativeCombined": "ネガティブ合計",
+        "characters": "{{count}}文字",
+        "breakdown": "セクション別文字数",
+        "expandedBase": "展開済みポジティブベース",
+        "characterPositive": "有効キャラクターのポジティブ",
+        "expandedNegative": "展開済みネガティブベース",
+        "characterNegative": "有効キャラクターのネガティブ",
+        "safetyMargin": "トークン安全マージン",
+        "notCalculated": "未計算"
+    },
+    "productGuidance": {
+        "trigger": "ヘルプ",
+        "onboardingAvailable": "スタートガイドを利用できます",
+        "title": "スタートガイドと復旧ガイド",
+        "description": "必要なセクションだけ開いてください。このガイドから実生成やアップロードは行いません。",
+        "diagnosticLinked": "関連する診断コード:",
+        "openDiagnosticGuide": "解決ガイドを開く",
+        "status": {
+            "complete": "完了",
+            "attention": "要確認",
+            "available": "利用可能",
+            "optional": "任意"
+        },
+        "steps": {
+            "credential": {
+                "title": "1. Credential VaultとNovelAI",
+                "description": "Vaultを解除し、検証済み資格情報を接続します。",
+                "locked": "Vaultはロック中です。保存済みNovelAI資格情報を使う前に解除してください。",
+                "missing": "利用可能な保存済み資格情報がありません。Vaultで追加して検証してください。",
+                "ready": "解除済みVaultで保存済み資格情報を利用できます。",
+                "action": "Credential Vaultを開く"
+            },
+            "validation": {
+                "title": "2. 安全な検証",
+                "description": "ネットワーク要求前にresolved planを確認します。",
+                "safe": "Mainでresolved plan、プロンプトセクション、警告、モデル、出力ポリシーを確認します。確認だけではNovelAI要求は送信されません。",
+                "action": "Mainでオフライン確認"
+            },
+            "output": {
+                "title": "3. 出力とプライバシー",
+                "description": "場所、形式、メタデータ処理を選択します。",
+                "format": "画像形式",
+                "privacy": "メタデータプライバシー",
+                "location": "現在の出力場所",
+                "action": "すべての出力設定を開く",
+                "metadata": {
+                    "embedded": "メタデータを埋め込む",
+                    "sidecar": "サイドカーのみ",
+                    "stripped": "画像メタデータを削除しサイドカーを作成"
+                }
+            },
+            "r2": {
+                "title": "4. 任意のR2",
+                "description": "リモートアセット保存が必要な場合のみR2を設定します。",
+                "action": "R2設定を開く"
+            },
+            "queue": {
+                "title": "5. Queue Center",
+                "description": "再試行、再キュー、キャンセル、最終結果を確認します。",
+                "help": "Queue Centerはworker数、rotation、retry、stale-result契約を変更せず永続job状態を表示します。",
+                "action": "Queue Centerを開く"
+            }
+        },
+        "capabilities": {
+            "absolutePath": {
+                "reason": "モバイルアプリのサンドボックスから任意のデスクトップ絶対パスへは書き込めません。",
+                "alternative": "アプリ内の保存先またはシステムファイルピッカーを使用してください。"
+            },
+            "r2": {
+                "reason": "このモバイルビルドではnative foreground R2 uploadは有効ではありません。",
+                "alternative": "モバイルでprofileを確認し、デスクトップアプリからアップロードしてください。"
+            }
+        },
+        "advanced": {
+            "title": "高度な設定と診断",
+            "description": "技術識別子と復旧コンテキストを確認します。",
+            "help": "DiagnosticCode値とmodel IDはログやサポート資料と一致させるため翻訳しません。"
         }
     }
 }

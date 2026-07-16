@@ -4,7 +4,7 @@ version = "2.8.1"
 description = "NovelAI Image Studio"
 authors = ["sunakgo"]
 license = "GPL-3.0"
-repository = "https://github.com/JaCha00/nais2-integration-complete"
+repository = "https://github.com/JaCha00/nais_blue"
 edition = "2021"
 rust-version = "1.88.0"
 
@@ -35,12 +35,45 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 tokio = { version = "1", features = ["full"] }
 zip = "2.2"
 base64 = "0.22"
+sha2 = "0.10"
+
+# Tracked lifecycle/control source for Android user-initiated R2/LAN transfers.
+# Its executor remains fail-closed, so registering the plugin does not enable a
+# background transfer capability or add a provider SDK to desktop/mobile.
+tauri-plugin-nais-android-transfer = { path = "plugins/nais-android-transfer" }
+
+# Phase 09 native R2 transport. Pin to the newest AWS S3 SDK line whose
+# declared MSRV matches this crate's Rust 1.88 contract. SigV4, conditional
+# writes, streaming bodies, and multipart operations stay SDK-owned.
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies.aws-sdk-s3]
+version = "=1.122.0"
+default-features = false
+features = ["default-https-client", "http-1x", "rt-tokio", "rustls"]
+
+# R2 access/secret pairs are persisted in the OS credential vault. No read
+# command is exposed to the renderer; upload commands resolve references here.
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies.keyring]
+version = "=4.1.4"
+default-features = true
 
 # These crates back the desktop-only gates in src/lib.rs. Keeping updater here
 # also prevents its reqwest rustls-no-provider feature from leaking into Android.
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+
+# Phase 12 desktop LAN sync uses TLS 1.3/mTLS from rustls and certificate/CSR
+# handling from rcgen. The HTTP crates only expose bounded JSON endpoints; key
+# agreement, record encryption, certificate validation, and nonces remain in
+# audited libraries rather than application-defined cryptographic primitives.
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+axum-server = { version = "=0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
+ipnet = "=2.12.0"
+rcgen = { version = "=0.14.8", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser", "zeroize"] }
+rustls = { version = "=0.23.41", default-features = false, features = ["aws_lc_rs", "std"] }
+subtle = "=2.6.1"
+tower = { version = "=0.5.3", default-features = false, features = ["limit"] }
+zeroize = { version = "=1.9.0", features = ["derive"] }
 
 # Recommended by the official Stronghold plugin setup to keep the password KDF
 # usable in development builds without changing release cryptography.

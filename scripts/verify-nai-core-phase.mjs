@@ -297,17 +297,16 @@ check(
   /request\.includeWebpCompatibilitySidecar \?\? true/.test(outputMetadataWriter)
 )
 check(
-  'V3 and Furry V3 surface an unverified parity warning',
-  /VERIFIED_PAYLOAD_PARITY_MODELS/.test(generationStore) &&
+  'selectable model authority is the verified V4/V4.5 release matrix',
   /nai-diffusion-4-5-curated/.test(generationStore) &&
   /nai-diffusion-4-5-full/.test(generationStore) &&
   /nai-diffusion-4-curated-preview/.test(generationStore) &&
   /nai-diffusion-4-full/.test(generationStore) &&
-  /isVerifiedPayloadParityModel/.test(generationStore) &&
-  /warnIfUnverifiedPayloadParityModel\(model\)/.test(generationStore) &&
-  /Payload parity 미검증 모델/.test(generationStore)
+  !/nai-diffusion-3/.test(generationStore) &&
+  !/nai-diffusion-furry-3/.test(generationStore) &&
+  /normalizeSelectableGenerationModel/.test(generationStore)
 )
-check('payload parity scope records V4/V4.5 before V3 expansion', /verified parity scope is V4\/V4\.5/.test(payload) && /sm_dyn/.test(payload))
+check('payload authority records V4/V4.5 release support', /Release-supported builder authority is V4\/V4\.5/.test(payload))
 
 runPayloadFixtureChecks()
 

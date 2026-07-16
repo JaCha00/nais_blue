@@ -55,6 +55,13 @@ import { useRotationStore } from '@/stores/character-rotation-store'
 import { toast } from '@/components/ui/use-toast'
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { ResolvedPlanPanel } from '@/components/composition/ResolvedPlanPanel'
+import { useQueueStore } from '@/stores/queue-store'
+import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
+import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
+import {
+    cancelMainGenerationCommand,
+    startMainGenerationCommand,
+} from '@/services/queue/generation-command'
 
 const SAMPLERS = [
     'k_euler',
@@ -84,6 +91,7 @@ export function PromptPanel() {
     const completedCount = useSceneStore(state => state.completedCount)
     const totalQueuedCount = useSceneStore(state => state.totalQueuedCount)
     const rotationActive = useRotationStore(state => state.active)
+    const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
 
     const sceneQueueCount = activePresetId ? getTotalQueueCount(activePresetId) : 0
 
@@ -132,8 +140,6 @@ export function PromptPanel() {
     const setQualityToggle = useGenerationStore(state => state.setQualityToggle)
     const setUcPreset = useGenerationStore(state => state.setUcPreset)
     const setBatchCount = useGenerationStore(state => state.setBatchCount)
-    const generate = useGenerationStore(state => state.generate)
-    const cancelGeneration = useGenerationStore(state => state.cancelGeneration)
 
     // Zustand 선택적 구독 - settingsStore
     const promptFontSize = useSettingsStore(state => state.promptFontSize)
@@ -210,18 +216,26 @@ export function PromptPanel() {
             }
             if (sceneIsGenerating || sceneIsCancelling) {
                 cancelSceneGeneration()  // Invalidate the session and abort its active requests
-            } else {
+            } else if (queueExecutionAuthority === 'legacy') {
                 startNewGenerationSession()  // Start - creates new session ID
+            } else if (sceneQueueCount > 0) {
+                void enqueueCurrentSceneQueue()
+                    .then(result => result === null ? undefined : getRuntimeDurableQueueCoordinator().drain())
+                    .catch(error => toast({
+                        title: t('common.error', 'Error'),
+                        description: error instanceof Error ? error.message : t('queue.enqueueFailed', 'Queue enqueue failed'),
+                        variant: 'destructive',
+                    }))
             }
             return
         }
 
         if (isGenerating) {
-            cancelGeneration()
+            void cancelMainGenerationCommand()
         } else {
-            generate()
+            void startMainGenerationCommand()
         }
-    }, [isConflict, isSceneMode, rotationActive, sceneIsGenerating, sceneIsCancelling, cancelSceneGeneration, startNewGenerationSession, isGenerating, cancelGeneration, generate])
+    }, [isConflict, isSceneMode, rotationActive, sceneIsGenerating, sceneIsCancelling, cancelSceneGeneration, queueExecutionAuthority, sceneQueueCount, startNewGenerationSession, isGenerating, t])
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
