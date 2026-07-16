@@ -435,6 +435,7 @@ describe('sync payload sanitizer', () => {
     it('rejects every whitespace partition of the bounded high-byte binary canary', () => {
         const encoded = 'oKGio6Slpqeoqaqr'
         let accepted = 0
+        let rejectedWithWrongError = false
         for (let mask = 0; mask < 2 ** (encoded.length - 1); mask += 1) {
             let wrapped = encoded[0]
             for (let index = 1; index < encoded.length; index += 1) {
@@ -447,11 +448,17 @@ describe('sync payload sanitizer', () => {
                 })
                 accepted += 1
             } catch (error) {
-                expect(error).toBeInstanceOf(SyncSanitizationError)
+                // This exhaustive 2^15 loop verifies the error type once at the boundary;
+                // avoiding one Vitest assertion object per partition keeps CI CPU contention bounded.
+                if (!(error instanceof SyncSanitizationError)) {
+                    rejectedWithWrongError = true
+                    break
+                }
             }
         }
+        expect(rejectedWithWrongError).toBe(false)
         expect(accepted).toBe(0)
-    })
+    }, 15_000)
 
     it('rejects forbidden fields in a finalized payload even if a caller bypasses projection', () => {
         expect(() => assertSyncPayloadSafe({ safe: { outputWriterJournal: 'journal-canary' } }))
