@@ -23,6 +23,7 @@ interface AnimatedNavBarProps {
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+const LABELED_NAV_MIN_WIDTH = 1360
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -53,8 +54,9 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             rafId = requestAnimationFrame(() => {
                 const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
                 const nextMode = {
-                    // Labels are reserved for a genuinely roomy center panel; icons always fit from sm upward.
-                    isCompact: window.innerWidth < 1536 || availableWidth < 1200,
+                    // Eleven translated labels need the measured center-panel width, not the viewport
+                    // breakpoint. Below this bound the four primary icons plus More remain fully visible.
+                    isCompact: window.innerWidth < 1536 || availableWidth < LABELED_NAV_MIN_WIDTH,
                     isTiny: availableWidth < 320 || window.innerWidth < 480,
                 }
 
