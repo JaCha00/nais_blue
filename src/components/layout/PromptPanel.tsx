@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -7,12 +7,12 @@ import { SourceImagePanel } from '@/components/layout/SourceImagePanel'
 import { CharacterSettingsDialog } from '@/components/character/CharacterSettingsDialog'
 import { CharacterPromptPanel } from '@/components/character/CharacterPromptPanel'
 import { PromptGeneratorDialog } from '@/components/prompt/PromptGeneratorDialog'
-import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
+import { PromptEditorSurface } from '@/components/prompt/PromptEditorSurface'
+import { PromptGenerationControls } from '@/components/prompt/PromptGenerationControls'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
-import Counter from '@/components/ui/counter'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import {
     Select,
@@ -33,13 +33,11 @@ import { cn } from '@/lib/utils'
 import { Tip } from '@/components/ui/tooltip'
 import { generateRandomSeed } from '@/lib/utils'
 import {
-    ImagePlus,
     Dice5,
     Lock,
     Unlock,
     SlidersHorizontal,
     Cpu,
-    Film,
     Puzzle,
     Users,
 } from 'lucide-react'
@@ -47,21 +45,10 @@ import GeminiIcon from '@/assets/gemini-color.svg'
 import { AVAILABLE_MODELS } from '@/stores/generation-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
-import { useSceneStore } from '@/stores/scene-store'
-import { useSettingsStore } from '@/stores/settings-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
-import { useRotationStore } from '@/stores/character-rotation-store'
-import { toast } from '@/components/ui/use-toast'
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { ResolvedPlanPanel } from '@/components/composition/ResolvedPlanPanel'
-import { useQueueStore } from '@/stores/queue-store'
-import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
-import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
-import {
-    cancelMainGenerationCommand,
-    startMainGenerationCommand,
-} from '@/services/generation/generation-command'
 
 const SAMPLERS = [
     'k_euler',
@@ -74,38 +61,17 @@ const SAMPLERS = [
 ]
 
 const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
-type PromptSlot = 'base' | 'additional' | 'detail' | 'negative'
-
 export function PromptPanel() {
     const { t } = useTranslation()
     const location = useLocation()
     const isMainMode = location.pathname === '/'
     const isSceneMode = location.pathname.startsWith('/scenes')
 
-    // Zustand 선택적 구독 - sceneStore
-    const activePresetId = useSceneStore(state => state.activePresetId)
-    const getTotalQueueCount = useSceneStore(state => state.getTotalQueueCount)
-    const sceneIsGenerating = useSceneStore(state => state.isGenerating)
-    const sceneIsCancelling = useSceneStore(state => state.isCancelling)
-    const cancelSceneGeneration = useSceneStore(state => state.cancelSceneGeneration)
-    const startNewGenerationSession = useSceneStore(state => state.startNewGenerationSession)
-    const completedCount = useSceneStore(state => state.completedCount)
-    const totalQueuedCount = useSceneStore(state => state.totalQueuedCount)
-    const rotationActive = useRotationStore(state => state.active)
-    const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
-
-    const sceneQueueCount = activePresetId ? getTotalQueueCount(activePresetId) : 0
-
-    // Zustand 선택적 구독 - generationStore (상태)
-    const basePrompt = useGenerationDraftStore(state => state.basePrompt)
     const additionalPrompt = useGenerationDraftStore(state => state.additionalPrompt)
-    const detailPrompt = useGenerationDraftStore(state => state.detailPrompt)
-    const negativePrompt = useGenerationDraftStore(state => state.negativePrompt)
     const seed = useGenerationDraftStore(state => state.seed)
     const seedLocked = useGenerationDraftStore(state => state.seedLocked)
     const selectedResolution = useGenerationDraftStore(state => state.selectedResolution)
     const isGenerating = useGenerationSessionStore(state => state.isGenerating)
-    const isCancelled = useGenerationSessionStore(state => state.isCancelled)
     const model = useGenerationDraftStore(state => state.model)
     const steps = useGenerationDraftStore(state => state.steps)
     const cfgScale = useGenerationDraftStore(state => state.cfgScale)
@@ -117,15 +83,9 @@ export function PromptPanel() {
     const variety = useGenerationDraftStore(state => state.variety)
     const qualityToggle = useGenerationDraftStore(state => state.qualityToggle)
     const ucPreset = useGenerationDraftStore(state => state.ucPreset)
-    const batchCount = useGenerationDraftStore(state => state.batchCount)
-    const currentBatch = useGenerationSessionStore(state => state.currentBatch)
-    const generatingMode = useGenerationSessionStore(state => state.generatingMode)
 
     // Zustand 선택적 구독 - generationStore (액션)
-    const setBasePrompt = useGenerationDraftStore(state => state.setBasePrompt)
     const setAdditionalPrompt = useGenerationDraftStore(state => state.setAdditionalPrompt)
-    const setDetailPrompt = useGenerationDraftStore(state => state.setDetailPrompt)
-    const setNegativePrompt = useGenerationDraftStore(state => state.setNegativePrompt)
     const setSeed = useGenerationDraftStore(state => state.setSeed)
     const setSeedLocked = useGenerationDraftStore(state => state.setSeedLocked)
     const setSelectedResolution = useGenerationDraftStore(state => state.setSelectedResolution)
@@ -140,11 +100,6 @@ export function PromptPanel() {
     const setVariety = useGenerationDraftStore(state => state.setVariety)
     const setQualityToggle = useGenerationDraftStore(state => state.setQualityToggle)
     const setUcPreset = useGenerationDraftStore(state => state.setUcPreset)
-    const setBatchCount = useGenerationDraftStore(state => state.setBatchCount)
-
-    // Font size remains a shared display preference. Legacy collapse flags stay
-    // persisted for sync compatibility, while the command surface uses one local slot.
-    const promptFontSize = useSettingsStore(state => state.promptFontSize)
 
     // Zustand 선택적 구독 - characterPromptStore
     const characterCount = useCharacterPromptStore(state => state.characters.filter(c => c.enabled).length)
@@ -154,12 +109,15 @@ export function PromptPanel() {
     const [characterPanelOpen, setCharacterPanelOpen] = useState(false)
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
-    const [activePromptSlot, setActivePromptSlot] = useState<PromptSlot>('base')
 
     // 전역 단축키 이벤트 수신
     useEffect(() => {
         const handleOpenPromptGen = () => setPromptGenOpen(prev => !prev)
-        const handleOpenFragment = () => setFragmentDialogOpen(prev => !prev)
+        // Sequential proposals hold a runtime lease while the provider runs;
+        // keep the editor closed so UI mutations cannot invalidate paid work.
+        const handleOpenFragment = () => {
+            if (!isGenerating) setFragmentDialogOpen(prev => !prev)
+        }
         const handleOpenParameters = () => setParameterDialogOpen(prev => !prev)
         const handleOpenCharacterPrompt = () => setCharacterPanelOpen(prev => !prev)
         const handleOpenImageReference = () => setImageRefDialogOpen(prev => !prev)
@@ -177,92 +135,17 @@ export function PromptPanel() {
             window.removeEventListener(SHORTCUT_EVENTS.OPEN_CHARACTER_PROMPT, handleOpenCharacterPrompt)
             window.removeEventListener(SHORTCUT_EVENTS.OPEN_IMAGE_REFERENCE, handleOpenImageReference)
         }
-    }, [])
+    }, [isGenerating])
+
+    useEffect(() => {
+        if (isGenerating) setFragmentDialogOpen(false)
+    }, [isGenerating])
 
     const handleRandomSeed = () => {
         if (!seedLocked) {
             setSeed(generateRandomSeed())
         }
     }
-
-
-
-
-    // Conflict Detection
-    const isMainGenerating = generatingMode === 'main'
-    const isSceneGenerating = generatingMode === 'scene'
-    const isStyleLabGenerating = generatingMode === 'styleLab'
-    const isConflict = isSceneMode
-        ? isMainGenerating || isStyleLabGenerating
-        : isSceneGenerating
-
-    const handleGenerateOrCancel = useCallback(() => {
-        if (isConflict) return // Prevent action if conflict exists
-
-        if (isSceneMode) {
-            // Toggle scene generation: start new session or cancel
-            if (rotationActive) {
-                useRotationStore.getState().stop({ reason: 'prompt panel stop', keepSnapshot: true })
-                toast({
-                    title: '로테이션 중단',
-                    description: '현재 위치를 저장했습니다. 나중에 이어서 생성할 수 있습니다.',
-                })
-                return
-            }
-            if (sceneIsGenerating || sceneIsCancelling) {
-                cancelSceneGeneration()  // Invalidate the session and abort its active requests
-            } else if (queueExecutionAuthority === 'legacy') {
-                startNewGenerationSession()  // Start - creates new session ID
-            } else if (sceneQueueCount > 0) {
-                void enqueueCurrentSceneQueue()
-                    .then(result => result === null ? undefined : getRuntimeDurableQueueCoordinator().drain())
-                    .catch(error => toast({
-                        title: t('common.error', 'Error'),
-                        description: error instanceof Error ? error.message : t('queue.enqueueFailed', 'Queue enqueue failed'),
-                        variant: 'destructive',
-                    }))
-            }
-            return
-        }
-
-        if (isGenerating) {
-            void cancelMainGenerationCommand()
-        } else {
-            void startMainGenerationCommand()
-        }
-    }, [isConflict, isSceneMode, rotationActive, sceneIsGenerating, sceneIsCancelling, cancelSceneGeneration, queueExecutionAuthority, sceneQueueCount, startNewGenerationSession, isGenerating, t])
-
-    const promptSlots = [
-        {
-            id: 'base' as const,
-            label: t('prompt.base'),
-            placeholder: t('prompt.basePlaceholder'),
-            value: basePrompt,
-            setValue: setBasePrompt,
-        },
-        {
-            id: 'additional' as const,
-            label: t('prompt.additional'),
-            placeholder: t('prompt.additionalPlaceholder'),
-            value: additionalPrompt,
-            setValue: setAdditionalPrompt,
-        },
-        {
-            id: 'detail' as const,
-            label: t('prompt.detail'),
-            placeholder: t('prompt.detailPlaceholder'),
-            value: detailPrompt,
-            setValue: setDetailPrompt,
-        },
-        {
-            id: 'negative' as const,
-            label: t('prompt.negative'),
-            placeholder: t('prompt.negativePlaceholder'),
-            value: negativePrompt,
-            setValue: setNegativePrompt,
-        },
-    ]
-    const activePrompt = promptSlots.find(slot => slot.id === activePromptSlot) ?? promptSlots[0]
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-5">
@@ -286,49 +169,7 @@ export function PromptPanel() {
                     onOpenChange={setCharacterPanelOpen}
                 />
 
-                {/* A single command surface keeps every prompt layer one tap away
-                    without stacking four competing card headers and editors. */}
-                <div className="flex min-h-40 flex-none flex-col gap-2 rounded-panel bg-canvas p-2">
-                    <div className="grid grid-cols-4 gap-1" role="tablist" aria-label={t('prompt.title', '프롬프트')}>
-                        {promptSlots.map(slot => {
-                            const isActive = slot.id === activePrompt.id
-                            return (
-                                <button
-                                    key={slot.id}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={isActive}
-                                    aria-controls="prompt-command-editor"
-                                    onClick={() => setActivePromptSlot(slot.id)}
-                                    className={cn(
-                                        'relative flex h-11 min-w-0 items-center justify-center rounded-control px-2 text-xs font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                        isActive
-                                            ? slot.id === 'negative' ? 'bg-destructive/10 text-destructive' : 'bg-accent text-primary'
-                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                                    )}
-                                >
-                                    <span className="truncate">{slot.label}</span>
-                                    {slot.value && !isActive && (
-                                        <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden="true" />
-                                    )}
-                                </button>
-                            )
-                        })}
-                    </div>
-                    <div id="prompt-command-editor" role="tabpanel" className="min-h-28 flex-1">
-                        <AutocompleteTextarea
-                            key={activePrompt.id}
-                            placeholder={activePrompt.placeholder}
-                            value={activePrompt.value}
-                            onChange={(event) => activePrompt.setValue(event.target.value)}
-                            className={cn(
-                                'h-full min-h-28 resize-none rounded-control bg-card',
-                                activePrompt.id === 'negative' && 'border-destructive/30',
-                            )}
-                            style={{ fontSize: `${promptFontSize}px` }}
-                        />
-                    </div>
-                </div>
+                <PromptEditorSurface />
             </div>
 
             {/* Prompt helpers share a quiet tonal rail; dialogs carry their own hierarchy once opened. */}
@@ -364,6 +205,7 @@ export function PromptPanel() {
                     className="h-11 w-11 min-w-0 rounded-control px-0 text-xs min-[480px]:w-auto min-[480px]:flex-1 min-[480px]:px-2"
                     onClick={() => setFragmentDialogOpen(true)}
                     aria-label={t('prompt.fragment')}
+                    disabled={isGenerating}
                 >
                     <Puzzle className="h-3.5 w-3.5 shrink-0 min-[480px]:mr-1.5" />
                     <span className="sr-only min-[480px]:not-sr-only min-[480px]:min-w-0 min-[480px]:truncate">{t('prompt.fragment')}</span>
@@ -633,80 +475,7 @@ export function PromptPanel() {
                 }}
             />
 
-            {/* Bottom Generate Button Area */}
-            <div className="p-0">
-                {/* Generate Button + Counter */}
-                <div className="flex flex-wrap gap-2">
-                    <Button
-                        data-testid="prompt-generate-action"
-                        variant={(isGenerating || (isSceneMode && (sceneIsGenerating || sceneIsCancelling || rotationActive))) ? "destructive" : "generate"}
-                        size="lg"
-                        className={cn(
-                            "h-12 min-w-40 flex-1 rounded-control px-4 text-sm font-semibold leading-tight whitespace-normal",
-                            isConflict && "opacity-50 cursor-not-allowed"
-                        )}
-                        onClick={handleGenerateOrCancel}
-                        disabled={
-                            (isSceneMode && sceneQueueCount === 0 && !sceneIsGenerating && !sceneIsCancelling && !rotationActive) ||
-                            isConflict ||
-                            (sceneIsCancelling && !rotationActive) ||  // Disable while waiting for API to complete after cancel (Scene Mode)
-                            (isGenerating && isCancelled)  // Disable while waiting for API to complete after cancel (Main Mode)
-                        }
-                    >
-                        {isSceneMode ? (
-                            sceneIsCancelling ? (
-                                <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                                    {t('common.cancelling', '취소 중...')}
-                                </>
-                            ) : rotationActive ? (
-                                <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                                    중단하고 나중에 이어서
-                                </>
-                            ) : sceneIsGenerating ? (
-                                <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                                    {t('common.cancel', '취소')} {totalQueuedCount > 0 && `(${completedCount + 1}/${totalQueuedCount})`}
-                                </>
-                            ) : (
-                                <>
-                                    <Film className="mr-2 h-5 w-5" />
-                                    {t('scene.generateAll', '씬 생성')} {sceneQueueCount > 0 && `(${sceneQueueCount})`}
-                                </>
-                            )
-                        ) : (
-                            isGenerating && isCancelled ? (
-                                <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                                    {t('common.cancelling', '취소 중...')}
-                                </>
-                            ) : isGenerating ? (
-                                <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                                    {batchCount > 1
-                                        ? `${t('generate.cancel')} (${currentBatch}/${batchCount})`
-                                        : t('generate.cancel')
-                                    }
-                                </>
-                            ) : (
-                                <>
-                                    <ImagePlus className="mr-2 h-5 w-5" />
-                                    {t('generate.button')}
-                                </>
-                            )
-                        )}
-                    </Button>
-                    <Counter
-                        value={batchCount}
-                        onChange={setBatchCount}
-                        min={1}
-                        max={9999}
-                        fontSize={16}
-                        className="shrink-0"
-                    />
-                </div>
-            </div>
+            <PromptGenerationControls isSceneMode={isSceneMode} />
 
             {/* Fragment Prompt Dialog */}
             <FragmentPromptDialog

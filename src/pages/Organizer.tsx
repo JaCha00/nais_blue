@@ -311,13 +311,18 @@ export default function Organizer() {
     }, [])
 
     const ensureArtifact = useCallback(async (entry: OrganizerCollectionEntry): Promise<string> => {
-        const artifactId = await getArtifactId(entry)
-        if (recordsById.has(artifactId)) {
-            setArtifactIdsByEntry(current => current[entry.entryId] === artifactId ? current : { ...current, [entry.entryId]: artifactId })
-            return artifactId
-        }
+        const logicalArtifactId = await getArtifactId(entry)
         const bytes = await collectionAdapter.readEntry(entry)
         const contentChecksum = await sha256Bytes(bytes)
+        const existing = await artifactRepository.get(logicalArtifactId)
+        // The first import keeps the stable logical ID. If the same portable
+        // file reference now contains different bytes, combine identity and
+        // checksum into a new immutable version instead of reusing stale data.
+        const artifactId = existing === null || existing.contentChecksum === contentChecksum
+            ? logicalArtifactId
+            : `artifact-${(await sha256Bytes(new TextEncoder().encode(
+                `${JSON.stringify(entry.file)}\n${contentChecksum}`,
+            ))).slice('sha256:'.length)}`
         await artifactRepository.putOriginal({
             artifactId,
             file: entry.file,
@@ -328,7 +333,7 @@ export default function Organizer() {
         await loadRecords()
         setArtifactIdsByEntry(current => ({ ...current, [entry.entryId]: artifactId }))
         return artifactId
-    }, [artifactRepository, collectionAdapter, getArtifactId, loadRecords, recordsById])
+    }, [artifactRepository, collectionAdapter, getArtifactId, loadRecords])
 
     const ensureThumbnail = useCallback(async (entry: OrganizerCollectionEntry) => {
         const key = entryKey(entry)

@@ -114,6 +114,12 @@ export default function QueueCenter() {
     const [conversionOpen, setConversionOpen] = useState(false)
 
     const selectedBatch = batches.find(batch => batch.id === selectedBatchId) ?? null
+    // Projection jobs may be repository-filtered, while this matching summary is
+    // batch-wide; use it so a view filter cannot hide or enable a batch retry.
+    const hasRetryableFailures = selectedBatch !== null
+        && summary !== null
+        && summary.batchId === selectedBatch.id
+        && summary.states.failed > 0
 
     const refresh = useCallback(async () => {
         const requestId = ++refreshId.current
@@ -133,7 +139,12 @@ export default function QueueCenter() {
             const projections: GenerationJobProjection[] = []
             let cursor: string | null = null
             do {
-                const page = await repository.listJobProjections({ batchId, cursor, limit: 500 })
+                const page = await repository.listJobProjections({
+                    batchId,
+                    ...(statusFilter === 'all' ? {} : { states: [statusFilter] }),
+                    cursor,
+                    limit: 500,
+                })
                 projections.push(...page.items)
                 cursor = page.nextCursor
             } while (cursor !== null)
@@ -144,12 +155,21 @@ export default function QueueCenter() {
         } catch (error) {
             reportDiagnostic(error, { operation: 'queue-center.refresh', stage: 'read', category: 'persistence' })
         }
-    }, [repository, selectedBatchId, setSelectedBatchId])
+    }, [repository, selectedBatchId, setSelectedBatchId, statusFilter])
 
     useEffect(() => {
         void refresh()
-        const interval = window.setInterval(() => void refresh(), 1_000)
-        return () => window.clearInterval(interval)
+        // IndexedDB projection reads still scale with the selected result set;
+        // background tabs therefore pause polling and refresh once on return.
+        const refreshWhenVisible = () => {
+            if (document.visibilityState === 'visible') void refresh()
+        }
+        const interval = window.setInterval(refreshWhenVisible, 1_000)
+        document.addEventListener('visibilitychange', refreshWhenVisible)
+        return () => {
+            window.clearInterval(interval)
+            document.removeEventListener('visibilitychange', refreshWhenVisible)
+        }
     }, [refresh])
 
     useEffect(() => {
@@ -195,7 +215,7 @@ export default function QueueCenter() {
     }
 
     const retryFailed = async () => {
-        if (selectedBatch === null || !jobs.some(job => job.state === 'failed')) return
+        if (selectedBatch === null || !hasRetryableFailures) return
         const identity = retryIdentity(selectedBatch.id)
         await runAction(() => repository.retryFailedJobs({
             sourceBatchId: selectedBatch.id,
@@ -330,7 +350,7 @@ export default function QueueCenter() {
                                 ? <><Pause className="mr-2 h-4 w-4" />{t('queue.pause', 'Pause')}</>
                                 : <><Play className="mr-2 h-4 w-4" />{t('queue.resume', 'Resume')}</>}
                         </Button>
-                        <Button variant="outline" disabled={selectedBatch === null || busy} onClick={() => void retryFailed()}>
+                        <Button variant="outline" disabled={busy || !hasRetryableFailures} onClick={() => void retryFailed()}>
                             <RotateCcw className="mr-2 h-4 w-4" />{t('queue.retryFailed', 'Retry failed items')}
                         </Button>
                         <Button

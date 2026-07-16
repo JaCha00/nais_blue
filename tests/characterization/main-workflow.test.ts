@@ -677,6 +677,64 @@ describe('Main workflow golden characterization', () => {
         expect(runtimeCapture.calls).not.toContain('payload:adapt-params')
     })
 
+    it('plans distinct sequential fragment values and CAS revisions for a durable batch', async () => {
+        stores.useAuthStore.setState({ token: '', isVerified: false, slot1Enabled: false })
+        stores.useFragmentStore.setState({
+            files: [{
+                id: 'fragment:durable-sequence',
+                name: 'durable-sequence',
+                folder: '',
+                lineCount: 3,
+                createdAt: FIXED_TIME,
+                updatedAt: FIXED_TIME,
+            }],
+            sequentialCounters: {},
+            sequenceState: { schemaVersion: 1, revision: 0, counters: {} },
+        })
+        const loadFragment = vi.spyOn(stores.useFragmentStore.getState(), 'loadFileContent')
+            .mockResolvedValue(['first', 'second', 'third'])
+        stores.useGenerationStore.setState({
+            basePrompt: '<*durable-sequence>',
+            compositionMode: 'v2',
+            selectedRecipeId: 'main:direct',
+            batchCount: 3,
+        })
+        const captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
+
+        try {
+            await stores.useGenerationStore.getState().generate({
+                capturePrepared: value => captured.push(structuredClone(value)),
+            })
+        } finally {
+            loadFragment.mockRestore()
+        }
+
+        expect(captured.map(value => value.finalPrompt)).toEqual(['first', 'second', 'third'])
+        expect(new Set(captured.map(value => value.sequenceCommitProposal?.expectedRevision)).size).toBe(3)
+        expect(captured.map(value => value.sequenceCommitProposal?.changes[0])).toEqual([
+            expect.objectContaining({ expectedCounter: 0, nextCounter: 1 }),
+            expect.objectContaining({ expectedCounter: 1, nextCounter: 2 }),
+            expect.objectContaining({ expectedCounter: 2, nextCounter: 3 }),
+        ])
+        expect(stores.useFragmentStore.getState().getSequenceSnapshot().counters['fragment:durable-sequence']).toBe(0)
+        for (const capture of captured) {
+            const proposal = capture.sequenceCommitProposal
+            const lease = stores.useFragmentStore.getState().reserveSequenceProposal(proposal === null
+                ? null
+                : {
+                    expectedRevision: proposal.expectedRevision,
+                    changes: proposal.changes.map(change => ({ ...change })),
+                })
+            expect(lease?.commit()).toBe(true)
+        }
+        expect(stores.useFragmentStore.getState().getSequenceSnapshot().counters['fragment:durable-sequence']).toBe(3)
+        expect(runtimeCapture.requests).toEqual([])
+        stores.useFragmentStore.setState({
+            sequentialCounters: {},
+            sequenceState: { schemaVersion: 1, revision: 0, counters: {} },
+        })
+    })
+
     it('matches the production store, adapter, payload, output and metadata fixture', async () => {
         const scenarios: Array<Record<string, unknown>> = []
 

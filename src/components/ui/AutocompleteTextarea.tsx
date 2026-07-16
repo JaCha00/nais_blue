@@ -57,6 +57,29 @@ export function AutocompleteTextarea({
 
     // onChange 디바운스를 위한 타이머 ref
     const onChangeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const pendingExternalValueRef = useRef<string | null>(null)
+    const onChangeRef = useRef(onChange)
+    onChangeRef.current = onChange
+
+    // The editor renders from local state for typing performance, while prompt
+    // tabs and responsive containers can unmount it before the debounce fires.
+    // Flushing on blur/unmount keeps the owning GenerationDraft store in sync.
+    const flushPendingChange = useCallback(() => {
+        if (onChangeTimerRef.current !== null) {
+            clearTimeout(onChangeTimerRef.current)
+            onChangeTimerRef.current = null
+        }
+        const pendingValue = pendingExternalValueRef.current
+        if (pendingValue === null) return
+        pendingExternalValueRef.current = null
+        onChangeRef.current({ target: { value: pendingValue } })
+    }, [])
+
+    const scheduleExternalChange = useCallback((nextValue: string, delayMs: number) => {
+        pendingExternalValueRef.current = nextValue
+        if (onChangeTimerRef.current !== null) clearTimeout(onChangeTimerRef.current)
+        onChangeTimerRef.current = setTimeout(flushPendingChange, delayMs)
+    }, [flushPendingChange])
 
     // Fragment Store 구독 (조각 프롬프트 목록)
     const fragmentFiles = useFragmentStore(state => state.files)
@@ -248,11 +271,8 @@ export function AutocompleteTextarea({
                 }
             })
 
-            // Debounce external onChange to avoid re-render resetting cursor
-            if (onChangeTimerRef.current) clearTimeout(onChangeTimerRef.current)
-            onChangeTimerRef.current = setTimeout(() => {
-                onChange({ target: { value: newValue } })
-            }, 50)
+            // Debounce external onChange to avoid re-render resetting cursor.
+            scheduleExternalChange(newValue, 50)
         } else {
             // 일반 태그 삽입 (:: 문법 지원)
             const left = val.slice(0, pos)
@@ -290,11 +310,8 @@ export function AutocompleteTextarea({
                 }
             })
 
-            // Debounce external onChange to avoid re-render resetting cursor
-            if (onChangeTimerRef.current) clearTimeout(onChangeTimerRef.current)
-            onChangeTimerRef.current = setTimeout(() => {
-                onChange({ target: { value: newValue } })
-            }, 50)
+            // Debounce external onChange to avoid re-render resetting cursor.
+            scheduleExternalChange(newValue, 50)
         }
     }
 
@@ -330,12 +347,7 @@ export function AutocompleteTextarea({
         setInternalValue(code)
 
         // onChange를 100ms 디바운스 (Zustand 업데이트 지연으로 렉 방지)
-        if (onChangeTimerRef.current) {
-            clearTimeout(onChangeTimerRef.current)
-        }
-        onChangeTimerRef.current = setTimeout(() => {
-            onChange({ target: { value: code } })
-        }, 100)
+        scheduleExternalChange(code, 100)
 
         if (textareaRef.current) {
             checkAutocomplete(code, textareaRef.current)
@@ -373,12 +385,11 @@ export function AutocompleteTextarea({
     }
 
     // --- Effects ---
-    // 타이머 정리 (컴포넌트 언마운트 시)
+    // Prompt slot changes remount this editor. Commit pending text before the
+    // old slot disappears so fast tab switches cannot discard the last input.
     useEffect(() => {
-        return () => {
-            if (onChangeTimerRef.current) clearTimeout(onChangeTimerRef.current)
-        }
-    }, [])
+        return flushPendingChange
+    }, [flushPendingChange])
 
     // Scroll active suggestion into view
     useEffect(() => {
@@ -531,6 +542,7 @@ export function AutocompleteTextarea({
                         textareaRef.current = e.target as HTMLTextAreaElement
                         warmTagIndex()
                     }}
+                    onBlur={flushPendingChange}
                     onClick={(e) => {
                         textareaRef.current = e.target as HTMLTextAreaElement
                         scrollToCaret()

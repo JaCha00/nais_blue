@@ -1,13 +1,10 @@
 import { useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useShortcutStore, matchesBinding, ShortcutAction } from '@/stores/shortcut-store'
-import { useGenerationStore } from '@/stores/generation-store'
 import { useFragmentStore } from '@/stores/fragment-store'
+import { useGenerationStore } from '@/stores/generation-store'
 import { supportsKeyboardShortcuts } from '@/platform/runtime'
-import {
-    cancelMainGenerationCommand,
-    startMainGenerationCommand,
-} from '@/services/queue/generation-command'
+import { executePromptGenerationCommand } from '@/services/generation/prompt-generation-command'
 
 // 커스텀 이벤트 (다이얼로그 열기용)
 export const SHORTCUT_EVENTS = {
@@ -27,7 +24,6 @@ export function useShortcuts() {
     const navigate = useNavigate()
     const location = useLocation()
     const { bindings, enabled } = useShortcutStore()
-    const isGenerating = useGenerationStore(state => state.isGenerating)
     const resetSequentialCounter = useFragmentStore(state => state.resetSequentialCounter)
 
     useEffect(() => {
@@ -138,11 +134,9 @@ export function useShortcuts() {
                     if (action === 'action:generate') {
                         if (location.pathname === '/') {
                             e.preventDefault()
-                            if (isGenerating) {
-                                void cancelMainGenerationCommand()
-                            } else {
-                                void startMainGenerationCommand()
-                            }
+                            // Keyboard invocation shares the same conflict and
+                            // cancellation policy as the Dock/Sheet action.
+                            void executePromptGenerationCommand('main')
                             return
                         }
                     }
@@ -150,6 +144,9 @@ export function useShortcuts() {
                     // 순차 카운터 리셋
                     if (action === 'action:resetFragmentCounters') {
                         e.preventDefault()
+                        // A running job may own a sequential-fragment lease; the
+                        // shortcut must not invalidate its captured CAS revision.
+                        if (useGenerationStore.getState().isGenerating) return
                         resetSequentialCounter()
                         window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.RESET_FRAGMENT_COUNTERS))
                         return
@@ -160,5 +157,5 @@ export function useShortcuts() {
 
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [bindings, enabled, navigate, location.pathname, isGenerating, resetSequentialCounter])
+    }, [bindings, enabled, navigate, location.pathname, resetSequentialCounter])
 }

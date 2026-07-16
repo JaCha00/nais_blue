@@ -4,11 +4,11 @@ import type { JsonValue, PortablePathRef } from '@/domain/composition/types'
 import type { GenerationJob, QueueArtifactReference, QueueResourceRecord } from '@/domain/queue/types'
 import { createThumbnail } from '@/lib/image-utils'
 import { ensureImageFileExtension } from '@/lib/generation-metadata'
+import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import { generateImage, generateImageStream } from '@/services/novelai-api'
 import { useAuthStore } from '@/stores/auth-store'
 import {
-    commitMainFragmentSequenceProposal,
     useGenerationStore,
     type CapturedMainGeneration,
 } from '@/stores/generation-store'
@@ -88,6 +88,8 @@ export function enqueueCurrentMainBatch(): Promise<CreateBatchAndEnqueueResult |
 
 async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResult | null> {
     const operationId = useQueueStore.getState().beginEnqueueOperation('main')
+    const generation = useGenerationStore.getState()
+    const expectedItemCount = generation.batchCount
     const materializer = getRuntimeQueueResourceMaterializer()
     const resourceCache = new Map<string, Promise<MaterializedQueueResource>>()
     const prepared: Array<{
@@ -96,7 +98,7 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
     }> = []
     const resources = new Map<string, QueueResourceRecord>()
 
-    await useGenerationStore.getState().generate({
+    await generation.generate({
         capturePrepared: async capture => {
             const dehydrated = await dehydrateGenerationParams(capture.params, materializer, resourceCache)
             for (const record of dehydrated.records) resources.set(record.id, record)
@@ -145,7 +147,13 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
             })
         },
     })
-    if (prepared.length === 0) return null
+    // Generation reports planner failures through UI diagnostics and resolves.
+    // The durable repository therefore requires the exact requested count before
+    // its atomic write; partial snapshots are discarded and their unused ID released.
+    if (prepared.length !== expectedItemCount || prepared.length === 0) {
+        useQueueStore.getState().completeEnqueueOperation('main', operationId)
+        return null
+    }
 
     const batchId = `main-batch-${operationId}`
     const createdAt = new Date().toISOString()
@@ -188,6 +196,13 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
     const payload = parseMainQueueParameters(job.snapshot.parameters)
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
+    // Reserve before transport so a stale immutable snapshot fails without a
+    // provider call. Planned Main jobs run in ordinal order and commit their
+    // distinct CAS proposals one at a time through this lease.
+    const sequenceLease = reserveWildcardSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)
+    if (sequenceLease === null) {
+        throw new QueueExecutionError('fatal', 'Fragment sequence snapshot is stale before Main transport')
+    }
     const generationStore = useGenerationStore.getState()
     generationStore.setGeneratingMode('main')
     generationStore.setIsGenerating(true)
@@ -254,7 +269,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             canCommit: context.canCommit,
             commitWorkflow: async outputResult => {
                 if (!context.canCommit()) throw new Error('Durable Main job was cancelled before publication')
-                if (!commitMainFragmentSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)) {
+                if (!sequenceLease.commit()) {
                     sequenceConflict = true
                     throw new Error('Fragment sequence changed before durable Main output commit')
                 }
@@ -281,7 +296,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             },
         }).catch(error => {
             if (sequenceConflict) {
-                throw new QueueExecutionError('transient', 'Fragment sequence changed before Main commit')
+                throw new QueueExecutionError('fatal', 'Fragment sequence changed before Main commit')
             }
             throw error
         })
@@ -299,6 +314,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         const slot = context.tokenSlotId === 'slot-2' ? 2 : 1
         void useAuthStore.getState().refreshAnlas(slot)
     } finally {
+        sequenceLease.release()
         generationStore.setStreamProgress(0)
         generationStore.setIsGenerating(false)
         generationStore.setGeneratingMode(null)

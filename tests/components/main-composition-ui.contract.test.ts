@@ -63,21 +63,43 @@ describe('Main composition UI contract', () => {
     })
 
     it('mounts the composition controls only for the exact Main route', async () => {
-        const promptPanel = await source('src/components/layout/PromptPanel.tsx')
+        const [promptPanel, editor, controls, autocomplete] = await Promise.all([
+            source('src/components/layout/PromptPanel.tsx'),
+            source('src/components/prompt/PromptEditorSurface.tsx'),
+            source('src/components/prompt/PromptGenerationControls.tsx'),
+            source('src/components/ui/AutocompleteTextarea.tsx'),
+        ])
 
         expect(promptPanel).toContain("const isMainMode = location.pathname === '/'")
         expect(promptPanel).toMatch(/\{isMainMode\s*&&\s*\([\s\S]*?<RecipeSelector\s*\/>[\s\S]*?<ResolvedPlanPanel\s*\/>/)
-        expect(promptPanel).toContain('<AutocompleteTextarea')
-        expect(promptPanel).toContain('data-testid="prompt-generate-action"')
+        expect(promptPanel).toContain('<PromptEditorSurface />')
+        expect(promptPanel).toContain('<PromptGenerationControls isSceneMode={isSceneMode} />')
+        expect(promptPanel).toContain('if (!isGenerating) setFragmentDialogOpen')
+        expect(promptPanel).toContain('if (isGenerating) setFragmentDialogOpen(false)')
+        expect(promptPanel).toMatch(/aria-label=\{t\('prompt\.fragment'\)\}[\s\S]*?disabled=\{isGenerating\}/)
+        expect(editor).toContain('<AutocompleteTextarea')
+        expect(editor).toContain('aria-controls={editorPanelId}')
+        expect(autocomplete).toContain('onBlur={flushPendingChange}')
+        expect(autocomplete).toContain('return flushPendingChange')
+        expect(controls).toContain('data-testid="prompt-generate-action"')
     })
 
     it('keeps the shared prompt action cancellable while Style Lab owns the generation store', async () => {
-        const promptPanel = await source('src/components/layout/PromptPanel.tsx')
+        const [controls, command, shortcuts] = await Promise.all([
+            source('src/components/prompt/PromptGenerationControls.tsx'),
+            source('src/services/generation/prompt-generation-command.ts'),
+            source('src/hooks/useShortcuts.ts'),
+        ])
 
-        expect(promptPanel).toContain("const isStyleLabGenerating = generatingMode === 'styleLab'")
-        expect(promptPanel).toMatch(/const isConflict = isSceneMode[\s\S]*?: isSceneGenerating\s/)
-        expect(promptPanel).not.toMatch(/: isSceneGenerating \|\| isStyleLabGenerating/)
-        expect(promptPanel).toMatch(/if \(isGenerating\) \{[\s\S]*?cancelMainGenerationCommand\(\)/)
+        expect(controls).toContain("const isStyleLabGenerating = generatingMode === 'styleLab'")
+        expect(controls).toMatch(/const isConflict = isSceneMode[\s\S]*?: isSceneGenerating\s/)
+        expect(controls).not.toMatch(/: isSceneGenerating \|\| isStyleLabGenerating/)
+        expect(command).toMatch(/if \(generation\.isGenerating\) \{[\s\S]*?cancelMainGenerationCommand\(\)/)
+        expect(command).toContain("if (generation.generatingMode === 'scene') return 'blocked-conflict'")
+        expect(shortcuts).toContain("void executePromptGenerationCommand('main')")
+        expect(shortcuts).toContain('if (useGenerationStore.getState().isGenerating) return')
+        expect(shortcuts).not.toContain('cancelMainGenerationCommand')
+        expect(shortcuts).not.toContain('startMainGenerationCommand')
     })
 
     it('does not connect the Main composition controls to Scene or Style Lab', async () => {
@@ -99,6 +121,9 @@ describe('Main composition UI contract', () => {
         expect(recipeSelector).toContain('MAIN_DIRECT_SELECTION_ID')
         expect(recipeSelector).toContain('mainAssetRecipeSelectionId')
         expect(recipeSelector).toContain('const displayedRecipeId = selectedRecipeId === null')
+        expect(recipeSelector).toContain('const titleId = `main-composition-recipe-title-${useId()')
+        expect(recipeSelector).toContain('aria-labelledby={titleId}')
+        expect(recipeSelector).toContain('<Label id={titleId}')
         expect(recipeSelector).toContain("t('composition.recipe.direct', 'Direct prompts')")
     })
 })

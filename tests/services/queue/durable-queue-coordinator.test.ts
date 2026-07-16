@@ -27,6 +27,29 @@ function snapshot(streaming = false, sourceEdit = false): GenerationJobSnapshot 
     })
 }
 
+function sequentialMainSnapshot(ordinal: number): GenerationJobSnapshot {
+    return createGenerationJobSnapshot({
+        prompt: { positive: 'sequential durable prompt', negative: '' },
+        parameters: {
+            queueExecution: { streaming: false, sourceEdit: false },
+            mainWorkflow: {
+                sequenceCommitProposal: {
+                    expectedRevision: ordinal,
+                    changes: [{
+                        fragmentId: 'fragment:sequential',
+                        fragmentPath: 'sequential',
+                        expectedCounter: ordinal,
+                        nextCounter: ordinal + 1,
+                    }],
+                },
+            },
+        },
+        outputPolicy: { format: 'png' },
+        resources: [],
+        resumability: 'resumable',
+    })
+}
+
 function repository(label: string): IndexedDBQueueRepository {
     databaseCounter += 1
     const factory = new IDBFactory()
@@ -53,10 +76,26 @@ function jobs(count: number, options: { streaming?: boolean; sourceEdit?: boolea
     }))
 }
 
+function sequentialMainJobs(count: number): EnqueueGenerationJobInput[] {
+    return Array.from({ length: count }, (_, index) => ({
+        id: `job:${index}`,
+        batchId: 'batch:1',
+        workflow: 'main' as const,
+        sceneId: null,
+        createdAt: NOW,
+        priority: 0,
+        ordinal: index,
+        snapshot: sequentialMainSnapshot(index),
+        compositionPlanHash: null,
+        maxAttempts: 3,
+        idempotencyKey: `job-key:${index}`,
+    }))
+}
+
 async function enqueue(queue: IndexedDBQueueRepository, inputs: EnqueueGenerationJobInput[]): Promise<void> {
     await queue.createBatchAndEnqueue({
         batch: {
-            id: 'batch:1', workflow: 'scene', createdAt: NOW,
+            id: 'batch:1', workflow: inputs[0]?.workflow ?? 'scene', createdAt: NOW,
             failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch-key:1',
         },
         jobs: inputs,
@@ -171,6 +210,45 @@ describe('durable queue coordinator', () => {
             readyAt: '2026-07-14T08:00:05.000Z',
             attemptCount: 1,
         })
+    })
+
+    it('keeps a sequential Main tail queued while its predecessor retry is not ready', async () => {
+        const queue = repository('main-sequence-retry')
+        await enqueue(queue, sequentialMainJobs(2))
+        const providerCalls: string[] = []
+        const runtime = coordinator(queue, async (context, jobId) => {
+            providerCalls.push(jobId)
+            if (jobId === 'job:0') {
+                throw new QueueExecutionError('rate-limited', 'retry the sequence head later', { retryAfterMs: 5_000 })
+            }
+            await commit(context, jobId)
+        })
+
+        await runtime.drain()
+        expect(providerCalls).toEqual(['job:0'])
+        expect(await queue.getJob('job:0')).toMatchObject({
+            state: 'queued',
+            readyAt: '2026-07-14T08:00:05.000Z',
+            attemptCount: 1,
+        })
+        expect(await queue.getJob('job:1')).toMatchObject({ state: 'queued', attemptCount: 0 })
+    })
+
+    it('skips a sequential Main tail without provider calls after a terminal predecessor failure', async () => {
+        const queue = repository('main-sequence-failure')
+        await enqueue(queue, sequentialMainJobs(3))
+        const providerCalls: string[] = []
+        const runtime = coordinator(queue, async (context, jobId) => {
+            providerCalls.push(jobId)
+            if (jobId === 'job:0') throw new QueueExecutionError('decode', 'sequence head failed')
+            await commit(context, jobId)
+        })
+
+        await runtime.drain()
+        expect(providerCalls).toEqual(['job:0'])
+        expect(await queue.getJob('job:0')).toMatchObject({ state: 'failed', attemptCount: 1 })
+        expect(await queue.getJob('job:1')).toMatchObject({ state: 'skipped', attemptCount: 0 })
+        expect(await queue.getJob('job:2')).toMatchObject({ state: 'skipped', attemptCount: 0 })
     })
 
     it('continues after one decode error and commits the next item', async () => {

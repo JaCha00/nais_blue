@@ -40,7 +40,8 @@ describe('Composition workspace shell routing', () => {
         expect(runtimeProviders).toContain('useSceneGeneration()')
         expect(runtimeProviders).toContain('useDurableQueueRuntime()')
         expect(runtimeProviders).toContain('useR2UploadRuntime()')
-        expect(runtimeProviders).toContain("document.addEventListener('contextmenu', handleContextMenu)")
+        expect(runtimeProviders).not.toContain("document.addEventListener('contextmenu'")
+        expect(runtimeProviders).not.toContain('preventDefault()')
     })
 
     it('keeps focus trapping and focus return delegated to the Radix sheet primitive', async () => {

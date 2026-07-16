@@ -79,6 +79,17 @@ export interface FragmentLookupRepository {
 export type FragmentSequenceLeaseStatus = 'active' | 'committed' | 'released' | 'conflict'
 
 /**
+ * Signals that a fragment sequence mutation cannot start because a runtime
+ * lease or another repository-backed mutation owns the sequence boundary.
+ */
+export class FragmentSequenceMutationLockedError extends Error {
+    constructor() {
+        super('Fragment sequence is locked by an active lease or mutation')
+        this.name = 'FragmentSequenceMutationLockedError'
+    }
+}
+
+/**
  * Runtime-only lease used to keep concurrent generation workers from publishing
  * results resolved from the same sequential-fragment snapshot. Acquiring a
  * lease never advances a counter; only commit() does.
@@ -353,7 +364,14 @@ function assignLegacyCounters(
     }
 }
 
-function projectSequenceSnapshot(state: Pick<FragmentState, 'files' | 'sequentialCounters' | 'sequenceState'>): FragmentSequenceSnapshot {
+/**
+ * Projects the persisted sequence revision and fragment metadata into the CAS
+ * snapshot consumed by Composition. Durable batch planning reuses this pure
+ * projection to simulate future commits without mutating the live store.
+ */
+export function projectFragmentSequenceSnapshot(
+    state: Pick<FragmentState, 'files' | 'sequentialCounters' | 'sequenceState'>,
+): FragmentSequenceSnapshot {
     const counters: Record<FragmentId, number> = {}
     for (const [fragmentId, value] of Object.entries(state.sequenceState.counters)) {
         const counter = safeCounter(value)
@@ -385,7 +403,7 @@ function projectSequenceSnapshot(state: Pick<FragmentState, 'files' | 'sequentia
 
 function bumpedSequenceState(
     state: Pick<FragmentState, 'files' | 'sequentialCounters' | 'sequenceState'>,
-    counters: Record<FragmentId, number> = projectSequenceSnapshot(state).counters,
+    counters: Record<FragmentId, number> = projectFragmentSequenceSnapshot(state).counters,
 ): FragmentSequenceState {
     return {
         schemaVersion: FRAGMENT_SEQUENCE_SCHEMA_VERSION,
@@ -505,6 +523,29 @@ export function createFragmentStore(
     const contentCache = new Map<string, string[]>()
     let creationOrdinal = 0
     let activeSequenceLease: symbol | null = null
+    let activeSequenceMutation: symbol | null = null
+
+    // Repository writes and sequence leases share this runtime-only exclusion
+    // boundary. Holding the token across async IO prevents a proposal from
+    // observing metadata before its corresponding content mutation completes.
+    const acquireSequenceMutation = (): symbol => {
+        if (activeSequenceLease !== null || activeSequenceMutation !== null) {
+            throw new FragmentSequenceMutationLockedError()
+        }
+        const token = Symbol('fragment-sequence-mutation')
+        activeSequenceMutation = token
+        return token
+    }
+
+    const releaseSequenceMutation = (token: symbol): void => {
+        if (activeSequenceMutation === token) activeSequenceMutation = null
+    }
+
+    const assertSequenceMutationAvailable = (): void => {
+        if (activeSequenceLease !== null || activeSequenceMutation !== null) {
+            throw new FragmentSequenceMutationLockedError()
+        }
+    }
 
     const cacheContent = (contentKey: string, content: readonly string[]): void => {
         if (contentCache.has(contentKey)) contentCache.delete(contentKey)
@@ -530,113 +571,128 @@ export function createFragmentStore(
                 _migrated: true,
 
                 addFile: async (name, folder = '', content = []) => {
-                    const timestamp = Date.now()
-                    const normalizedName = name.trim()
-                    const normalizedFolder = normalizeFragmentPath(folder)
-                    const usedIds = new Set(get().files.map(file => file.id))
-                    const id = allocateFragmentId(
-                        undefined,
-                        `new:${timestamp}:${creationOrdinal}:${normalizedFolder}/${normalizedName}`,
-                        usedIds,
-                    )
-                    creationOrdinal += 1
-                    await contentRepository.write(id, content)
-                    cacheContent(id, content)
+                    const mutationToken = acquireSequenceMutation()
+                    try {
+                        const timestamp = Date.now()
+                        const normalizedName = name.trim()
+                        const normalizedFolder = normalizeFragmentPath(folder)
+                        const usedIds = new Set(get().files.map(file => file.id))
+                        const id = allocateFragmentId(
+                            undefined,
+                            `new:${timestamp}:${creationOrdinal}:${normalizedFolder}/${normalizedName}`,
+                            usedIds,
+                        )
+                        creationOrdinal += 1
+                        await contentRepository.write(id, content)
+                        cacheContent(id, content)
 
-                    const newFileMeta: FragmentFileMeta = {
-                        schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
-                        id,
-                        contentKey: id,
-                        name: normalizedName,
-                        folder: normalizedFolder,
-                        lineCount: content.length,
-                        createdAt: timestamp,
-                        updatedAt: timestamp,
+                        const newFileMeta: FragmentFileMeta = {
+                            schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
+                            id,
+                            contentKey: id,
+                            name: normalizedName,
+                            folder: normalizedFolder,
+                            lineCount: content.length,
+                            createdAt: timestamp,
+                            updatedAt: timestamp,
+                        }
+                        set(state => ({
+                            files: [...state.files, newFileMeta],
+                            sequenceState: bumpedSequenceState(state),
+                        }))
+                        return { ...newFileMeta, content: [...content] }
+                    } finally {
+                        releaseSequenceMutation(mutationToken)
                     }
-                    set(state => ({
-                        files: [...state.files, newFileMeta],
-                        sequenceState: bumpedSequenceState(state),
-                    }))
-                    return { ...newFileMeta, content: [...content] }
                 },
 
                 updateFile: async (id, updates) => {
-                    const before = get().files.find(file => file.id === id)
-                    if (before === undefined) return
+                    const mutationToken = acquireSequenceMutation()
+                    try {
+                        const before = get().files.find(file => file.id === id)
+                        if (before === undefined) return
 
-                    if (updates.content !== undefined) {
-                        // Copy-on-write detaches metadata that shared a legacy content key.
-                        await contentRepository.write(id, updates.content)
-                        cacheContent(id, updates.content)
-                    }
+                        if (updates.content !== undefined) {
+                            // Copy-on-write detaches metadata that shared a legacy content key.
+                            await contentRepository.write(id, updates.content)
+                            cacheContent(id, updates.content)
+                        }
 
-                    set(state => {
-                        const current = state.files.find(file => file.id === id)
-                        if (current === undefined) return {}
-                        const nextFiles = state.files.map(file => file.id === id
-                            ? {
-                                ...file,
-                                schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
-                                contentKey: updates.content === undefined ? file.contentKey : id,
-                                name: updates.name === undefined ? file.name : updates.name.trim(),
-                                folder: updates.folder === undefined
-                                    ? file.folder
-                                    : normalizeFragmentPath(updates.folder),
-                                lineCount: updates.content === undefined
-                                    ? file.lineCount
-                                    : updates.content.length,
-                                updatedAt: Date.now(),
-                            }
-                            : file)
-                        const stableCounters = { ...projectSequenceSnapshot(state).counters }
-                        const sequentialCounters = { ...state.sequentialCounters }
-                        const nextFile = nextFiles.find(file => file.id === id)
-                        const pathChanged = nextFile !== undefined && (
-                            getFragmentCanonicalPath(nextFile) !== getFragmentCanonicalPath(current)
-                        )
-                        if (pathChanged && nextFile !== undefined) {
-                            removeLegacyCounterAliases(
-                                sequentialCounters,
-                                current,
-                                nextFiles.filter(file => file.id !== id),
+                        set(state => {
+                            const current = state.files.find(file => file.id === id)
+                            if (current === undefined) return {}
+                            const nextFiles = state.files.map(file => file.id === id
+                                ? {
+                                    ...file,
+                                    schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
+                                    contentKey: updates.content === undefined ? file.contentKey : id,
+                                    name: updates.name === undefined ? file.name : updates.name.trim(),
+                                    folder: updates.folder === undefined
+                                        ? file.folder
+                                        : normalizeFragmentPath(updates.folder),
+                                    lineCount: updates.content === undefined
+                                        ? file.lineCount
+                                        : updates.content.length,
+                                    updatedAt: Date.now(),
+                                }
+                                : file)
+                            const stableCounters = { ...projectFragmentSequenceSnapshot(state).counters }
+                            const sequentialCounters = { ...state.sequentialCounters }
+                            const nextFile = nextFiles.find(file => file.id === id)
+                            const pathChanged = nextFile !== undefined && (
+                                getFragmentCanonicalPath(nextFile) !== getFragmentCanonicalPath(current)
                             )
-                            sequentialCounters[getFragmentCanonicalPath(nextFile)] = stableCounters[id] ?? 0
-                        }
-                        return {
-                            files: nextFiles,
-                            sequentialCounters,
-                            sequenceState: bumpedSequenceState(state, stableCounters),
-                        }
-                    })
+                            if (pathChanged && nextFile !== undefined) {
+                                removeLegacyCounterAliases(
+                                    sequentialCounters,
+                                    current,
+                                    nextFiles.filter(file => file.id !== id),
+                                )
+                                sequentialCounters[getFragmentCanonicalPath(nextFile)] = stableCounters[id] ?? 0
+                            }
+                            return {
+                                files: nextFiles,
+                                sequentialCounters,
+                                sequenceState: bumpedSequenceState(state, stableCounters),
+                            }
+                        })
+                    } finally {
+                        releaseSequenceMutation(mutationToken)
+                    }
                 },
 
                 deleteFile: async id => {
-                    const stateBefore = get()
-                    const file = stateBefore.files.find(candidate => candidate.id === id)
-                    if (file === undefined) return
-                    const contentKey = file.contentKey || file.id
-                    const contentKeyIsShared = stateBefore.files.some(candidate => (
-                        candidate.id !== id && (candidate.contentKey || candidate.id) === contentKey
-                    ))
-                    if (!contentKeyIsShared) {
-                        await contentRepository.remove(contentKey)
-                        contentCache.delete(contentKey)
-                    }
-
-                    set(state => {
-                        const current = state.files.find(candidate => candidate.id === id)
-                        if (current === undefined) return {}
-                        const files = state.files.filter(candidate => candidate.id !== id)
-                        const counters = { ...projectSequenceSnapshot(state).counters }
-                        delete counters[id]
-                        const sequentialCounters = { ...state.sequentialCounters }
-                        removeLegacyCounterAliases(sequentialCounters, current, files)
-                        return {
-                            files,
-                            sequentialCounters,
-                            sequenceState: bumpedSequenceState(state, counters),
+                    const mutationToken = acquireSequenceMutation()
+                    try {
+                        const stateBefore = get()
+                        const file = stateBefore.files.find(candidate => candidate.id === id)
+                        if (file === undefined) return
+                        const contentKey = file.contentKey || file.id
+                        const contentKeyIsShared = stateBefore.files.some(candidate => (
+                            candidate.id !== id && (candidate.contentKey || candidate.id) === contentKey
+                        ))
+                        if (!contentKeyIsShared) {
+                            await contentRepository.remove(contentKey)
+                            contentCache.delete(contentKey)
                         }
-                    })
+
+                        set(state => {
+                            const current = state.files.find(candidate => candidate.id === id)
+                            if (current === undefined) return {}
+                            const files = state.files.filter(candidate => candidate.id !== id)
+                            const counters = { ...projectFragmentSequenceSnapshot(state).counters }
+                            delete counters[id]
+                            const sequentialCounters = { ...state.sequentialCounters }
+                            removeLegacyCounterAliases(sequentialCounters, current, files)
+                            return {
+                                files,
+                                sequentialCounters,
+                                sequenceState: bumpedSequenceState(state, counters),
+                            }
+                        })
+                    } finally {
+                        releaseSequenceMutation(mutationToken)
+                    }
                 },
 
                 duplicateFile: async id => {
@@ -677,6 +733,7 @@ export function createFragmentStore(
                 getFileByPath: path => findFileByPath(get().files, path),
 
                 resetSequentialCounter: path => {
+                    assertSequenceMutationAvailable()
                     set(state => {
                         if (path === undefined) {
                             if (
@@ -690,7 +747,7 @@ export function createFragmentStore(
                         }
 
                         const file = findFileByPath(state.files, path)
-                        const stableCounters = { ...projectSequenceSnapshot(state).counters }
+                        const stableCounters = { ...projectFragmentSequenceSnapshot(state).counters }
                         const legacyCounters = { ...state.sequentialCounters }
                         let changed = false
                         if (file !== undefined) {
@@ -722,13 +779,17 @@ export function createFragmentStore(
                     })
                 },
 
-                getSequenceSnapshot: () => projectSequenceSnapshot(get()),
+                getSequenceSnapshot: () => projectFragmentSequenceSnapshot(get()),
 
                 commitSequenceProposal: proposal => {
                     if (proposal === null || proposal.changes.length === 0) return true
+                    // A worker holding the runtime lease depends on this CAS
+                    // state until OutputWriter publishes its result. Direct
+                    // callers must wait instead of invalidating paid work.
+                    if (activeSequenceLease !== null || activeSequenceMutation !== null) return false
                     let committed = false
                     set(state => {
-                        const snapshot = projectSequenceSnapshot(state)
+                        const snapshot = projectFragmentSequenceSnapshot(state)
                         if (snapshot.revision !== proposal.expectedRevision) return {}
                         for (const change of proposal.changes) {
                             const current = snapshot.counters[change.fragmentId] ?? 0
@@ -779,6 +840,9 @@ export function createFragmentStore(
                         }
                     }
 
+                    // A no-op proposal above owns no sequence state. Only a real
+                    // CAS proposal must wait for repository-backed mutations.
+                    if (activeSequenceMutation !== null) return null
                     if (activeSequenceLease !== null) return null
                     const snapshot = get().getSequenceSnapshot()
                     if (snapshot.revision !== proposal.expectedRevision) return null
@@ -800,6 +864,10 @@ export function createFragmentStore(
                         },
                         commit() {
                             if (status !== 'active' || activeSequenceLease !== token) return false
+                            // Release the exclusion token only for the synchronous
+                            // owner commit; competing JavaScript work cannot enter
+                            // between these statements.
+                            activeSequenceLease = null
                             const committed = get().commitSequenceProposal(proposal)
                             status = committed ? 'committed' : 'conflict'
                             releaseToken()
@@ -844,6 +912,7 @@ export function createFragmentStore(
                 getFilesInFolder: folder => get().files.filter(file => file.folder === folder),
 
                 reorderFiles: files => {
+                    assertSequenceMutationAvailable()
                     set(state => ({
                         files: [...files],
                         sequenceState: bumpedSequenceState(state),
@@ -877,69 +946,79 @@ export function createFragmentStore(
                 },
 
                 importAll: async data => {
-                    if (!Array.isArray(data.meta) || asRecord(data.contents) === null) return 0
-                    const usedIds = new Set(get().files.map(file => file.id))
-                    let importedCount = 0
+                    const mutationToken = acquireSequenceMutation()
+                    try {
+                        if (!Array.isArray(data.meta) || asRecord(data.contents) === null) return 0
+                        const usedIds = new Set(get().files.map(file => file.id))
+                        let importedCount = 0
 
-                    for (let index = 0; index < data.meta.length; index += 1) {
-                        const raw = asRecord(data.meta[index])
-                        if (raw === null) continue
-                        const name = typeof raw.name === 'string' ? raw.name.trim() : ''
-                        const folder = typeof raw.folder === 'string'
-                            ? normalizeFragmentPath(raw.folder)
-                            : ''
-                        const sourceId = typeof raw.id === 'string' && raw.id.trim().length > 0
-                            ? raw.id.trim()
-                            : undefined
-                        const id = allocateFragmentId(
-                            sourceId,
-                            `import:${sourceId ?? 'missing'}:${folder}/${name}:${index}`,
-                            usedIds,
-                        )
-                        usedIds.add(id)
-                        const sourceContentKey = typeof raw.contentKey === 'string'
-                            ? raw.contentKey
-                            : undefined
-                        const rawContent = (sourceId === undefined ? undefined : data.contents[sourceId])
-                            ?? (sourceContentKey === undefined ? undefined : data.contents[sourceContentKey])
-                            ?? []
-                        const content = Array.isArray(rawContent)
-                            ? rawContent.filter(line => typeof line === 'string')
-                            : []
-                        await contentRepository.write(id, content)
-                        cacheContent(id, content)
+                        for (let index = 0; index < data.meta.length; index += 1) {
+                            const raw = asRecord(data.meta[index])
+                            if (raw === null) continue
+                            const name = typeof raw.name === 'string' ? raw.name.trim() : ''
+                            const folder = typeof raw.folder === 'string'
+                                ? normalizeFragmentPath(raw.folder)
+                                : ''
+                            const sourceId = typeof raw.id === 'string' && raw.id.trim().length > 0
+                                ? raw.id.trim()
+                                : undefined
+                            const id = allocateFragmentId(
+                                sourceId,
+                                `import:${sourceId ?? 'missing'}:${folder}/${name}:${index}`,
+                                usedIds,
+                            )
+                            usedIds.add(id)
+                            const sourceContentKey = typeof raw.contentKey === 'string'
+                                ? raw.contentKey
+                                : undefined
+                            const rawContent = (sourceId === undefined ? undefined : data.contents[sourceId])
+                                ?? (sourceContentKey === undefined ? undefined : data.contents[sourceContentKey])
+                                ?? []
+                            const content = Array.isArray(rawContent)
+                                ? rawContent.filter(line => typeof line === 'string')
+                                : []
+                            await contentRepository.write(id, content)
+                            cacheContent(id, content)
 
-                        const timestamp = Date.now()
-                        const file: FragmentFileMeta = {
-                            schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
-                            id,
-                            contentKey: id,
-                            name,
-                            folder,
-                            lineCount: content.length,
-                            createdAt: safeTimestamp(raw.createdAt) || timestamp,
-                            updatedAt: safeTimestamp(raw.updatedAt) || timestamp,
+                            const timestamp = Date.now()
+                            const file: FragmentFileMeta = {
+                                schemaVersion: FRAGMENT_FILE_SCHEMA_VERSION,
+                                id,
+                                contentKey: id,
+                                name,
+                                folder,
+                                lineCount: content.length,
+                                createdAt: safeTimestamp(raw.createdAt) || timestamp,
+                                updatedAt: safeTimestamp(raw.updatedAt) || timestamp,
+                            }
+                            set(state => ({
+                                files: [...state.files, file],
+                                sequenceState: bumpedSequenceState(state),
+                            }))
+                            importedCount += 1
                         }
-                        set(state => ({
-                            files: [...state.files, file],
-                            sequenceState: bumpedSequenceState(state),
-                        }))
-                        importedCount += 1
+                        return importedCount
+                    } finally {
+                        releaseSequenceMutation(mutationToken)
                     }
-                    return importedCount
                 },
 
                 clearAll: async () => {
-                    await contentRepository.clear()
-                    contentCache.clear()
-                    set(state => ({
-                        schemaVersion: FRAGMENT_STORE_SCHEMA_VERSION,
-                        files: [],
-                        sequentialCounters: {},
-                        sequenceState: bumpedSequenceState(state, {}),
-                        _migrated: true,
-                        _initialized: true,
-                    }))
+                    const mutationToken = acquireSequenceMutation()
+                    try {
+                        await contentRepository.clear()
+                        contentCache.clear()
+                        set(state => ({
+                            schemaVersion: FRAGMENT_STORE_SCHEMA_VERSION,
+                            files: [],
+                            sequentialCounters: {},
+                            sequenceState: bumpedSequenceState(state, {}),
+                            _migrated: true,
+                            _initialized: true,
+                        }))
+                    } finally {
+                        releaseSequenceMutation(mutationToken)
+                    }
                 },
 
                 _migrateOldData: async () => {

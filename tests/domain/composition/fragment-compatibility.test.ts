@@ -10,6 +10,7 @@ import {
     FRAGMENT_FILE_SCHEMA_VERSION,
     FRAGMENT_SEQUENCE_SCHEMA_VERSION,
     FRAGMENT_STORE_SCHEMA_VERSION,
+    FragmentSequenceMutationLockedError,
     createFragmentStore,
     migrateFragmentPersistedState,
     type FragmentContentRepository,
@@ -368,6 +369,12 @@ describe('Fragment compatibility facade lifecycle', () => {
 
         expect(lease).not.toBeNull()
         expect(store.getState().getSequenceSnapshot().counters[file.id]).toBe(0)
+        expect(store.getState().commitSequenceProposal(firstProposal === null
+            ? null
+            : {
+                expectedRevision: firstProposal.expectedRevision,
+                changes: firstProposal.changes.map(change => ({ ...change })),
+            })).toBe(false)
         expect(store.getState().reserveSequenceProposal(secondProposal === null
             ? null
             : {
@@ -384,6 +391,95 @@ describe('Fragment compatibility facade lifecycle', () => {
             })
         expect(replacementLease?.commit()).toBe(true)
         expect(store.getState().getSequenceSnapshot().counters[file.id]).toBe(1)
+    })
+
+    it('keeps content and revision unchanged when a sequence lease rejects mutations', async () => {
+        const { store } = createTestStore()
+        const file = await store.getState().addFile('sequence', '', ['first', 'second'])
+        const generated = await prepareWildcardResolution('<*sequence>', {
+            seed: 17,
+            mode: 'generate',
+            repository: store.getState().getLookupRepository(),
+        })
+        const proposal = generated.result.sequenceCommitProposal
+        if (proposal === null) throw new Error('expected a sequential proposal')
+
+        const lease = store.getState().reserveSequenceProposal({
+            expectedRevision: proposal.expectedRevision,
+            changes: proposal.changes.map(change => ({ ...change })),
+        })
+        const snapshotBefore = store.getState().getSequenceSnapshot()
+        const contentBefore = await store.getState().loadFileContent(file.id)
+
+        await expect(store.getState().updateFile(file.id, {
+            content: ['changed'],
+        })).rejects.toBeInstanceOf(FragmentSequenceMutationLockedError)
+        expect(() => store.getState().resetSequentialCounter('sequence'))
+            .toThrow(FragmentSequenceMutationLockedError)
+        expect(() => store.getState().reorderFiles([...store.getState().files].reverse()))
+            .toThrow(FragmentSequenceMutationLockedError)
+        expect(await store.getState().loadFileContent(file.id)).toEqual(contentBefore)
+        expect(store.getState().getSequenceSnapshot()).toEqual(snapshotBefore)
+
+        // Rejected mutations do not poison the owner: its synchronous CAS
+        // commit still advances exactly the proposal held by the lease.
+        expect(lease?.commit()).toBe(true)
+        expect(store.getState().getSequenceSnapshot().counters[file.id]).toBe(1)
+    })
+
+    it('defers lease acquisition while an async fragment mutation is awaiting repository IO', async () => {
+        const { contentRepository, store } = createTestStore()
+        const file = await store.getState().addFile('sequence', '', ['first', 'second'])
+        const generated = await prepareWildcardResolution('<*sequence>', {
+            seed: 23,
+            mode: 'generate',
+            repository: store.getState().getLookupRepository(),
+        })
+        const proposal = generated.result.sequenceCommitProposal
+        if (proposal === null) throw new Error('expected a sequential proposal')
+
+        let markWriteStarted: (() => void) | undefined
+        const writeStarted = new Promise<void>(resolve => {
+            markWriteStarted = resolve
+        })
+        let releaseWrite: (() => void) | undefined
+        const writeGate = new Promise<void>(resolve => {
+            releaseWrite = resolve
+        })
+        vi.spyOn(contentRepository, 'write').mockImplementationOnce(async (contentKey, content) => {
+            markWriteStarted?.()
+            await writeGate
+            contentRepository.records.set(contentKey, [...content])
+        })
+
+        const mutation = store.getState().updateFile(file.id, { content: ['changed'] })
+        await writeStarted
+
+        expect(store.getState().reserveSequenceProposal({
+            expectedRevision: proposal.expectedRevision,
+            changes: proposal.changes.map(change => ({ ...change })),
+        })).toBeNull()
+        const noOpLease = store.getState().reserveSequenceProposal(null)
+        expect(noOpLease).not.toBeNull()
+        expect(noOpLease?.commit()).toBe(true)
+
+        releaseWrite?.()
+        await mutation
+        expect(await store.getState().loadFileContent(file.id)).toEqual(['changed'])
+
+        const refreshed = await prepareWildcardResolution('<*sequence>', {
+            seed: 23,
+            mode: 'generate',
+            repository: store.getState().getLookupRepository(),
+        })
+        const refreshedProposal = refreshed.result.sequenceCommitProposal
+        if (refreshedProposal === null) throw new Error('expected a refreshed proposal')
+        const lease = store.getState().reserveSequenceProposal({
+            expectedRevision: refreshedProposal.expectedRevision,
+            changes: refreshedProposal.changes.map(change => ({ ...change })),
+        })
+        expect(lease).not.toBeNull()
+        lease?.release()
     })
 
     it('commits once after success and keeps the counter attached to the stable ID after rename', async () => {

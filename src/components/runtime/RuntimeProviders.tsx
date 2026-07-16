@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode } from 'react'
 import { useDurableQueueRuntime } from '@/hooks/useDurableQueueRuntime'
 import { useR2UploadRuntime } from '@/hooks/useR2UploadRuntime'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
@@ -24,20 +24,6 @@ export function RuntimeProviders({ children }: RuntimeProvidersProps) {
     useUpdateChecker()
     useShortcuts()
     useWindowResizePerformanceMode()
-
-    useEffect(() => {
-        const handleContextMenu = (event: MouseEvent) => {
-            let element = event.target as HTMLElement | null
-            while (element) {
-                if (element.hasAttribute('data-allow-context-menu')) return
-                element = element.parentElement
-            }
-            event.preventDefault()
-        }
-
-        document.addEventListener('contextmenu', handleContextMenu)
-        return () => document.removeEventListener('contextmenu', handleContextMenu)
-    }, [])
 
     return children
 }

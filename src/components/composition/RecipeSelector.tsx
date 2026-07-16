@@ -1,4 +1,5 @@
 import { Layers3 } from 'lucide-react'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Label } from '@/components/ui/label'
 import {
@@ -23,6 +24,9 @@ const MODE_OPTIONS: readonly MainCompositionMode[] = ['legacy', 'shadow', 'v2']
 
 export function RecipeSelector() {
     const { t } = useTranslation()
+    // Main's compact command rail and the responsive prompt sheet may render
+    // this selector together, so each label relationship needs its own DOM ID.
+    const titleId = `main-composition-recipe-title-${useId().replace(/:/g, '')}`
     const recipes = useAssetModuleStore(state => state.profile.recipes)
     const isProfileLoading = useAssetModuleStore(state => state.isLoading)
     const compositionMode = useGenerationStore(state => state.compositionMode)
@@ -53,11 +57,11 @@ export function RecipeSelector() {
     return (
         <section
             className="flex-none rounded-control border border-border bg-muted/20 p-3"
-            aria-labelledby="main-composition-recipe-title"
+            aria-labelledby={titleId}
             data-testid="main-recipe-selector"
         >
             <div className="flex min-w-0 items-center justify-between gap-3">
-                <Label id="main-composition-recipe-title" className="flex min-w-0 items-center gap-2 text-xs font-medium">
+                <Label id={titleId} className="flex min-w-0 items-center gap-2 text-xs font-medium">
                     <Layers3 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="truncate">{t('composition.recipe.title', 'Composition recipe')}</span>
                 </Label>

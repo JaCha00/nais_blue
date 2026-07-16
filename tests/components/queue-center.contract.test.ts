@@ -30,6 +30,13 @@ describe('Queue Center 10,000-job UI contract', () => {
             source('src/components/layout/AnimatedNavBar.tsx'),
         ])
         expect(page).toContain('listJobProjections')
+        expect(page).toContain("statusFilter === 'all' ? {} : { states: [statusFilter] }")
+        expect(page).toContain("document.visibilityState === 'visible'")
+        expect(page).toContain("document.addEventListener('visibilitychange', refreshWhenVisible)")
+        expect(page).toContain('summary.states.failed > 0')
+        expect(page).toContain('if (selectedBatch === null || !hasRetryableFailures) return')
+        expect(page).toContain('disabled={busy || !hasRetryableFailures}')
+        expect(page).not.toContain("jobs.some(job => job.state === 'failed')")
         expect(page).toContain('calculateFixedVirtualRange')
         expect(page).toContain('filteredJobs.slice(windowRange.start, windowRange.end)')
         expect(page).toContain('aria-setsize={filteredJobs.length}')
