@@ -110,7 +110,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260716.1",
     "@tauri-apps/cli": "^2.10.1",
-    "@types/jszip": "^3.4.0",
+    "@types/jszip": "^3.4.1",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@typescript-eslint/eslint-plugin": "^8.18.1",
@@ -119,7 +119,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",
-    "eslint-plugin-react-refresh": "^0.4.16",
+    "eslint-plugin-react-refresh": "^0.5.3",
     "fake-indexeddb": "6.2.5",
     "playwright": "1.61.1",
     "postcss": "^8.4.49",
