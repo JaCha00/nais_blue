@@ -291,10 +291,11 @@ notification/action 좌표를 얻고 schedule→notification→pause/resume/canc
 앱/시스템 crash는 package/process owner로 분리한다. Android 16에서는 WorkManager long-running job quota를
 primary path로 쓰지 않고 user-initiated transfer 대안을 확인한다.
 
-Current Tauri generated Android build는 Kotlin 1.9.25 compiler를 사용하므로 WorkManager는 compatible stable
-2.10.5 exact pin이다. 2.11.2를 그대로 올리면 Kotlin metadata 2.1 mismatch가 발생하며 generated root compiler를
-임의 수정해 우회하지 않는다. Full APK build가 Stronghold의 Windows `libsodium-sys` cross-build에서 먼저 막히면
-R-025로 분리하되, tracked plugin의 최종 Kotlin compile/APK integration이 통과한 것으로 간주하지 않는다.
+Tauri 2.11 generated Android build의 Kotlin 1.9.25 기본값은 WorkManager 2.11.2의 Kotlin metadata 2.1과
+호환되지 않는다. Generated file을 직접 편집하거나 추적하지 말고 Android init 직후
+`node scripts/patch-android-signing.mjs`를 실행해 root Kotlin plugin을 2.1.20으로 정규화한다. Release 경로는
+`npm run android:prepare`가 같은 함수를 호출한다. Contract와 tracked plugin `compileDebugKotlin`을 모두
+통과해야 integration PASS이며, Stronghold의 Windows `libsodium-sys` cross-build 문제는 별도 R-025로 분리한다.
 
 Windows에서 이미 검증된 target static archive가 있으면 archive가 ELF64/AArch64인지와 SHA-256을 먼저 확인하고
 아래처럼 build process에만 연결한다. Archive와 generated plugin binding은 tracked source로 추가하지 않는다.
