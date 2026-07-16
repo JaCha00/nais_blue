@@ -253,6 +253,7 @@ export default function QueueCenter() {
         ? 0
         : Math.round((visibleSummary.progressCurrent / Math.max(1, visibleSummary.progressTotal)) * 100)
     const failureCount = visibleSummary.states.failed + visibleSummary.states.blocked
+    const statusLabel = (state: 'all' | GenerationJobState) => t(`queue.status.${state}`, state)
 
     return (
         <main
@@ -265,29 +266,31 @@ export default function QueueCenter() {
                     <div className="min-w-0">
                         <h1 className="text-xl font-semibold">{t('queue.title', 'Queue Center')}</h1>
                         <p className="text-xs text-muted-foreground">
-                            {executionAuthority === 'durable' ? 'Durable execution' : 'Legacy rollback execution'}
+                            {executionAuthority === 'durable'
+                                ? t('queue.executionCurrent', 'Safe background execution')
+                                : t('queue.executionPrevious', 'Previous execution method')}
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <label className="text-xs text-muted-foreground">
-                            <span className="sr-only">Execution authority</span>
+                            <span className="sr-only">{t('queue.executionMode', 'Execution method')}</span>
                             <select
                                 value={executionAuthority}
                                 onChange={event => setExecutionAuthority(event.target.value as 'durable' | 'legacy')}
                                 className="min-h-11 rounded-control border border-input bg-canvas px-3 text-sm text-foreground"
-                                aria-label="Execution authority"
+                                aria-label={t('queue.executionMode', 'Execution method')}
                             >
-                                <option value="durable">Durable</option>
-                                <option value="legacy">Legacy rollback</option>
+                                <option value="durable">{t('queue.executionCurrent', 'Safe background execution')}</option>
+                                <option value="legacy">{t('queue.executionPrevious', 'Previous execution method')}</option>
                             </select>
                         </label>
                         <select
                             value={selectedBatchId ?? ''}
                             onChange={event => setSelectedBatchId(event.target.value || null)}
                             className="min-h-11 max-w-56 rounded-control border border-input bg-canvas px-3 text-sm"
-                            aria-label="Queue batch"
+                            aria-label={t('queue.batch', 'Job group')}
                         >
-                            {batches.length === 0 && <option value="">No batches</option>}
+                            {batches.length === 0 && <option value="">{t('queue.noBatches', 'No job groups')}</option>}
                             {batches.map(batch => <option key={batch.id} value={batch.id}>{batch.id}</option>)}
                         </select>
                         <select
@@ -304,11 +307,11 @@ export default function QueueCenter() {
                                 }))
                             }}
                             className="min-h-11 rounded-control border border-input bg-canvas px-3 text-sm"
-                            aria-label="Failure policy"
+                            aria-label={t('queue.failurePolicy', 'Error handling')}
                         >
-                            <option value="continue">continue</option>
-                            <option value="pause-on-fatal">pause-on-fatal</option>
-                            <option value="stop-on-first-error">stop-on-first-error</option>
+                            <option value="continue">{t('queue.continueOnError', 'Continue after errors')}</option>
+                            <option value="pause-on-fatal">{t('queue.pauseOnFatal', 'Pause on critical error')}</option>
+                            <option value="stop-on-first-error">{t('queue.stopOnFirstError', 'Stop on first error')}</option>
                         </select>
                         <Button
                             variant="outline"
@@ -324,18 +327,18 @@ export default function QueueCenter() {
                             }}
                         >
                             {selectedBatch?.state === 'active'
-                                ? <><Pause className="mr-2 h-4 w-4" />Pause</>
-                                : <><Play className="mr-2 h-4 w-4" />Resume</>}
+                                ? <><Pause className="mr-2 h-4 w-4" />{t('queue.pause', 'Pause')}</>
+                                : <><Play className="mr-2 h-4 w-4" />{t('queue.resume', 'Resume')}</>}
                         </Button>
                         <Button variant="outline" disabled={selectedBatch === null || busy} onClick={() => void retryFailed()}>
-                            <RotateCcw className="mr-2 h-4 w-4" />Retry failed
+                            <RotateCcw className="mr-2 h-4 w-4" />{t('queue.retryFailed', 'Retry failed items')}
                         </Button>
                         <Button
                             variant="destructive"
                             disabled={selectedBatch === null || busy}
                             onClick={() => selectedBatch && void runAction(() => coordinator.cancelBatch(selectedBatch.id))}
                         >
-                            <XCircle className="mr-2 h-4 w-4" />Cancel all
+                            <XCircle className="mr-2 h-4 w-4" />{t('queue.cancelAll', 'Cancel all')}
                         </Button>
                     </div>
                 </div>
@@ -372,13 +375,13 @@ export default function QueueCenter() {
                 <dl className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs sm:grid-cols-6 lg:grid-cols-10">
                     {(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'skipped', 'blocked'] as const).map(state => (
                         <div key={state} className="min-w-0">
-                            <dt className="truncate text-muted-foreground">{state}</dt>
+                            <dt className="truncate text-muted-foreground">{statusLabel(state)}</dt>
                             <dd className="font-mono text-sm font-semibold">{visibleSummary.states[state]}</dd>
                         </div>
                     ))}
-                    <div><dt className="text-muted-foreground">Progress</dt><dd className="font-mono text-sm">{progressPercent}%</dd></div>
-                    <div><dt className="text-muted-foreground">throughput</dt><dd className="font-mono text-sm">{rate.throughput.toFixed(1)}/m</dd></div>
-                    <div><dt className="text-muted-foreground">eta</dt><dd className="font-mono text-sm">{formatEta(rate.eta)}</dd></div>
+                    <div><dt className="text-muted-foreground">{t('queue.progress', 'Progress')}</dt><dd className="font-mono text-sm">{progressPercent}%</dd></div>
+                    <div><dt className="text-muted-foreground">{t('queue.speed', 'Processing speed')}</dt><dd className="font-mono text-sm">{rate.throughput.toFixed(1)}/m</dd></div>
+                    <div><dt className="text-muted-foreground">{t('queue.remainingTime', 'Time remaining')}</dt><dd className="font-mono text-sm">{formatEta(rate.eta)}</dd></div>
                 </dl>
                 <div
                     className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
@@ -410,11 +413,11 @@ export default function QueueCenter() {
                     value={statusFilter}
                     onChange={event => setStatusFilter(event.target.value as typeof statusFilter)}
                     className="min-h-11 rounded-control border border-input bg-canvas px-3 text-sm"
-                    aria-label="Filter queue status"
+                    aria-label={t('queue.filter', 'Status filter')}
                 >
-                    {STATUS_FILTERS.map(status => <option key={status} value={status}>{status}</option>)}
+                    {STATUS_FILTERS.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
-                <span className="text-xs text-muted-foreground">{filteredJobs.length.toLocaleString()} jobs</span>
+                <span className="text-xs text-muted-foreground">{t('queue.jobs', '{{count}} jobs', { count: filteredJobs.length })}</span>
             </div>
 
             <div
@@ -426,7 +429,7 @@ export default function QueueCenter() {
             >
                 {filteredJobs.length === 0 ? (
                     <div className="flex min-h-48 items-center justify-center px-4 text-center text-sm text-muted-foreground">
-                        No jobs in this view.
+                        {t('queue.empty', 'No jobs match this view.')}
                     </div>
                 ) : (
                     <div className="relative w-full" style={{ height: filteredJobs.length * QUEUE_ROW_HEIGHT }}>
@@ -458,12 +461,12 @@ export default function QueueCenter() {
                                                 job.state === 'failed' ? 'text-destructive'
                                                     : job.state === 'succeeded' ? 'text-success'
                                                         : job.state === 'blocked' ? 'text-warning' : 'text-info',
-                                            )}>{job.state}</span>
+                                            )}>{statusLabel(job.state)}</span>
                                             <span className="truncate font-mono text-xs" title={job.id}>{job.id}</span>
                                         </div>
                                         <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
                                             <span>{job.workflow}{job.sceneId ? ` · ${job.sceneId}` : ''}</span>
-                                            <span>attempt {job.attemptCount}/{job.maxAttempts}</span>
+                                            <span>{t('queue.attempt', 'Attempt {{current}}/{{max}}', { current: job.attemptCount, max: job.maxAttempts })}</span>
                                             <span>{job.progress.stage} · {percent}%</span>
                                         </div>
                                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted" aria-label={`Item progress ${percent}%`}>

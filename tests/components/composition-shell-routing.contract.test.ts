@@ -5,17 +5,42 @@ import { describe, expect, it } from 'vitest'
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
 describe('Composition workspace shell routing', () => {
-    it('gives Main and Scene the desktop rails while preserving Prompt and History sheets', async () => {
-        const layout = await source('src/components/layout/ThreeColumnLayout.tsx')
+    it('gives Main and Scene the desktop rails while preserving store-owned Prompt and History sheets', async () => {
+        const [layout, layoutStore] = await Promise.all([
+            source('src/components/layout/ThreeColumnLayout.tsx'),
+            source('src/stores/layout-store.ts'),
+        ])
 
         expect(layout).toContain("location.pathname === '/'")
         expect(layout).toContain("location.pathname === '/scenes'")
         expect(layout).toContain("location.pathname.startsWith('/scenes/')")
-        expect(layout).toContain('const supportPanelsAreDocked = isDesktopShell && !compositionWorkspaceOwnsRails')
+        expect(layout).toContain('const promptPanelIsDocked = isDesktopShell')
+        expect(layout).toContain('const historyPanelIsDocked = isDesktopShell && !compositionWorkspaceOwnsRails')
         expect(layout).toContain("id=\"nais2-prompt-sheet\"")
         expect(layout).toContain("id=\"nais2-history-sheet\"")
-        expect(layout).toContain('supportPanelsAreDocked ? leftSidebarVisible : leftSheetOpen')
-        expect(layout).toContain('supportPanelsAreDocked ? rightSidebarVisible : rightSheetOpen')
+        expect(layout).toContain('promptPanelIsDocked ? leftSidebarVisible : leftSheetOpen')
+        expect(layout).toContain('historyPanelIsDocked ? rightSidebarVisible : rightSheetOpen')
+        expect(layout).toMatch(/<Sheet[\s\S]*?modal=\{false\}/)
+        expect(layout).toContain('showOverlay={false}')
+        expect(layout).not.toContain('LAYOUT_SHEET_EVENTS')
+        expect(layoutStore).toContain("supportSheet: 'prompt' | 'history' | null")
+        expect(layoutStore).toContain('openSupportSheet:')
+        expect(layoutStore).toContain('closeSupportSheet:')
+        expect(layoutStore).toContain('partialize: ({ leftSidebarVisible, rightSidebarVisible })')
+    })
+
+    it('keeps route-independent executors and global listeners behind one App lifetime boundary', async () => {
+        const [app, runtimeProviders] = await Promise.all([
+            source('src/App.tsx'),
+            source('src/components/runtime/RuntimeProviders.tsx'),
+        ])
+
+        expect(app).toContain('<RuntimeProviders>')
+        expect(app).not.toContain('useSceneGeneration()')
+        expect(runtimeProviders).toContain('useSceneGeneration()')
+        expect(runtimeProviders).toContain('useDurableQueueRuntime()')
+        expect(runtimeProviders).toContain('useR2UploadRuntime()')
+        expect(runtimeProviders).toContain("document.addEventListener('contextmenu', handleContextMenu)")
     })
 
     it('keeps focus trapping and focus return delegated to the Radix sheet primitive', async () => {

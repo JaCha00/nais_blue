@@ -34,6 +34,13 @@ const runtimeCapture = vi.hoisted(() => ({
     thumbnailOverride: null as null | (() => Promise<string>),
 }))
 
+vi.mock('@/stores/artifact-lifecycle-store', () => ({
+    publishGeneratedArtifact: (detail: Record<string, unknown>) => {
+        runtimeCapture.calls.push('event:new-image')
+        runtimeCapture.events.push({ type: 'artifact:generated', detail })
+    },
+}))
+
 vi.mock('@/lib/indexed-db', () => ({
     indexedDBStorage: {
         getItem: async () => null,
@@ -249,6 +256,7 @@ interface RuntimeModules {
     useGenerationStore: typeof import('@/stores/generation-store').useGenerationStore
     useFragmentStore: typeof import('@/stores/fragment-store').useFragmentStore
     usePresetStore: typeof import('@/stores/preset-store').usePresetStore
+    startPresetSync: typeof import('@/stores/preset-store').startPresetSync
     useSettingsStore: typeof import('@/stores/settings-store').useSettingsStore
 }
 
@@ -602,6 +610,7 @@ beforeAll(async () => {
         useGenerationStore: generationStore.useGenerationStore,
         useFragmentStore: fragmentStore.useFragmentStore,
         usePresetStore: presetStore.usePresetStore,
+        startPresetSync: presetStore.startPresetSync,
         useSettingsStore: settingsStore.useSettingsStore,
     }
 })
@@ -613,6 +622,29 @@ beforeEach(() => {
 })
 
 describe('Main workflow golden characterization', () => {
+    it('tracks preset edits without mutating the saved preset until an explicit command', () => {
+        stores.usePresetStore.getState().loadPreset('default')
+        const originalPrompt = stores.usePresetStore.getState().getActivePreset()?.basePrompt ?? ''
+        const stop = stores.startPresetSync()
+
+        try {
+            stores.useGenerationStore.getState().setBasePrompt('unsaved draft')
+            expect(stores.usePresetStore.getState()).toMatchObject({ dirty: true })
+            expect(stores.usePresetStore.getState().getActivePreset()?.basePrompt).toBe(originalPrompt)
+
+            stores.usePresetStore.getState().saveActivePreset()
+            expect(stores.usePresetStore.getState()).toMatchObject({ dirty: false })
+            expect(stores.usePresetStore.getState().getActivePreset()?.basePrompt).toBe('unsaved draft')
+
+            stores.useGenerationStore.getState().setBasePrompt('discarded draft')
+            stores.usePresetStore.getState().revertActivePreset()
+            expect(stores.useGenerationStore.getState().basePrompt).toBe('unsaved draft')
+            expect(stores.usePresetStore.getState()).toMatchObject({ dirty: false })
+        } finally {
+            stop()
+        }
+    })
+
     it('captures an immutable durable enqueue plan without credential, transport, or output side effects', async () => {
         stores.useAuthStore.setState({ token: '', isVerified: false, slot1Enabled: false })
         stores.useGenerationStore.setState({

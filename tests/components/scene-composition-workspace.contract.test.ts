@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest'
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
 describe('Scene composition workspace information architecture', () => {
-    it('uses the shared desktop rails, compact sheets, resolved plan, and mobile command dock', async () => {
+    it('uses the prompt-first shell, explicit rail sheets, resolved plan, and mobile command dock', async () => {
         const workspace = await source('src/components/scene/SceneCompositionWorkspace.tsx')
 
         expect(workspace).toContain('<CompositionWorkspaceLayout')
+        expect(workspace).toContain('desktopRails={false}')
         expect(workspace).toContain('<ModuleStack')
         expect(workspace).toContain('<CompositionInspector')
         expect(workspace).toContain('<CompositionCommandBar')

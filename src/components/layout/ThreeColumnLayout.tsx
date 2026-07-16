@@ -7,8 +7,8 @@ import { PromptPanel } from './PromptPanel'
 import { HistoryPanel } from './HistoryPanel'
 import { AnimatedNavBar } from './AnimatedNavBar'
 import { CustomTitleBar } from './CustomTitleBar'
-import { LAYOUT_SHEET_EVENTS } from './layout-events'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
+import { PresetDraftControls } from '@/components/preset/PresetDraftControls'
 import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
 import { ProductGuidance } from '@/components/guidance/ProductGuidance'
 import { useAuthStore } from '@/stores/auth-store'
@@ -46,6 +46,8 @@ import { calculateExtraCost } from '@/lib/anlas-calculator'
 import { useCharacterStore } from '@/stores/character-store'
 import { usePresetStore } from '@/stores/preset-store'
 import { useLayoutStore } from '@/stores/layout-store'
+import { useGenerationStore } from '@/stores/generation-store'
+import { useSceneStore } from '@/stores/scene-store'
 import { isAndroidRuntime, isMobileRuntime } from '@/platform/runtime'
 
 // Check if running on Mac (works in browser and Tauri WebView)
@@ -71,14 +73,25 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const { t } = useTranslation()
     const location = useLocation()
     const { anlas, isVerified, anlas2, isVerified2, slot2Enabled, refreshAnlas, setSlotEnabled, getActiveTokens } = useAuthStore()
-    const { leftSidebarVisible, rightSidebarVisible, toggleLeftSidebar, toggleRightSidebar } = useLayoutStore()
-    const [leftSheetOpen, setLeftSheetOpen] = useState(false)
-    const [rightSheetOpen, setRightSheetOpen] = useState(false)
+    const {
+        leftSidebarVisible,
+        rightSidebarVisible,
+        supportSheet,
+        toggleLeftSidebar,
+        toggleRightSidebar,
+        openSupportSheet,
+        closeSupportSheet,
+    } = useLayoutStore()
+    const leftSheetOpen = supportSheet === 'prompt'
+    const rightSheetOpen = supportSheet === 'history'
     const isDesktopShell = useMediaQuery('(min-width: 1536px)')
     const compositionWorkspaceOwnsRails = location.pathname === '/'
         || location.pathname === '/scenes'
         || location.pathname.startsWith('/scenes/')
-    const supportPanelsAreDocked = isDesktopShell && !compositionWorkspaceOwnsRails
+    const promptPanelIsDocked = isDesktopShell
+    const historyPanelIsDocked = isDesktopShell && !compositionWorkspaceOwnsRails
+    const mainIsGenerating = useGenerationStore(state => state.isGenerating)
+    const sceneIsGenerating = useSceneStore(state => state.isGenerating)
 
     // Get generation params for cost calculation
     const { characterImages, vibeImages } = useCharacterStore()
@@ -112,16 +125,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }, [])
 
     useEffect(() => {
-        const openPromptSheet = () => setLeftSheetOpen(true)
-        const openHistorySheet = () => setRightSheetOpen(true)
-
-        window.addEventListener(LAYOUT_SHEET_EVENTS.OPEN_PROMPT, openPromptSheet)
-        window.addEventListener(LAYOUT_SHEET_EVENTS.OPEN_HISTORY, openHistorySheet)
-        return () => {
-            window.removeEventListener(LAYOUT_SHEET_EVENTS.OPEN_PROMPT, openPromptSheet)
-            window.removeEventListener(LAYOUT_SHEET_EVENTS.OPEN_HISTORY, openHistorySheet)
+        if (!isDesktopShell && leftSheetOpen && (mainIsGenerating || sceneIsGenerating)) {
+            closeSupportSheet()
         }
-    }, [])
+    }, [closeSupportSheet, isDesktopShell, leftSheetOpen, mainIsGenerating, sceneIsGenerating])
 
     useEffect(() => {
         if (!isAndroidRuntime || (!leftSheetOpen && !rightSheetOpen)) return
@@ -132,8 +139,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         // Tauri's Android app plugin owns the native Back dispatcher; registering only while a
         // support sheet is open lets Back close that sheet, then restores normal Activity behavior.
         void onBackButtonPress(() => {
-            if (rightSheetOpen) setRightSheetOpen(false)
-            else if (leftSheetOpen) setLeftSheetOpen(false)
+            closeSupportSheet()
         }).then((listener) => {
             if (disposed) void listener.unregister()
             else unregister = () => listener.unregister()
@@ -143,7 +149,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
             disposed = true
             if (unregister) void unregister()
         }
-    }, [leftSheetOpen, rightSheetOpen])
+    }, [closeSupportSheet, leftSheetOpen, rightSheetOpen])
 
     // Calculate cached vs uncached vibes (only enabled ones)
     const enabledVibes = vibeImages.filter(v => v.enabled !== false)
@@ -193,29 +199,30 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }
 
     const handleLeftPanelToggle = () => {
-        if (supportPanelsAreDocked) {
+        if (promptPanelIsDocked) {
             toggleLeftSidebar()
         } else {
-            setLeftSheetOpen(true)
+            openSupportSheet('prompt')
         }
     }
 
     const handleRightPanelToggle = () => {
-        if (supportPanelsAreDocked) {
+        if (historyPanelIsDocked) {
             toggleRightSidebar()
         } else {
-            setRightSheetOpen(true)
+            openSupportSheet('history')
         }
     }
 
     const promptPanelContent = (
         <>
-            <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-5 py-3">
+            <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-5">
                 <div className="flex min-w-0 items-center gap-2">
                     <h2 className="min-w-0 max-w-40 truncate text-base font-semibold">
                         {activePreset?.name || t('preset.default', '기본')}
                     </h2>
                     <PresetDropdown open={presetDialogOpen} onOpenChange={setPresetDialogOpen} />
+                    <PresetDraftControls />
                 </div>
 
                 {activeTokenBalances.length > 0 ? (
@@ -316,8 +323,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-prompt-dock"
                     className={cn(
-                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel bg-card 2xl:flex 2xl:w-[500px]",
-                        (!leftSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
+                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel bg-card 2xl:flex min-[1800px]:w-[500px]",
+                        !leftSidebarVisible && "2xl:hidden"
                     )}
                 >
                     {promptPanelContent}
@@ -333,11 +340,11 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 className={cn(
                                     "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                                     "text-muted-foreground hover:bg-accent hover:text-foreground",
-                                    supportPanelsAreDocked && !leftSidebarVisible && "opacity-50"
+                                    promptPanelIsDocked && !leftSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}
-                                aria-expanded={supportPanelsAreDocked ? leftSidebarVisible : leftSheetOpen}
-                                aria-controls={supportPanelsAreDocked ? 'nais2-prompt-dock' : 'nais2-prompt-sheet'}
+                                aria-expanded={promptPanelIsDocked ? leftSidebarVisible : leftSheetOpen}
+                                aria-controls={promptPanelIsDocked ? 'nais2-prompt-dock' : 'nais2-prompt-sheet'}
                             >
                                 <PanelLeft className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -352,11 +359,11 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 className={cn(
                                     "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
                                     "text-muted-foreground hover:bg-accent hover:text-foreground",
-                                    supportPanelsAreDocked && !rightSidebarVisible && "opacity-50"
+                                    historyPanelIsDocked && !rightSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}
-                                aria-expanded={supportPanelsAreDocked ? rightSidebarVisible : rightSheetOpen}
-                                aria-controls={supportPanelsAreDocked ? 'nais2-history-dock' : 'nais2-history-sheet'}
+                                aria-expanded={historyPanelIsDocked ? rightSidebarVisible : rightSheetOpen}
+                                aria-controls={historyPanelIsDocked ? 'nais2-history-dock' : 'nais2-history-sheet'}
                             >
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -387,11 +394,16 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 </aside>
             </div>
 
-            <Sheet open={leftSheetOpen} onOpenChange={setLeftSheetOpen}>
+            <Sheet
+                modal={false}
+                open={leftSheetOpen}
+                onOpenChange={(open) => open ? openSupportSheet('prompt') : closeSupportSheet()}
+            >
                 <SheetContent
                     id="nais2-prompt-sheet"
                     side="left"
-                    className="flex !w-full !max-w-none flex-col gap-0 sm:!w-[420px] sm:!max-w-[420px]"
+                    showOverlay={false}
+                    className="flex !w-full !max-w-none flex-col gap-0 border-r border-border sm:!w-[420px] sm:!max-w-[min(70vw,720px)] sm:!min-w-[360px] sm:resize-x sm:overflow-auto"
                     style={isMobileRuntime ? {
                         paddingTop: 'max(1rem, env(safe-area-inset-top))',
                         paddingRight: 'max(1rem, env(safe-area-inset-right))',
@@ -409,7 +421,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 </SheetContent>
             </Sheet>
 
-            <Sheet open={rightSheetOpen} onOpenChange={setRightSheetOpen}>
+            <Sheet
+                open={rightSheetOpen}
+                onOpenChange={(open) => open ? openSupportSheet('history') : closeSupportSheet()}
+            >
                 <SheetContent
                     id="nais2-history-sheet"
                     side="right"

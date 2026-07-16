@@ -63,6 +63,7 @@ discord_setup/
 
 # Docs (local planning; Composition Domain v2 baseline is repository guidance)
 docs/*
+!docs/persistence-map.md
 !docs/composition-v2/
 !docs/composition-v2/**
 
@@ -72,6 +73,11 @@ docs/*
 # Project-scoped Codex surfaces are generated local tooling, not repository source.
 .codex/
 .omx/
+
+# Local IDE and generated verification/build scratch space.
+.idea/
+tmp/
+src-tauri/src-tauri/
 
 # Legacy source snapshots keep source only, not local build/runtime artifacts.
 legacy/**/node_modules/

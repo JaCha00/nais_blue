@@ -17,14 +17,15 @@ describe('Main composition UI contract', () => {
         expect(mainMode).toContain('data-testid="main-result-canvas"')
         expect(mainMode).toContain('<CompositionInspector')
         expect(mainMode).toContain('<ModuleStack')
-        expect(workspaceLayout).toContain('2xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]')
+        expect(workspaceLayout).toContain("desktopRails && '2xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]'")
+        expect(mainMode).toContain('desktopRails={false}')
         expect(workspaceLayout).toContain('overflow-x-hidden')
     })
 
     it('routes the one-action generation control through the durable command with legacy rollback', async () => {
         const [mainMode, command] = await Promise.all([
             source('src/pages/MainMode.tsx'),
-            source('src/services/queue/generation-command.ts'),
+            source('src/services/generation/generation-command.ts'),
         ])
 
         expect(mainMode).toMatch(/const handlePrimaryGeneration = \(\) => \{[\s\S]*?cancelMainGenerationCommand\(\)[\s\S]*?startMainGenerationCommand\(\)/)
@@ -55,7 +56,8 @@ describe('Main composition UI contract', () => {
     it('keeps raw prompt authoring behind the existing Prompt sheet compatibility entry', async () => {
         const mainMode = await source('src/pages/MainMode.tsx')
 
-        expect(mainMode).toContain("window.dispatchEvent(new Event(LAYOUT_SHEET_EVENTS.OPEN_PROMPT))")
+        expect(mainMode).toContain("const handleOpenPromptSheet = () => openSupportSheet('prompt')")
+        expect(mainMode).not.toContain('LAYOUT_SHEET_EVENTS')
         expect(mainMode).toContain("t('composition.compatibility.rawPrompt', 'Advanced raw prompt')")
         expect(mainMode).not.toContain('<AutocompleteTextarea')
     })

@@ -9,6 +9,7 @@ import { useSceneStore, type SceneCard } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 
 export interface SaveSceneResultContext {
     activePresetId: string
@@ -84,7 +85,7 @@ function sceneOutputDirectory(params: {
 
 // useSceneGeneration delegates result persistence here after its session checks.
 // This file owns the coupled save side effects: disk path, scene image list,
-// HistoryPanel's newImageGenerated event, generation history thumbnail, and
+// artifact lifecycle publication, generation history thumbnail, and
 // encoded-vibe cache updates back into CharacterStore.
 export async function saveSceneResult(
     scene: Pick<SceneCard, 'id' | 'name'>,
@@ -213,13 +214,7 @@ export async function saveSceneResult(
                     timestamp: new Date(),
                     sentPayloadSummary: options.sentPayloadSummary,
                 })
-                try {
-                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                        detail: { path: outputResult.path },
-                    }))
-                } catch (eventError) {
-                    console.warn('[SceneGeneration] Failed to publish the committed output event.', eventError)
-                }
+                publishGeneratedArtifact({ path: outputResult.path })
                 await options.commitDurable?.(outputResult)
                 workflowCommitted = true
             },

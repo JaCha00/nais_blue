@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState, useCallback, memo } from 'react'
-import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2 } from 'lucide-react'
+import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2, FolderKanban, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore, waitForCredentialVaultReady } from '@/stores/auth-store'
@@ -32,6 +32,8 @@ import {
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
+import { queueOrganizerHandoff } from '@/services/organizer/handoff'
+import { publishGeneratedArtifact, useArtifactLifecycleStore } from '@/stores/artifact-lifecycle-store'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -68,6 +70,8 @@ interface HistoryImageItemProps {
     onI2I: (image: SavedImage) => void
     onOpenFolder: (image: SavedImage) => void
     onLoadMetadata: (image: SavedImage) => void
+    onAddToLibrary: (image: SavedImage) => void
+    onSendToOrganizer: (image: SavedImage) => void
     onLoadComplete: (path: string, data: string) => void
 }
 
@@ -75,6 +79,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
     image, thumbnail, index, getTypeIcon,
     onImageClick, onDelete, onSaveAs, onCopy, onRegenerate,
     onOpenSmartTools, onAddAsReference, onInpaint, onI2I, onOpenFolder, onLoadMetadata,
+    onAddToLibrary, onSendToOrganizer,
     onLoadComplete
 }: HistoryImageItemProps) {
     const { t } = useTranslation()
@@ -198,6 +203,14 @@ const HistoryImageItem = memo(function HistoryImageItem({
                     <Copy className="h-4 w-4 mr-2" />
                     {t('actions.copy', '복사')}
                 </ContextMenuItem>
+                <ContextMenuItem onClick={() => onAddToLibrary(image)}>
+                    <Images className="mr-2 h-4 w-4" />
+                    {t('history.addToLibrary', 'Add to library')}
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => onSendToOrganizer(image)} disabled={image.isTemporary}>
+                    <FolderKanban className="mr-2 h-4 w-4" />
+                    {t('history.sendToOrganizer', 'Send to Organizer')}
+                </ContextMenuItem>
                 <ContextMenuItem onClick={() => onRegenerate(image)}>
                     <RotateCcw className="h-4 w-4 mr-2" />
                     {t('actions.regenerate', '재생성')}
@@ -250,6 +263,8 @@ export function HistoryPanel() {
     const [selectedImageForInpaint, setSelectedImageForInpaint] = useState<string | null>(null)
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
+    const libraryItems = useLibraryStore(state => state.items)
+    const addLibraryItem = useLibraryStore(state => state.addItem)
     const isTauriRuntime = isTauri()
 
 
@@ -588,19 +603,17 @@ export function HistoryPanel() {
         loadSavedImages()
     }, [savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath])
 
-    // Listen for instant image updates from generation
-    useEffect(() => {
-        const handler = (e: CustomEvent<{ path: string; data?: string }>) => {
-            const { path, data } = e.detail
-            addNewImage(path, data)
-        }
+    const latestGeneratedArtifact = useArtifactLifecycleStore(state => state.latestGeneratedArtifact)
 
-        window.addEventListener('newImageGenerated', handler as EventListener)
-        return () => window.removeEventListener('newImageGenerated', handler as EventListener)
-    }, [addNewImage])
+    // Output producers publish through a typed transient store. Directory scans
+    // remain limited to initial load/manual refresh for large histories.
+    useEffect(() => {
+        if (latestGeneratedArtifact === null) return
+        addNewImage(latestGeneratedArtifact.path, latestGeneratedArtifact.data)
+    }, [addNewImage, latestGeneratedArtifact])
 
     // PERFORMANCE: Removed auto-refresh after every generation.
-    // The newImageGenerated event (above) already adds images instantly.
+    // The artifact lifecycle subscription (above) already adds images instantly.
     // Full directory scan (loadSavedImages) is only needed on initial mount + manual refresh.
     // For users generating 1000+ images, scanning the entire directory after EVERY generation
     // was the #1 cause of progressive slowdown.
@@ -831,14 +844,10 @@ export function HistoryPanel() {
                             fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
                         }
 
-                        // Dispatch event for instant history update
-                        try {
-                            window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                                detail: { path: fullPath, data: `data:${mimeType};base64,${result.imageData}` }
-                            }))
-                        } catch (e) {
-                            console.warn('Failed to dispatch newImageGenerated event:', e)
-                        }
+                        publishGeneratedArtifact({
+                            path: fullPath,
+                            data: `data:${mimeType};base64,${result.imageData}`,
+                        })
                     } catch (e) {
                         console.warn('Failed to save regenerated image:', e)
                     }
@@ -847,13 +856,10 @@ export function HistoryPanel() {
                     const fileName = `NAIS_${Date.now()}.${fileExt}`
                     const memoryPath = `memory://${fileName}`
 
-                    try {
-                        window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                            detail: { path: memoryPath, data: `data:${mimeType};base64,${result.imageData}` }
-                        }))
-                    } catch (e) {
-                        console.warn('Failed to dispatch newImageGenerated event (Memory):', e)
-                    }
+                    publishGeneratedArtifact({
+                        path: memoryPath,
+                        data: `data:${mimeType};base64,${result.imageData}`,
+                    })
                 }
 
                 toast({ title: t('toast.regenerated', '재생성 완료'), variant: 'success' })
@@ -941,6 +947,28 @@ export function HistoryPanel() {
         }
         setSelectedImageForRef(imageData)
         setImageRefDialogOpen(true)
+    }
+
+    const handleAddToLibrary = (image: SavedImage) => {
+        if (libraryItems.some(item => item.path === image.path)) {
+            toast({ title: t('history.alreadyInLibrary', 'Already in library') })
+            return
+        }
+        addLibraryItem({
+            id: `history-${image.timestamp}-${crypto.randomUUID()}`,
+            name: image.name.replace(/\.[^.]+$/, ''),
+            path: image.path,
+            width: 0,
+            height: 0,
+            createdAt: image.timestamp,
+        })
+        toast({ title: t('history.addedToLibrary', 'Added to library'), variant: 'success' })
+    }
+
+    const handleSendToOrganizer = (image: SavedImage) => {
+        if (image.isTemporary) return
+        queueOrganizerHandoff({ path: image.path, fileName: image.name })
+        navigate('/organizer')
     }
 
     // Inpainting: Open dialog directly with image (source/mode set when mask is saved)
@@ -1054,6 +1082,8 @@ export function HistoryPanel() {
                                 onI2I={handleI2I}
                                 onOpenFolder={handleOpenFolder}
                                 onLoadMetadata={handleLoadMetadata}
+                                onAddToLibrary={handleAddToLibrary}
+                                onSendToOrganizer={handleSendToOrganizer}
                             />
                         ))}
                     </div>

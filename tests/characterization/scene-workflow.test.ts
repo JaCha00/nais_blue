@@ -34,6 +34,13 @@ const runtimeCapture = vi.hoisted(() => ({
     files: new Map<string, Uint8Array>(),
 }))
 
+vi.mock('@/stores/artifact-lifecycle-store', () => ({
+    publishGeneratedArtifact: (detail: Record<string, unknown>) => {
+        runtimeCapture.calls.push('event:new-image')
+        runtimeCapture.events.push({ type: 'artifact:generated', detail })
+    },
+}))
+
 vi.mock('@/lib/indexed-db', () => ({
     indexedDBStorage: {
         getItem: async () => null,

@@ -6,6 +6,7 @@ import { useToolsStore } from '@/stores/tools-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useGenerationStore } from '@/stores/generation-store'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import { smartTools } from '@/services/smart-tools'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
@@ -169,14 +170,7 @@ export default function ToolsMode() {
                 const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
                 const fullPath = await saveToolsImage(fileName, binaryData)
 
-                // Dispatch event for instant history update
-                try {
-                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                        detail: { path: fullPath, data: result }
-                    }))
-                } catch (e) {
-                    console.warn('Failed to dispatch newImageGenerated event:', e)
-                }
+                publishGeneratedArtifact({ path: fullPath, data: result })
             } catch (e) {
                 console.warn('Failed to save upscaled image:', e)
             }
@@ -218,10 +212,7 @@ export default function ToolsMode() {
                 const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
                 const fullPath = await saveToolsImage(fileName, binaryData)
 
-                // Dispatch for instant history update
-                window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                    detail: { path: fullPath, data: result }
-                }))
+                publishGeneratedArtifact({ path: fullPath, data: result })
             } catch (e) {
                 console.warn('Failed to save director tool image:', e)
             }

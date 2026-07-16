@@ -210,7 +210,12 @@
             "inspector": "コンテキストインスペクター",
             "inspectorHelp": "canonicalエディターを開く前にモジュールの状態を確認します。"
         },
-        "mode": { "title": "モード" },
+        "mode": {
+            "title": "生成方式",
+            "previous": "以前の生成エンジン",
+            "compatibility": "互換性比較診断",
+            "current": "現在の生成エンジン"
+        },
         "recipe": {
             "title": "レシピ",
             "direct": "直接プロンプト",
@@ -275,7 +280,11 @@
         "saved": "プリセット保存済み",
         "title": "プリセット管理",
         "description": "プロンプトと設定をプリセットとして保存・読み込みできます。",
-        "active": "アクティブ"
+        "active": "アクティブ",
+        "unsaved": "未保存",
+        "revert": "未保存の変更を元に戻す",
+        "saveCopy": "コピーとして保存",
+        "copyName": "{{name}} のコピー"
     },
     "metadata": {
         "title": "メタデータ読み込み",
@@ -317,7 +326,8 @@
         "settings": "設定",
         "styleLab": "画風研究所",
         "promptEditor": "プロンプトエディター",
-        "queue": "キューセンター"
+        "queue": "キューセンター",
+        "organizer": "結果整理"
     },
     "queue": {
         "title": "キューセンター",
@@ -330,7 +340,67 @@
     "convertLegacyTitle": "従来のSceneキューを変換しますか？",
     "convertLegacyDescription": "現在のパラメーターと必要なリソースを永続ジョブとしてスナップショットします。ロールバック用に従来のqueueCountは保持されます。",
     "convertLegacyConfirm": "変換",
-    "failureSummary": "失敗またはブロック {{count}}件 · 診断を開く"
+    "failureSummary": "失敗またはブロック {{count}}件 · 診断を開く",
+    "executionCurrent": "安全なバックグラウンド実行",
+    "executionPrevious": "以前の方式で実行",
+    "executionMode": "実行方式",
+    "batch": "ジョブグループ",
+    "noBatches": "ジョブグループなし",
+    "failurePolicy": "エラー処理",
+    "continueOnError": "エラー後も続行",
+    "pauseOnFatal": "重大エラーで一時停止",
+    "stopOnFirstError": "最初のエラーで停止",
+    "pause": "一時停止",
+    "resume": "再開",
+    "retryFailed": "失敗項目を再試行",
+    "cancelAll": "すべてキャンセル",
+    "progress": "進捗",
+    "speed": "処理速度",
+    "remainingTime": "残り時間",
+    "filter": "状態フィルター",
+    "jobs": "{{count}}件のジョブ",
+    "empty": "この条件に一致するジョブはありません。",
+    "attempt": "試行 {{current}}/{{max}}",
+    "status": {
+        "all": "すべて",
+        "queued": "待機中",
+        "leased": "実行準備中",
+        "running": "実行中",
+        "succeeded": "完了",
+        "failed": "失敗",
+        "cancelled": "キャンセル済み",
+        "skipped": "スキップ",
+        "blocked": "必要なファイルが見つかりません",
+        "recovering": "復旧中"
+    }
+    },
+    "organizer": {
+        "title": "結果整理とエクスポート",
+        "description": "元画像は変更せず、エクスポートはコピーとして作成します。必要に応じてクラウドアップロードを続けられます。",
+        "refresh": "更新",
+        "chooseFolder": "フォルダーを選択",
+        "currentCollection": "現在のコレクション",
+        "externalCollection": "選択した外部フォルダー",
+        "managedCollection": "アプリ管理コレクション",
+        "folderShortcut": "PageUp / PageDownで近くのフォルダーを切り替えます",
+        "imageCount": "{{count}}枚の画像",
+        "gridSize": "グリッドサイズ",
+        "empty": "このコレクションにPNG、WebP、JPEG画像はありません。",
+        "loadingPreview": "プレビューを読み込み中…",
+        "assignmentSlots": "選択スロット",
+        "assignmentHelp": "Enterで次の空きスロットに入れるか、画像をスロットへドラッグしてください。",
+        "slotEmpty": "画像をドロップまたは選択",
+        "clearSlot": "最初の選択スロットをクリア",
+        "exportSettings": "エクスポート設定",
+        "exportDescription": "選択したコレクションへコピーを作成する前に、ファイル名と競合を確認します。",
+        "filenameTemplate": "ファイル名ルール",
+        "filenamePreview": "ファイル名プレビュー",
+        "conflictPreview": "競合チェック",
+        "operationPreview": "予定される処理",
+        "createExport": "エクスポートコピーを作成",
+        "retryFailed": "失敗項目を再試行",
+        "progress": "エクスポート進捗",
+        "diagnostics": "詳細診断"
     },
     "assetModuleStudioV2": {
         "wrapper": {
@@ -727,7 +797,11 @@
         "title": "履歴",
         "empty": "生成された画像はありません",
         "emptyHint": "プロンプトを開いて最初の画像を作成しましょう。",
-        "count": "{{count}}枚"
+        "count": "{{count}}枚",
+        "addToLibrary": "ライブラリに追加",
+        "sendToOrganizer": "結果整理へ送る",
+        "alreadyInLibrary": "すでにライブラリにあります",
+        "addedToLibrary": "ライブラリに追加しました"
     },
     "actions": {
         "regenerate": "再生成",

@@ -10,6 +10,7 @@ export interface CompositionWorkspaceLayoutProps {
     className?: string
     workspaceClassName?: string
     workspaceLabel?: string
+    desktopRails?: boolean
 }
 
 /** 2xl rails and compact canvas-first shell; sheets are mounted by the owning page. */
@@ -22,6 +23,7 @@ export function CompositionWorkspaceLayout({
     className,
     workspaceClassName,
     workspaceLabel = 'Composition workspace',
+    desktopRails = true,
 }: CompositionWorkspaceLayoutProps) {
     return (
         <div
@@ -32,10 +34,11 @@ export function CompositionWorkspaceLayout({
                 <div className="hidden shrink-0 p-2 sm:p-3 md:block">{commandBar}</div>
             )}
             <div className={cn(
-                'grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 px-2 sm:px-3 2xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]',
+                'grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 px-2 sm:px-3',
+                desktopRails && '2xl:grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]',
                 mobileDock ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-3' : 'pb-3',
             )}>
-                <div className="hidden min-h-0 min-w-0 2xl:block">{moduleStack}</div>
+                <div className={cn('hidden min-h-0 min-w-0', desktopRails && '2xl:block')}>{moduleStack}</div>
                 <section
                     className={cn('min-h-0 min-w-0 overflow-hidden', workspaceClassName)}
                     aria-label={workspaceLabel}
@@ -43,7 +46,7 @@ export function CompositionWorkspaceLayout({
                 >
                     {workspace}
                 </section>
-                <div className="hidden min-h-0 min-w-0 2xl:block">{inspector}</div>
+                <div className={cn('hidden min-h-0 min-w-0', desktopRails && '2xl:block')}>{inspector}</div>
             </div>
             {mobileDock && <div className="md:hidden">{mobileDock}</div>}
         </div>

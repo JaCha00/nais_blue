@@ -1,6 +1,8 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import { dirname } from '@tauri-apps/api/path'
 import { FolderOpen, GripVertical, RefreshCw, RotateCcw, UploadCloud } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -25,6 +27,7 @@ import { dataUrlForOrganizerImage } from '@/services/organizer/image-transcoder'
 import { getRuntimeR2UploadRepository } from '@/services/r2/runtime'
 import type { R2ProfileV2 } from '@/domain/r2/types'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
+import { consumeOrganizerHandoff } from '@/services/organizer/handoff'
 
 const GRID_GAP = 12
 const GRID_TILE_MIN_WIDTH = 152
@@ -138,6 +141,7 @@ function statusForResult(status: string): string {
  * boundary and asks OutputWriter-backed coordination to make every mutation.
  */
 export default function Organizer() {
+    const { t } = useTranslation()
     const collectionAdapter = useMemo(() => getRuntimeOrganizerCollectionAdapter(), [])
     const artifactRepository = useMemo(() => getRuntimeArtifactRepository(), [])
     const distributionCoordinator = useMemo(() => getRuntimeArtifactDistributionCoordinator(), [])
@@ -224,8 +228,25 @@ export default function Organizer() {
     }, [collection, collectionAdapter, loadRecords])
 
     useEffect(() => {
-        void refreshCollection()
-    }, [refreshCollection])
+        let active = true
+        const handoff = consumeOrganizerHandoff()
+        if (handoff === null) {
+            void refreshCollection()
+            return () => { active = false }
+        }
+
+        // History supplies a one-shot file hint. The adapter registers only its
+        // containing folder, then this view selects the matching scanned entry.
+        void dirname(handoff.path)
+            .then(path => collectionAdapter.registerExternalDirectory(path))
+            .then(async external => {
+                await refreshCollection(external)
+                if (!active) return
+                setSelectedEntryId(`${external.id}:${handoff.fileName}`)
+            })
+            .catch(() => { if (active) void refreshCollection() })
+        return () => { active = false }
+    }, [collectionAdapter, refreshCollection])
 
     useEffect(() => {
         const viewportNode = viewportRef.current
@@ -428,20 +449,20 @@ export default function Organizer() {
     return (
         <main
             className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto bg-canvas lg:overflow-hidden"
-            aria-label="Organizer"
+            aria-label={t('organizer.title', 'Organizer and export')}
         >
             <header className="shrink-0 border-b border-border px-3 py-3 sm:px-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                        <h1 className="text-lg font-semibold">Organizer & distribution</h1>
-                        <p className="text-xs text-muted-foreground">Immutable originals · OutputWriter commits variants and sidecars · optional queued R2 follow-up</p>
+                        <h1 className="text-lg font-semibold">{t('organizer.title', 'Organizer and export')}</h1>
+                        <p className="text-xs text-muted-foreground">{t('organizer.description', 'Originals stay unchanged. Exports are created as copies, with optional cloud upload.')}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => void refreshCollection()} disabled={busy}>
-                            <RefreshCw className="mr-2 h-4 w-4" />Refresh
+                            <RefreshCw className="mr-2 h-4 w-4" />{t('organizer.refresh', 'Refresh')}
                         </Button>
                         <Button variant="outline" onClick={() => void chooseExternalFolder()} disabled={busy}>
-                            <FolderOpen className="mr-2 h-4 w-4" />Choose folder
+                            <FolderOpen className="mr-2 h-4 w-4" />{t('organizer.chooseFolder', 'Choose folder')}
                         </Button>
                     </div>
                 </div>
@@ -455,7 +476,7 @@ export default function Organizer() {
                         moveSibling(1)
                     }
                 }}>
-                    <label className="sr-only" htmlFor="organizer-collection">Current collection</label>
+                    <label className="sr-only" htmlFor="organizer-collection">{t('organizer.currentCollection', 'Current collection')}</label>
                     <select
                         id="organizer-collection"
                         className="min-h-11 max-w-full rounded-control border border-input bg-background px-3"
@@ -471,9 +492,11 @@ export default function Organizer() {
                         ))}
                     </select>
                     <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
-                        {collection.source === 'external' ? 'External capability: active session' : 'Managed app-data collection'}
+                        {collection.source === 'external'
+                            ? t('organizer.externalCollection', 'Selected external folder')
+                            : t('organizer.managedCollection', 'App-managed collection')}
                     </span>
-                    <span className="text-xs text-muted-foreground">PageUp / PageDown moves sibling folders</span>
+                    <span className="text-xs text-muted-foreground">{t('organizer.folderShortcut', 'PageUp / PageDown switches nearby folders')}</span>
                 </div>
             </header>
 
@@ -481,9 +504,9 @@ export default function Organizer() {
             <div className="grid min-w-0 flex-none grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.42fr)]">
                 <section className="flex min-h-[420px] min-w-0 flex-col border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r" aria-label="Virtualized artifact browser">
                     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-5">
-                        <p className="text-sm text-muted-foreground">{entries.length.toLocaleString()} images · renders {Math.max(0, gridRange.end - gridRange.start).toLocaleString()} tiles</p>
+                        <p className="text-sm text-muted-foreground">{t('organizer.imageCount', '{{count}} images', { count: entries.length })}</p>
                         <label className="flex min-h-11 items-center gap-2 text-xs">
-                            Grid
+                            {t('organizer.gridSize', 'Grid size')}
                             <input
                                 type="range"
                                 min="128"
@@ -505,7 +528,7 @@ export default function Organizer() {
                     >
                         {entries.length === 0 ? (
                             <div className="flex min-h-48 items-center justify-center text-center text-sm text-muted-foreground">
-                                No PNG, WebP, or JPEG images are in this collection.
+                                {t('organizer.empty', 'No PNG, WebP, or JPEG images are in this collection.')}
                             </div>
                         ) : (
                             <div className="relative" style={{ height: gridHeight }}>
@@ -547,7 +570,7 @@ export default function Organizer() {
                                             }}
                                         >
                                             <span className="flex min-h-0 flex-1 items-center justify-center bg-muted/30">
-                                                {thumb ? <img src={thumb} alt={thumbnailAlt(entry)} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">Loading preview…</span>}
+                                                {thumb ? <img src={thumb} alt={thumbnailAlt(entry)} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">{t('organizer.loadingPreview', 'Loading preview…')}</span>}
                                             </span>
                                             <span className="flex min-h-11 items-center gap-1 px-2 py-1">
                                                 <GripVertical className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -563,8 +586,8 @@ export default function Organizer() {
 
                 <aside className="overflow-visible lg:min-h-0 lg:overflow-y-auto" aria-label="Distribution policy and slots">
                     <section className="border-b border-border p-3 sm:p-5">
-                        <h2 className="font-semibold">Assignment slots</h2>
-                        <p className="mt-1 text-xs text-muted-foreground">Enter uses the next empty slot. Drag to a named slot, or tap a selected thumbnail then tap a slot.</p>
+                        <h2 className="font-semibold">{t('organizer.assignmentSlots', 'Selection slots')}</h2>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('organizer.assignmentHelp', 'Press Enter for the next empty slot, or drag and drop an image into a slot.')}</p>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                             {slots.map(slot => {
                                 const record = slot.artifactId === null ? null : recordsById.get(slot.artifactId) ?? null
@@ -592,30 +615,30 @@ export default function Organizer() {
                                         }}
                                     >
                                         <span className="block font-medium">{slot.slotId}</span>
-                                        <span className="mt-1 block truncate text-muted-foreground">{filled ? record.original.file.fileName : 'Drop or tap selected image'}</span>
+                                        <span className="mt-1 block truncate text-muted-foreground">{filled ? record.original.file.fileName : t('organizer.slotEmpty', 'Drop or choose an image')}</span>
                                     </button>
                                 )
                             })}
                         </div>
                         {assignedArtifactIds.size > 0 && (
                             <Button variant="ghost" size="sm" className="mt-2" onClick={() => setSlots(current => clearOrganizerAssignment(current, slots.find(slot => slot.artifactId !== null)?.slotId ?? ''))}>
-                                Clear first assigned slot
+                                {t('organizer.clearSlot', 'Clear first assigned slot')}
                             </Button>
                         )}
                     </section>
 
                     <section className="space-y-3 p-3 sm:p-5">
                         <div>
-                            <h2 className="font-semibold">Distribution policy</h2>
-                            <p className="mt-1 text-xs text-muted-foreground">Destination is the selected collection. Filename and conflict checks are evaluated before OutputWriter commit.</p>
+                            <h2 className="font-semibold">{t('organizer.exportSettings', 'Export settings')}</h2>
+                            <p className="mt-1 text-xs text-muted-foreground">{t('organizer.exportDescription', 'The selected collection is the destination. File names and conflicts are checked before a copy is created.')}</p>
                         </div>
-                        <label className="block text-xs font-medium">Filename template
+                        <label className="block text-xs font-medium">{t('organizer.filenameTemplate', 'Filename template')}
                             <input value={policy.filenameTemplate} onChange={event => setPolicy(current => ({ ...current, filenameTemplate: event.target.value }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-3 text-sm" />
                         </label>
                         <div className="rounded-control border border-border bg-muted/30 p-2 text-xs">
-                            <span className="font-medium">Actual filename preview: </span>{selectedPreview}
-                            <p className="mt-1 text-muted-foreground">Conflict policy: {policy.collisionPolicy}; {conflictPreview}</p>
-                            <p className="mt-1 text-muted-foreground">Mode: {modePreview}</p>
+                            <span className="font-medium">{t('organizer.filenamePreview', 'Filename preview')}: </span>{selectedPreview}
+                            <p className="mt-1 text-muted-foreground">{t('organizer.conflictPreview', 'Conflict check')}: {conflictPreview}</p>
+                            <p className="mt-1 text-muted-foreground">{t('organizer.operationPreview', 'Planned operation')}: {modePreview}</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <label className="text-xs font-medium">Format
@@ -650,21 +673,21 @@ export default function Organizer() {
                         {remotePreview !== null && <p className="rounded-control border border-border bg-muted/30 p-2 text-xs"><span className="font-medium">R2 key preview: </span>{remotePreview}</p>}
                         <div className="flex flex-wrap gap-2">
                             <Button onClick={() => void runDistribution()} disabled={busy || selectedEntry === null} data-testid="organizer-run-distribution">
-                                <UploadCloud className="mr-2 h-4 w-4" />Create distribution
+                                <UploadCloud className="mr-2 h-4 w-4" />{t('organizer.createExport', 'Create export copy')}
                             </Button>
                             <Button variant="outline" onClick={() => void retryFailed()} disabled={busy || failedCount === 0}>
-                                <RotateCcw className="mr-2 h-4 w-4" />Retry failed ({failedCount})
+                                <RotateCcw className="mr-2 h-4 w-4" />{t('organizer.retryFailed', 'Retry failed')} ({failedCount})
                             </Button>
                         </div>
                         <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-muted-foreground"><span>Execution progress</span><span>{executionStage}</span></div>
+                            <div className="flex justify-between text-xs text-muted-foreground"><span>{t('organizer.progress', 'Export progress')}</span><span>{executionStage}</span></div>
                             <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Organizer execution progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={executionProgress}>
                                 <div className="h-full bg-primary transition-[width]" style={{ width: `${executionProgress}%` }} />
                             </div>
                         </div>
                         <p className="rounded-control border border-border p-2 text-xs text-muted-foreground" role="status">{status}</p>
                         <details className="rounded-control border border-border p-2 text-xs">
-                            <summary className="cursor-pointer font-medium">Diagnostic detail ({organizerDiagnostics.length})</summary>
+                            <summary className="cursor-pointer font-medium">{t('organizer.diagnostics', 'Detailed diagnostics')} ({organizerDiagnostics.length})</summary>
                             {organizerDiagnostics.length === 0 ? <p className="mt-2 text-muted-foreground">No organizer diagnostic has been recorded in this session.</p> : (
                                 <ul className="mt-2 space-y-1 text-muted-foreground">
                                     {organizerDiagnostics.map(event => <li key={event.eventId}><span className="font-mono">{event.code}</span> · {event.userSummary}</li>)}

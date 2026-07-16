@@ -211,7 +211,12 @@
             "inspector": "Context Inspector",
             "inspectorHelp": "Review module context before opening the canonical editor."
         },
-        "mode": { "title": "Mode" },
+        "mode": {
+            "title": "Generation mode",
+            "previous": "Previous generation engine",
+            "compatibility": "Compatibility comparison",
+            "current": "Current generation engine"
+        },
         "recipe": {
             "title": "Recipe",
             "direct": "Direct prompts",
@@ -276,7 +281,11 @@
         "saved": "Preset saved",
         "title": "Preset Manager",
         "description": "Save and load prompts and settings as presets.",
-        "active": "Active"
+        "active": "Active",
+        "unsaved": "Unsaved",
+        "revert": "Revert unsaved changes",
+        "saveCopy": "Save as copy",
+        "copyName": "{{name}} copy"
     },
     "metadata": {
         "title": "Load Metadata",
@@ -318,7 +327,8 @@
         "settings": "Settings",
         "styleLab": "Style Lab",
         "promptEditor": "Prompt Editor",
-        "queue": "Queue Center"
+        "queue": "Queue Center",
+        "organizer": "Organize Results"
     },
     "queue": {
         "title": "Queue Center",
@@ -331,7 +341,67 @@
     "convertLegacyTitle": "Convert legacy Scene queue?",
     "convertLegacyDescription": "Current parameters and required resources will be snapshotted into durable jobs. Existing queue counts will remain available for rollback.",
     "convertLegacyConfirm": "Convert",
-    "failureSummary": "{{count}} failed or blocked · Open diagnostics"
+    "failureSummary": "{{count}} failed or blocked · Open diagnostics",
+    "executionCurrent": "Safe background execution",
+    "executionPrevious": "Previous execution method",
+    "executionMode": "Execution method",
+    "batch": "Job group",
+    "noBatches": "No job groups",
+    "failurePolicy": "Error handling",
+    "continueOnError": "Continue after errors",
+    "pauseOnFatal": "Pause on critical error",
+    "stopOnFirstError": "Stop on first error",
+    "pause": "Pause",
+    "resume": "Resume",
+    "retryFailed": "Retry failed items",
+    "cancelAll": "Cancel all",
+    "progress": "Progress",
+    "speed": "Processing speed",
+    "remainingTime": "Time remaining",
+    "filter": "Status filter",
+    "jobs": "{{count}} jobs",
+    "empty": "No jobs match this view.",
+    "attempt": "Attempt {{current}}/{{max}}",
+    "status": {
+        "all": "All",
+        "queued": "Waiting",
+        "leased": "Preparing",
+        "running": "In progress",
+        "succeeded": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled",
+        "skipped": "Skipped",
+        "blocked": "Required file not found",
+        "recovering": "Recovering"
+    }
+    },
+    "organizer": {
+        "title": "Organize and export results",
+        "description": "Originals stay unchanged. Exports are created as copies, with optional cloud upload.",
+        "refresh": "Refresh",
+        "chooseFolder": "Choose folder",
+        "currentCollection": "Current collection",
+        "externalCollection": "Selected external folder",
+        "managedCollection": "App-managed collection",
+        "folderShortcut": "PageUp / PageDown switches nearby folders",
+        "imageCount": "{{count}} images",
+        "gridSize": "Grid size",
+        "empty": "No PNG, WebP, or JPEG images are in this collection.",
+        "loadingPreview": "Loading preview…",
+        "assignmentSlots": "Selection slots",
+        "assignmentHelp": "Press Enter for the next empty slot, or drag and drop an image into a slot.",
+        "slotEmpty": "Drop or choose an image",
+        "clearSlot": "Clear first assigned slot",
+        "exportSettings": "Export settings",
+        "exportDescription": "File names and conflicts are checked before a copy is created in the selected collection.",
+        "filenameTemplate": "Filename template",
+        "filenamePreview": "Filename preview",
+        "conflictPreview": "Conflict check",
+        "operationPreview": "Planned operation",
+        "createExport": "Create export copy",
+        "retryFailed": "Retry failed",
+        "progress": "Export progress",
+        "diagnostics": "Detailed diagnostics"
     },
     "assetModuleStudioV2": {
         "wrapper": {
@@ -729,7 +799,11 @@
         "empty": "No images yet",
         "emptyHint": "Open the prompt to create your first image.",
         "openImage": "Image {{index}}",
-        "count": "{{count}} images"
+        "count": "{{count}} images",
+        "addToLibrary": "Add to library",
+        "sendToOrganizer": "Send to Organizer",
+        "alreadyInLibrary": "Already in library",
+        "addedToLibrary": "Added to library"
     },
     "actions": {
         "regenerate": "Regenerate",

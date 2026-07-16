@@ -636,7 +636,7 @@ export const useSceneStore = create<SceneState>()(
                     ),
                 }))
                 // NOTE: Removed triggerHistoryRefresh() here.
-                // HistoryPanel now uses instant event-based updates (newImageGenerated),
+                // HistoryPanel now uses the transient artifact lifecycle store,
                 // so triggering a full directory rescan per image is no longer needed.
             },
 

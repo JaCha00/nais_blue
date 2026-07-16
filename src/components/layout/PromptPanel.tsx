@@ -44,7 +44,9 @@ import {
     Users,
 } from 'lucide-react'
 import GeminiIcon from '@/assets/gemini-color.svg'
-import { useGenerationStore, AVAILABLE_MODELS } from '@/stores/generation-store'
+import { AVAILABLE_MODELS } from '@/stores/generation-store'
+import { useGenerationDraftStore } from '@/stores/generation-draft-store'
+import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useSceneStore } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
@@ -59,7 +61,7 @@ import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import {
     cancelMainGenerationCommand,
     startMainGenerationCommand,
-} from '@/services/queue/generation-command'
+} from '@/services/generation/generation-command'
 
 const SAMPLERS = [
     'k_euler',
@@ -95,50 +97,50 @@ export function PromptPanel() {
     const sceneQueueCount = activePresetId ? getTotalQueueCount(activePresetId) : 0
 
     // Zustand 선택적 구독 - generationStore (상태)
-    const basePrompt = useGenerationStore(state => state.basePrompt)
-    const additionalPrompt = useGenerationStore(state => state.additionalPrompt)
-    const detailPrompt = useGenerationStore(state => state.detailPrompt)
-    const negativePrompt = useGenerationStore(state => state.negativePrompt)
-    const seed = useGenerationStore(state => state.seed)
-    const seedLocked = useGenerationStore(state => state.seedLocked)
-    const selectedResolution = useGenerationStore(state => state.selectedResolution)
-    const isGenerating = useGenerationStore(state => state.isGenerating)
-    const isCancelled = useGenerationStore(state => state.isCancelled)
-    const model = useGenerationStore(state => state.model)
-    const steps = useGenerationStore(state => state.steps)
-    const cfgScale = useGenerationStore(state => state.cfgScale)
-    const cfgRescale = useGenerationStore(state => state.cfgRescale)
-    const sampler = useGenerationStore(state => state.sampler)
-    const scheduler = useGenerationStore(state => state.scheduler)
-    const smea = useGenerationStore(state => state.smea)
-    const smeaDyn = useGenerationStore(state => state.smeaDyn)
-    const variety = useGenerationStore(state => state.variety)
-    const qualityToggle = useGenerationStore(state => state.qualityToggle)
-    const ucPreset = useGenerationStore(state => state.ucPreset)
-    const batchCount = useGenerationStore(state => state.batchCount)
-    const currentBatch = useGenerationStore(state => state.currentBatch)
-    const generatingMode = useGenerationStore(state => state.generatingMode)
+    const basePrompt = useGenerationDraftStore(state => state.basePrompt)
+    const additionalPrompt = useGenerationDraftStore(state => state.additionalPrompt)
+    const detailPrompt = useGenerationDraftStore(state => state.detailPrompt)
+    const negativePrompt = useGenerationDraftStore(state => state.negativePrompt)
+    const seed = useGenerationDraftStore(state => state.seed)
+    const seedLocked = useGenerationDraftStore(state => state.seedLocked)
+    const selectedResolution = useGenerationDraftStore(state => state.selectedResolution)
+    const isGenerating = useGenerationSessionStore(state => state.isGenerating)
+    const isCancelled = useGenerationSessionStore(state => state.isCancelled)
+    const model = useGenerationDraftStore(state => state.model)
+    const steps = useGenerationDraftStore(state => state.steps)
+    const cfgScale = useGenerationDraftStore(state => state.cfgScale)
+    const cfgRescale = useGenerationDraftStore(state => state.cfgRescale)
+    const sampler = useGenerationDraftStore(state => state.sampler)
+    const scheduler = useGenerationDraftStore(state => state.scheduler)
+    const smea = useGenerationDraftStore(state => state.smea)
+    const smeaDyn = useGenerationDraftStore(state => state.smeaDyn)
+    const variety = useGenerationDraftStore(state => state.variety)
+    const qualityToggle = useGenerationDraftStore(state => state.qualityToggle)
+    const ucPreset = useGenerationDraftStore(state => state.ucPreset)
+    const batchCount = useGenerationDraftStore(state => state.batchCount)
+    const currentBatch = useGenerationSessionStore(state => state.currentBatch)
+    const generatingMode = useGenerationSessionStore(state => state.generatingMode)
 
     // Zustand 선택적 구독 - generationStore (액션)
-    const setBasePrompt = useGenerationStore(state => state.setBasePrompt)
-    const setAdditionalPrompt = useGenerationStore(state => state.setAdditionalPrompt)
-    const setDetailPrompt = useGenerationStore(state => state.setDetailPrompt)
-    const setNegativePrompt = useGenerationStore(state => state.setNegativePrompt)
-    const setSeed = useGenerationStore(state => state.setSeed)
-    const setSeedLocked = useGenerationStore(state => state.setSeedLocked)
-    const setSelectedResolution = useGenerationStore(state => state.setSelectedResolution)
-    const setModel = useGenerationStore(state => state.setModel)
-    const setSteps = useGenerationStore(state => state.setSteps)
-    const setCfgScale = useGenerationStore(state => state.setCfgScale)
-    const setCfgRescale = useGenerationStore(state => state.setCfgRescale)
-    const setSampler = useGenerationStore(state => state.setSampler)
-    const setScheduler = useGenerationStore(state => state.setScheduler)
-    const setSmea = useGenerationStore(state => state.setSmea)
-    const setSmeaDyn = useGenerationStore(state => state.setSmeaDyn)
-    const setVariety = useGenerationStore(state => state.setVariety)
-    const setQualityToggle = useGenerationStore(state => state.setQualityToggle)
-    const setUcPreset = useGenerationStore(state => state.setUcPreset)
-    const setBatchCount = useGenerationStore(state => state.setBatchCount)
+    const setBasePrompt = useGenerationDraftStore(state => state.setBasePrompt)
+    const setAdditionalPrompt = useGenerationDraftStore(state => state.setAdditionalPrompt)
+    const setDetailPrompt = useGenerationDraftStore(state => state.setDetailPrompt)
+    const setNegativePrompt = useGenerationDraftStore(state => state.setNegativePrompt)
+    const setSeed = useGenerationDraftStore(state => state.setSeed)
+    const setSeedLocked = useGenerationDraftStore(state => state.setSeedLocked)
+    const setSelectedResolution = useGenerationDraftStore(state => state.setSelectedResolution)
+    const setModel = useGenerationDraftStore(state => state.setModel)
+    const setSteps = useGenerationDraftStore(state => state.setSteps)
+    const setCfgScale = useGenerationDraftStore(state => state.setCfgScale)
+    const setCfgRescale = useGenerationDraftStore(state => state.setCfgRescale)
+    const setSampler = useGenerationDraftStore(state => state.setSampler)
+    const setScheduler = useGenerationDraftStore(state => state.setScheduler)
+    const setSmea = useGenerationDraftStore(state => state.setSmea)
+    const setSmeaDyn = useGenerationDraftStore(state => state.setSmeaDyn)
+    const setVariety = useGenerationDraftStore(state => state.setVariety)
+    const setQualityToggle = useGenerationDraftStore(state => state.setQualityToggle)
+    const setUcPreset = useGenerationDraftStore(state => state.setUcPreset)
+    const setBatchCount = useGenerationDraftStore(state => state.setBatchCount)
 
     // Font size remains a shared display preference. Legacy collapse flags stay
     // persisted for sync compatibility, while the command surface uses one local slot.

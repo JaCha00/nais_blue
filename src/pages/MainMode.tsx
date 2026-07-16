@@ -14,7 +14,7 @@ import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import {
     cancelMainGenerationCommand,
     startMainGenerationCommand,
-} from '@/services/queue/generation-command'
+} from '@/services/generation/generation-command'
 import { toast } from '@/components/ui/use-toast'
 import {
     ContextMenu,
@@ -35,7 +35,8 @@ import { useNavigate } from 'react-router-dom'
 import { useToolsStore } from '@/stores/tools-store'
 import { Wand2 } from 'lucide-react'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
-import { LAYOUT_SHEET_EVENTS } from '@/components/layout/layout-events'
+import { useLayoutStore } from '@/stores/layout-store'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
@@ -68,6 +69,12 @@ import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
 
 const MAIN_MODE_OPTIONS: readonly MainCompositionMode[] = ['legacy', 'shadow', 'v2']
+
+const MAIN_MODE_LABEL_KEYS: Record<MainCompositionMode, { key: string; fallback: string }> = {
+    legacy: { key: 'composition.mode.previous', fallback: 'Previous generation engine' },
+    shadow: { key: 'composition.mode.compatibility', fallback: 'Compatibility comparison' },
+    v2: { key: 'composition.mode.current', fallback: 'Current generation engine' },
+}
 
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
@@ -416,13 +423,7 @@ export default function MainMode() {
                             canCommit,
                             commitWorkflow: output => {
                                 if (!canCommit()) throw new Error('Main metadata regeneration session changed')
-                                try {
-                                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                                        detail: { path: output.path },
-                                    }))
-                                } catch (eventError) {
-                                    console.warn('Failed to dispatch newImageGenerated event:', eventError)
-                                }
+                                publishGeneratedArtifact({ path: output.path })
                             },
                         })
                     } catch (e) {
@@ -557,11 +558,9 @@ export default function MainMode() {
         }
     }
 
-    // ThreeColumnLayout owns Sheet state. This event keeps MainMode's compact
-    // command dock decoupled while making the primary prompt flow discoverable.
-    const handleOpenPromptSheet = () => {
-        window.dispatchEvent(new Event(LAYOUT_SHEET_EVENTS.OPEN_PROMPT))
-    }
+    const openSupportSheet = useLayoutStore(state => state.openSupportSheet)
+    // layout-store is the single sheet authority shared by shell and compact command dock.
+    const handleOpenPromptSheet = () => openSupportSheet('prompt')
 
     const handlePrimaryGeneration = () => {
         if (isGenerating && generatingMode === 'main') {
@@ -791,7 +790,10 @@ export default function MainMode() {
             <CompositionCommandBar
                 mode={{
                     value: compositionMode,
-                    options: MAIN_MODE_OPTIONS.map(value => ({ value, label: value })),
+                    options: MAIN_MODE_OPTIONS.map(value => ({
+                        value,
+                        label: t(MAIN_MODE_LABEL_KEYS[value].key, MAIN_MODE_LABEL_KEYS[value].fallback),
+                    })),
                     onChange: value => setCompositionMode(value as MainCompositionMode),
                     label: t('composition.mode.title', 'Mode'),
                     disabled: isGenerating,
@@ -879,6 +881,7 @@ export default function MainMode() {
             )}
 
             <CompositionWorkspaceLayout
+                desktopRails={false}
                 commandBar={isMobileWorkspace ? null : commandBar}
                 moduleStack={moduleStack}
                 inspector={inspector}

@@ -13,6 +13,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
 import { toast } from '@/components/ui/use-toast'
 import i18n from '@/i18n'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import {
     buildStyleLabGenerationParams,
     formatStyleLabCompositionErrors,
@@ -102,13 +103,7 @@ async function saveStyleLabImage(
             rollbackPreview?.()
             throw error
         }
-        try {
-            window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                detail: { path: memoryPath, data: imageUrl }
-            }))
-        } catch (error) {
-            console.warn('[StyleLab] Preview completed but the memory result event failed.', error)
-        }
+        publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
         return { path: memoryPath, thumbnail }
     }
 
@@ -169,13 +164,7 @@ async function saveStyleLabImage(
                 })
                 publishPreview?.({ path: outputResult.path, thumbnail: outputResult.thumbnailDataUrl })
                 publishedOutput = { path: outputResult.path, thumbnail: outputResult.thumbnailDataUrl }
-                try {
-                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                        detail: { path: outputResult.path },
-                    }))
-                } catch (eventError) {
-                    console.warn('[StyleLab] Failed to publish the committed output event.', eventError)
-                }
+                publishGeneratedArtifact({ path: outputResult.path })
                 workflowCommitted = true
             },
             rollbackWorkflow: () => {
@@ -413,13 +402,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                     }
                     const memoryPath = `memory://${previewFileName}`
                     publishPreview({ path: memoryPath, thumbnail: previewThumbnail })
-                    try {
-                        window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                            detail: { path: memoryPath, data: imageUrl }
-                        }))
-                    } catch (eventError) {
-                        console.warn('[StyleLab] Preview completed but the fallback result event failed.', eventError)
-                    }
+                    publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
                 }
 
                 if (result.encodedVibes && result.encodedVibes.length > 0) {

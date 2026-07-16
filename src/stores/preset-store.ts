@@ -18,15 +18,71 @@ export const migratePresetPersistedState = migrateGenerationPresetPersistedState
 export type Preset = NormalizedGenerationPreset
 export type PresetPersistedState = MigratedPresetPersistedState
 
+export type PresetWorkingCopy = Pick<Preset,
+    | 'basePrompt'
+    | 'additionalPrompt'
+    | 'detailPrompt'
+    | 'negativePrompt'
+    | 'model'
+    | 'steps'
+    | 'cfgScale'
+    | 'cfgRescale'
+    | 'sampler'
+    | 'scheduler'
+    | 'smea'
+    | 'smeaDyn'
+    | 'variety'
+    | 'qualityToggle'
+    | 'ucPreset'
+    | 'selectedResolution'
+>
+
+const WORKING_COPY_FIELDS = [
+    'basePrompt', 'additionalPrompt', 'detailPrompt', 'negativePrompt',
+    'model', 'steps', 'cfgScale', 'cfgRescale',
+    'sampler', 'scheduler', 'smea', 'smeaDyn', 'variety',
+    'qualityToggle', 'ucPreset', 'selectedResolution',
+] as const
+
+function workingCopyFromPreset(preset: Preset): PresetWorkingCopy {
+    return Object.fromEntries(WORKING_COPY_FIELDS.map(field => [field, preset[field]])) as PresetWorkingCopy
+}
+
+function workingCopyFromGenerationStore(): PresetWorkingCopy {
+    const generation = useGenerationStore.getState()
+    return Object.fromEntries(WORKING_COPY_FIELDS.map(field => [field, generation[field]])) as PresetWorkingCopy
+}
+
+function workingCopiesEqual(left: PresetWorkingCopy | null, right: PresetWorkingCopy | null): boolean {
+    if (left === null || right === null) return left === right
+    return WORKING_COPY_FIELDS.every(field => {
+        if (field === 'selectedResolution') {
+            return left.selectedResolution.label === right.selectedResolution.label
+                && left.selectedResolution.width === right.selectedResolution.width
+                && left.selectedResolution.height === right.selectedResolution.height
+        }
+        return left[field] === right[field]
+    })
+}
+
 interface PresetState {
     presets: Preset[]
     activePresetId: string
+    /** The editable generation draft; it never mutates the saved preset by itself. */
+    workingCopy: PresetWorkingCopy | null
+    /** Last explicitly saved snapshot used by dirty/revert UI. */
+    savedSnapshot: PresetWorkingCopy | null
+    dirty: boolean
 
     // Actions
     addPreset: (name: string) => void
     duplicatePreset: (id: string) => void
     deletePreset: (id: string) => void
     syncFromGenerationStore: () => void
+    trackWorkingCopy: () => void
+    saveActivePreset: () => void
+    revertActivePreset: () => void
+    saveWorkingCopyAs: (name: string) => void
     loadPreset: (id: string) => void
     renamePreset: (id: string, name: string) => void
     reorderPresets: (oldIndex: number, newIndex: number) => void
@@ -38,11 +94,11 @@ export const usePresetStore = create<PresetState>()(
         (set, get) => ({
             presets: [createDefaultPreset()],
             activePresetId: DEFAULT_PRESET_ID,
+            workingCopy: workingCopyFromPreset(createDefaultPreset()),
+            savedSnapshot: workingCopyFromPreset(createDefaultPreset()),
+            dirty: false,
 
             addPreset: (name) => {
-                // First sync current state to active preset
-                get().syncFromGenerationStore()
-
                 const newPreset: Preset = {
                     id: Date.now().toString(),
                     name,
@@ -68,33 +124,18 @@ export const usePresetStore = create<PresetState>()(
 
                 set(state => ({
                     presets: [...state.presets, newPreset],
-                    activePresetId: newPreset.id
+                    activePresetId: newPreset.id,
+                    workingCopy: workingCopyFromPreset(newPreset),
+                    savedSnapshot: workingCopyFromPreset(newPreset),
+                    dirty: false,
                 }))
 
-                // Apply blank preset to generation store
-                const genStore = useGenerationStore.getState()
-                genStore.setBasePrompt('')
-                genStore.setAdditionalPrompt('')
-                genStore.setDetailPrompt('')
-                genStore.setNegativePrompt('')
-                genStore.setModel('nai-diffusion-4-5-full')
-                genStore.setSteps(28)
-                genStore.setCfgScale(5.0)
-                genStore.setCfgRescale(0.0)
-                genStore.setSampler('k_euler_ancestral')
-                genStore.setScheduler('karras')
-                genStore.setSmea(true)
-                genStore.setSmeaDyn(true)
-                genStore.setVariety(false)
-                genStore.setQualityToggle(true)
-                genStore.setUcPreset(0)
-                genStore.setSelectedResolution({ label: 'Portrait', width: 832, height: 1216 })
+                // One batch update keeps the working-copy subscription from
+                // exposing partially applied preset values to prompt controls.
+                useGenerationStore.getState().applyPreset(newPreset)
             },
 
             duplicatePreset: (id) => {
-                // First sync current state to active preset
-                get().syncFromGenerationStore()
-
                 const source = get().presets.find(p => p.id === id)
                 if (!source) return
 
@@ -108,7 +149,10 @@ export const usePresetStore = create<PresetState>()(
 
                 set(state => ({
                     presets: [...state.presets, newPreset],
-                    activePresetId: newPreset.id
+                    activePresetId: newPreset.id,
+                    workingCopy: workingCopyFromPreset(newPreset),
+                    savedSnapshot: workingCopyFromPreset(newPreset),
+                    dirty: false,
                 }))
 
                 // Apply duplicated preset to generation store
@@ -133,51 +177,76 @@ export const usePresetStore = create<PresetState>()(
                 }
             },
 
-            // Sync current generation-store values to active preset
+            // Backward-compatible explicit save entry point. Metadata import and
+            // older callers intentionally commit only when they invoke this action.
             syncFromGenerationStore: () => {
                 const activeId = get().activePresetId
                 if (!activeId) return
 
-                const genStore = useGenerationStore.getState()
+                const workingCopy = workingCopyFromGenerationStore()
 
                 set(state => ({
                     presets: state.presets.map(p =>
                         p.id === activeId
                             ? {
                                 ...p,
-                                basePrompt: genStore.basePrompt,
-                                additionalPrompt: genStore.additionalPrompt,
-                                detailPrompt: genStore.detailPrompt,
-                                negativePrompt: genStore.negativePrompt,
-                                model: genStore.model,
-                                steps: genStore.steps,
-                                cfgScale: genStore.cfgScale,
-                                cfgRescale: genStore.cfgRescale,
-                                sampler: genStore.sampler,
-                                scheduler: genStore.scheduler,
-                                smea: genStore.smea,
-                                smeaDyn: genStore.smeaDyn,
-                                variety: genStore.variety,
-                                qualityToggle: genStore.qualityToggle,
-                                ucPreset: genStore.ucPreset,
-                                selectedResolution: genStore.selectedResolution,
+                                ...workingCopy,
                             }
                             : p
-                    )
+                    ),
+                    workingCopy,
+                    savedSnapshot: workingCopy,
+                    dirty: false,
+                }))
+            },
+
+            trackWorkingCopy: () => {
+                const workingCopy = workingCopyFromGenerationStore()
+                set(state => ({
+                    workingCopy,
+                    dirty: !workingCopiesEqual(workingCopy, state.savedSnapshot),
+                }))
+            },
+
+            saveActivePreset: () => get().syncFromGenerationStore(),
+
+            revertActivePreset: () => {
+                const snapshot = get().savedSnapshot
+                if (snapshot === null) return
+                useGenerationStore.getState().applyPreset(snapshot)
+                set({ workingCopy: snapshot, dirty: false })
+            },
+
+            saveWorkingCopyAs: (name) => {
+                const workingCopy = workingCopyFromGenerationStore()
+                const newPreset: Preset = {
+                    ...createDefaultPreset(),
+                    ...workingCopy,
+                    id: Date.now().toString(),
+                    name,
+                    createdAt: Date.now(),
+                    isDefault: undefined,
+                }
+                set(state => ({
+                    presets: [...state.presets, newPreset],
+                    activePresetId: newPreset.id,
+                    workingCopy,
+                    savedSnapshot: workingCopy,
+                    dirty: false,
                 }))
             },
 
             loadPreset: (id) => {
-                // First sync current state before switching
-                if (get().activePresetId !== id) {
-                    get().syncFromGenerationStore()
-                }
-
                 const preset = get().presets.find(p => p.id === id)
                 if (!preset) return
 
-                // Set active preset
-                set({ activePresetId: id })
+                const snapshot = workingCopyFromPreset(preset)
+                set({
+                    activePresetId: id,
+                    workingCopy: snapshot,
+                    savedSnapshot: snapshot,
+                    dirty: false,
+                })
 
                 // Load preset values into generation store (single batch update)
                 useGenerationStore.getState().applyPreset(preset)
@@ -214,7 +283,7 @@ export const usePresetStore = create<PresetState>()(
         {
             name: 'nais2-presets',
             storage: createJSONStorage(() => indexedDBStorage),
-            version: 2,
+            version: 3,
             migrate: (persistedState) => (
                 migratePresetPersistedState(persistedState) as unknown as PresetState
             ),
@@ -224,47 +293,34 @@ export const usePresetStore = create<PresetState>()(
                     const migrated = migratePresetPersistedState(state)
                     state.presets = migrated.presets
                     state.activePresetId = migrated.activePresetId
+                    const activePreset = migrated.presets.find(preset => preset.id === migrated.activePresetId)
+                        ?? migrated.presets[0]
+                    const snapshot = activePreset ? workingCopyFromPreset(activePreset) : null
+                    state.workingCopy = snapshot
+                    state.savedSnapshot = snapshot
+                    state.dirty = false
                 }
             }
         }
     )
 )
 
-// ============================================
-// Debounced Auto-Sync: generation-store → active preset
-// ============================================
+let stopPresetSync: (() => void) | null = null
 
-let syncTimeout: ReturnType<typeof setTimeout> | null = null
-let isLoadingPreset = false
-
-// Subscribe to generation-store changes
-useGenerationStore.subscribe((state, prevState) => {
-    if (isLoadingPreset) return
-
-    const fieldsToWatch = [
-        'basePrompt', 'additionalPrompt', 'detailPrompt', 'negativePrompt',
-        'model', 'steps', 'cfgScale', 'cfgRescale',
-        'sampler', 'scheduler', 'smea', 'smeaDyn', 'variety',
-        'qualityToggle', 'ucPreset', 'selectedResolution'
-    ] as const
-
-    const hasChange = fieldsToWatch.some(field => state[field] !== prevState[field])
-    if (!hasChange) return
-
-    if (syncTimeout) clearTimeout(syncTimeout)
-    syncTimeout = setTimeout(() => {
-        usePresetStore.getState().syncFromGenerationStore()
-    }, 500)
-})
-
-// Wrapper for loadPreset to set loading flag
-const originalLoadPreset = usePresetStore.getState().loadPreset
-usePresetStore.setState({
-    loadPreset: (id: string) => {
-        isLoadingPreset = true
-        originalLoadPreset(id)
-        setTimeout(() => {
-            isLoadingPreset = false
-        }, 100)
+/**
+ * Startup owns this subscription so importing the store cannot silently mutate
+ * saved presets. The listener updates only the working-copy projection and dirty
+ * flag; Save/Revert remain explicit user commands.
+ */
+export function startPresetSync(): () => void {
+    stopPresetSync?.()
+    usePresetStore.getState().trackWorkingCopy()
+    stopPresetSync = useGenerationStore.subscribe((state, previous) => {
+        const changed = WORKING_COPY_FIELDS.some(field => state[field] !== previous[field])
+        if (changed) usePresetStore.getState().trackWorkingCopy()
+    })
+    return () => {
+        stopPresetSync?.()
+        stopPresetSync = null
     }
-})
+}

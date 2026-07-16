@@ -49,7 +49,7 @@ async function rehydrateCompositionConnectedStores(): Promise<void> {
         { useCharacterPromptStore },
         { useFragmentStore },
         { usePromptLibraryStore },
-        { usePresetStore },
+        { usePresetStore, startPresetSync },
         { useAssetModuleStore },
         { useCharacterStore },
     ] = await Promise.all([
@@ -72,6 +72,9 @@ async function rehydrateCompositionConnectedStores(): Promise<void> {
         useAssetModuleStore.persist.rehydrate(),
         useCharacterStore.persist.rehydrate(),
     ])
+    // Preset draft tracking starts only after both stores are hydrated. It marks
+    // unsaved edits without writing them into the selected preset.
+    startPresetSync()
 }
 
 const setSplashStage = (message: string) => {

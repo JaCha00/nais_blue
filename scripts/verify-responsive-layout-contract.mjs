@@ -318,6 +318,7 @@ async function collectCompositionShellReport(page, route) {
 
         return {
             layout: visibleRect('[data-testid="composition-workspace-layout"]'),
+            promptDock: visibleRect('#nais2-prompt-dock'),
             dock: visibleRect('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]', 'fixed'),
             commandBar: visibleRect('[data-testid="composition-command-bar"]'),
             moduleStack: visibleRect('[data-testid="composition-module-stack"]'),
@@ -356,6 +357,14 @@ function assertCompositionShell(report, route, viewport) {
     assert.ok(report.commandBar, `${context} must show the composition command bar`)
 
     if (viewport.width >= 1536) {
+        if (route === '/' || route === '/scenes') {
+            assert.ok(report.promptDock, `${context} must keep the Prompt rail visible`)
+            assert.equal(report.moduleStack, null, `${context} keeps Module Stack behind its explicit action to preserve canvas width`)
+            assert.equal(report.inspector, null, `${context} keeps Context Inspector behind its explicit action to preserve canvas width`)
+            assert.ok(report.canvas, `${context} must show the center canvas/grid`)
+            assert.ok(report.promptDock.right <= report.canvas.left + 24, `${context} must preserve Prompt rail → canvas ordering`)
+            return
+        }
         assert.ok(report.moduleStack, `${context} must show the Module Stack rail`)
         assert.ok(report.canvas, `${context} must show the center canvas/grid`)
         assert.ok(report.inspector, `${context} must show the Context Inspector rail`)

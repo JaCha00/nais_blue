@@ -14,6 +14,7 @@ import {
 } from '@/stores/generation-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useQueueStore } from '@/stores/queue-store'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import {
@@ -267,9 +268,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                 })
                 historyCommitted = true
                 useGenerationStore.getState().setPreviewImage(imageDataUrl)
-                window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                    detail: { path: outputResult.path },
-                }))
+                publishGeneratedArtifact({ path: outputResult.path })
                 await context.commitOutput(transactionId, artifactReference)
             },
             rollbackWorkflow: () => {

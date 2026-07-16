@@ -23,6 +23,12 @@ const runtimeCapture = vi.hoisted(() => ({
     zipBytes: new Uint8Array(),
 }))
 
+vi.mock('@/stores/artifact-lifecycle-store', () => ({
+    publishGeneratedArtifact: (detail: Record<string, unknown>) => {
+        runtimeCapture.events.push({ type: 'artifact:generated', detail })
+    },
+}))
+
 vi.mock('@/lib/style-lab/build-style-lab-params', async importOriginal => {
     const actual = await importOriginal<typeof import('@/lib/style-lab/build-style-lab-params')>()
     return {

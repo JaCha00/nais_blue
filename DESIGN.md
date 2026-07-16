@@ -91,9 +91,10 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   or `12px` internal gaps.
 - Below `640px`: four primary destinations plus an accessible overflow menu;
   Prompt and History remain dedicated actions. No horizontal navigation scroll.
-- `640–1535px`: center workspace remains primary; Prompt and History open as
-  sheets. This preserves `test:responsive-layout` center-width guarantees.
-- `1536px+`: Prompt and History may dock as the three-column workspace.
+- `640–1535px`: center workspace remains primary; Prompt opens as a non-modal,
+  horizontally resizable panel without a scrim, while History remains a sheet.
+- `1536px+`: Prompt is a persistent left rail on Main and Scene. History may
+  dock where the page does not already own a result-side rail.
 - Scene grids render one column below `640px`, at most two below `1024px`, and
   honor the stored column preference on desktop.
 - Fixed overlays never cover system bars. Text, toolbars, and pages must not
@@ -142,7 +143,9 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 
 - **Composition command bar:** Main and Scene expose mode, recipe, validation,
   estimated cost, seed, resolved-plan access, and generate/cancel in one command
-  region. At `1536px+` it sits above the three-column workspace. Between
+  region. At `1536px+` Main and Scene keep the Prompt rail beside the result canvas;
+  Module Stack and Inspector remain one explicit action away so nested rails do
+  not collapse the canvas. Between
   `768–1535px` it wraps without horizontal scrolling and opens Module Stack and
   Inspector sheets. Generate/cancel is never placed in an overflow menu.
 - **Module Stack row anatomy:** Each fixed-height row has enable state, an
@@ -153,7 +156,8 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   actions; drag may supplement but never replace those controls.
 - **Inspector and sheet behavior:** The Context Inspector shows selection identity,
   recipe context, typed controls, override diff, validation, and conflict status.
-  At `1536px+` it is a right rail; compact widths use a modal sheet. Mobile
+  Pages may use a right rail when width permits; Main and Scene use the explicit
+  Inspector sheet because the persistent Prompt rail owns the desktop authoring space. Mobile
   Inspector is a second-level sheet opened from Modules or the command dock.
   Sheets trap focus, close with Escape, restore focus to the launch control, use
   44px close targets, and apply all four `env(safe-area-inset-*)` values.

@@ -48,6 +48,7 @@ import {
     runtimePortablePathTokenRegistry,
 } from '@/platform/portable-resources'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { publishGeneratedArtifact } from './artifact-lifecycle-store'
 
 interface Resolution {
     label: string
@@ -1556,13 +1557,7 @@ export const useGenerationStore = create<GenerationState>()(
                                                 throw new Error('Fragment sequence changed before Main output commit')
                                             }
                                             commitHistory(outputResult.thumbnailDataUrl ?? imageUrl)
-                                            try {
-                                                window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                                                    detail: { path: outputResult.path },
-                                                }))
-                                            } catch (eventError) {
-                                                console.warn('Failed to dispatch newImageGenerated event:', eventError)
-                                            }
+                                            publishGeneratedArtifact({ path: outputResult.path })
                                         },
                                         rollbackWorkflow: () => {
                                             if (historyId === null) return
@@ -1605,19 +1600,13 @@ export const useGenerationStore = create<GenerationState>()(
                                 if (!canCommitOutput()) break
                                 if (!commitGeneratedSequence()) break
                                 commitHistory(thumbnail)
-                                try {
-                                    const memExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    const memoryFileName = ensureImageFileExtension(
-                                        v2Output?.fileName ?? modulePlan?.output.fileName,
-                                        memExt,
-                                    ) ?? `NAIS_${Date.now()}.${memExt}`
-                                    const memoryPath = `memory://${memoryFileName}`
-                                    window.dispatchEvent(new CustomEvent('newImageGenerated', {
-                                        detail: { path: memoryPath, data: imageUrl }
-                                    }))
-                                } catch (e) {
-                                    console.warn('Failed to dispatch newImageGenerated event:', e)
-                                }
+                                const memExt = imageFormat === 'webp' ? 'webp' : 'png'
+                                const memoryFileName = ensureImageFileExtension(
+                                    v2Output?.fileName ?? modulePlan?.output.fileName,
+                                    memExt,
+                                ) ?? `NAIS_${Date.now()}.${memExt}`
+                                const memoryPath = `memory://${memoryFileName}`
+                                publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
                             }
                             set({ previewImage: imageUrl })
 

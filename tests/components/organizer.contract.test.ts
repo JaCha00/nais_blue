@@ -23,15 +23,16 @@ describe('Organizer user-flow contract', () => {
             'onPointerUp',
             'Duplicate assignment is blocked',
             'Thumbnail grid size',
-            'Actual filename preview',
-            'Conflict policy',
+            "t('organizer.filenamePreview'",
+            "t('organizer.conflictPreview'",
             'R2 key preview',
             'Copy / rename',
             'Organizer execution progress',
-            'Diagnostic detail',
+            "t('organizer.diagnostics'",
             'Optional R2 follow-up',
             'retryFailed',
-            'OutputWriter commits variants and sidecars',
+            "t('organizer.description'",
+            'consumeOrganizerHandoff',
         ]) expect(page).toContain(required)
 
         expect(app).toContain('path="/organizer"')

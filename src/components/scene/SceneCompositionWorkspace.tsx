@@ -49,7 +49,9 @@ export interface SceneCompositionWorkspaceProps {
 
 /**
  * Scene-owned composition shell. It keeps worker and repository decisions in
- * the page while sharing the same rail/sheet anatomy as Main.
+ * the page while sharing Main's prompt-first anatomy. The outer shell owns the
+ * persistent Prompt rail, so module and inspector stay behind explicit actions
+ * instead of narrowing the Scene canvas with nested desktop rails.
  */
 export function SceneCompositionWorkspace({
     children,
@@ -204,6 +206,7 @@ export function SceneCompositionWorkspace({
     return (
         <div className="h-full min-h-0 min-w-0">
             <CompositionWorkspaceLayout
+                desktopRails={false}
                 commandBar={commandBar}
                 moduleStack={moduleStack}
                 workspace={children}

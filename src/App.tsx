@@ -1,16 +1,11 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout'
 import { Toaster } from '@/components/ui/toaster'
 import { DiagnosticsSurface } from '@/components/diagnostics/DiagnosticsSurface'
 import { CredentialVaultDialog } from '@/components/credentials/CredentialVaultDialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { useSceneGeneration } from '@/hooks/useSceneGeneration'
-import { useUpdateChecker } from '@/hooks/useUpdateChecker'
-import { useShortcuts } from '@/hooks/useShortcuts'
-import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
-import { useDurableQueueRuntime } from '@/hooks/useDurableQueueRuntime'
-import { useR2UploadRuntime } from '@/hooks/useR2UploadRuntime'
+import { RuntimeProviders } from '@/components/runtime/RuntimeProviders'
 import MainMode from '@/pages/MainMode'
 
 const SceneMode = lazy(() => import('@/pages/SceneMode'))
@@ -34,32 +29,6 @@ function RouteLoadingFallback() {
 }
 
 function AppContent() {
-    // Scene generation hook at App level - persists across page navigation
-    useSceneGeneration()
-    useDurableQueueRuntime()
-    useR2UploadRuntime()
-    useUpdateChecker()
-    useShortcuts()
-    useWindowResizePerformanceMode()
-
-    // Disable right-click globally except for allowed elements
-    useEffect(() => {
-        const handleContextMenu = (e: MouseEvent) => {
-            // Check if the target or any parent has data-allow-context-menu attribute
-            let element = e.target as HTMLElement | null
-            while (element) {
-                if (element.hasAttribute('data-allow-context-menu')) {
-                    return // Allow context menu
-                }
-                element = element.parentElement
-            }
-            e.preventDefault() // Block context menu
-        }
-
-        document.addEventListener('contextmenu', handleContextMenu)
-        return () => document.removeEventListener('contextmenu', handleContextMenu)
-    }, [])
-
     return (
         <ThreeColumnLayout>
             <Suspense fallback={<RouteLoadingFallback />}>
@@ -86,10 +55,12 @@ function App() {
     return (
         <TooltipProvider delayDuration={300}>
             <BrowserRouter>
-                <AppContent />
-                <CredentialVaultDialog />
-                <Toaster />
-                <DiagnosticsSurface />
+                <RuntimeProviders>
+                    <AppContent />
+                    <CredentialVaultDialog />
+                    <Toaster />
+                    <DiagnosticsSurface />
+                </RuntimeProviders>
             </BrowserRouter>
         </TooltipProvider>
     )
