@@ -2598,3 +2598,90 @@ route-specific horizontal organizer rail is the next-session candidate; tests mu
   verified stable prior tag exists. Never uninstall, clear app data, delete signing material, relax `v*` tags, or invent a baseline
 - Next phase readiness: BLOCKED — signed ARM64/x86_64 build and mobile touch/keyboard evidence now pass, but the unchanged
   responsive overlap/clipping gate is still exit 1 under R-056.
+
+## Phase 14 — LEGACY RETIREMENT AND RELEASE HARDENING
+
+Date: 2026-07-16 (Asia/Seoul)
+
+Base HEAD was `59b5920a5f4c8ff911d2b35d451eb22fc1bad89e` on
+`agent/public-release-sync-20260714`, 10 commits ahead of the configured public branch. The phase began by
+reading the required authority documents, direct runtime builders, startup authority, migration, payload,
+OutputWriter and durable queue tests. `git status` already contained unrelated changes to `AGENTS.md`,
+Cloudflare transfer source/test/config, `package.json`, responsive UI and generated/untracked tooling; none
+was reset, overwritten or attributed to Phase 14.
+
+The conjunctive retirement gate is closed. Fresh startup still defaults to legacy, actual upgrade/old-backup
+production-v2 observation is absent, the host online matrix is partial, authenticated post-fix Android output
+is absent, no signed desktop/Android rollback install/restore/forward drill exists, and no release observation
+window has elapsed. A current M500_MIKU/API 34 connection and installed 2.8.1 package were observed read-only,
+but no live credential opt-in existed and device presence was not promoted to transport evidence.
+
+Targeted `rg` and a TypeScript-resolved import graph from `src/main.tsx` show active production edges to the
+Main inline legacy materialization, Scene and Style Lab legacy builders, and migration shadow comparison.
+Old backup, v1 Asset Profile, legacy metadata/PNG/sidecar, raw migration archive/recovery journal and payload
+provenance fixtures remain intentional compatibility. No definition-only runtime function/module candidate
+exists; cosmetic type export modifiers were not treated as retirement work. Consequently source deletion,
+legacy-authority-not-needed decision records, dependency/version changes, tags and release publication are all
+zero. The complete matrix and caller classification are recorded in
+`docs/composition-v2/LEGACY_RETIREMENT_GATE.md`.
+
+### Gate verdict
+
+| Gate | Result |
+| --- | --- |
+| fresh/upgrade/old-backup production authority v2 | MISSING; fixture-only explicit v2 does not replace production evidence |
+| supported Main/Scene/Style Lab online matrix | MISSING; last actual matrix is partial and source edit was blocked before request |
+| authenticated post-fix Android transport | MISSING; source/mock/APK evidence only |
+| signed desktop/Android rollback drill | MISSING; no immutable signed desktop rollback baseline or executed drill |
+| one release observation window | MISSING; no released-population migration/fallback aggregate |
+| rollback-external production legacy caller 0 | FAIL; Main/Scene/Style Lab/migration shadow are reachable |
+| unexplained payload diff 0 | PASS within checked-in fixture scope |
+| old backup restore | PASS in deterministic behavior tests |
+| OutputWriter recovery | PASS in fault-injected behavior tests |
+| durable queue recovery | PASS in deterministic IndexedDB/restart tests |
+
+### Verification
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| pre-change focused authority/workflow/OutputWriter/queue recovery Vitest | 0 | 7 files, 76/76 tests |
+| `npm ci`; `npm ls --all` | 0; 0 | 423 packages, audit 0 vulnerabilities; host-excluded optional dependencies only |
+| focused backup/OutputWriter/durable queue recovery Vitest | 0 | 5 files, 57/57 tests |
+| `npm run lint`; `npm run build` | 0; 0 | lint clean; npm-ci production bundle, 2,404 modules |
+| payload; characterization; migration; queue | 0 each | 20; 50; 135; 42 tests passed |
+| full `test:composition` | 0 | 128 passed + 1 skipped files; 984 passed + 3 skipped tests |
+| unit; diagnostics; vault; sync; R2; organizer; redaction | 0 each | 42; 27; 20; 180; 18; 20; 13 tests passed |
+| NAI core; NAI transport; smart tools | 0 each | 50; 14; 3 tests passed |
+| persistence; rescue-mode browser; responsive layout | 0 each | 15 tests; contract PASS; 50 route/viewport checks |
+| Android source/release/transfer; Cloudflare transfer; release-version; remote-runtime-removal | 0 each | all contracts PASS; tracked local tooling 0 |
+| default Cargo check | 1 | pre-existing target cache referenced removed `nais2-main` checkout |
+| isolated fresh-target Cargo check | 0 | PASS without source changes |
+| Rust NAI transport; R2; sync transport; Android transfer | 0 each | 5; 7; 14; 3 tests passed |
+
+Responsive PASS는 Phase 14 변경이 아니라 시작부터 존재한 out-of-scope UI 변경이 포함된 현재 checkout
+결과다. Default Cargo failure는 existing `src-tauri/target`을 보존한 채 process-local fresh target에서
+재검증하여 stale build artifact로 분리했다.
+
+### HANDOFF REPORT
+
+- Phase: 14 — LEGACY RETIREMENT AND RELEASE HARDENING
+- Base HEAD: `59b5920a5f4c8ff911d2b35d451eb22fc1bad89e`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: `docs/composition-v2/LEGACY_RETIREMENT_GATE.md` and this ledger only
+- Behavior added/changed: none; runtime/test source deletion 0 and existing authority behavior unchanged
+- Preserved contracts: CompositionEngine, repository/migration, OutputWriter, portable capability,
+  `payload.ts`/fixtures, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release,
+  old backup/v1/metadata compatibility, migration archives/journals, NAI auth, system opener, single-instance,
+  updater and platform adapters
+- Tests and exit codes: deterministic JS/TS and Rust baseline above passed except default Cargo check exit 1 from
+  a stale existing target path; the identical source passed fresh-target Cargo check and all four Rust categories
+- Artifact paths: `docs/composition-v2/LEGACY_RETIREMENT_GATE.md`; no runtime/release artifact created
+- Not tested and exact reason: live NovelAI workflow/Android matrix lacked explicit credential opt-in; signed
+  rollback drill lacks immutable signed desktop/Android rollback baseline and release authority; release
+  observation requires an actual released population/window and cannot be synthesized by local tests
+- Remaining risks: R-015/R-016/R-019 remain open; production legacy callers are nonzero; V3/Furry V3 payload
+  parity remains unverified; live process-kill/disk-full recovery remains outside deterministic recovery evidence
+- Rollback procedure: revert only this documentation-only Phase 14 commit while preserving unrelated working
+  tree, runtime source/tests, app/user/vault/output/queue/sync/R2 data, backup/importer/parser/fixtures and generated
+  tooling; do not reset, clean, clear data, delete artifacts or perform a destructive migration
+- Next phase readiness: BLOCKED
