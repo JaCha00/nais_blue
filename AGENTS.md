@@ -55,5 +55,5 @@ In some cases, an appropriate heuristic produces better results than exhaustive 
 - Do not use a C-drive or OneDrive NAIS checkout, mirror, cache, or generated guidance as a source of truth; those project copies are legacy unless the user explicitly reactivates one.
 - Historical NAIS integration plans and documents are legacy reference material by default. The current E-drive runtime code, current user direction, and freshly passing tests take precedence.
 - For Composition Domain work, `docs/composition-v2/**` is phase guidance, but it never overrides observed current runtime behavior or current user direction.
-- The target upstream is the `public` remote at `https://github.com/JaCha00/nais_blue.git`; do not confuse it with the review-only `origin` remote.
+- The canonical upstream is the `origin` remote at `https://github.com/JaCha00/nais_blue.git`; the retired private review repository must not be restored as a remote or release authority.
 - These rules govern project/source locations. External toolchains may remain installed elsewhere when the build explicitly requires them.

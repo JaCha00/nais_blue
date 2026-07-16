@@ -11,6 +11,7 @@ import {
     appendCompletedPart,
     createUploadJob,
     IndexedDBR2UploadRepository,
+    R2UploadRepositoryError,
 } from './indexeddb-r2-upload-repository'
 import {
     NativeR2Error,
@@ -153,10 +154,23 @@ export class R2UploadCoordinator {
     async runUntilIdle(profile: R2ProfileV2): Promise<R2UploadRunSummary> {
         while (true) {
             const now = this.now()
-            const jobs = await this.repository.listJobs(profile.id)
-            const next = jobs.find(job => job.state === 'queued' && Date.parse(job.nextAttemptAt) <= now.getTime())
-            if (!next) break
-            await this.runJob(profile, next)
+            const ready = (await this.repository.listJobs(profile.id))
+                .filter(job => job.state === 'queued' && Date.parse(job.nextAttemptAt) <= now.getTime())
+            if (ready.length === 0) break
+
+            // The repository snapshot supplies stable job versions to the sequential executor.
+            // Processing the whole ready set avoids re-reading every profile job after each object,
+            // while the outer loop still picks up jobs enqueued during the batch before reporting idle.
+            for (const job of ready) {
+                try {
+                    await this.runJob(profile, job)
+                } catch (error) {
+                    // Cancellation or another coordinator may update a snapshotted job first.
+                    // The next outer snapshot observes that authoritative state without aborting the batch.
+                    if (error instanceof R2UploadRepositoryError && error.code === 'E_R2_VERSION_CONFLICT') continue
+                    throw error
+                }
+            }
         }
         const jobs = await this.repository.listJobs(profile.id)
         return {

@@ -183,6 +183,29 @@ describe('R2 upload repository and coordinator', () => {
         expect(fake.putObject).toHaveBeenCalledTimes(1_000)
     }, 30_000)
 
+    it('honors cancellation that changes a job after the ready snapshot', async () => {
+        const repo = repository('snapshot-cancel')
+        const currentProfile = profile()
+        const first = createUploadJob(currentProfile.id, artifact(1), { id: 'job:snapshot:first', now: NOW })
+        const second = createUploadJob(currentProfile.id, artifact(2), { id: 'job:snapshot:second', now: NOW })
+        const fake = adapter({
+            putObject: vi.fn(async (_profile, job) => {
+                if (job.id === first.id) {
+                    const target = await repo.getJob(second.id)
+                    if (!target) throw new Error('Cancellation target was not found.')
+                    await repo.updateJob(target.id, target.version, { state: 'cancelled' }, NOW)
+                }
+                return { remoteKey: job.remoteKey, uploaded: true, skippedSame: false, etag: 'etag' }
+            }),
+        })
+        await repo.enqueue([first, second])
+
+        const summary = await new R2UploadCoordinator(repo, fake, () => new Date(NOW)).runUntilIdle(currentProfile)
+
+        expect(summary).toEqual({ succeeded: 1, failed: 0, queued: 0, cancelled: 1 })
+        expect(fake.putObject).toHaveBeenCalledTimes(1)
+    })
+
     it('never converts a conditional conflict into overwrite success', async () => {
         const repo = repository('conflict')
         const currentProfile = profile({ conflictPolicy: 'fail' })

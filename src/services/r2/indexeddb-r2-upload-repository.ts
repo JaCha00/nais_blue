@@ -313,12 +313,23 @@ export class IndexedDBR2UploadRepository {
 
     async putManifestItem(profile: R2ProfileV2, item: R2ManifestV2Item): Promise<void> {
         assertSafeValue(item)
+        if (item.profileId !== profile.id) {
+            throw new R2UploadRepositoryError('E_R2_RECORD_INVALID', 'R2 manifest item profile does not match its authority')
+        }
         const db = await this.open()
+        const id = `${item.profileId}\u001f${item.remoteKey}`
         const transaction = db.transaction('manifest', 'readwrite')
-        transaction.objectStore('manifest').put({ ...item, id: `${item.profileId}\u001f${item.remoteKey}` })
+        transaction.objectStore('manifest').put({ ...item, id })
         await transactionDone(transaction)
-        const manifest = await this.getManifest(profile)
-        if (!manifest.items.some(candidate => candidate.remoteKey === item.remoteKey && candidate.contentSha256 === item.contentSha256)) {
+
+        // Manifest identity depends on the profile and remote key. Reading that exact record verifies
+        // durable commit without rebuilding the growing profile manifest after every uploaded object.
+        const readbackTransaction = db.transaction('manifest', 'readonly')
+        const readback = await requestValue(readbackTransaction.objectStore('manifest').get(id)) as
+            | (R2ManifestV2Item & { id: string })
+            | undefined
+        await transactionDone(readbackTransaction)
+        if (!readback || readback.contentSha256 !== item.contentSha256 || readback.size !== item.size) {
             throw new R2UploadRepositoryError('E_R2_NOT_FOUND', 'R2 manifest write was not readable')
         }
     }
