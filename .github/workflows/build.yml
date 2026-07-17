@@ -125,3 +125,8 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       release: true
+    # The reusable Android signer needs these two repository secrets; mapping
+    # only them keeps desktop packaging isolated from keystore material.
+    secrets:
+      NAIS_KEYSTORE_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}
+      NAIS_KEYSTORE_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}
