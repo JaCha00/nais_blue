@@ -3,8 +3,8 @@ import {
     shouldWriteNais2Sidecar,
 } from '@/lib/generation-metadata'
 import {
-    embedNais2Params,
-    encodeNais2Sidecar,
+    embedNaisBlueParams,
+    encodeNaisBlueSidecar,
     type Nais2PromptParts,
 } from '@/lib/nais2-png-meta'
 import type { GenerationParams } from '@/services/novelai-types'
@@ -76,7 +76,7 @@ export class MetadataWriter implements OutputMetadataWriter {
             && metadataMode !== 'strip-and-sidecar'
         if (shouldEmbed) requireRuntimeCapability('embeddedPngMetadataWrite')
         const preparedImage = shouldEmbed
-            ? base64ToBytes(embedNais2Params(bytesToBase64(imageBytes), params))
+            ? base64ToBytes(embedNaisBlueParams(bytesToBase64(imageBytes), params))
             : imageBytes
         const writeSidecar = shouldWriteNais2Sidecar(
             metadataMode,
@@ -86,11 +86,11 @@ export class MetadataWriter implements OutputMetadataWriter {
 
         return {
             imageBytes: preparedImage,
-            ...(writeSidecar ? { sidecarBytes: encodeNais2Sidecar(params) } : {}),
+            ...(writeSidecar ? { sidecarBytes: encodeNaisBlueSidecar(params) } : {}),
             ...(request.diagnostic?.enabled === true
                 ? {
                     diagnosticSidecarBytes: new TextEncoder().encode(JSON.stringify({
-                        format: 'nais2-diagnostic-sidecar',
+                        format: 'nais-blue-diagnostic-sidecar',
                         version: 1,
                         warning: 'Opt-in diagnostic data; do not redistribute without review.',
                         redactedPayload: request.diagnostic.redactedPayload,

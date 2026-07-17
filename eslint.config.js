@@ -7,7 +7,7 @@ export default [
         ignores: [
             'dist/**',
             'node_modules/**',
-            'NAIS2-main/**',
+            'NAIS-blue-main/**',
             'legacy/**',
             'src-tauri/**',
             'stylelab-frontend-sources-*/**',

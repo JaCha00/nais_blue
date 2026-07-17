@@ -31,7 +31,7 @@ describe('generation metadata payload redaction', () => {
         })
     })
 
-    it('round-trips a byte-free composition random trace into NAIS2 metadata', () => {
+    it('round-trips a byte-free composition random trace into NAIS blue metadata', () => {
         const trace = cloneCompositionRandomTrace([{
             ruleId: 'rotation:scene:one',
             streamKey: 'character-rotation:preset:one',

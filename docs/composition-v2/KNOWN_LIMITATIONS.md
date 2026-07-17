@@ -36,7 +36,7 @@
 17. Critical Zustand store는 immediate transaction/readback을 사용하므로 매우 큰 Scene 또는
     generation state의 연속 변경은 이전 debounce 경로보다 write 비용이 높을 수 있다. Layout,
     theme, shortcut, tools, update UI preference만 best-effort debounce allowlist에 남아 있다.
-18. Stronghold passphrase를 잊거나 encrypted snapshot이 손상되면 NAIS2는 plaintext fallback을
+18. Stronghold passphrase를 잊거나 encrypted snapshot이 손상되면 NAIS blue는 plaintext fallback을
     제공하지 않는다. NovelAI/R2 provider에서 credential을 재발급하고 새 vault에 다시
     등록해야 한다.
 19. Backup/restore의 `CredentialRef`는 secret을 포함하지 않는다. 다른 device 또는 vault
@@ -68,8 +68,8 @@
     route/viewport 자동 검증이 manual UI evidence를 대체하지는 않는다.
 25. M500_MIKU API 34 testbed의 Google Play Services 26.20.31 persistent process가
     `ACCESS_BROADCAST_RESPONSE_STATS` permission denial로 crash loop에 빠진다. Android는 해당
-    FontsProvider dependency와 함께 NAIS2를 `DEPENDENCY DIED`로 종료하며 reboot 후에도 재현됐다.
-    이는 NAIS2 crash가 아니지만 post-fix physical matrix를 막는다. Privileged permission grant,
+    FontsProvider dependency와 함께 NAIS blue를 `DEPENDENCY DIED`로 종료하며 reboot 후에도 재현됐다.
+    이는 NAIS blue crash가 아니지만 post-fix physical matrix를 막는다. Privileged permission grant,
     Play Services disable/data clear 또는 app-data clear는 별도 authority 없이 수행하지 않는다.
 26. Phase 07은 native startup directory precondition, close/relaunch Stronghold unload와 History I2I
     readiness wait를 behavior/contract/Cargo gate로 검증했다. Existing encrypted snapshot과 live

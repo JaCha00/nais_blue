@@ -167,7 +167,7 @@ async fn run_request(
         .post(endpoint_url)
         .header("Authorization", format!("Bearer {}", token.trim()))
         .header("Content-Type", "application/json")
-        .header("User-Agent", "NAIS2_Client/1.0")
+        .header("User-Agent", "NAIS-blue_Client/1.0")
         .body(payload);
     if accepts_msgpack {
         builder = builder.header("Accept", "application/x-msgpack");

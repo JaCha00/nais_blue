@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "mobile-main",
-  "description": "Mobile main window access limited to app-scoped files and NAIS2 network services",
+  "description": "Mobile main window access limited to app-scoped files and NAIS blue network services",
   "platforms": ["android", "iOS"],
   "windows": [
     "main"

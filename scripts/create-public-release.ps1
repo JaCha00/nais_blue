@@ -182,9 +182,9 @@ function Assert-SourceArchiveHasNoPrivateEntries {
 
 $packageJson = Get-Content -LiteralPath (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json
 $version = [string]$packageJson.version
-$releaseRoot = Join-Path $OutputRoot "NAIS2-$version"
-$sourceStage = Join-Path $releaseRoot 'source\NAIS2-public-source'
-$sourceZip = Join-Path $releaseRoot "source\NAIS2_$version-public-source.zip"
+$releaseRoot = Join-Path $OutputRoot "NAIS-blue-$version"
+$sourceStage = Join-Path $releaseRoot 'source\NAIS-blue-public-source'
+$sourceZip = Join-Path $releaseRoot "source\NAIS-blue_$version-public-source.zip"
 
 if (Test-Path -LiteralPath $releaseRoot) {
     Remove-Item -LiteralPath $releaseRoot -Recurse -Force
@@ -205,23 +205,23 @@ $files = @(
         Role = 'portable-exe'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\nsis\NAIS2_$($version)_x64-setup.exe"
-        Destination = Join-Path $releaseRoot "installers\NAIS2_$($version)_x64-setup.exe"
+        Source = Join-Path $buildRelease "bundle\nsis\NAIS-blue_$($version)_x64-setup.exe"
+        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe"
         Role = 'nsis-installer'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\nsis\NAIS2_$($version)_x64-setup.exe.sig"
-        Destination = Join-Path $releaseRoot "installers\NAIS2_$($version)_x64-setup.exe.sig"
+        Source = Join-Path $buildRelease "bundle\nsis\NAIS-blue_$($version)_x64-setup.exe.sig"
+        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe.sig"
         Role = 'nsis-updater-signature'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\msi\NAIS2_$($version)_x64_en-US.msi"
-        Destination = Join-Path $releaseRoot "installers\NAIS2_$($version)_x64_en-US.msi"
+        Source = Join-Path $buildRelease "bundle\msi\NAIS-blue_$($version)_x64_en-US.msi"
+        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi"
         Role = 'msi-installer'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\msi\NAIS2_$($version)_x64_en-US.msi.sig"
-        Destination = Join-Path $releaseRoot "installers\NAIS2_$($version)_x64_en-US.msi.sig"
+        Source = Join-Path $buildRelease "bundle\msi\NAIS-blue_$($version)_x64_en-US.msi.sig"
+        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi.sig"
         Role = 'msi-updater-signature'
     }
 )
@@ -239,7 +239,7 @@ $excludeDirs = @(
     'node_modules',
     'dist',
     'src-tauri\target',
-    'NAIS2-main',
+    'NAIS-blue-main',
     'stylelab-frontend-sources-20260628-155859'
 )
 
@@ -311,7 +311,7 @@ $manifestArtifacts = foreach ($artifact in $artifactFiles) {
 }
 
 $manifest = [PSCustomObject]@{
-    product = 'NAIS2'
+    product = 'NAIS blue'
     version = $version
     generatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     sourcePolicy = 'Clean public source archive excludes dependencies, build output, local caches, private keys, and personal runtime data.'

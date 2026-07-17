@@ -31,8 +31,8 @@ describe('filename policy', () => {
     })
 
     it('derives metadata sidecars from the final image name', () => {
-        expect(toSidecarFileName('portrait.png')).toBe('portrait.nais2.json')
-        expect(toDiagnosticSidecarPath('portrait.webp')).toBe('portrait.nais2.diagnostic.json')
+        expect(toSidecarFileName('portrait.png')).toBe('portrait.nais-blue.json')
+        expect(toDiagnosticSidecarPath('portrait.webp')).toBe('portrait.nais-blue.diagnostic.json')
     })
 
     it('allocates deterministic unique names and supports error collisions', async () => {

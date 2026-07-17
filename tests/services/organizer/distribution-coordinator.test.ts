@@ -222,11 +222,11 @@ describe('ArtifactDistributionCoordinator', () => {
         expect(record?.original.contentChecksum).toBe(await sha256Bytes(PNG_WITH_METADATA))
         expect(adapter.file('nais2/organizer/sources/portrait.png')).toEqual(PNG_WITH_METADATA)
         expect(adapter.file('nais2/organizer/distributions/portrait-distribution.png')).toBeDefined()
-        expect(adapter.file('nais2/organizer/distributions/portrait-distribution.nais2.artifact.json')).toBeDefined()
+        expect(adapter.file('nais2/organizer/distributions/portrait-distribution.nais-blue.artifact.json')).toBeDefined()
         expect(record?.distributionVariants[0]).toMatchObject({
             status: 'succeeded',
             file: { fileName: 'portrait-distribution.png' },
-            sidecar: { file: { fileName: 'portrait-distribution.nais2.artifact.json' } },
+            sidecar: { file: { fileName: 'portrait-distribution.nais-blue.artifact.json' } },
         })
         expect(record?.remoteObjectRefs).toEqual([expect.objectContaining({
             artifactId,

@@ -1,8 +1,8 @@
 """
-Cloudflare R2 deployment orchestration for cleaned NAIS2 assets.
+Cloudflare R2 deployment orchestration for cleaned NAIS blue assets.
 
 ``tagger_server.py`` registers this router next to ``asset_postprocess.py`` so
-the GUI can deploy the post-processed image and ``.nais2.json`` sidecar pair
+the GUI can deploy the post-processed image and ``.nais-blue.json`` sidecar pair
 through the existing local sidecar. Credentials are intentionally not accepted
 by these request models: Phase 1 relies on Wrangler's own secure auth profile or
 environment, and Phase 2 can load Tauri Secure Settings before constructing a
@@ -34,8 +34,8 @@ DeployMode = Literal["current-session", "delta", "full-sync", "dry-run"]
 UploaderKind = Literal["wrangler", "s3"]
 JobStatus = Literal["queued", "planning", "running", "completed", "failed", "cancelled"]
 
-DEFAULT_INCLUDE_PATTERNS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.nais2.json"]
-DEFAULT_MANIFEST_NAME = ".nais2-r2-deploy-manifest.json"
+DEFAULT_INCLUDE_PATTERNS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.nais-blue.json", "*.nais2.json"]
+DEFAULT_MANIFEST_NAME = ".nais-blue-r2-deploy-manifest.json"
 MAX_RETAINED_RESULTS = 500
 SECRET_ENV_KEYS = (
     "CLOUDFLARE_API_TOKEN",
@@ -411,7 +411,7 @@ class WranglerR2Uploader(BaseR2Uploader):
         await self._run(args, state)
 
     async def probe(self, item: DeployItem) -> R2RemoteProbeResult:
-        fd, temp_name = tempfile.mkstemp(prefix=".nais2-r2-probe.", suffix=".tmp")
+        fd, temp_name = tempfile.mkstemp(prefix=".nais-blue-r2-probe.", suffix=".tmp")
         os.close(fd)
         probe_state = R2JobState(
             job_id="scope-check",
@@ -813,7 +813,7 @@ def _matches_patterns(relative: str, include_patterns: list[str], exclude_patter
 
 
 def _guess_content_type(path: Path) -> str:
-    if path.suffix.lower() == ".nais2.json":
+    if path.name.lower().endswith((".nais-blue.json", ".nais2.json")):
         return "application/json"
     guessed, _ = mimetypes.guess_type(path.name)
     return guessed or "application/octet-stream"

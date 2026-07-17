@@ -20,7 +20,7 @@ export type PreciseReferenceType = 'character' | 'style' | 'character&style'
 export interface ReferenceImage {
     id: string
     base64: string              // Runtime only - NOT persisted (loaded from filePath on demand)
-    filePath?: string           // Persisted file path (AppData/NAIS2/references/xxx.bin)
+    filePath?: string           // Persisted file path (AppData/NAIS blue/references/xxx.bin)
     thumbnail?: string          // Small JPEG preview for UI (~10-30KB) - persisted
     enabled: boolean
     encodedVibe?: string        // Runtime only - loaded from encodedVibePath

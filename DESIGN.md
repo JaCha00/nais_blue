@@ -1,4 +1,4 @@
-# NAIS2 Design System
+# NAIS blue Design System
 
 This file is the visual contract for `src/styles/globals.css`, `tailwind.config.js`,
 the shared primitives in `src/components/ui`, and every workspace surface. Add a
@@ -24,7 +24,7 @@ tokens move lighter in dark mode so text, icons, and focus states remain legible
 
 | Semantic token | Light channels | Dark channels | Role |
 | --- | --- | --- | --- |
-| `--brand-core` | `0.316 0.1719 263.65` | `0.316 0.1719 263.65` | Immutable NAIS2 blue anchor |
+| `--brand-core` | `0.316 0.1719 263.65` | `0.316 0.1719 263.65` | Immutable NAIS blue anchor |
 | `--background` | `0.975 0.006 264` | `0.130 0.012 262` | App frame |
 | `--foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Primary text |
 | `--canvas` | `0.955 0.009 264` | `0.110 0.010 262` | Image/work canvas |

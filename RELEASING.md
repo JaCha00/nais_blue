@@ -1,6 +1,6 @@
 # Android APK release
 
-NAIS2 uses a generated Tauri Android project, but its release identity and the
+NAIS blue uses a generated Tauri Android project, but its release identity and the
 scripts that recreate signing are tracked. `src-tauri/gen/android` remains
 ignored; every clean build runs `tauri android init`, applies the managed Gradle
 patch, verifies the APK, installs it on an emulator, and only then exposes the
@@ -100,8 +100,8 @@ generated Gradle project, builds a universal APK, and checks:
 It writes:
 
 ```text
-release-artifacts/android/NAIS2_<version>-universal.apk
-release-artifacts/android/NAIS2_<version>-universal.apk.sha256
+release-artifacts/android/NAIS-blue_<version>-universal.apk
+release-artifacts/android/NAIS-blue_<version>-universal.apk.sha256
 ```
 
 To include a connected-device install and launch check for an existing APK:

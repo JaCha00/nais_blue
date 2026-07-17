@@ -54,7 +54,7 @@ Engine의 낮은 우선순위에서 높은 우선순위 방향은 `engine defaul
 
 Scalar는 마지막으로 명시된 값이 이기며 `false`와 `0`도 유효한 override다. 따라서 활성 Asset recipe가 prompt와 output만 부분적으로 덮던 이전 비대칭을 유지하지 않는다. 유효한 v2 plan에서는 Asset profile/module/step/recipe의 typed params와 output policy도 동일 precedence와 provenance로 최종 결과에 반영된다. 반면 source image 크기, mask 유무와 source edit의 non-streaming 강제 같은 transport 사실은 Asset 값보다 높은 경계에 남는다.
 
-최종 `GenerationParams`는 plan의 positive/negative, prompt slots, character prompt/position, model과 모든 typed params, seed, output format/metadata mode를 사용한다. Plan ID, recipe ID, deterministic plan hash와 provenance 요약은 NAIS2 metadata에 덧붙인다. 기존 `src/services/nai/payload.ts`의 payload shape와 dual API 정책은 교체하지 않는다.
+최종 `GenerationParams`는 plan의 positive/negative, prompt slots, character prompt/position, model과 모든 typed params, seed, output format/metadata mode를 사용한다. Plan ID, recipe ID, deterministic plan hash와 provenance 요약은 NAIS blue metadata에 덧붙인다. 기존 `src/services/nai/payload.ts`의 payload shape와 dual API 정책은 교체하지 않는다.
 
 ## Invalid plan과 side-effect 차단
 

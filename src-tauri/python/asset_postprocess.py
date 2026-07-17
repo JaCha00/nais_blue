@@ -1,5 +1,5 @@
 """
-NAIS2 deployment image post-processing.
+NAIS blue deployment image post-processing.
 
 This module is registered by ``tagger_server.py`` so the Tauri app can reuse the
 existing local Python sidecar without touching the WD Tagger model cache. It
@@ -209,7 +209,7 @@ def _prepare_image_for_save(
 
     # Copy only pixel data so EXIF/XMP/PNG/WebP metadata held in Image.info cannot
     # be propagated by an encoder. This is why tagger_server.py can safely expose
-    # the route for deploy exports while metadata lives in the .nais2.json sidecar.
+    # the route for deploy exports while metadata lives in the .nais-blue.json sidecar.
     pixel_only = Image.new(converted.mode, converted.size)
     pixel_only.paste(converted)
     pixel_only.info.clear()

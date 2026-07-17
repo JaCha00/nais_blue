@@ -1,9 +1,9 @@
 @echo off
-REM Build script for NAIS2 Tagger Server Sidecar
+REM Build script for NAIS blue Tagger Server Sidecar
 REM Run this from the python directory
 
 echo ====================================
-echo NAIS2 Tagger Server - Build Script
+echo NAIS blue Tagger Server - Build Script
 echo ====================================
 echo.
 

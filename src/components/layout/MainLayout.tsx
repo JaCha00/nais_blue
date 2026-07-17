@@ -41,7 +41,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                     {!collapsed && (
                         <div className="flex items-center gap-2">
                             <Sparkles className="h-6 w-6 text-primary" />
-                            <span className="text-lg font-bold text-gradient">NAIS2</span>
+                            <span className="text-lg font-bold text-gradient">NAIS blue</span>
                         </div>
                     )}
                     <button
@@ -88,7 +88,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 <div className="border-t border-border p-3">
                     {!collapsed && (
                         <div className="text-xs text-muted-foreground text-center">
-                            NAIS2 v0.1.0
+                            NAIS blue v0.1.0
                         </div>
                     )}
                 </div>

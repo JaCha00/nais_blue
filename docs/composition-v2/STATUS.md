@@ -227,7 +227,7 @@ Main standard/stream request headers까지 도달했지만 raw `Channel<Response
 0 byte가 되어 ZIP/msgpack decode가 실패했다. Body를 headers/end와 같은 ordered JSON/base64
 event channel로 바꿨고 JS adapter 12/12, Rust loopback 5/5, arm64 APK build/metadata/install은
 통과했다. Post-fix app launch 시 testbed의 Google Play Services FontsProvider가 ROM permission
-mismatch로 crash loop에 빠져 Android가 NAIS2를 dependency-died로 종료했다. 이 system blocker는
+mismatch로 crash loop에 빠져 Android가 NAIS blue를 dependency-died로 종료했다. 이 system blocker는
 R-027로 분리하며 post-fix authenticated output을 통과한 것으로 간주하지 않는다. 따라서 R-019는
 Open이고 Android release gate는 계속 닫혀 있다.
 
@@ -263,9 +263,9 @@ evidence를 Phase 06 production cutover 승인으로 승격하지 않는다.
 5. 그때 caller 0, rollback drill 성공, payload gap 해소가 모두 성립하면 별도 PR에서 legacy runtime을 제거한다.
 
 Phase 07은 Windows restart source-edit의 재현 가능한 lifecycle 결함을 수정했지만 live credential을
-사용한 existing-vault re-unlock/ZIP request는 실행하지 않았다. Android logcat은 NAIS2 권한 누락이
+사용한 existing-vault re-unlock/ZIP request는 실행하지 않았다. Android logcat은 NAIS blue 권한 누락이
 아니라 Google Play Services privileged permission/FontsProvider dependency failure임을 재확인했다.
-따라서 NAIS2 runtime permission을 추가하지 않았으며 Android authenticated release gate는 계속 닫혀 있다.
+따라서 NAIS blue runtime permission을 추가하지 않았으며 Android authenticated release gate는 계속 닫혀 있다.
 
 Durable queue Phase 07은 pure domain/repository만 추가했다. 10,000-job pagination, competing CAS lease,
 expiry/restart recovery, duplicate idempotency, missing resource, v1→v2 schema upgrade와 aborted upgrade가

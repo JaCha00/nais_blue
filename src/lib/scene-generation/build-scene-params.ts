@@ -97,6 +97,8 @@ interface ResolveSceneRuntimeOptions {
     now: Date
     requestId: string
     scenePrompt?: string
+    /** Queue snapshots use this to keep a non-active scene folder's context. */
+    presetId?: string
 }
 
 interface SceneRuntimeCompositionCapture {
@@ -180,6 +182,7 @@ async function createSceneCompositionSnapshot(
     scene: SceneCard,
     seed: number,
     scenePrompt = scene.scenePrompt,
+    presetId?: string,
 ): Promise<{
     snapshot: SceneCompositionSnapshot
     sourceImage: string | null
@@ -196,9 +199,11 @@ async function createSceneCompositionSnapshot(
     const excludedPinnedIds = rotation.active && scene.excludePinned
         ? new Set(rotation.pinnedCharacterIds)
         : null
-    const activePreset = useSceneStore.getState().presets.find(preset => (
-        preset.id === useSceneStore.getState().activePresetId
-    ))
+    // The active preset remains the default for interactive generation; a
+    // durable cross-folder job provides its target preset explicitly.
+    const sceneState = useSceneStore.getState()
+    const targetPresetId = presetId ?? sceneState.activePresetId
+    const activePreset = sceneState.presets.find(preset => preset.id === targetPresetId)
     const sceneNumber = activePreset?.scenes.findIndex(candidate => candidate.id === scene.id)
     const fallbackDimensions = {
         width: roundTo64(scene.width ?? generation.selectedResolution.width),
@@ -310,6 +315,7 @@ async function resolveSceneRuntimeComposition(
         scene,
         options.seed,
         options.scenePrompt ?? scene.scenePrompt,
+        options.presetId,
     )
     const { snapshot } = captured
     const fragment = await buildSceneFragmentInput(options.mode, [
@@ -403,6 +409,7 @@ async function materializeV2GenerationParams(
     sourceImage: string | null,
     mask: string | null,
     output: SceneCompositionSnapshot['output'],
+    presetId?: string,
 ): Promise<GenerationParams> {
     if (mode === 'v2') {
         const portability = assessPortableCompositionPlan(plan, runtimeCapabilities)
@@ -438,6 +445,7 @@ async function materializeV2GenerationParams(
         ? null
         : await resolveLegacySceneAssetModulePlan(scene, plan.params.seed, {
             recipeId: requestedRecipeId,
+            presetId,
             now,
             wildcardProcessor: prompt => prompt,
         })
@@ -574,11 +582,11 @@ export async function previewSceneComposition(
 // Legacy prompt assembly is isolated in legacy-build-scene-params.ts for rollback.
 export async function buildSceneGenerationParams(
     scene: SceneCard,
-    options: { sessionId?: number; requestId?: string; now?: Date } = {},
+    options: { sessionId?: number; requestId?: string; now?: Date; presetId?: string } = {},
 ): Promise<SceneGenerationBuildResult> {
     const mode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
     if (mode === 'legacy') {
-        const legacy = await buildLegacySceneGenerationParams(scene)
+        const legacy = await buildLegacySceneGenerationParams(scene, { presetId: options.presetId })
         return {
             success: true,
             ...legacy,
@@ -591,13 +599,14 @@ export async function buildSceneGenerationParams(
     }
 
     if (mode === 'shadow') {
-        const legacy = await buildLegacySceneGenerationParams(scene)
+        const legacy = await buildLegacySceneGenerationParams(scene, { presetId: options.presetId })
         const now = options.now ?? new Date()
         const captured = await resolveSceneRuntimeComposition(scene, {
             mode: 'preview',
             seed: legacy.params.seed,
             now,
             requestId: options.requestId ?? `scene-shadow:${options.sessionId ?? 0}:${scene.id}`,
+            presetId: options.presetId,
         })
         const { resolution } = captured
         const diagnostics = diagnosticsFor(mode, resolution)
@@ -632,6 +641,7 @@ export async function buildSceneGenerationParams(
         seed,
         now,
         requestId: options.requestId ?? `scene-request:${options.sessionId ?? 0}:${scene.id}:${seed}`,
+        presetId: options.presetId,
     })
     const { resolution } = captured
     const diagnostics = diagnosticsFor(mode, resolution)
@@ -652,6 +662,7 @@ export async function buildSceneGenerationParams(
         captured.sourceImage,
         captured.mask,
         captured.snapshot.output,
+        options.presetId,
     )
     return {
         success: true,

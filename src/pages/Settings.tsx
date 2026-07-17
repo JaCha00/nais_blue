@@ -635,7 +635,7 @@ export default function Settings() {
                                                 {t('settingsPage.version.title', 'Version')}
                                             </label>
                                             <p className="text-xs text-muted-foreground">
-                                                NAIS2 v{appVersion}
+                                                NAIS blue v{appVersion}
                                             </p>
                                         </div>
                                         {!isMobileRuntime && (

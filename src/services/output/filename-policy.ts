@@ -117,7 +117,7 @@ export function ensureImageFileExtension(
 }
 
 export function toSidecarPath(imagePath: string): string {
-    return imagePath.replace(/\.[^./\\]+$/, '.nais2.json')
+    return imagePath.replace(/\.[^./\\]+$/, '.nais-blue.json')
 }
 
 export function toSidecarFileName(fileName: string): string {
@@ -125,7 +125,7 @@ export function toSidecarFileName(fileName: string): string {
 }
 
 export function toDiagnosticSidecarPath(imagePath: string): string {
-    return imagePath.replace(/\.[^./\\]+$/, '.nais2.diagnostic.json')
+    return imagePath.replace(/\.[^./\\]+$/, '.nais-blue.diagnostic.json')
 }
 
 /**
@@ -134,7 +134,7 @@ export function toDiagnosticSidecarPath(imagePath: string): string {
  * with the image and any legacy metadata sidecars.
  */
 export function toArtifactSidecarPath(imagePath: string): string {
-    return imagePath.replace(/\.[^./\\]+$/, '.nais2.artifact.json')
+    return imagePath.replace(/\.[^./\\]+$/, '.nais-blue.artifact.json')
 }
 
 export function splitFileName(fileName: string): { stem: string; extension: string } {

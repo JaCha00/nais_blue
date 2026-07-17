@@ -1,4 +1,4 @@
-"""Danbooru tag verification helpers for NAIS2's Tauri Python sidecars.
+"""Danbooru tag verification helpers for NAIS blue's Tauri Python sidecars.
 
 This module is intentionally independent from ``tagger_server.py`` so the GUI
 can import or expose these helpers later without changing the existing WD
@@ -45,7 +45,7 @@ class Suggestion:
 
 @dataclass(frozen=True, slots=True)
 class TagVerifyResult:
-    """Verification result consumed by the future NAIS2 GUI integration layer."""
+    """Verification result consumed by the future NAIS blue GUI integration layer."""
 
     raw: str
     normalized: str

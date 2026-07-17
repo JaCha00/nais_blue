@@ -1,4 +1,4 @@
-# NAIS2 persistence map
+# NAIS blue persistence map
 
 이 문서는 런타임의 영속화 책임과 복구 경계를 한곳에 기록한다. 새 저장소를 추가할 때는 소유권, 백업 포함 여부, secret 처리, 정리 정책을 이 표와 `BACKUP_STORE_KEYS`에 함께 반영한다.
 

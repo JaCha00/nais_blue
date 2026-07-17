@@ -1,6 +1,6 @@
 {
     "app": {
-        "name": "NAIS2",
+        "name": "NAIS blue",
         "description": "NovelAI 통합 스튜디오"
     },
     "update": {
@@ -54,7 +54,7 @@
             "error": "Vault 확인 필요"
         },
         "passphrase": "Vault passphrase",
-        "passphraseSessionOnly": "Passphrase는 현재 session에서만 사용되며 NAIS2가 저장하지 않습니다.",
+        "passphraseSessionOnly": "Passphrase는 현재 session에서만 사용되며 NAIS blue가 저장하지 않습니다.",
         "create": "Vault 생성",
         "unlock": "Vault 열기",
         "unlocked": "Credential vault를 열었습니다",
@@ -83,7 +83,7 @@
         "legacyBackupWarningDescription": "이전 버전이 만든 backup은 민감 파일로 취급하세요. 정리는 credential 필드가 있는 관리 대상 backup 파일 전체를 영구 삭제합니다.",
         "cleanupAction": "안전하지 않은 관리 backup 삭제",
         "cleanupConfirmation": "안전하지 않은 관리 backup을 영구 삭제할까요?",
-        "cleanupConfirmationDescription": "값을 표시하지 않고 NAIS2 관리 local/disk backup을 검사한 뒤 기존 NovelAI 또는 R2 credential 필드가 있는 backup artifact 전체를 삭제합니다. 되돌릴 수 없습니다.",
+        "cleanupConfirmationDescription": "값을 표시하지 않고 NAIS blue 관리 local/disk backup을 검사한 뒤 기존 NovelAI 또는 R2 credential 필드가 있는 backup artifact 전체를 삭제합니다. 되돌릴 수 없습니다.",
         "cleanupComplete": "기존 credential backup 정리 완료",
         "cleanupIncomplete": "일부 기존 backup을 정리하지 못했습니다",
         "cleanupResult": "검사 {{inspected}}개, 삭제 {{deleted}}개, 실패 {{failed}}개.",
@@ -333,6 +333,16 @@
     "queue": {
         "title": "큐 센터",
         "enqueued": "백그라운드 대기열에 추가됨",
+        "selectScenes": "폴더별 씬 선택",
+        "selectScenesTitle": "여러 폴더에서 씬 선택",
+        "selectScenesDescription": "원하는 폴더의 씬을 선택하고 씬별 생성 수량을 지정하세요.",
+        "noSceneFolders": "씬 폴더가 없습니다.",
+        "folderSceneCount": "{{selected}}/{{total}}개 씬 선택됨",
+        "clearFolderSelection": "폴더 선택 해제",
+        "selectFolderScenes": "폴더 전체 선택",
+        "emptySceneFolder": "이 폴더에는 씬이 없습니다.",
+        "sceneJobCount": "{{scene}} 생성 수량",
+        "enqueueSelectedScenes": "{{count}}개 씬을 대기열에 추가",
         "activity": {
             "open": "큐 센터 열기 · {{summary}}",
             "summary": "진행 중 {{processing}}개 · 대기 {{waiting}}개 · 확인 필요 {{attention}}개",
@@ -1002,7 +1012,7 @@
     },
     "settingsPage": {
         "title": "설정",
-        "description": "NAIS2 애플리케이션 설정을 관리하세요",
+        "description": "NAIS blue 애플리케이션 설정을 관리하세요",
         "sections": {
             "general": "일반",
             "appearance": "외관",
@@ -1153,7 +1163,7 @@
             "createSnapshot": "스냅샷 만들기",
             "creatingSnapshot": "생성 중...",
             "restoreSnapshots": "스냅샷 복원",
-            "restoreSnapshotsDesc": "NAIS2가 만든 전체 자동 스냅샷을 복원합니다.",
+            "restoreSnapshotsDesc": "NAIS blue가 만든 전체 자동 스냅샷을 복원합니다.",
             "loadingSnapshots": "스냅샷 불러오는 중...",
             "snapshotCount": "스냅샷 {{count}}개",
             "snapshotEmpty": "아직 디스크 스냅샷이 없습니다.",
@@ -1451,7 +1461,7 @@
         },
         "analyze": {
             "title": "PNG 작가 태그 분석기",
-            "description": "NAI/NAIS2 PNG 메타데이터에서 artist 태그와 가중치를 추출합니다.",
+            "description": "NAI/NAIS blue PNG 메타데이터에서 artist 태그와 가중치를 추출합니다.",
             "selectPng": "PNG 선택",
             "addToArtists": "작가 목록에 추가",
             "addAsCombination": "조합으로 추가",
