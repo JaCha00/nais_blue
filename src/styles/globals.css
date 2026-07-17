@@ -1,6 +1,8 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4 uses the Vite integration, while @config preserves the shared
+   design tokens and animation utilities used by both desktop and Android. */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+@plugin "tailwindcss-animate";
 
 @layer base {
   :root {

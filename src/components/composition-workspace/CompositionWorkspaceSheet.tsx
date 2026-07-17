@@ -19,13 +19,14 @@ export interface CompositionWorkspaceSheetProps {
     contentClassName?: string
     testId?: string
     closeLabel?: string
-    returnFocusRef?: RefObject<HTMLElement>
+    returnFocusRef?: RefObject<HTMLElement | null>
     children: ReactNode
 }
 
 /**
  * Composition sheet contract. Radix supplies the focus trap; the optional
- * return ref handles controlled launches that do not use a Radix trigger.
+ * nullable return ref handles controlled launches that do not use a Radix
+ * trigger and matches the ref contract exposed by React 19.
  */
 export function CompositionWorkspaceSheet({
     open,

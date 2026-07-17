@@ -173,5 +173,6 @@ export default {
     		}
     	}
     },
-    plugins: [require("tailwindcss-animate")],
+    // Plugins are loaded from globals.css so this ESM config remains portable.
+    plugins: [],
 }
