@@ -11,6 +11,11 @@ on:
       release:
         required: true
         type: boolean
+    secrets:
+      NAIS_KEYSTORE_BASE64:
+        required: true
+      NAIS_KEYSTORE_PASSWORD:
+        required: true
 
 permissions:
   contents: read

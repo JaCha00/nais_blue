@@ -126,6 +126,9 @@ for (const requiredText of [
     'npm run test:responsive-layout',
     'playwright install --with-deps chromium',
     'verify_or_upload',
+    'workflow_call:',
+    'NAIS_KEYSTORE_BASE64:',
+    'NAIS_KEYSTORE_PASSWORD:',
 ]) {
     assert.ok(workflow.includes(requiredText), `Android workflow must include ${requiredText}`)
 }
@@ -146,6 +149,8 @@ for (const requiredText of [
     'releaseDraft: true',
     'needs: desktop',
     'release: true',
+    'NAIS_KEYSTORE_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}',
+    'NAIS_KEYSTORE_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}',
 ]) {
     assert.ok(desktopWorkflow.includes(requiredText), `Desktop workflow must include ${requiredText}`)
 }
