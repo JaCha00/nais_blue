@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 const getNodePackageName = (normalizedId: string) => {
@@ -22,7 +23,9 @@ const getNodePackageName = (normalizedId: string) => {
 
 // https://vite.dev/config/
 export default defineConfig({
-    plugins: [react()],
+    // React compiles the UI while Tailwind's dedicated Vite integration scans
+    // the same module graph and emits the CSS consumed by desktop and Android.
+    plugins: [react(), tailwindcss()],
     define: {
         __NAIS_BLUE_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
     },

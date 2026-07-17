@@ -63,7 +63,9 @@ describe('Scene composition workspace information architecture', () => {
         expect(sceneMode).toContain("shadow: { key: 'composition.mode.compatibility', fallback: 'Compatibility comparison' }")
         expect(sceneMode).toContain("v2: { key: 'composition.mode.current', fallback: 'Current generation engine' }")
         expect(sceneMode).toContain("label: t('composition.validation.legacy', 'Previous generation mode')")
-        expect(sceneMode).toContain('label: t(\n                        SCENE_COMPOSITION_MODE_LABEL_KEYS[mode].key,')
+        // Formatting may change independently; the contract is that the
+        // persisted mode ID resolves through the localized label map.
+        expect(sceneMode).toMatch(/label:\s*t\(\s*SCENE_COMPOSITION_MODE_LABEL_KEYS\[mode\]\.key,/)
         expect(sceneMode).not.toContain('options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode }))')
         expect(sceneMode).not.toContain("label: 'legacy'")
     })

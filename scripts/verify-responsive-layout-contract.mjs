@@ -1076,7 +1076,7 @@ async function main() {
                             dialogReport.top >= -1 &&
                             dialogReport.right <= viewport.width + 1 &&
                             dialogReport.bottom <= viewport.height + 1,
-                            `/web @ ${viewport.width}px add-link dialog leaves the viewport`,
+                            `/web @ ${viewport.width}px add-link dialog leaves the viewport: ${JSON.stringify(dialogReport)}`,
                         )
                         assert.ok(
                             dialogReport.scrollWidth <= dialogReport.clientWidth + 1,
