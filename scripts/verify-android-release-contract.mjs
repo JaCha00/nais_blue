@@ -38,7 +38,7 @@ assert.throws(
                 firstReleaseForApplicationId: true,
                 firstReleaseVersion: pkg.version,
             },
-            '2.8.2',
+            '2.8.3',
         ),
     /limited to firstReleaseVersion/,
 )
