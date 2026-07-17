@@ -201,7 +201,7 @@ function readRawNais2Params(bytes: Uint8Array): unknown {
         if (type === 'tEXt') {
             const data = bytes.subarray(offset + 8, offset + 8 + length)
             const separator = data.indexOf(0)
-            if (separator > 0 && new TextDecoder('latin1').decode(data.subarray(0, separator)) === 'nais2-params') {
+            if (separator > 0 && new TextDecoder('latin1').decode(data.subarray(0, separator)) === 'nais-blue-params') {
                 const encoded = new TextDecoder('latin1').decode(data.subarray(separator + 1))
                 return JSON.parse(new TextDecoder().decode(base64Bytes(encoded)))
             }
@@ -506,7 +506,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
     const request = runtimeCapture.requests[0]
     const event = runtimeCapture.events[0]
     const write = runtimeCapture.writes.find(item => /\.(png|webp)$/i.test(item.location))
-    const sidecarWrite = runtimeCapture.writes.find(item => item.location.endsWith('.nais2.json'))
+    const sidecarWrite = runtimeCapture.writes.find(item => item.location.endsWith('.nais-blue.json'))
     const history = runtime.useGenerationStore.getState().history[0]
     if (!params || !request || !event || !write || !history) {
         throw new Error('Missing Style Lab filesystem capture')
@@ -531,7 +531,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
         targetSegments: write.location.split('/').slice(0, -1),
         baseDirectoryUsed: write.baseDirPresent,
         generatedFileCount: runtimeCapture.writes.filter(item => /\.(png|webp)$/i.test(item.location)).length,
-        sidecarFileCount: runtimeCapture.writes.filter(item => item.location.endsWith('.nais2.json')).length,
+        sidecarFileCount: runtimeCapture.writes.filter(item => item.location.endsWith('.nais-blue.json')).length,
         eventIncludesImageData: Boolean(event.detail.data),
         resolvedPathMatchesMockPlatformRoot: event.detail.path === expectedResolvedPath,
         historyUrlMatchesEvent: history.url === event.detail.path,

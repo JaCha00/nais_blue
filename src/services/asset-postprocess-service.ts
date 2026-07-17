@@ -31,7 +31,7 @@ const ASSET_POSTPROCESS_URL = `${LOCAL_TAGGER_BASE_URL}/asset/postprocess`
 
 /**
  * Calls the deployment cleanup route registered by `src-tauri/python/tagger_server.py`.
- * The Python route writes the stripped image and matching `.nais2.json` sidecar
+ * The Python route writes the stripped image and matching `.nais-blue.json` sidecar
  * atomically, while this service owns only sidecar startup and HTTP marshalling.
  */
 export async function postprocessAsset(

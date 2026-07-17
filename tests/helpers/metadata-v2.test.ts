@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { buildNais2Params } from '@/lib/generation-metadata'
 import { parseNais2SidecarMetadata } from '@/lib/metadata-parser'
 import {
-    embedNais2Params,
-    encodeNais2Sidecar,
+    embedNaisBlueParams,
+    encodeNaisBlueSidecar,
     parseNais2Params,
     readNais2Params,
     readNais2Sidecar,
@@ -37,7 +37,7 @@ function bytesFromBase64(value: string): Uint8Array {
     return Uint8Array.from(atob(value), character => character.charCodeAt(0))
 }
 
-describe('NAIS2 Metadata v2', () => {
+describe('NAIS blue Metadata v2', () => {
     it('builds the required portable fields and omits the payload by default', () => {
         const redactedPayload = JSON.stringify({ parameters: { prompt: 'secret-ish details' } })
         const metadata = buildNais2Params(baseParams({
@@ -63,6 +63,7 @@ describe('NAIS2 Metadata v2', () => {
         }))
 
         expect(metadata.version).toBe(2)
+        expect(metadata.metadataName).toBe('nais-blue')
         if (metadata.version !== 2) throw new Error('expected v2')
         expect(metadata.engineVersion).toBe('composition-engine-v1')
         expect(metadata.sourceRevision).toBe(12)
@@ -91,10 +92,10 @@ describe('NAIS2 Metadata v2', () => {
 
     it('strictly round-trips v2 through embedded metadata and sidecars', () => {
         const metadata = buildNais2Params(baseParams())
-        const embedded = embedNais2Params(TINY_PNG_BASE64, metadata)
+        const embedded = embedNaisBlueParams(TINY_PNG_BASE64, metadata)
         expect(readNais2Params(bytesFromBase64(embedded))).toEqual(metadata)
 
-        const sidecar = encodeNais2Sidecar(metadata)
+        const sidecar = encodeNaisBlueSidecar(metadata)
         expect(readNais2Sidecar(sidecar)).toEqual(metadata)
         expect(parseNais2SidecarMetadata(sidecar)).toMatchObject({
             metadataVersion: 2,

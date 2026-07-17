@@ -616,19 +616,19 @@ describe('OutputWriter fault containment', () => {
             status: 'committed',
             result: {
                 fileName: 'result.png',
-                artifactSidecarPath: '/app-data/output/result.nais2.artifact.json',
+                artifactSidecarPath: '/app-data/output/result.nais-blue.artifact.json',
                 contentChecksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
             },
         })
         expect(bytesEqual(adapter.file('output/result.png'), IMAGE_BYTES)).toBe(true)
-        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), artifactSidecar)).toBe(true)
+        expect(bytesEqual(adapter.file('output/result.nais-blue.artifact.json'), artifactSidecar)).toBe(true)
         expectNoTransactionArtifacts(adapter)
     })
 
     it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         const existing = new Uint8Array([7, 7, 7])
-        adapter.seed('output/result.nais2.artifact.json', existing)
+        adapter.seed('output/result.nais-blue.artifact.json', existing)
         const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
         let attemptedFileName = ''
 
@@ -641,8 +641,8 @@ describe('OutputWriter fault containment', () => {
         }))).rejects.toBeInstanceOf(OutputWriterError)
 
         expect(attemptedFileName).toBe('result-2.png')
-        expect(bytesEqual(adapter.file('output/result.nais2.artifact.json'), existing)).toBe(true)
-        expect(adapter.paths()).toEqual(['output/result.nais2.artifact.json'])
+        expect(bytesEqual(adapter.file('output/result.nais-blue.artifact.json'), existing)).toBe(true)
+        expect(adapter.paths()).toEqual(['output/result.nais-blue.artifact.json'])
         expectNoTransactionArtifacts(adapter)
     })
 })

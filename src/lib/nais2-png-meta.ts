@@ -1,8 +1,8 @@
 /**
- * Inject/read NAIS2-specific metadata into PNG tEXt chunks.
+ * Inject/read NAIS blue metadata into PNG tEXt chunks.
  *
  * NAI does not echo qualityToggle/ucPreset into the image Comment JSON,
- * so we embed them ourselves (keyword: "nais2-params", value: base64 of JSON)
+ * so we embed them ourselves (keyword: "nais-blue-params", value: base64 of JSON).
  * to guarantee round-trip when re-importing our own images.
  *
  * Format matches the approach used by SDStudio.
@@ -65,6 +65,8 @@ export interface Nais2ResolvedParams {
 }
 
 interface Nais2ParamsCommon {
+    /** Name carried by newly emitted metadata; absent in older files. */
+    metadataName?: 'nais-blue' | 'nais2'
     qualityToggle?: boolean
     ucPreset?: number
     promptParts?: Nais2PromptParts
@@ -111,7 +113,15 @@ export interface Nais2ParamsV2 extends Nais2ParamsCommon {
 
 export type Nais2Params = Nais2ParamsV1 | Nais2ParamsV2
 
-const NAIS2_KEYWORD = 'nais2-params'
+/**
+ * New writes use the NAIS blue names below; the legacy keyword remains read-compatible
+ * so existing images and sidecars can still be imported without a migration step.
+ */
+export const NAIS_BLUE_METADATA_NAME = 'nais-blue' as const
+export const NAIS_BLUE_PNG_KEYWORD = 'nais-blue-params' as const
+const LEGACY_NAIS2_METADATA_NAME = 'nais2' as const
+const LEGACY_NAIS2_KEYWORD = 'nais2-params' as const
+const PNG_METADATA_KEYWORDS: ReadonlySet<string> = new Set([NAIS_BLUE_PNG_KEYWORD, LEGACY_NAIS2_KEYWORD])
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10]
 const WEBP_RIFF_SIGNATURE = [82, 73, 70, 70] // "RIFF"
 const WEBP_FORMAT_SIGNATURE = [87, 69, 66, 80] // "WEBP"
@@ -163,7 +173,10 @@ function isWebP(bytes: Uint8Array): boolean {
 }
 
 function withNais2Version(params: Nais2Params): Nais2Params {
-    return params.version === 2 ? params : { version: 1, ...params }
+    if (params.version === 2) {
+        return { ...params, metadataName: NAIS_BLUE_METADATA_NAME }
+    }
+    return { ...params, version: 1 as const, metadataName: NAIS_BLUE_METADATA_NAME }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -313,6 +326,7 @@ function isNais2ParamsV2(value: Record<string, unknown>): boolean {
         'compositionRecipeId',
         'compositionProvenanceSummary',
         'compositionRandomTrace',
+        'metadataName',
     ])
     return Object.keys(value).every(key => allowedKeys.has(key))
         && value.version === 2
@@ -340,6 +354,9 @@ function isNais2ParamsV2(value: Record<string, unknown>): boolean {
         && (value.compositionRecipeId === undefined || typeof value.compositionRecipeId === 'string')
         && (value.compositionProvenanceSummary === undefined || isProvenanceSummary(value.compositionProvenanceSummary))
         && (value.compositionRandomTrace === undefined || isRandomTrace(value.compositionRandomTrace))
+        && (value.metadataName === undefined
+            || value.metadataName === NAIS_BLUE_METADATA_NAME
+            || value.metadataName === LEGACY_NAIS2_METADATA_NAME)
 }
 
 function isNais2ParamsV1(value: Record<string, unknown>): value is Nais2ParamsV1 {
@@ -379,14 +396,14 @@ function buildTextChunk(keyword: string, value: string): Uint8Array {
 }
 
 /**
- * Embed NAIS2-specific params into a PNG (base64 in, base64 out).
- * Inserts a "nais2-params" tEXt chunk immediately after IHDR. If the input is
+ * Embed NAIS blue params into a PNG (base64 in, base64 out).
+ * Inserts a "nais-blue-params" tEXt chunk immediately after IHDR. If the input is
  * not a valid PNG the original base64 is returned unchanged.
  */
-export function embedNais2Params(pngBase64: string, params: Nais2Params): string {
+export function embedNaisBlueParams(pngBase64: string, params: Nais2Params): string {
     const bytes = base64ToBytes(pngBase64)
     // PNG tEXt chunks do not exist in WebP. WebP metadata is persisted by
-    // callers as a sibling .nais2.json sidecar instead of mutating the image.
+    // callers as a sibling .nais-blue.json sidecar instead of mutating the image.
     if (isWebP(bytes)) return pngBase64
     if (!isPng(bytes)) return pngBase64
 
@@ -395,12 +412,12 @@ export function embedNais2Params(pngBase64: string, params: Nais2Params): string
     const ihdrEnd = 8 + 4 + 4 + 13 + 4
     if (bytes.length < ihdrEnd) return pngBase64
 
-    // If an existing nais2-params chunk is present (rare but possible on
-    // re-save), strip it before inserting the new one.
+    // Remove both the new and legacy chunks before inserting the new one so a
+    // re-save never emits two competing metadata names.
     const stripped = stripNais2Chunk(bytes)
 
     const value = bytesToBase64(new TextEncoder().encode(JSON.stringify(withNais2Version(params))))
-    const newChunk = buildTextChunk(NAIS2_KEYWORD, value)
+    const newChunk = buildTextChunk(NAIS_BLUE_PNG_KEYWORD, value)
 
     const out = new Uint8Array(stripped.length + newChunk.length)
     out.set(stripped.subarray(0, ihdrEnd), 0)
@@ -409,17 +426,27 @@ export function embedNais2Params(pngBase64: string, params: Nais2Params): string
     return bytesToBase64(out)
 }
 
+/** Backward-compatible API name; all new writes still use the NAIS blue keyword. */
+export function embedNais2Params(pngBase64: string, params: Nais2Params): string {
+    return embedNaisBlueParams(pngBase64, params)
+}
+
 /**
- * Encode NAIS2 params for a WebP sidecar stored next to the image file.
- * The sidecar mirrors the PNG tEXt payload so importers can restore NAIS2 UI
+ * Encode NAIS blue params for a WebP sidecar stored next to the image file.
+ * The sidecar mirrors the PNG tEXt payload so importers can restore NAIS blue UI
  * state even when the image format cannot carry our PNG-only metadata chunk.
  */
-export function encodeNais2Sidecar(params: Nais2Params): Uint8Array {
+export function encodeNaisBlueSidecar(params: Nais2Params): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(withNais2Version(params), null, 2))
 }
 
-/** Parse either a legacy or v2 sibling `.nais2.json` sidecar. */
-export function readNais2Sidecar(sidecar: Uint8Array | string): Nais2Params | null {
+/** Backward-compatible API name; new sidecar files use the `.nais-blue.json` suffix. */
+export function encodeNais2Sidecar(params: Nais2Params): Uint8Array {
+    return encodeNaisBlueSidecar(params)
+}
+
+/** Parse either a new or legacy sibling sidecar. */
+export function readNaisBlueSidecar(sidecar: Uint8Array | string): Nais2Params | null {
     try {
         const json = typeof sidecar === 'string'
             ? sidecar
@@ -430,11 +457,16 @@ export function readNais2Sidecar(sidecar: Uint8Array | string): Nais2Params | nu
     }
 }
 
+/** Backward-compatible API name; both sidecar payload names are accepted. */
+export function readNais2Sidecar(sidecar: Uint8Array | string): Nais2Params | null {
+    return readNaisBlueSidecar(sidecar)
+}
+
 /**
- * Read NAIS2 params (returns null if no nais2-params chunk or decode fails).
+ * Read NAIS blue params (returns null if no known params chunk or decode fails).
  * Accepts PNG bytes (not base64).
  */
-export function readNais2Params(bytes: Uint8Array): Nais2Params | null {
+export function readNaisBlueParams(bytes: Uint8Array): Nais2Params | null {
     if (!isPng(bytes)) return null
 
     let off = 8
@@ -449,7 +481,7 @@ export function readNais2Params(bytes: Uint8Array): Nais2Params | null {
             const nullIdx = data.indexOf(0)
             if (nullIdx > 0) {
                 const keyword = new TextDecoder('latin1').decode(data.subarray(0, nullIdx))
-                if (keyword === NAIS2_KEYWORD) {
+                if (PNG_METADATA_KEYWORDS.has(keyword)) {
                     try {
                         const b64 = new TextDecoder('latin1').decode(data.subarray(nullIdx + 1))
                         const jsonStr = new TextDecoder('utf-8').decode(base64ToBytes(b64))
@@ -465,7 +497,12 @@ export function readNais2Params(bytes: Uint8Array): Nais2Params | null {
     return null
 }
 
-// Strip any existing nais2-params tEXt chunk so callers can cleanly re-embed.
+/** Backward-compatible API name; reads new metadata first and then legacy metadata. */
+export function readNais2Params(bytes: Uint8Array): Nais2Params | null {
+    return readNaisBlueParams(bytes)
+}
+
+// Strip both metadata names so callers can cleanly re-embed the new contract.
 function stripNais2Chunk(bytes: Uint8Array): Uint8Array {
     if (!isPng(bytes)) return bytes
     const keep: Array<Uint8Array> = [bytes.subarray(0, 8)]
@@ -481,7 +518,7 @@ function stripNais2Chunk(bytes: Uint8Array): Uint8Array {
             const nullIdx = data.indexOf(0)
             if (nullIdx > 0) {
                 const keyword = new TextDecoder('latin1').decode(data.subarray(0, nullIdx))
-                if (keyword === NAIS2_KEYWORD) drop = true
+                if (PNG_METADATA_KEYWORDS.has(keyword)) drop = true
             }
         }
         if (!drop) keep.push(bytes.subarray(off, off + total))

@@ -1,6 +1,6 @@
 {
     "app": {
-        "name": "NAIS2",
+        "name": "NAIS blue",
         "description": "NovelAI 統合スタジオ"
     },
     "common": {
@@ -37,7 +37,7 @@
             "error": "Vault の確認が必要"
         },
         "passphrase": "Vault パスフレーズ",
-        "passphraseSessionOnly": "パスフレーズは現在のセッションだけで使用し、NAIS2 は保存しません。",
+        "passphraseSessionOnly": "パスフレーズは現在のセッションだけで使用し、NAIS blue は保存しません。",
         "create": "Vault を作成",
         "unlock": "Vault を解除",
         "unlocked": "Credential vault を解除しました",
@@ -66,7 +66,7 @@
         "legacyBackupWarningDescription": "旧バージョンの backup は機密ファイルとして扱ってください。クリーンアップは認証情報フィールドを含む管理対象 backup 全体を永久削除します。",
         "cleanupAction": "安全でない管理 backup を削除",
         "cleanupConfirmation": "安全でない管理 backup を永久削除しますか？",
-        "cleanupConfirmationDescription": "値を表示せず NAIS2 管理の local/disk backup を検査し、旧 NovelAI または R2 認証情報フィールドを含む backup artifact 全体を削除します。元に戻せません。",
+        "cleanupConfirmationDescription": "値を表示せず NAIS blue 管理の local/disk backup を検査し、旧 NovelAI または R2 認証情報フィールドを含む backup artifact 全体を削除します。元に戻せません。",
         "cleanupComplete": "旧認証 backup のクリーンアップ完了",
         "cleanupIncomplete": "一部の旧 backup をクリーンアップできませんでした",
         "cleanupResult": "検査 {{inspected}}、削除 {{deleted}}、失敗 {{failed}}。",
@@ -332,6 +332,16 @@
     "queue": {
         "title": "キューセンター",
         "enqueued": "バックグラウンドキューに追加しました",
+        "selectScenes": "フォルダー別にSceneを選択",
+        "selectScenesTitle": "複数フォルダーからSceneを選択",
+        "selectScenesDescription": "任意のフォルダーからSceneを選び、Sceneごとの生成数を指定します。",
+        "noSceneFolders": "Sceneフォルダーがありません。",
+        "folderSceneCount": "{{selected}}/{{total}}件を選択中",
+        "clearFolderSelection": "フォルダー選択を解除",
+        "selectFolderScenes": "フォルダー全体を選択",
+        "emptySceneFolder": "このフォルダーにはSceneがありません。",
+        "sceneJobCount": "{{scene}}の生成数",
+        "enqueueSelectedScenes": "{{count}}件をキューに追加",
         "activity": {
             "open": "キューセンターを開く · {{summary}}",
             "summary": "実行中 {{processing}}件 · 待機中 {{waiting}}件 · 要確認 {{attention}}件",
@@ -972,7 +982,7 @@
     },
     "settingsPage": {
         "title": "設定",
-        "description": "NAIS2アプリケーションの設定を管理します",
+        "description": "NAIS blueアプリケーションの設定を管理します",
         "sections": {
             "general": "一般",
             "appearance": "外観",
@@ -1122,7 +1132,7 @@
             "createSnapshot": "スナップショット作成",
             "creatingSnapshot": "作成中...",
             "restoreSnapshots": "スナップショット復元",
-            "restoreSnapshotsDesc": "NAIS2が作成した全体自動スナップショットを復元します。",
+            "restoreSnapshotsDesc": "NAIS blueが作成した全体自動スナップショットを復元します。",
             "loadingSnapshots": "スナップショットを読み込み中...",
             "snapshotCount": "{{count}}件のスナップショット",
             "snapshotEmpty": "ディスクスナップショットはまだありません。",
@@ -1447,7 +1457,7 @@
         },
         "analyze": {
             "title": "PNG作家タグ解析",
-            "description": "NAI/NAIS2 PNGメタデータからartistタグと重みを抽出します。",
+            "description": "NAI/NAIS blue PNGメタデータからartistタグと重みを抽出します。",
             "selectPng": "PNG選択",
             "addToArtists": "作家一覧に追加",
             "addAsCombination": "組み合わせとして追加",

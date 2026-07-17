@@ -1,7 +1,7 @@
 import JSZip from 'jszip'
 import { invoke } from '@tauri-apps/api/core'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import { embedNais2Params } from '@/lib/nais2-png-meta'
+import { embedNaisBlueParams } from '@/lib/nais2-png-meta'
 import {
     buildNais2Params,
     redactSentPayloadForMetadata,
@@ -52,7 +52,7 @@ function observeTransportStage(
 
 function taggedImage(base64: string, params: GenerationParams): string {
     return shouldEmbedNais2Params(params.metadataMode)
-        ? embedNais2Params(base64, buildNais2Params(params))
+        ? embedNaisBlueParams(base64, buildNais2Params(params))
         : base64
 }
 

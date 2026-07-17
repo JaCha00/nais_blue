@@ -192,7 +192,7 @@ if (existsSync(generatedManifestPath)) {
     ]) {
         assert.ok(
             !generatedManifest.includes(privilegedSystemPermission),
-            `NAIS2 must not request Google Play Services privileged permission ${privilegedSystemPermission}`,
+            `NAIS blue must not request Google Play Services privileged permission ${privilegedSystemPermission}`,
         )
     }
 }
@@ -256,7 +256,7 @@ assert.ok(
 )
 
 assert.ok(
-    viteConfig.includes('__NAIS2_TAURI_PLATFORM__') &&
+    viteConfig.includes('__NAIS_BLUE_TAURI_PLATFORM__') &&
         viteConfig.includes('TAURI_ENV_PLATFORM'),
     'Vite must expose the Tauri build platform to frontend runtime gates',
 )

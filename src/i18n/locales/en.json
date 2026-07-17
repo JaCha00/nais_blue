@@ -1,6 +1,6 @@
 {
     "app": {
-        "name": "NAIS2",
+        "name": "NAIS blue",
         "description": "NovelAI Integrated Studio"
     },
     "update": {
@@ -54,7 +54,7 @@
             "error": "Vault needs attention"
         },
         "passphrase": "Vault passphrase",
-        "passphraseSessionOnly": "The passphrase is used for this session and is not saved by NAIS2.",
+        "passphraseSessionOnly": "The passphrase is used for this session and is not saved by NAIS blue.",
         "create": "Create vault",
         "unlock": "Unlock vault",
         "unlocked": "Credential vault unlocked",
@@ -83,7 +83,7 @@
         "legacyBackupWarningDescription": "Backups created by older releases must be treated as sensitive. Cleanup permanently deletes managed backup files that contain credential fields.",
         "cleanupAction": "Delete unsafe managed backups",
         "cleanupConfirmation": "Permanently delete unsafe managed backups?",
-        "cleanupConfirmationDescription": "This scans NAIS2-managed local and disk backups without revealing values, then deletes entire backup artifacts that contain legacy NovelAI or R2 credentials. This cannot be undone.",
+        "cleanupConfirmationDescription": "This scans NAIS blue-managed local and disk backups without revealing values, then deletes entire backup artifacts that contain legacy NovelAI or R2 credentials. This cannot be undone.",
         "cleanupComplete": "Legacy credential backup cleanup complete",
         "cleanupIncomplete": "Some legacy backups could not be cleaned",
         "cleanupResult": "Inspected {{inspected}}, deleted {{deleted}}, failed {{failed}}.",
@@ -333,6 +333,16 @@
     "queue": {
         "title": "Queue Center",
         "enqueued": "Added to background queue",
+        "selectScenes": "Select scenes from folders",
+        "selectScenesTitle": "Select scenes from multiple folders",
+        "selectScenesDescription": "Choose scenes from any folder and set the generation count for each scene.",
+        "noSceneFolders": "No scene folders are available.",
+        "folderSceneCount": "{{selected}}/{{total}} scenes selected",
+        "clearFolderSelection": "Clear folder",
+        "selectFolderScenes": "Select folder",
+        "emptySceneFolder": "This folder has no scenes.",
+        "sceneJobCount": "{{scene}} job count",
+        "enqueueSelectedScenes": "Add {{count}} scenes to queue",
         "activity": {
             "open": "Open Queue Center · {{summary}}",
             "summary": "{{processing}} in progress · {{waiting}} waiting · {{attention}} need attention",
@@ -974,7 +984,7 @@
     },
     "settingsPage": {
         "title": "Settings",
-        "description": "Manage NAIS2 application settings",
+        "description": "Manage NAIS blue application settings",
         "sections": {
             "general": "General",
             "appearance": "Appearance",
@@ -1125,7 +1135,7 @@
             "createSnapshot": "Create Snapshot",
             "creatingSnapshot": "Creating...",
             "restoreSnapshots": "Restore Snapshot",
-            "restoreSnapshotsDesc": "Restore a full automatic snapshot created by NAIS2.",
+            "restoreSnapshotsDesc": "Restore a full automatic snapshot created by NAIS blue.",
             "loadingSnapshots": "Loading snapshots...",
             "snapshotCount": "{{count}} snapshots",
             "snapshotEmpty": "No disk snapshots found yet.",
@@ -1450,7 +1460,7 @@
         },
         "analyze": {
             "title": "PNG Artist Tag Analyzer",
-            "description": "Extract artist tags and weights from NAI/NAIS2 PNG metadata.",
+            "description": "Extract artist tags and weights from NAI/NAIS blue PNG metadata.",
             "selectPng": "Select PNG",
             "addToArtists": "Add to artist list",
             "addAsCombination": "Add as combination",

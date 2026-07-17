@@ -107,7 +107,7 @@ export function CustomTitleBar() {
                 data-tauri-drag-region
             >
                 <span className="truncate" data-tauri-drag-region>
-                    NAIS2
+                    NAIS blue
                 </span>
             </div>
 

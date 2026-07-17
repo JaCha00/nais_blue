@@ -78,7 +78,7 @@ describe('Organizer artifact repository', () => {
             file: { directory: policy().destination, fileName: 'portrait-distribution.png' },
             contentChecksum: HASH_B,
             size: 98,
-            sidecar: { file: { directory: policy().destination, fileName: 'portrait-distribution.nais2.artifact.json' }, digest: HASH_A },
+            sidecar: { file: { directory: policy().destination, fileName: 'portrait-distribution.nais-blue.artifact.json' }, digest: HASH_A },
             updatedAt: NOW,
         }), NOW)
 
@@ -94,7 +94,7 @@ describe('Organizer artifact repository', () => {
         }, NOW)
 
         expect(completed.original.contentChecksum).toBe(HASH_A)
-        expect(linked.sidecar?.file.fileName).toBe('portrait-distribution.nais2.artifact.json')
+        expect(linked.sidecar?.file.fileName).toBe('portrait-distribution.nais-blue.artifact.json')
         expect(linked.remoteObjectRefs).toEqual([expect.objectContaining({ artifactId: 'artifact-1', variantId: 'distribution-1' })])
         await expect(putOriginal(repo, 'artifact-1', HASH_B)).rejects.toMatchObject({ code: 'E_ARTIFACT_ORIGINAL_IMMUTABLE' })
     })

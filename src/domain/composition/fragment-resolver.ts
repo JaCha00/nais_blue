@@ -34,7 +34,7 @@ export interface FragmentSelectionSource {
 
 export interface FragmentDefinitionSnapshot {
     id: EntityId
-    /** Canonical folder/name path. Basename lookup remains compatible with NAIS2. */
+    /** Canonical folder/name path. Basename lookup remains compatible with NAIS blue. */
     path: string
     lines: readonly string[]
 }
@@ -142,7 +142,7 @@ function compareStableText(left: string, right: string): number {
 }
 
 /**
- * Accepts both NAIS2 path conveniences and NAIS3's spaces-around-slash form.
+ * Accepts both NAIS blue path conveniences and NAIS3's spaces-around-slash form.
  * Lookup is case-insensitive, while the returned fragment ID remains unchanged.
  */
 export function normalizeFragmentLookupPath(path: string): string {
@@ -517,7 +517,7 @@ function resolveParenthesisSyntax(text: string, state: ResolverState): string {
 }
 
 /**
- * Simple slash choices are processed per line. This keeps NAIS2's grammar but
+ * Simple slash choices are processed per line. This keeps NAIS blue's grammar but
  * adopts NAIS3's newline-preserving fix instead of collapsing prompt comments.
  */
 function resolveSimpleSlashSyntax(text: string, state: ResolverState): string {

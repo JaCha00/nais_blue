@@ -9,6 +9,7 @@ import type {
     Nais2PromptParts,
     Nais2ResolvedParams,
 } from '@/lib/nais2-png-meta'
+import { NAIS_BLUE_METADATA_NAME } from '@/lib/nais2-png-meta'
 import type { GenerationParams } from '@/services/novelai-types'
 
 export {
@@ -158,6 +159,7 @@ export function buildNais2Params(
 
     return {
         version: 2,
+        metadataName: NAIS_BLUE_METADATA_NAME,
         engineVersion: params.engineVersion
             ?? (params.compositionMode === 'v2' ? 'composition-engine-v1' : 'legacy-compatible'),
         sourceRevision: params.sourceRevision ?? null,

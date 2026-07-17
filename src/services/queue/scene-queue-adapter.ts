@@ -1,7 +1,12 @@
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import type { JsonValue } from '@/domain/composition/types'
-import type { GenerationJob, QueueArtifactReference, QueueResourceRecord } from '@/domain/queue/types'
+import type {
+    GenerationJob,
+    QueueArtifactReference,
+    QueueBatchOrigin,
+    QueueResourceRecord,
+} from '@/domain/queue/types'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
 import {
@@ -14,7 +19,7 @@ import { generateImage, generateImageStream } from '@/services/novelai-api'
 import { useCharacterStore } from '@/stores/character-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
-import { useSceneStore } from '@/stores/scene-store'
+import { useSceneStore, type SceneCard, type ScenePreset } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
@@ -77,20 +82,76 @@ function parseSceneQueueParameters(value: JsonValue): SceneQueueParameters {
 
 let sceneEnqueueInFlight: Promise<CreateBatchAndEnqueueResult | null> | null = null
 
+// Queue Center passes explicit folder/scene/count tuples; this boundary keeps
+// selection UI concerns out of snapshot creation and makes each job retain the
+// correct output folder even when that folder is not currently active.
+export interface SceneQueueTarget {
+    readonly presetId: string
+    readonly sceneId: string
+    readonly count: number
+}
+
+interface ResolvedSceneQueueTarget {
+    readonly target: SceneQueueTarget
+    readonly preset: ScenePreset
+    readonly scene: SceneCard
+}
+
+function normalizeSceneQueueTargets(targets: readonly SceneQueueTarget[]): SceneQueueTarget[] {
+    const normalized = new Map<string, SceneQueueTarget>()
+    for (const target of targets) {
+        if (!Number.isFinite(target.count) || target.count <= 0) continue
+        const count = Math.max(1, Math.floor(target.count))
+        const key = `${target.presetId}:${target.sceneId}`
+        const previous = normalized.get(key)
+        normalized.set(key, {
+            presetId: target.presetId,
+            sceneId: target.sceneId,
+            count: Math.min(999, (previous?.count ?? 0) + count),
+        })
+    }
+    return [...normalized.values()]
+}
+
 export function enqueueCurrentSceneQueue(): Promise<CreateBatchAndEnqueueResult | null> {
-    sceneEnqueueInFlight ??= enqueueCurrentSceneQueueOnce().finally(() => {
+    const sceneState = useSceneStore.getState()
+    const presetId = sceneState.activePresetId
+    const preset = sceneState.presets.find(candidate => candidate.id === presetId)
+    if (presetId === null || preset === undefined) return Promise.resolve(null)
+    const targets = sceneState.getQueuedScenes(presetId).map(scene => ({
+        presetId,
+        sceneId: scene.id,
+        count: scene.queueCount,
+    }))
+    return enqueueSceneQueueTargets(targets, { origin: 'legacy-conversion' })
+}
+
+export function enqueueSceneQueueTargets(
+    targets: readonly SceneQueueTarget[],
+    options: { origin?: QueueBatchOrigin } = {},
+): Promise<CreateBatchAndEnqueueResult | null> {
+    const normalizedTargets = normalizeSceneQueueTargets(targets)
+    if (normalizedTargets.length === 0) return Promise.resolve(null)
+    sceneEnqueueInFlight ??= enqueueSceneQueueTargetsOnce(
+        normalizedTargets,
+        options.origin ?? 'fresh',
+    ).finally(() => {
         sceneEnqueueInFlight = null
     })
     return sceneEnqueueInFlight
 }
 
-async function enqueueCurrentSceneQueueOnce(): Promise<CreateBatchAndEnqueueResult | null> {
+async function enqueueSceneQueueTargetsOnce(
+    targets: readonly SceneQueueTarget[],
+    origin: QueueBatchOrigin,
+): Promise<CreateBatchAndEnqueueResult | null> {
     const sceneState = useSceneStore.getState()
-    const presetId = sceneState.activePresetId
-    const preset = sceneState.presets.find(candidate => candidate.id === presetId)
-    if (presetId === null || preset === undefined) return null
-    const queuedScenes = sceneState.getQueuedScenes(presetId)
-    if (queuedScenes.length === 0) return null
+    const selected: ResolvedSceneQueueTarget[] = targets.flatMap(target => {
+        const preset = sceneState.presets.find(candidate => candidate.id === target.presetId)
+        const scene = preset?.scenes.find(candidate => candidate.id === target.sceneId)
+        return preset === undefined || scene === undefined ? [] : [{ target, preset, scene }]
+    })
+    if (selected.length === 0) return null
     const operationId = useQueueStore.getState().beginEnqueueOperation('scene')
 
     const settings = useSettingsStore.getState()
@@ -98,25 +159,6 @@ async function enqueueCurrentSceneQueueOnce(): Promise<CreateBatchAndEnqueueResu
     const rotationCharacterId = rotation.active && rotation.snapshot
         ? rotation.characterIds[rotation.currentIndex]
         : undefined
-    const saveContext: SaveSceneResultContext = {
-        activePresetId: presetId,
-        sceneSavePath: settings.sceneSavePath,
-        ...(rotationCharacterId === undefined ? {} : { rotationCharacterId }),
-        ...(rotationCharacterId === undefined
-            ? {}
-            : {
-                rotationCharacterFolderName: getRotationCharacterFolderName(
-                    rotationCharacterId,
-                    rotation.currentIndex,
-                ) ?? undefined,
-            }),
-    }
-    const outputContext: SceneQueueWorkflowSnapshot['outputContext'] = {
-        useAbsoluteScenePath: settings.useAbsoluteScenePath,
-        metadataMode: settings.metadataMode,
-        presetName: preset.name || 'Default',
-        sceneName: '',
-    }
     const materializer = getRuntimeQueueResourceMaterializer()
     const resourceCache = new Map<string, Promise<MaterializedQueueResource>>()
     const resources = new Map<string, QueueResourceRecord>()
@@ -127,11 +169,31 @@ async function enqueueCurrentSceneQueueOnce(): Promise<CreateBatchAndEnqueueResu
     }> = []
 
     try {
-        for (const scene of queuedScenes) {
-            for (let count = 0; count < scene.queueCount; count += 1) {
+        for (const { target, preset, scene } of selected) {
+            const saveContext: SaveSceneResultContext = {
+                activePresetId: preset.id,
+                sceneSavePath: settings.sceneSavePath,
+                ...(rotationCharacterId === undefined ? {} : { rotationCharacterId }),
+                ...(rotationCharacterId === undefined
+                    ? {}
+                    : {
+                        rotationCharacterFolderName: getRotationCharacterFolderName(
+                            rotationCharacterId,
+                            rotation.currentIndex,
+                        ) ?? undefined,
+                    }),
+            }
+            const outputContext: SceneQueueWorkflowSnapshot['outputContext'] = {
+                useAbsoluteScenePath: settings.useAbsoluteScenePath,
+                metadataMode: settings.metadataMode,
+                presetName: preset.name || 'Default',
+                sceneName: '',
+            }
+            for (let count = 0; count < target.count; count += 1) {
                 const built = await buildSceneGenerationParams(scene, {
-                    requestId: `durable-enqueue:${scene.id}:${count}`,
+                    requestId: `durable-enqueue:${preset.id}:${scene.id}:${count}`,
                     now: new Date(),
+                    presetId: preset.id,
                 })
                 sceneState.recordSceneCompositionResult(scene.id, {
                     mode: built.mode,
@@ -202,7 +264,7 @@ async function enqueueCurrentSceneQueueOnce(): Promise<CreateBatchAndEnqueueResu
             workflow: 'scene',
             createdAt,
             failurePolicy: 'continue',
-            origin: 'legacy-conversion',
+            origin,
             idempotencyKey: `scene-enqueue-${operationId}`,
         },
         jobs,

@@ -11,7 +11,7 @@ import { appDataDir, join } from '@tauri-apps/api/path'
 
 let _referencesDir: string | null = null
 
-/** Get (or create) the references directory: AppData/NAIS2/references/ */
+/** Get (or create) the references directory: AppData/NAIS blue/references/ */
 export async function getReferencesDir(): Promise<string> {
     if (_referencesDir) return _referencesDir
     const appData = await appDataDir()

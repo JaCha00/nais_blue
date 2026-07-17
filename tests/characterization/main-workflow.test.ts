@@ -513,14 +513,14 @@ function summarizeOutput(): Record<string, unknown> {
     }
 
     if (output.policy === 'filesystem') {
-        const imageWrite = runtimeCapture.writes.find(write => !write.location.endsWith('.nais2.json'))
+        const imageWrite = runtimeCapture.writes.find(write => !write.location.endsWith('.nais-blue.json'))
         if (!imageWrite || typeof location !== 'string') throw new Error('Missing Main filesystem output capture')
         const expectedResolvedPath = `C:/Synthetic/Pictures/${imageWrite.location}`
         expect(location).toBe(expectedResolvedPath)
         output.targetSegments = imageWrite.location.split('/').slice(0, -1)
         output.baseDirectoryUsed = imageWrite.baseDirPresent
-        output.generatedFileCount = runtimeCapture.writes.filter(write => !write.location.endsWith('.nais2.json')).length
-        output.sidecarFileCount = runtimeCapture.writes.filter(write => write.location.endsWith('.nais2.json')).length
+        output.generatedFileCount = runtimeCapture.writes.filter(write => !write.location.endsWith('.nais-blue.json')).length
+        output.sidecarFileCount = runtimeCapture.writes.filter(write => write.location.endsWith('.nais-blue.json')).length
         output.resolvedPathMatchesMockPlatformRoot = location === expectedResolvedPath
     }
 
@@ -550,7 +550,7 @@ async function runScenario(name: string): Promise<Record<string, unknown>> {
         expect(embeddedParams?.redactedPayloadHash).toBe(expectedPayloadHash)
     }
     else expect(embeddedMetadata).toBeNull()
-    const sidecarWrite = runtimeCapture.writes.find(write => write.location.endsWith('.nais2.json'))
+        const sidecarWrite = runtimeCapture.writes.find(write => write.location.endsWith('.nais-blue.json'))
     const sidecarParams = sidecarWrite
         ? JSON.parse(new TextDecoder().decode(sidecarWrite.data))
         : null
@@ -1197,7 +1197,7 @@ describe('Main workflow golden characterization', () => {
 
         expect(runtimeCapture.writes.map(write => write.location)).toEqual([
             `V2/Gallery/fixed_${FIXED_SEED}.webp`,
-            `V2/Gallery/fixed_${FIXED_SEED}.nais2.json`,
+            `V2/Gallery/fixed_${FIXED_SEED}.nais-blue.json`,
         ])
         expect([...runtimeCapture.files.keys()].some(location => location.includes('nais2/output-journal')))
             .toBe(false)

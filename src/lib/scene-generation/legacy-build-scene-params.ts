@@ -45,6 +45,7 @@ export async function resolveLegacySceneAssetModulePlan(
     seed: number,
     options: {
         recipeId?: string
+        presetId?: string
         now?: Date
         wildcardProcessor?: (prompt: string) => string | Promise<string>
     } = {},
@@ -53,8 +54,11 @@ export async function resolveLegacySceneAssetModulePlan(
     if (!profile.recipes.some(recipe => recipe.enabled)) return null
 
     const sceneState = useSceneStore.getState()
-    const activePreset = sceneState.activePresetId
-        ? sceneState.presets.find(preset => preset.id === sceneState.activePresetId)
+    // Queue Center supplies presetId so filename/module snapshots retain the
+    // selected folder even when it is not the UI's active preset.
+    const targetPresetId = options.presetId ?? sceneState.activePresetId
+    const activePreset = targetPresetId
+        ? sceneState.presets.find(preset => preset.id === targetPresetId)
         : undefined
     const sceneNumber = activePreset
         ? activePreset.scenes.findIndex(item => item.id === scene.id) + 1
@@ -102,13 +106,17 @@ export function selectSceneGenerationSeed(seedLocked: boolean, seed: number): nu
     return finalSeed
 }
 
-export async function buildLegacySceneGenerationParams(scene: SceneCard): Promise<SceneGenerationBuildResult> {
+export async function buildLegacySceneGenerationParams(
+    scene: SceneCard,
+    options: { presetId?: string } = {},
+): Promise<SceneGenerationBuildResult> {
     const genState = useGenerationStore.getState()
     const fragmentSession = createWildcardResolutionSession()
 
     const finalSeed = selectSceneGenerationSeed(genState.seedLocked, genState.seed)
 
     const modulePlan = await resolveLegacySceneAssetModulePlan(scene, finalSeed, {
+        presetId: options.presetId,
         wildcardProcessor: fragmentSession.process,
     })
     const modulePromptsActive = hasAssetModulePrompts(modulePlan)

@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Tracks a connected Android NAIS2 process for idle busy-loop and growth signals.
+Tracks a connected Android NAIS blue process for idle busy-loop and growth signals.
 
 .DESCRIPTION
 This script complements scripts/verify-android-port-contract.mjs: the contract
 prevents known mobile regressions statically, while this runtime check samples
-the installed app through adb. Keep NAIS2 visible and do not generate images
+the installed app through adb. Keep NAIS blue visible and do not generate images
 during the capture, because the thresholds intentionally describe an idle UI.
 
 CSV samples and a JSON summary are written under .artifacts/android-idle unless

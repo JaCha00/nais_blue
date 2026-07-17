@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build script for NAIS2 Tagger Server Sidecar (macOS)
+# Build script for NAIS blue Tagger Server Sidecar (macOS)
 # Run this from the python directory
 
 echo "===================================="
-echo "NAIS2 Tagger Server - macOS Build"
+echo "NAIS blue Tagger Server - macOS Build"
 echo "===================================="
 echo ""
 

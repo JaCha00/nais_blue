@@ -1,4 +1,4 @@
-# NAIS2 Mobile And Remote Sync Status
+# NAIS blue Mobile And Remote Sync Status
 
 This file is the public release boundary between the Android runtime work that
 ships in the current 2.8.3 release and the cross-device sync system that does

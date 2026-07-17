@@ -21,7 +21,7 @@ const TOKEN_CANARY = 'fixture-only-nai-token-do-not-log'
 const R2_CANARY = 'fixture-only-r2-signature-do-not-log'
 const PROMPT_CANARY = 'fixture-only prompt body that must never appear in diagnostics'
 const SIGNED_URL_CANARY = `https://bucket.example.test/image.png?X-Amz-Credential=${R2_CANARY}&X-Amz-Signature=${R2_CANARY}`
-const HOME_PATH_CANARY = 'C:\\Users\\fixture-user\\AppData\\Roaming\\NAIS2\\output.png'
+const HOME_PATH_CANARY = 'C:\\Users\\fixture-user\\AppData\\Roaming\\NAIS blue\\output.png'
 
 function error(message: string, name = 'Error'): Error {
     const value = new Error(message)

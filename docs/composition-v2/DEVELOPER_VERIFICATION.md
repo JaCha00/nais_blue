@@ -144,9 +144,9 @@ data clear 또는 app-data clear로 testbed를 변형하지 않는다.
 
 `ACCESS_BROADCAST_RESPONSE_STATS`, `READ_SAFETY_CENTER_STATUS`,
 `SEND_SAFETY_CENTER_UPDATE`가 logcat에 보이면 crash line의 `Process:`를 함께 확인한다. 이 권한들은
-M500_MIKU package manager에서 signature/privileged 계열이며 GMS process denial이었다. NAIS2
+M500_MIKU package manager에서 signature/privileged 계열이며 GMS process denial이었다. NAIS blue
 manifest에 선언하거나 runtime permission dialog로 요청하지 않는다. `test:android-port`는 generated
-manifest에 세 privileged permission이 들어오면 실패한다. Runtime request는 NAIS2가 실제로 호출하는
+manifest에 세 privileged permission이 들어오면 실패한다. Runtime request는 NAIS blue가 실제로 호출하는
 dangerous permission과 app-owned failure stack이 확인된 경우에만 별도 characterization 뒤 추가한다.
 
 Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix

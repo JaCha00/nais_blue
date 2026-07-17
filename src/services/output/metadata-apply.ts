@@ -194,7 +194,7 @@ function normalizeLegacyModel(model: string | undefined): string | undefined {
     return undefined
 }
 
-/** Explicit compatibility boundary for NAI/NAIS2 v1/A1111 metadata. */
+/** Explicit compatibility boundary for NAI/legacy NAIS blue v1/A1111 metadata. */
 export function importLegacyMetadataCompatibility(
     metadata: NAIMetadata,
     options: MetadataApplyOptions,
@@ -368,8 +368,9 @@ export function createMetadataApplyPreview(
     options: MetadataApplyOptions,
     current: MetadataApplyCurrentState = captureMetadataApplyCurrentState(options.targetPresetId),
 ): MetadataApplyPreview {
-    const changeSet = metadata.nais2?.version === 2
-        ? importV2Metadata(metadata, metadata.nais2, options)
+    const embeddedMetadata = metadata.naisBlue ?? metadata.nais2
+    const changeSet = embeddedMetadata?.version === 2
+        ? importV2Metadata(metadata, embeddedMetadata, options)
         : importLegacyMetadataCompatibility(metadata, options)
     return {
         sourceVersion: changeSet.sourceVersion,

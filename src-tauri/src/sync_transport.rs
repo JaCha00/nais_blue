@@ -1995,7 +1995,7 @@ mod desktop {
     fn ca_params() -> CertificateParams {
         let mut params = CertificateParams::default();
         let mut name = DistinguishedName::new();
-        name.push(DnType::CommonName, "NAIS2 Secure LAN Sync CA");
+        name.push(DnType::CommonName, "NAIS blue Secure LAN Sync CA");
         params.distinguished_name = name;
         params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
         params.key_usages = vec![
@@ -2090,7 +2090,7 @@ mod desktop {
         let mut params =
             CertificateParams::new(Vec::<String>::new()).map_err(|_| certificate_error())?;
         let mut name = DistinguishedName::new();
-        name.push(DnType::CommonName, "NAIS2 Secure LAN Sync");
+        name.push(DnType::CommonName, "NAIS blue Secure LAN Sync");
         params.distinguished_name = name;
         params.is_ca = IsCa::ExplicitNoCa;
         params.subject_alt_names = vec![SanType::IpAddress(bind_ip)];
@@ -3037,7 +3037,7 @@ mod desktop {
             .connect_timeout(Duration::from_secs(10).min(total_timeout))
             .timeout(total_timeout)
             .pool_max_idle_per_host(1)
-            .user_agent("NAIS2-Secure-Sync/1");
+            .user_agent("NAIS-blue-Secure-Sync/1");
         if let Some(identity_pem) = identity_pem {
             let identity = reqwest::Identity::from_pem(identity_pem.as_bytes())
                 .map_err(|_| certificate_error())?;

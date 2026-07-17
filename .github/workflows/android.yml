@@ -235,7 +235,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           source_apk="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk"
           mkdir -p release-artifacts/android
-          asset_name="NAIS2_${version}-universal.apk"
+          asset_name="NAIS-blue_${version}-universal.apk"
           asset="release-artifacts/android/$asset_name"
           cp "$source_apk" "$asset"
           (

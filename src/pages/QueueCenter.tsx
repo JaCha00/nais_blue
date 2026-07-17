@@ -3,6 +3,7 @@ import {
     Activity,
     AlertCircle,
     EllipsisVertical,
+    ListPlus,
     Pause,
     Play,
     RotateCcw,
@@ -13,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { SceneQueueSelectionDialog } from '@/components/queue/SceneQueueSelectionDialog'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -34,7 +36,11 @@ import { cn } from '@/lib/utils'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
-import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
+import {
+    enqueueCurrentSceneQueue,
+    enqueueSceneQueueTargets,
+    type SceneQueueTarget,
+} from '@/services/queue/scene-queue-adapter'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { useSceneStore } from '@/stores/scene-store'
@@ -90,6 +96,7 @@ export default function QueueCenter() {
     const selectedBatchId = useQueueStore(state => state.selectedBatchId)
     const setExecutionAuthority = useQueueStore(state => state.setExecutionAuthority)
     const setSelectedBatchId = useQueueStore(state => state.setSelectedBatchId)
+    const scenePresets = useSceneStore(state => state.presets)
     const legacyQueueCount = useSceneStore(state => {
         const activePreset = state.presets.find(preset => preset.id === state.activePresetId)
         return activePreset?.scenes.reduce((total, scene) => total + scene.queueCount, 0) ?? 0
@@ -111,6 +118,7 @@ export default function QueueCenter() {
     const [focusedIndex, setFocusedIndex] = useState(0)
     const [busy, setBusy] = useState(false)
     const [conversionOpen, setConversionOpen] = useState(false)
+    const [sceneSelectionOpen, setSceneSelectionOpen] = useState(false)
 
     const selectedBatch = batches.find(batch => batch.id === selectedBatchId) ?? null
     const summary = projectionMeta?.batchId === selectedBatchId ? projectionMeta.summary : null
@@ -316,6 +324,18 @@ export default function QueueCenter() {
         })
     }
 
+    const enqueueSelectedScenes = async (targets: readonly SceneQueueTarget[]): Promise<boolean> => {
+        let enqueued = false
+        await runAction(async () => {
+            const result = await enqueueSceneQueueTargets(targets)
+            if (result === null) return
+            setSelectedBatchId(result.batch.id)
+            await coordinator.drain()
+            enqueued = true
+        })
+        return enqueued
+    }
+
     const focusRow = (index: number) => {
         if (filteredTotal === 0) return
         const bounded = Math.max(0, Math.min(filteredTotal - 1, index))
@@ -398,6 +418,14 @@ export default function QueueCenter() {
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                            variant="outline"
+                            disabled={busy || scenePresets.every(preset => preset.scenes.length === 0)}
+                            onClick={() => setSceneSelectionOpen(true)}
+                        >
+                            <ListPlus className="mr-2 h-4 w-4" />
+                            {t('queue.selectScenes', 'Select scenes from folders')}
+                        </Button>
                         <label className="text-xs text-muted-foreground">
                             <span className="sr-only">{t('queue.executionMode', 'Execution method')}</span>
                             <select
@@ -661,6 +689,13 @@ export default function QueueCenter() {
                 confirmText={t('queue.convertLegacyConfirm', 'Move jobs')}
                 cancelText={t('common.cancel', 'Cancel')}
                 onConfirm={convertLegacyQueue}
+            />
+            <SceneQueueSelectionDialog
+                open={sceneSelectionOpen}
+                onOpenChange={setSceneSelectionOpen}
+                presets={scenePresets}
+                busy={busy}
+                onEnqueue={enqueueSelectedScenes}
             />
         </main>
     )

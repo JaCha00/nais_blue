@@ -943,7 +943,7 @@ export const useSceneStore = create<SceneState>()(
                             })
                         }
                     }
-                    // Case D: Standard ScenePreset Format (NAIS2)
+                    // Case D: Standard ScenePreset Format (NAIS blue)
                     else if (jsonContent.scenes && Array.isArray(jsonContent.scenes)) {
                         newName = jsonContent.name || "Use Preset"
                         newScenes = jsonContent.scenes.map((s: any) => ({

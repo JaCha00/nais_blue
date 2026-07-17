@@ -24,7 +24,7 @@ const getNodePackageName = (normalizedId: string) => {
 export default defineConfig({
     plugins: [react()],
     define: {
-        __NAIS2_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
+        __NAIS_BLUE_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
     },
     resolve: {
         alias: {

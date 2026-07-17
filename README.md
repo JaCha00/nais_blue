@@ -1,7 +1,7 @@
-# NAIS2 - NovelAI Image Studio 2
+# NAIS blue - NovelAI Image Studio
 
 <p align="center">
-  <img src="src-tauri/icons/icon.ico" alt="NAIS2 Logo" width="128" height="128">
+  <img src="public/Nais_Blue.png" alt="NAIS blue Logo" width="128" height="128">
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
 
 ## 📖 Overview
 
-**NAIS2 (NovelAI Image Studio 2)** is a feature-rich desktop application built with Tauri and React that provides an intuitive interface for generating AI images using the NovelAI API.
+**NAIS blue (NovelAI Image Studio)** is a feature-rich desktop application built with Tauri and React that provides an intuitive interface for generating AI images using the NovelAI API.
 
 ---
 
@@ -65,15 +65,15 @@
 Download from [Releases](../../releases).
 
 #### macOS Note
-If you see **"NAIS2 is damaged and can't be opened"** error, run this command in Terminal:
+If you see **"NAIS blue is damaged and can't be opened"** error, run this command in Terminal:
 ```bash
-xattr -cr /Applications/NAIS2.app
+xattr -cr "/Applications/NAIS blue.app"
 ```
 
 ### Build from Source
 ```bash
-git clone https://github.com/sunanakgo/NAIS2.git
-cd NAIS2
+git clone https://github.com/JaCha00/nais_blue.git
+cd nais_blue
 npm install
 npm run tauri dev      # Development
 npm run tauri build    # Production
@@ -83,7 +83,7 @@ npm run tauri build    # Production
 
 ## 🚀 Usage
 
-1. Launch NAIS2
+1. Launch NAIS blue
 2. Go to **Settings** → **API** → Enter NovelAI token (`pst-...`)
 3. Click **Verify**
 4. Start generating!
@@ -106,7 +106,7 @@ npm run tauri build    # Production
 ## 📁 Project Structure
 
 ```
-NAIS2/
+nais_blue/
 ├── src/                    # Frontend
 │   ├── components/         # React components
 │   ├── pages/              # Main pages

@@ -142,7 +142,7 @@ assert.match(
     'The isolated installer must pass the signed-build artifact explicitly to the release verifier',
 )
 assert.ok(!workflow.includes('Download pinned update baseline'))
-assert.ok(!workflow.includes('NAIS2_2.8.0-baseline.apk'))
+assert.ok(!workflow.includes('NAIS-blue_2.8.0-baseline.apk'))
 
 const desktopWorkflow = read('.github/workflows/build.yml')
 for (const requiredText of [
@@ -262,7 +262,7 @@ android {
     writeFileSync(
         manifestFile,
         `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="NAIS2" />
+    <application android:label="NAIS blue" />
 </manifest>
 `,
     )
