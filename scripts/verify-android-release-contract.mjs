@@ -38,7 +38,7 @@ assert.throws(
                 firstReleaseForApplicationId: true,
                 firstReleaseVersion: pkg.version,
             },
-            '2.8.3',
+            '2.8.4',
         ),
     /limited to firstReleaseVersion/,
 )
@@ -135,6 +135,11 @@ for (const requiredText of [
 assert.ok(
     workflow.indexOf('Remove signing material') < workflow.indexOf('signed-install:'),
     'Signing material must be removed before the no-secret emulator job starts',
+)
+assert.match(
+    workflow,
+    /script: >-\s+npm run test:android-release --\s+--apk "release-artifacts\/android\/\$\{\{ needs\.signed-build\.outputs\.asset_name \}\}"\s+--install/,
+    'The isolated installer must pass the signed-build artifact explicitly to the release verifier',
 )
 assert.ok(!workflow.includes('Download pinned update baseline'))
 assert.ok(!workflow.includes('NAIS2_2.8.0-baseline.apk'))

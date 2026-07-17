@@ -35,7 +35,7 @@ function nowIso(): string {
 }
 
 function appVersion(): string {
-    return import.meta.env.VITE_APP_VERSION ?? '2.8.2'
+    return import.meta.env.VITE_APP_VERSION ?? '2.8.3'
 }
 
 function runtimePlatform(): { platform: string, architecture: string } {
