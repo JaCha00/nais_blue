@@ -309,10 +309,12 @@ jobs:
           api-level: 35
           arch: x86_64
           profile: pixel_7
-          script: |
-            npm run test:android-release -- \
-              --apk "release-artifacts/android/${{ needs.signed-build.outputs.asset_name }}" \
-              --install
+          # Fold the signed-build artifact path into one shell command so this action preserves
+          # the APK argument while it installs and launches the final application ID.
+          script: >-
+            npm run test:android-release --
+            --apk "release-artifacts/android/${{ needs.signed-build.outputs.asset_name }}"
+            --install
 
   publish-android:
     if: ${{ inputs.release && startsWith(github.ref, 'refs/tags/v') }}
