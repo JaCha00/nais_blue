@@ -41,6 +41,7 @@ import {
     type GeneratedArtifactNotice,
     useArtifactLifecycleStore,
 } from '@/stores/artifact-lifecycle-store'
+import { QueueActivityLink } from './QueueActivityLink'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -1091,6 +1092,10 @@ export function HistoryPanel() {
                     </Button>
                 </div>
             </div>
+
+            {/* The indexed queue summary stays lightweight; Queue Center remains
+                the sole owner of detailed projections, retries, and job controls. */}
+            <QueueActivityLink />
 
             {/* History Grid */}
             <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pt-2">

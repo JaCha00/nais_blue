@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NavLink } from 'react-router-dom'
-import { ListTodo } from 'lucide-react'
+import { ChevronRight, ListTodo } from 'lucide-react'
 
 import type { QueueActivitySummary } from '@/domain/queue/types'
 import { cn } from '@/lib/utils'
 import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
-import { Tip } from '@/components/ui/tooltip'
+import { useLayoutStore } from '@/stores/layout-store'
 
 const QUEUE_ACTIVITY_REFRESH_MS = 5_000
 
@@ -33,9 +33,11 @@ export function getQueueActivityIndicator(summary: QueueActivitySummary): QueueA
 export function QueueActivityLink() {
     const { t } = useTranslation()
     const repository = useMemo(() => getRuntimeQueueRepository(), [])
+    const closeSupportSheet = useLayoutStore(state => state.closeSupportSheet)
     const refreshId = useRef(0)
     const [summary, setSummary] = useState<QueueActivitySummary>(EMPTY_QUEUE_ACTIVITY_SUMMARY)
     const indicator = getQueueActivityIndicator(summary)
+    const total = summary.processing + summary.waiting + summary.needsAttention
 
     const refresh = useCallback(async () => {
         const requestId = ++refreshId.current
@@ -80,45 +82,61 @@ export function QueueActivityLink() {
         },
     )
     const accessibleLabel = t('queue.activity.open', 'Open Queue Center · {{summary}}', { summary: summaryLabel })
-    const visibleLabel = indicator.count === 0
-        ? t('nav.queue', 'Queue Center')
+    const headline = indicator.count === 0
+        ? t('queue.activity.idle', 'No active jobs')
         : t('queue.activity.indicator', '{{label}} {{count}}', {
             label: labels[indicator.tone],
             count: indicator.count,
         })
 
     return (
-        <Tip content={accessibleLabel}>
+        <section className="shrink-0 px-5 pb-3" aria-label={t('queue.activity.reservedJobs', '예약 작업')}>
             <NavLink
                 to="/queue"
-                data-testid="global-queue-activity"
+                onClick={closeSupportSheet}
+                data-testid="history-queue-activity"
                 aria-label={accessibleLabel}
                 className={({ isActive }) => cn(
-                    'inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-control px-2 py-2 text-muted-foreground transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:px-3',
+                    'group block min-h-11 rounded-panel bg-canvas p-3 text-foreground transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
                     isActive
-                        ? 'bg-accent text-primary'
-                        : 'hover:bg-accent hover:text-foreground',
+                        ? 'ring-1 ring-primary/40'
+                        : 'hover:bg-accent',
                 )}
             >
-                <ListTodo className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="sr-only">{summaryLabel}</span>
-                <span className="hidden whitespace-nowrap text-xs font-medium sm:inline">{visibleLabel}</span>
-                {indicator.count > 0 && (
-                    <span
-                        aria-live="polite"
-                        className={cn(
-                            'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold sm:hidden',
-                            indicator.tone === 'attention'
-                                ? 'bg-destructive/15 text-destructive'
-                                : indicator.tone === 'processing'
-                                    ? 'bg-primary/15 text-primary'
-                                    : 'bg-warning/15 text-warning',
-                        )}
-                    >
-                        {indicator.count}
-                    </span>
-                )}
+                <div className="flex items-center gap-2">
+                    <ListTodo className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold">{t('queue.activity.reservedJobs', '예약 작업')}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{headline}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </div>
+
+                <dl className="mt-3 grid grid-cols-3 gap-2" aria-live="polite">
+                    {([
+                        ['processing', summary.processing, t('queue.activity.processing', '진행 중')],
+                        ['waiting', summary.waiting, t('queue.activity.waiting', '대기')],
+                        ['attention', summary.needsAttention, t('queue.activity.attention', '확인 필요')],
+                    ] as const).map(([key, count, label]) => (
+                        <div key={key} className="min-w-0 rounded-control bg-card px-2 py-1.5 text-center">
+                            <dt className="truncate text-[10px] text-muted-foreground">{label}</dt>
+                            <dd className={cn(
+                                'mt-0.5 font-mono text-sm font-semibold',
+                                key === 'attention' && count > 0 && 'text-destructive',
+                                key === 'processing' && count > 0 && 'text-primary',
+                            )}>
+                                {count}
+                            </dd>
+                        </div>
+                    ))}
+                </dl>
+
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                    {total === 0
+                        ? t('queue.activity.scheduleHint', '작업을 예약하면 여기에 표시됩니다.')
+                        : t('queue.activity.openDetails', '상세 현황과 제어는 큐 센터에서 확인')}
+                </p>
             </NavLink>
-        </Tip>
+        </section>
     )
 }
