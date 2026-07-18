@@ -95,16 +95,6 @@ assert.ok(
 const mobileCapabilities = readJson('src-tauri/capabilities/mobile.json')
 const mobilePermissions = JSON.stringify(mobileCapabilities.permissions)
 const desktopPermissions = JSON.stringify(desktopCapabilities.permissions)
-const requiredStrongholdPermissions = [
-    'stronghold:allow-initialize',
-    'stronghold:allow-create-client',
-    'stronghold:allow-load-client',
-    'stronghold:allow-get-store-record',
-    'stronghold:allow-save-store-record',
-    'stronghold:allow-remove-store-record',
-    'stronghold:allow-save',
-    'stronghold:allow-destroy',
-]
 
 assert.deepEqual(desktopCapabilities.platforms, ['windows', 'linux', 'macOS'])
 assert.deepEqual(mobileCapabilities.platforms, ['android', 'iOS'])
@@ -137,28 +127,22 @@ assert.ok(
 assert.ok(!mobilePermissions.includes('updater:'), 'mobile capability must not expose updater IPC')
 assert.ok(!mobilePermissions.includes(`${retiredUrlPluginKey}:`), 'mobile capability must not expose retired URL callback IPC')
 assert.ok(!desktopPermissions.includes(`${retiredUrlPluginKey}:`), 'desktop capability must not expose retired URL callback IPC')
-for (const permission of requiredStrongholdPermissions) {
-    assert.ok(
-        mobileCapabilities.permissions.includes(permission),
-        `mobile capability must expose the required Stronghold operation: ${permission}`,
-    )
-    assert.ok(
-        desktopCapabilities.permissions.includes(permission),
-        `desktop capability must expose the required Stronghold operation: ${permission}`,
-    )
-}
+// API tokens now use the frontend auth store and explicit generation guards.
+// Keep the retired native vault out of every platform graph so capability,
+// JavaScript, and Rust dependency removal cannot drift independently.
 assert.ok(
-    !mobileCapabilities.permissions.includes('stronghold:default'),
-    'mobile capability must not grant the broad Stronghold default permission set',
+    !mobilePermissions.includes('stronghold:'),
+    'mobile capability must not expose retired Stronghold IPC',
 )
 assert.ok(
-    !desktopCapabilities.permissions.includes('stronghold:default'),
-    'desktop capability must not grant the broad Stronghold default permission set',
+    !desktopPermissions.includes('stronghold:'),
+    'desktop capability must not expose retired Stronghold IPC',
 )
 assert.ok(
-    rust.includes('tauri_plugin_stronghold::Builder::with_argon2'),
-    'native startup must initialize Stronghold with the official Argon2 builder',
+    !cargoToml.includes('tauri-plugin-stronghold') && !rust.includes('tauri_plugin_stronghold'),
+    'native dependency and startup graphs must not restore the retired Stronghold backend',
 )
+assert.equal(pkg.dependencies?.['@tauri-apps/plugin-stronghold'], undefined)
 assert.ok(
     rust.includes('.manage(nai_transport::NaiTransportState::default())') &&
         rust.includes('nai_transport::nai_generate_request') &&
