@@ -1,24 +1,9 @@
 import { create } from 'zustand'
 
-import {
-    CredentialVaultError,
-    type CredentialRef,
-    type CredentialVaultErrorCode,
-} from '@/domain/credentials/types'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { getUserInfo, verifyToken, type AnlasInfo } from '@/services/novelai-api'
 import { getRuntimeAuthMigrationStorage } from '@/services/credentials/auth-migration-storage'
-import {
-    completeLegacyAuthMigration,
-    initializeEmptyAuthStateV3,
-    inspectAuthPersistence,
-    persistAuthStateV3,
-    resumeInterruptedAuthMigration,
-    type AuthPersistenceInspection,
-    type AuthPersistenceStatus,
-    type AuthStateV3Persisted,
-} from '@/services/credentials/auth-vault-migration'
-import { getRuntimeCredentialVault } from '@/services/credentials/stronghold-credential-vault'
+import { AUTH_STORE_KEY } from '@/services/credentials/auth-vault-migration'
 
 export type ApiSlot = 1 | 2
 
@@ -27,35 +12,27 @@ export interface ActiveTokenEntry {
     token: string
 }
 
-export type CredentialVaultStatus = 'unavailable' | 'locked' | 'unlocking' | 'unlocked' | 'error'
-
-export interface AuthState {
+interface LocalAuthState {
     token: string
-    isVerified: boolean
-    tier: string | null
-    anlas: AnlasInfo | null
-    slot1Enabled: boolean
-    slot1CredentialRef: CredentialRef | null
-
     token2: string
-    isVerified2: boolean
-    tier2: string | null
-    anlas2: AnlasInfo | null
+    slot1Enabled: boolean
     slot2Enabled: boolean
-    slot2CredentialRef: CredentialRef | null
+    tier: string | null
+    tier2: string | null
+}
 
+export interface AuthState extends LocalAuthState {
+    isVerified: boolean
+    anlas: AnlasInfo | null
+    isVerified2: boolean
+    anlas2: AnlasInfo | null
     isLoading: boolean
     isCredentialStateInitialized: boolean
-    vaultStatus: CredentialVaultStatus
-    vaultExists: boolean
-    vaultDialogOpen: boolean
-    credentialMigrationStatus: AuthPersistenceStatus | 'not-initialized' | 'failed'
-    vaultErrorCode: CredentialVaultErrorCode | null
+    tokenDialogOpen: boolean
+    authError: string | null
 
-    setVaultDialogOpen: (open: boolean) => void
-    requestCredentialUnlock: () => void
-    unlockVault: (passphrase: string) => Promise<boolean>
-    lockVault: () => Promise<void>
+    setTokenDialogOpen: (open: boolean) => void
+    requestTokenEntry: () => void
     verifyAndSave: (token: string, slot?: ApiSlot) => Promise<boolean>
     reverifyCredential: (slot?: ApiSlot) => Promise<boolean>
     refreshAnlas: (slot?: ApiSlot) => Promise<void>
@@ -67,230 +44,114 @@ export interface AuthState {
     getActiveTokens: () => ActiveTokenEntry[]
 }
 
-let pendingInspection: AuthPersistenceInspection | null = null
+const DEFAULT_LOCAL_AUTH: LocalAuthState = {
+    token: '',
+    token2: '',
+    slot1Enabled: true,
+    slot2Enabled: true,
+    tier: null,
+    tier2: null,
+}
 
-function persistedFromState(state: AuthState): AuthStateV3Persisted {
+function stringOrEmpty(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : ''
+}
+
+function nullableString(value: unknown): string | null {
+    return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+/**
+ * NovelAI tokens depend only on this app's local IndexedDB storage. They are
+ * deliberately absent from backup projections, so the desktop can start
+ * generation immediately after restart without a separate vault session while
+ * exported backups still require token re-entry on another machine.
+ */
+function parseLocalAuth(raw: string | null): LocalAuthState {
+    if (raw === null) return DEFAULT_LOCAL_AUTH
+    try {
+        const payload = JSON.parse(raw) as Record<string, unknown>
+        const state = payload.state && typeof payload.state === 'object'
+            ? payload.state as Record<string, unknown>
+            : payload
+        return {
+            token: stringOrEmpty(state.token),
+            token2: stringOrEmpty(state.token2),
+            slot1Enabled: typeof state.slot1Enabled === 'boolean' ? state.slot1Enabled : true,
+            slot2Enabled: typeof state.slot2Enabled === 'boolean' ? state.slot2Enabled : true,
+            tier: nullableString(state.tier),
+            tier2: nullableString(state.tier2),
+        }
+    } catch {
+        return DEFAULT_LOCAL_AUTH
+    }
+}
+
+function serializeLocalAuth(state: LocalAuthState): string {
+    return JSON.stringify({ state, version: 4 })
+}
+
+async function persistLocalAuth(state: LocalAuthState): Promise<void> {
+    await getRuntimeAuthMigrationStorage().setStrict(AUTH_STORE_KEY, serializeLocalAuth(state))
+}
+
+function localProjection(state: AuthState): LocalAuthState {
     return {
-        slot1CredentialRef: state.slot1CredentialRef,
-        slot2CredentialRef: state.slot2CredentialRef,
+        token: state.token,
+        token2: state.token2,
         slot1Enabled: state.slot1Enabled,
         slot2Enabled: state.slot2Enabled,
-        tier: state.tier as AuthStateV3Persisted['tier'],
-        tier2: state.tier2 as AuthStateV3Persisted['tier2'],
+        tier: state.tier,
+        tier2: state.tier2,
     }
 }
 
-function runtimePatchFromPersisted(persisted: AuthStateV3Persisted): Partial<AuthState> {
-    return {
-        slot1CredentialRef: persisted.slot1CredentialRef,
-        slot2CredentialRef: persisted.slot2CredentialRef,
-        slot1Enabled: persisted.slot1Enabled,
-        slot2Enabled: persisted.slot2Enabled,
-        tier: persisted.tier,
-        tier2: persisted.tier2,
-    }
-}
-
-function vaultErrorCode(error: unknown): CredentialVaultErrorCode {
-    return error instanceof CredentialVaultError ? error.code : 'operation-failed'
-}
-
-function reportVaultError(error: unknown, operation: string): void {
+function reportAuthError(error: unknown, operation: string): void {
     reportDiagnostic(error, {
         operation,
-        stage: 'credential-vault',
+        stage: 'local-auth',
         category: 'auth',
         recoverable: true,
     })
 }
 
-async function loadSessionSecret(ref: CredentialRef | null): Promise<string> {
-    if (ref === null) return ''
-    const secret = await getRuntimeCredentialVault().get(ref)
-    if (secret === null || secret.slice(-4) !== ref.lastFour) {
-        throw new CredentialVaultError('not-found', 'Credential was not found.')
-    }
-    return secret
-}
-
 export const useAuthStore = create<AuthState>()((set, get) => ({
-    token: '',
+    ...DEFAULT_LOCAL_AUTH,
     isVerified: false,
-    tier: null,
     anlas: null,
-    slot1Enabled: true,
-    slot1CredentialRef: null,
-
-    token2: '',
     isVerified2: false,
-    tier2: null,
     anlas2: null,
-    slot2Enabled: true,
-    slot2CredentialRef: null,
-
     isLoading: false,
     isCredentialStateInitialized: false,
-    vaultStatus: 'unavailable',
-    vaultExists: false,
-    vaultDialogOpen: false,
-    credentialMigrationStatus: 'not-initialized',
-    vaultErrorCode: null,
+    tokenDialogOpen: false,
+    authError: null,
 
-    setVaultDialogOpen: (open) => set({ vaultDialogOpen: open }),
-    requestCredentialUnlock: () => set({ vaultDialogOpen: true }),
-
-    unlockVault: async (passphrase) => {
-        set({
-            isLoading: true,
-            vaultStatus: 'unlocking',
-            vaultErrorCode: null,
-        })
-        const vault = getRuntimeCredentialVault()
-        const storage = getRuntimeAuthMigrationStorage()
-        try {
-            const unlockResult = await vault.unlock(passphrase)
-            const freshInspection = await inspectAuthPersistence(storage)
-            const inspection = pendingInspection?.status === 'legacy-pending'
-                && freshInspection.status === 'legacy-pending'
-                ? {
-                    ...freshInspection,
-                    legacySecrets: pendingInspection.legacySecrets,
-                    legacyMetadata: pendingInspection.legacyMetadata,
-                }
-                : freshInspection
-            pendingInspection = inspection
-
-            let persisted = inspection.persisted
-            if (inspection.status === 'legacy-pending') {
-                const migration = await completeLegacyAuthMigration({ storage, vault, inspection })
-                persisted = migration.persisted
-            } else if (inspection.status === 'v3-verification-pending') {
-                const migration = await resumeInterruptedAuthMigration({ storage, vault, inspection })
-                persisted = migration.persisted
-            } else if (inspection.status === 'empty') {
-                persisted = await initializeEmptyAuthStateV3(storage)
-            }
-
-            const [token, token2] = await Promise.all([
-                loadSessionSecret(persisted.slot1CredentialRef),
-                loadSessionSecret(persisted.slot2CredentialRef),
-            ])
-            pendingInspection = null
-            set({
-                ...runtimePatchFromPersisted(persisted),
-                token,
-                token2,
-                isVerified: token.length > 0 && persisted.slot1CredentialRef?.verifiedAt !== undefined,
-                isVerified2: token2.length > 0 && persisted.slot2CredentialRef?.verifiedAt !== undefined,
-                anlas: null,
-                anlas2: null,
-                isLoading: false,
-                vaultStatus: 'unlocked',
-                vaultExists: unlockResult.created ? true : get().vaultExists,
-                vaultDialogOpen: inspection.status === 'legacy-pending' ? false : get().vaultDialogOpen,
-                credentialMigrationStatus: 'complete',
-                vaultErrorCode: null,
-            })
-            return true
-        } catch (error) {
-            await vault.lock().catch(() => undefined)
-            reportVaultError(error, 'credential-vault.unlock')
-            const code = vaultErrorCode(error)
-            set({
-                token: '',
-                token2: '',
-                isVerified: false,
-                isVerified2: false,
-                anlas: null,
-                anlas2: null,
-                isLoading: false,
-                vaultStatus: code === 'unavailable' ? 'unavailable' : code === 'wrong-passphrase' ? 'locked' : 'error',
-                vaultErrorCode: code,
-                vaultDialogOpen: true,
-            })
-            return false
-        }
-    },
-
-    lockVault: async () => {
-        try {
-            await getRuntimeCredentialVault().lock()
-        } catch (error) {
-            reportVaultError(error, 'credential-vault.lock')
-        } finally {
-            set({
-                token: '',
-                token2: '',
-                isVerified: false,
-                isVerified2: false,
-                anlas: null,
-                anlas2: null,
-                vaultStatus: get().vaultStatus === 'unavailable' ? 'unavailable' : 'locked',
-                vaultErrorCode: null,
-            })
-        }
-    },
+    setTokenDialogOpen: (open) => set({ tokenDialogOpen: open }),
+    requestTokenEntry: () => set({ tokenDialogOpen: true }),
 
     verifyAndSave: async (candidate, slot = 1) => {
-        if (!getRuntimeCredentialVault().isUnlocked()) {
-            set({ vaultDialogOpen: true, vaultStatus: get().vaultStatus === 'unavailable' ? 'unavailable' : 'locked' })
-            return false
-        }
         const secret = candidate.trim()
         if (secret.length === 0) return false
-        set({ isLoading: true, vaultErrorCode: null })
+        set({ isLoading: true, authError: null })
         try {
             const verification = await verifyToken(secret)
             if (!verification.valid) {
-                set({ isLoading: false })
+                set({ isLoading: false, authError: 'verification-failed' })
                 return false
             }
-
-            const state = get()
-            const existingRef = slot === 2 ? state.slot2CredentialRef : state.slot1CredentialRef
-            const ref = await getRuntimeCredentialVault().set('novelai-token', secret, {
-                id: slot === 2 ? 'novelai-slot-2' : 'novelai-slot-1',
-                existingRef,
-                verifiedAt: new Date().toISOString(),
-            })
-            const readback = await getRuntimeCredentialVault().get(ref)
-            if (readback !== secret) throw new CredentialVaultError('readback-failed', 'Credential vault verification failed.')
-
-            const nextPersisted: AuthStateV3Persisted = {
-                ...persistedFromState(state),
-                ...(slot === 2
-                    ? { slot2CredentialRef: ref, slot2Enabled: true, tier2: verification.tier ?? null }
-                    : { slot1CredentialRef: ref, slot1Enabled: true, tier: verification.tier ?? null }),
-            }
-            await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
+            const current = get()
+            const next: LocalAuthState = slot === 2
+                ? { ...localProjection(current), token2: secret, slot2Enabled: true, tier2: verification.tier ?? null }
+                : { ...localProjection(current), token: secret, slot1Enabled: true, tier: verification.tier ?? null }
+            await persistLocalAuth(next)
             set(slot === 2
-                ? {
-                    token2: secret,
-                    isVerified2: true,
-                    tier2: verification.tier ?? null,
-                    slot2Enabled: true,
-                    slot2CredentialRef: ref,
-                    anlas2: null,
-                    isLoading: false,
-                }
-                : {
-                    token: secret,
-                    isVerified: true,
-                    tier: verification.tier ?? null,
-                    slot1Enabled: true,
-                    slot1CredentialRef: ref,
-                    anlas: null,
-                    isLoading: false,
-                })
-
-            const userInfo = await getUserInfo(secret)
-            if (userInfo !== null) {
-                set(slot === 2 ? { anlas2: userInfo.anlas } : { anlas: userInfo.anlas })
-            }
+                ? { ...next, isVerified2: true, anlas2: null, isLoading: false }
+                : { ...next, isVerified: true, anlas: null, isLoading: false })
+            await get().refreshAnlas(slot)
             return true
         } catch (error) {
-            reportVaultError(error, 'credential-vault.register')
-            set({ isLoading: false, vaultErrorCode: vaultErrorCode(error) })
+            reportAuthError(error, 'local-auth.register')
+            set({ isLoading: false, authError: 'operation-failed' })
             return false
         }
     },
@@ -299,7 +160,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const state = get()
         const token = slot === 2 ? state.token2 : state.token
         if (token.length === 0) {
-            set({ vaultDialogOpen: true })
+            state.requestTokenEntry()
             return false
         }
         return state.verifyAndSave(token, slot)
@@ -310,10 +171,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const token = slot === 2 ? state.token2 : state.token
         const verified = slot === 2 ? state.isVerified2 : state.isVerified
         if (!token || !verified) return
-
-        const userInfo = await getUserInfo(token)
-        if (userInfo !== null) {
-            set(slot === 2 ? { anlas2: userInfo.anlas } : { anlas: userInfo.anlas })
+        try {
+            const userInfo = await getUserInfo(token)
+            if (userInfo !== null) set(slot === 2 ? { anlas2: userInfo.anlas } : { anlas: userInfo.anlas })
+        } catch (error) {
+            reportAuthError(error, 'local-auth.balance')
         }
     },
 
@@ -323,72 +185,30 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
     deleteCredential: async (slot = 1) => {
         const state = get()
-        const ref = slot === 2 ? state.slot2CredentialRef : state.slot1CredentialRef
-        if (ref === null) return
-        if (!getRuntimeCredentialVault().isUnlocked()) {
-            set({ vaultDialogOpen: true })
-            throw new CredentialVaultError('locked', 'Credential vault is locked.')
-        }
-        set({ isLoading: true, vaultErrorCode: null })
-        try {
-            await getRuntimeCredentialVault().delete(ref)
-            if (await getRuntimeCredentialVault().get(ref) !== null) {
-                throw new CredentialVaultError('readback-failed', 'Credential vault verification failed.')
-            }
-            const nextPersisted: AuthStateV3Persisted = {
-                ...persistedFromState(state),
-                ...(slot === 2
-                    ? { slot2CredentialRef: null, slot2Enabled: false, tier2: null }
-                    : { slot1CredentialRef: null, slot1Enabled: false, tier: null }),
-            }
-            await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
-            set(slot === 2
-                ? {
-                    token2: '',
-                    isVerified2: false,
-                    tier2: null,
-                    anlas2: null,
-                    slot2Enabled: false,
-                    slot2CredentialRef: null,
-                    isLoading: false,
-                }
-                : {
-                    token: '',
-                    isVerified: false,
-                    tier: null,
-                    anlas: null,
-                    slot1Enabled: false,
-                    slot1CredentialRef: null,
-                    isLoading: false,
-                })
-        } catch (error) {
-            reportVaultError(error, 'credential-vault.delete')
-            set({ isLoading: false, vaultErrorCode: vaultErrorCode(error) })
-            throw error
-        }
+        const next: LocalAuthState = slot === 2
+            ? { ...localProjection(state), token2: '', slot2Enabled: false, tier2: null }
+            : { ...localProjection(state), token: '', slot1Enabled: false, tier: null }
+        await persistLocalAuth(next)
+        set(slot === 2
+            ? { ...next, isVerified2: false, anlas2: null }
+            : { ...next, isVerified: false, anlas: null })
     },
 
     clearToken: async (slot = 1) => get().deleteCredential(slot),
 
     setSlotEnabled: async (slot, enabled) => {
         const state = get()
-        const nextPersisted: AuthStateV3Persisted = {
-            ...persistedFromState(state),
-            ...(slot === 2 ? { slot2Enabled: enabled } : { slot1Enabled: enabled }),
-        }
-        try {
-            await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
-            set(slot === 2 ? { slot2Enabled: enabled } : { slot1Enabled: enabled })
-        } catch (error) {
-            reportVaultError(error, 'credential-vault.slot-enabled')
-            throw error
-        }
+        const next: LocalAuthState = slot === 2
+            ? { ...localProjection(state), slot2Enabled: enabled }
+            : { ...localProjection(state), slot1Enabled: enabled }
+        await persistLocalAuth(next)
+        set(next)
     },
 
     isSlotActive: (slot) => {
         const state = get()
-        if (slot === 2) return !!state.token2 && state.isVerified2 && state.slot2Enabled
-        return !!state.token && state.isVerified && state.slot1Enabled
+        if (slot === 2) return Boolean(state.token2 && state.isVerified2 && state.slot2Enabled)
+        return Boolean(state.token && state.isVerified && state.slot1Enabled)
     },
 
     getActiveTokens: () => {
@@ -400,89 +220,43 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     },
 }))
 
-async function hydrateAuthCredentialState(): Promise<void> {
-    const storage = getRuntimeAuthMigrationStorage()
-    try {
-        let inspection = await inspectAuthPersistence(storage)
-        if (inspection.status === 'empty') {
-            await initializeEmptyAuthStateV3(storage)
-            inspection = await inspectAuthPersistence(storage)
-        }
-        pendingInspection = {
-            ...inspection,
-            indexedRaw: null,
-            localRaw: null,
-        }
-        const availability = await getRuntimeCredentialVault().availability()
-        useAuthStore.setState({
-            ...runtimePatchFromPersisted(inspection.persisted),
-            token: '',
-            token2: '',
-            isVerified: false,
-            isVerified2: false,
-            anlas: null,
-            anlas2: null,
-            isLoading: false,
-            isCredentialStateInitialized: true,
-            vaultStatus: availability.available ? 'locked' : 'unavailable',
-            vaultExists: availability.exists,
-            vaultDialogOpen: inspection.status === 'legacy-pending',
-            credentialMigrationStatus: inspection.status,
-            vaultErrorCode: availability.available ? null : 'unavailable',
-        })
-    } catch (error) {
-        reportVaultError(error, 'credential-vault.hydration')
-        pendingInspection = null
-        useAuthStore.setState({
-            token: '',
-            token2: '',
-            isVerified: false,
-            isVerified2: false,
-            anlas: null,
-            anlas2: null,
-            isLoading: false,
-            isCredentialStateInitialized: true,
-            vaultStatus: 'error',
-            vaultDialogOpen: true,
-            credentialMigrationStatus: 'failed',
-            vaultErrorCode: vaultErrorCode(error),
-        })
-    }
-}
-
-let authCredentialInitializationPromise: Promise<void> | null = null
+let authInitializationPromise: Promise<void> | null = null
 
 export async function initializeAuthCredentialState(): Promise<void> {
     if (useAuthStore.getState().isCredentialStateInitialized) return
-    authCredentialInitializationPromise ??= hydrateAuthCredentialState()
+    authInitializationPromise ??= (async () => {
+        try {
+            const stored = parseLocalAuth(await getRuntimeAuthMigrationStorage().getStrict(AUTH_STORE_KEY))
+            useAuthStore.setState({
+                ...stored,
+                isVerified: stored.token.length > 0,
+                isVerified2: stored.token2.length > 0,
+                isCredentialStateInitialized: true,
+                authError: null,
+            })
+        } catch (error) {
+            reportAuthError(error, 'local-auth.hydration')
+            useAuthStore.setState({
+                ...DEFAULT_LOCAL_AUTH,
+                isVerified: false,
+                isVerified2: false,
+                isCredentialStateInitialized: true,
+                authError: 'operation-failed',
+            })
+        }
+    })()
     try {
-        await authCredentialInitializationPromise
+        await authInitializationPromise
     } finally {
-        authCredentialInitializationPromise = null
+        authInitializationPromise = null
     }
 }
 
-/** Wait for startup hydration (and an active unlock) before entering source-edit UI. */
-export async function waitForCredentialVaultReady(): Promise<boolean> {
+/** Source-edit and history actions use the same direct token readiness gate. */
+export async function waitForApiTokenReady(): Promise<boolean> {
     await initializeAuthCredentialState()
-    if (useAuthStore.getState().vaultStatus === 'unlocking') {
-        await new Promise<void>((resolve) => {
-            const finishWhenSettled = (status: CredentialVaultStatus) => {
-                if (status === 'unlocking') return
-                unsubscribe()
-                resolve()
-            }
-            const unsubscribe = useAuthStore.subscribe((state) => {
-                finishWhenSettled(state.vaultStatus)
-            })
-            finishWhenSettled(useAuthStore.getState().vaultStatus)
-        })
-    }
-
     const state = useAuthStore.getState()
-    const ready = state.isCredentialStateInitialized
-        && state.vaultStatus !== 'unavailable'
-        && state.vaultStatus !== 'error'
-    if (!ready) state.requestCredentialUnlock()
+    const ready = state.getActiveTokens().length > 0
+    if (!ready) state.requestTokenEntry()
     return ready
 }

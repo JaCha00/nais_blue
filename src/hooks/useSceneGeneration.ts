@@ -393,7 +393,7 @@ export function useSceneGeneration() {
             const tokens = useAuthStore.getState().getActiveTokens()
             if (tokens.length === 0) {
                 setIsGenerating(false)
-                useAuthStore.getState().requestCredentialUnlock()
+                useAuthStore.getState().requestTokenEntry()
                 toast({
                     title: t('toast.tokenRequired.title', '토큰 필요'),
                     description: t('toast.tokenRequired.desc', '먼저 API 토큰을 검증해주세요.'),

@@ -359,7 +359,7 @@ function assertCompositionShell(report, route, viewport) {
     assert.ok(report.commandBar, `${context} must show the composition command bar`)
 
     if (viewport.width >= 1536) {
-        if (route === '/' || route === '/scenes') {
+        if (route === '/') {
             assert.ok(report.promptDock, `${context} must keep the Prompt rail visible`)
             assert.equal(report.moduleStack, null, `${context} keeps Module Stack behind its explicit action to preserve canvas width`)
             assert.equal(report.inspector, null, `${context} keeps Context Inspector behind its explicit action to preserve canvas width`)
@@ -375,6 +375,18 @@ function assertCompositionShell(report, route, viewport) {
             )
             assert.ok(report.canvas, `${context} must show the center canvas/grid`)
             assert.ok(report.promptDock.right <= report.canvas.left + 24, `${context} must preserve Prompt rail → canvas ordering`)
+            return
+        }
+        if (route === '/scenes') {
+            // The public Scene workflow deliberately hides internal composition
+            // panels while preserving the prompt, canvas, and generation loop.
+            assert.ok(report.promptDock, `${context} must keep the Prompt rail visible`)
+            assert.equal(report.moduleStack, null, `${context} must hide the internal Module Stack`)
+            assert.equal(report.inspector, null, `${context} must hide the internal Context Inspector`)
+            assert.equal(report.moduleTrigger, null, `${context} must hide the internal Module Stack action`)
+            assert.equal(report.inspectorTrigger, null, `${context} must hide the internal Context Inspector action`)
+            assert.ok(report.canvas, `${context} must show the center scene grid`)
+            assert.ok(report.promptDock.right <= report.canvas.left + 24, `${context} must preserve Prompt rail → scene grid ordering`)
             return
         }
         assert.ok(report.moduleStack, `${context} must show the Module Stack rail`)
@@ -798,11 +810,8 @@ async function main() {
                         const mainRect = main?.getBoundingClientRect()
                         const mainDock = document.querySelector('[data-testid="main-command-dock"]')
                         const mainAction = document.querySelector('[data-testid="main-generate-action"]')
-                        const queueActivity = document.querySelector('[data-testid="global-queue-activity"]')
                         const dockRect = mainDock?.getBoundingClientRect()
                         const actionRect = mainAction?.getBoundingClientRect()
-                        const queueActivityRect = queueActivity?.getBoundingClientRect()
-                        const queueActivityStyle = queueActivity ? getComputedStyle(queueActivity) : null
 
                         return {
                             bodyScrollWidth: document.body.scrollWidth,
@@ -814,20 +823,6 @@ async function main() {
                             visibleSidebarCount: asides.filter(aside => aside.visible).length,
                             textareas: visibleTextareas,
                             navTargets,
-                            queueActivity: queueActivityRect && queueActivityStyle
-                                ? {
-                                    visible: queueActivityStyle.display !== 'none'
-                                        && queueActivityStyle.visibility !== 'hidden'
-                                        && queueActivityRect.width > 1
-                                        && queueActivityRect.height > 1,
-                                    width: queueActivityRect.width,
-                                    height: queueActivityRect.height,
-                                    withinViewport: queueActivityRect.left >= -1
-                                        && queueActivityRect.right <= window.innerWidth + 1
-                                        && queueActivityRect.top >= -1
-                                        && queueActivityRect.bottom <= window.innerHeight + 1,
-                                }
-                                : null,
                             mainDock: dockRect && actionRect ? {
                                 bottom: dockRect.bottom,
                                 actionHeight: actionRect.height,
@@ -858,16 +853,6 @@ async function main() {
                             `${route} @ ${viewport.width}px nav target ${index} is too small (${target.width}x${target.height})`,
                         )
                     }
-
-                    assert.ok(report.queueActivity?.visible, `${route} @ ${viewport.width}px must expose the global Queue activity link`)
-                    assert.ok(
-                        report.queueActivity.width >= 44 && report.queueActivity.height >= 44,
-                        `${route} @ ${viewport.width}px global Queue activity link is below 44px (${report.queueActivity.width}x${report.queueActivity.height})`,
-                    )
-                    assert.ok(
-                        report.queueActivity.withinViewport,
-                        `${route} @ ${viewport.width}px global Queue activity link leaves the viewport`,
-                    )
 
                     if (viewport.sidebars === 'hidden') {
                         assert.equal(
@@ -906,12 +891,14 @@ async function main() {
                             text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
                             `${route} @ ${viewport.width}px creates main overflow at 200% text`,
                         )
-                        if (viewport.width === 390) {
+                        // Scene workspaces intentionally use the simplified dock, which owns
+                        // generation only; the main workspace still exposes the module sheet.
+                        if (viewport.width === 390 && route === '/') {
                             await assertCompositionSheetFocusReturn(page, route, viewport)
                         }
                         if (viewport.width === 1536) {
                             await assertWideCompositionCoreLoop(page, route, viewport)
-                            await assertWideCompositionPanelAccess(page, route, viewport)
+                            if (route === '/') await assertWideCompositionPanelAccess(page, route, viewport)
                         }
                     }
 
@@ -1028,12 +1015,26 @@ async function main() {
                             await historySheet.waitFor({ state: 'visible' })
                             const historyReport = await historySheet.evaluate((sheet) => {
                                 const refresh = sheet.querySelector('[data-testid="history-refresh"]')
+                                const queueActivity = sheet.querySelector('[data-testid="history-queue-activity"]')
                                 const refreshRect = refresh?.getBoundingClientRect()
+                                const queueActivityRect = queueActivity?.getBoundingClientRect()
+                                const queueActivityStyle = queueActivity ? getComputedStyle(queueActivity) : null
                                 return {
                                     scrollWidth: sheet.scrollWidth,
                                     clientWidth: sheet.clientWidth,
                                     refreshWidth: refreshRect?.width ?? 0,
                                     refreshHeight: refreshRect?.height ?? 0,
+                                    queueActivityVisible: Boolean(
+                                        queueActivityRect
+                                        && queueActivityStyle
+                                        && queueActivityStyle.display !== 'none'
+                                        && queueActivityStyle.visibility !== 'hidden'
+                                        && queueActivityRect.width > 1
+                                        && queueActivityRect.height > 1
+                                    ),
+                                    queueActivityWidth: queueActivityRect?.width ?? 0,
+                                    queueActivityHeight: queueActivityRect?.height ?? 0,
+                                    queueActivityHref: queueActivity?.getAttribute('href') ?? '',
                                 }
                             })
                             assert.ok(historyReport.scrollWidth <= historyReport.clientWidth + 1, 'History Sheet has horizontal overflow')
@@ -1041,10 +1042,19 @@ async function main() {
                                 historyReport.refreshWidth >= 44 && historyReport.refreshHeight >= 44,
                                 `History refresh target is below 44px (${historyReport.refreshWidth}x${historyReport.refreshHeight})`,
                             )
+                            // History owns the lightweight reservation summary; this link is
+                            // the responsive handoff to Queue Center's detailed job controls.
+                            assert.ok(historyReport.queueActivityVisible, 'History Sheet must expose reserved Queue activity')
+                            assert.ok(
+                                historyReport.queueActivityWidth >= 44 && historyReport.queueActivityHeight >= 44,
+                                `History Queue activity target is below 44px (${historyReport.queueActivityWidth}x${historyReport.queueActivityHeight})`,
+                            )
+                            assert.equal(historyReport.queueActivityHref, '/queue', 'History Queue activity must open Queue Center')
                             if (evidenceDir) {
                                 await page.screenshot({ path: path.join(evidenceDir, 'history-sheet-390.png'), animations: 'disabled' })
                             }
-                            await page.keyboard.press('Escape')
+                            await historySheet.locator('[data-testid="history-queue-activity"]').click()
+                            await page.waitForURL(url => url.pathname === '/queue')
                             await historySheet.waitFor({ state: 'hidden' })
                         }
                     }

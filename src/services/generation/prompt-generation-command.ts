@@ -4,6 +4,7 @@ import {
 } from '@/services/generation/generation-command'
 import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
+import { ensureActiveGenerationCredential } from '@/services/generation/credential-guard'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useQueueStore } from '@/stores/queue-store'
@@ -15,6 +16,7 @@ export type PromptGenerationCommandOutcome =
     | 'cancel-requested'
     | 'rotation-stopped'
     | 'no-scene-work'
+    | 'credential-required'
     | 'blocked-conflict'
 
 /**
@@ -37,6 +39,7 @@ export async function executePromptGenerationCommand(
             else await cancelMainGenerationCommand()
             return 'cancel-requested'
         }
+        if (!ensureActiveGenerationCredential()) return 'credential-required'
         await startMainGenerationCommand()
         return 'started'
     }
@@ -63,6 +66,7 @@ export async function executePromptGenerationCommand(
         ? 0
         : scene.getTotalQueueCount(scene.activePresetId)
     if (sceneQueueCount === 0) return 'no-scene-work'
+    if (!ensureActiveGenerationCredential()) return 'credential-required'
     const result = await enqueueCurrentSceneQueue()
     if (result !== null) await getRuntimeDurableQueueCoordinator().drain()
     return result === null ? 'no-scene-work' : 'started'

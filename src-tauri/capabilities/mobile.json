@@ -47,14 +47,6 @@
     "dialog:default",
     "opener:default",
     "process:allow-restart",
-    "stronghold:allow-initialize",
-    "stronghold:allow-create-client",
-    "stronghold:allow-load-client",
-    "stronghold:allow-get-store-record",
-    "stronghold:allow-save-store-record",
-    "stronghold:allow-remove-store-record",
-    "stronghold:allow-save",
-    "stronghold:allow-destroy",
     "nais-android-transfer:default"
   ]
 }

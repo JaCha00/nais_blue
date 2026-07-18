@@ -7,7 +7,6 @@ import { PromptPanel } from './PromptPanel'
 import { HistoryPanel } from './HistoryPanel'
 import { AnimatedNavBar } from './AnimatedNavBar'
 import { CustomTitleBar } from './CustomTitleBar'
-import { QueueActivityLink } from './QueueActivityLink'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
 import { PresetDraftControls } from '@/components/preset/PresetDraftControls'
 import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
@@ -73,7 +72,7 @@ function useMediaQuery(query: string) {
 export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const { t } = useTranslation()
     const location = useLocation()
-    const { anlas, isVerified, anlas2, isVerified2, slot2Enabled, refreshAnlas, setSlotEnabled, getActiveTokens } = useAuthStore()
+    const { anlas, isVerified, anlas2, isVerified2, slot2Enabled, refreshAnlas, setSlotEnabled, getActiveTokens, requestTokenEntry } = useAuthStore()
     const {
         leftSidebarVisible,
         rightSidebarVisible,
@@ -286,12 +285,16 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-3 py-2">
+                    <button
+                        type="button"
+                        onClick={requestTokenEntry}
+                        className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                         <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden="true" />
                         <span className="min-w-0 truncate text-sm text-muted-foreground">
                             {t('settingsPage.api.token')}
                         </span>
-                    </div>
+                    </button>
                 )}
             </div>
 
@@ -369,9 +372,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
-                        {/* Queue status stays in the wrapping utility row, so composition routes retain their rail-free canvas width. */}
                         <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-2 sm:basis-auto">
-                            <QueueActivityLink />
                             <ProductGuidance />
                             <DiagnosticDrawer />
                         </div>
@@ -393,7 +394,9 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
-                    <HistoryPanel />
+                    {/* Only the visible History surface mounts its disk scan and
+                        queue-summary poller; the responsive Sheet owns the other case. */}
+                    {historyPanelIsDocked && rightSidebarVisible && <HistoryPanel />}
                 </aside>
             </div>
 
@@ -443,7 +446,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         <SheetTitle>{t('history.title', '기록')}</SheetTitle>
                     </SheetHeader>
                     <div className="min-h-0 flex-1 overflow-hidden [&>div>div:first-child]:pr-16">
-                        <HistoryPanel />
+                        {rightSheetOpen && <HistoryPanel />}
                     </div>
                 </SheetContent>
             </Sheet>

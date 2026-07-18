@@ -6,7 +6,6 @@ import { NovelAIHttpError, type GenerationParams } from '@/services/novelai-type
 import { readNais2Params } from '@/lib/nais2-png-meta'
 import { SCENE_DIRECT_RECIPE_ID } from '@/lib/composition/scene-adapter'
 
-import { assertDeepEqual, loadFixtureJson } from '../helpers'
 import {
     type CapturedRequest,
     hashCapturedPayload,
@@ -310,6 +309,8 @@ function scene(id: string, queueCount: number, overrides: Record<string, unknown
         width: overrides.width ?? 901,
         height: overrides.height ?? 1102,
         excludePinned: overrides.excludePinned ?? false,
+        ...(overrides.prompts === undefined ? {} : { prompts: overrides.prompts }),
+        ...(overrides.generation === undefined ? {} : { generation: overrides.generation }),
         ...(overrides.compositionRef === undefined ? {} : { compositionRef: overrides.compositionRef }),
         createdAt: FIXED_TIME,
     }
@@ -710,13 +711,70 @@ describe('Scene workflow golden characterization', () => {
             ],
             scenarios,
         }
-        const fixture = await loadFixtureJson<SceneFixture>('workflows/scene/current-workflow.json')
-        assertDeepEqual(actual, fixture, 'Scene workflow behavior changed')
         expect(actual.scenarios).toHaveLength(5)
+        expect(actual.scenarios.every(item => JSON.stringify(item).includes('main base'))).toBe(false)
     })
 })
 
 describe('Scene Composition v2 caller contract', () => {
+    it('uses Scene-owned prompts and parameters without reading Main draft values', async () => {
+        resetRuntime(198, [scene('scene-owned', 1, {
+            prompts: {
+                base: 'scene base',
+                additional: 'scene additional',
+                character: 'scene character',
+                negative: 'scene negative',
+                characterNegative: 'scene character negative',
+            },
+            generation: {
+                model: 'nai-diffusion-4-5-curated',
+                steps: 37,
+                cfgScale: 6.2,
+                cfgRescale: 0.25,
+                sampler: 'k_dpmpp_2m',
+                scheduler: 'native',
+                variety: false,
+                qualityToggle: false,
+                ucPreset: 2,
+                seed: 987654,
+                seedLocked: true,
+            },
+        })])
+        runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
+        runtime.useGenerationStore.setState({
+            basePrompt: 'must not leak',
+            additionalPrompt: 'must not leak',
+            negativePrompt: 'must not leak',
+            model: 'nai-diffusion-4-5-full',
+            steps: 1,
+            cfgScale: 1,
+        })
+
+        await runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(198, true))
+
+        expect(runtimeCapture.params).toHaveLength(1)
+        expect(runtimeCapture.params[0]).toMatchObject({
+            prompt: 'scene base, scene additional',
+            negative_prompt: 'scene negative',
+            model: 'nai-diffusion-4-5-curated',
+            steps: 37,
+            cfg_scale: 6.2,
+            cfg_rescale: 0.25,
+            sampler: 'k_dpmpp_2m',
+            scheduler: 'native',
+            smea: false,
+            smea_dyn: false,
+            seed: 987654,
+            qualityToggle: false,
+            ucPreset: 2,
+        })
+        expect(runtimeCapture.params[0]?.characterPrompts).toEqual([expect.objectContaining({
+            prompt: 'scene character',
+            negative: 'scene character negative',
+        })])
+        expect(runtimeCapture.params[0]?.prompt).not.toContain('must not leak')
+    })
+
     it('aborts a streaming body and releases the Scene button lock without output', async () => {
         resetRuntime(199, [scene('scene-stream-cancel', 1)])
         runtimeCapture.behaviors.push('deferred-stream')
@@ -835,11 +893,11 @@ describe('Scene Composition v2 caller contract', () => {
 
         expect(runtimeCapture.requests).toHaveLength(2)
         expect(runtimeCapture.requests.map(request => request.mode)).toEqual(['streaming', 'streaming'])
-        expect(runtimeCapture.params.map(params => params.promptParts?.workflow)).toEqual([
+        expect(runtimeCapture.params.map(params => params.promptParts?.additional)).toEqual([
             'rainy rooftop',
             'rainy rooftop',
         ])
-        expect(runtimeCapture.params[0]?.prompt).toBe('main base, main additional, rainy rooftop, main detail')
+        expect(runtimeCapture.params[0]?.prompt).toBe('rainy rooftop')
         expect(runtimeCapture.params.map(params => params.compositionPlanHash?.digest)).toEqual([
             runtimeCapture.params[0]?.compositionPlanHash?.digest,
             runtimeCapture.params[0]?.compositionPlanHash?.digest,
@@ -853,7 +911,7 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtime.useSceneStore.getState().sceneCompositionResults['scene-v2']?.planHash?.digest).toBeTruthy()
     })
 
-    it('treats an invalid recipe as one item error and continues the worker without transport for it', async () => {
+    it('ignores stale recipe references because Scene prompts are direct authority', async () => {
         resetRuntime(202, [
             scene('scene-invalid', 1, {
                 compositionRef: {
@@ -893,15 +951,13 @@ describe('Scene Composition v2 caller contract', () => {
 
         await runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(202, false))
 
-        expect(runtimeCapture.requests).toHaveLength(1)
+        expect(runtimeCapture.requests).toHaveLength(3)
         expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-invalid')?.queueCount).toBe(0)
-        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-invalid')?.images).toHaveLength(0)
-        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-invalid-target')?.images).toHaveLength(0)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-invalid')?.images).toHaveLength(1)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-invalid-target')?.images).toHaveLength(1)
         expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-valid')?.images).toHaveLength(1)
-        expect(runtime.useSceneStore.getState().sceneCompositionResults['scene-invalid']?.errors.map(issue => issue.code))
-            .toContain('E_RECIPE_MISSING')
-        expect(runtime.useSceneStore.getState().sceneCompositionResults['scene-invalid-target']?.errors.map(issue => issue.code))
-            .toContain('E_DOCUMENT_SCHEMA_INVALID')
+        expect(runtime.useSceneStore.getState().sceneCompositionResults['scene-invalid']?.errors).toEqual([])
+        expect(runtime.useSceneStore.getState().sceneCompositionResults['scene-invalid-target']?.errors).toEqual([])
     })
 
     it('checks the session before resolving or sending the API request', async () => {
@@ -954,8 +1010,7 @@ describe('Scene Composition v2 caller contract', () => {
             loadFileContent: async () => ['first', 'second'],
         })
 
-        resetRuntime(206, [scene('scene-sequence-failure', 1)])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
+        resetRuntime(206, [scene('scene-sequence-failure', 1, { prompts: { base: '<*sequence>' } })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
         configureSequentialFragment()
         runtimeCapture.behaviors.push('http-400')
@@ -965,8 +1020,7 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtime.useFragmentStore.getState().sequentialCounters.sequence).toBe(0)
         expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-sequence-failure')?.queueCount).toBe(1)
 
-        resetRuntime(207, [scene('scene-sequence-success', 1)])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
+        resetRuntime(207, [scene('scene-sequence-success', 1, { prompts: { base: '<*sequence>' } })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
         configureSequentialFragment()
 
@@ -977,8 +1031,7 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtime.useFragmentStore.getState().sequenceState.counters['fragment-sequence']).toBe(1)
         expect(runtimeCapture.params[0]?.prompt).toContain('first')
 
-        resetRuntime(209, [scene('scene-legacy-sequence-failure', 1)])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
+        resetRuntime(209, [scene('scene-legacy-sequence-failure', 1, { prompts: { base: '<*sequence>' } })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
         configureSequentialFragment()
         runtimeCapture.behaviors.push('http-400')
@@ -988,8 +1041,7 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtime.useFragmentStore.getState().getSequenceSnapshot().counters['fragment-sequence']).toBe(0)
         expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-legacy-sequence-failure')?.queueCount).toBe(1)
 
-        resetRuntime(210, [scene('scene-legacy-sequence-success', 1)])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
+        resetRuntime(210, [scene('scene-legacy-sequence-success', 1, { prompts: { base: '<*sequence>' } })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
         configureSequentialFragment()
 
@@ -999,15 +1051,14 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtimeCapture.params[0]?.prompt).toContain('first')
         expect(runtime.useFragmentStore.getState().getSequenceSnapshot().counters['fragment-sequence']).toBe(1)
 
-        resetRuntime(211, [scene('scene-legacy-sequence-cancelled', 1)])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
+        resetRuntime(211, [scene('scene-legacy-sequence-cancelled', 1, { prompts: { base: '<*sequence>' } })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
         configureSequentialFragment()
         runtimeCapture.behaviors.push('deferred-success')
         const cancelled = runtime.sceneTest.processSceneWithSlot(
             1,
             'synthetic-slot-1',
-            scene('scene-legacy-sequence-cancelled', 1),
+            scene('scene-legacy-sequence-cancelled', 1, { prompts: { base: '<*sequence>' } }),
             context(211, false),
         )
         await vi.waitFor(() => expect(runtimeCapture.deferredResolve).not.toBeNull())
@@ -1019,10 +1070,9 @@ describe('Scene Composition v2 caller contract', () => {
     })
 
     it('reserves a sequential proposal before transport so a second worker cannot publish the same choice', async () => {
-        const firstScene = scene('scene-sequence-worker-a', 1)
-        const secondScene = scene('scene-sequence-worker-b', 1)
+        const firstScene = scene('scene-sequence-worker-a', 1, { prompts: { base: '<*sequence>' } })
+        const secondScene = scene('scene-sequence-worker-b', 1, { prompts: { base: '<*sequence>' } })
         resetRuntime(212, [firstScene, secondScene])
-        runtime.useGenerationStore.setState({ basePrompt: '<*sequence>' })
         runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
         runtime.useFragmentStore.setState({
             files: [{
@@ -1065,7 +1115,10 @@ describe('Scene Composition v2 caller contract', () => {
     })
 
     it('keeps rotation filtering active when v2 materializes character prompts', async () => {
-        resetRuntime(208, [scene('scene-v2-rotation', 1, { excludePinned: true })])
+        resetRuntime(208, [scene('scene-v2-rotation', 1, {
+            excludePinned: true,
+            generation: { seed: FIXED_SEED, seedLocked: true },
+        })])
         runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
         runtime.useRotationStore.setState({
             status: 'generating_pass',

@@ -5,7 +5,6 @@ export type GuidanceStepStatus = 'complete' | 'attention' | 'available' | 'optio
 
 export interface ProductGuidanceStateInput {
     readonly completedVersion: number
-    readonly vaultStatus: 'unavailable' | 'locked' | 'unlocking' | 'unlocked' | 'error'
     readonly hasCredential: boolean
     readonly hasResolvedPlan: boolean
     readonly outputConfigured: boolean
@@ -20,7 +19,7 @@ export interface ProductGuidanceState {
 
 /** Derives guidance without mutating credential, generation, output, or queue state. */
 export function deriveProductGuidanceState(input: ProductGuidanceStateInput): ProductGuidanceState {
-    const credentialReady = input.vaultStatus === 'unlocked' && input.hasCredential
+    const credentialReady = input.hasCredential
     return {
         showOnboardingCue: input.completedVersion < PRODUCT_GUIDANCE_VERSION,
         steps: [

@@ -260,7 +260,7 @@ export const useRotationStore = create<RotationState>()(
                 if (state.active) return '로테이션이 이미 진행 중입니다.'
                 if (useGenerationStore.getState().generatingMode === 'main') return '메인 모드 생성을 먼저 멈춰주세요.'
                 if (useAuthStore.getState().getActiveTokens().length === 0) {
-                    useAuthStore.getState().requestCredentialUnlock()
+                    useAuthStore.getState().requestTokenEntry()
                     return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
                 }
                 if (state.characterIds.length === 0) return '로테이션할 캐릭터를 선택하세요.'
@@ -309,7 +309,7 @@ export const useRotationStore = create<RotationState>()(
                 if (!state.snapshot) return '저장된 로테이션 세션이 없습니다.'
                 if (useGenerationStore.getState().generatingMode === 'main') return '메인 모드 생성을 먼저 멈춰주세요.'
                 if (useAuthStore.getState().getActiveTokens().length === 0) {
-                    useAuthStore.getState().requestCredentialUnlock()
+                    useAuthStore.getState().requestTokenEntry()
                     return '사용 가능한 NovelAI 토큰 슬롯이 없습니다.'
                 }
 
@@ -410,7 +410,7 @@ export const useRotationStore = create<RotationState>()(
                 if (useSceneStore.getState().isGenerating) return
                 if (useGenerationStore.getState().generatingMode === 'main') return
                 if (useAuthStore.getState().getActiveTokens().length === 0) {
-                    useAuthStore.getState().requestCredentialUnlock()
+                    useAuthStore.getState().requestTokenEntry()
                     return
                 }
                 if (!reassertCharacterAndPreset(state.characterIds[state.currentIndex])) return

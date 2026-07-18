@@ -1006,7 +1006,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const token = slot1Token?.token
 
                 if (!token && options.capturePrepared === undefined) {
-                    useAuthStore.getState().requestCredentialUnlock()
+                    useAuthStore.getState().requestTokenEntry()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
                         description: i18n.t('toast.tokenRequired.desc'),

@@ -154,7 +154,7 @@ export default function ToolsMode() {
     const handleUpscale = async () => {
         if (!processedImage) return
         if (!token) {
-            useAuthStore.getState().requestCredentialUnlock()
+            useAuthStore.getState().requestTokenEntry()
             toast({ title: t('toast.tokenRequired.title', 'API 토큰 필요'), description: t('toast.tokenRequired.desc', '설정에서 토큰을 입력해주세요.'), variant: 'destructive' })
             return
         }
@@ -195,7 +195,7 @@ export default function ToolsMode() {
     const handleDirectorTool = async (reqType: 'lineart' | 'sketch' | 'colorize' | 'emotion' | 'declutter', options?: { defry?: number; prompt?: string; emotion?: string }) => {
         if (!processedImage) return
         if (!token) {
-            useAuthStore.getState().requestCredentialUnlock()
+            useAuthStore.getState().requestTokenEntry()
             toast({ title: t('toast.tokenRequired.title', 'API 토큰 필요'), description: t('toast.tokenRequired.desc', '설정에서 토큰을 입력해주세요.'), variant: 'destructive' })
             return
         }

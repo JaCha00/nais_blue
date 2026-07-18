@@ -72,14 +72,12 @@ export function ProductGuidance() {
     const metadataMode = useSettingsStore(state => state.metadataMode)
     const setImageFormat = useSettingsStore(state => state.setImageFormat)
     const setMetadataMode = useSettingsStore(state => state.setMetadataMode)
-    const vaultStatus = useAuthStore(state => state.vaultStatus)
-    const hasCredential = useAuthStore(state => Boolean(state.slot1CredentialRef || state.slot2CredentialRef))
-    const requestCredentialUnlock = useAuthStore(state => state.requestCredentialUnlock)
+    const hasCredential = useAuthStore(state => Boolean(state.token || state.token2))
+    const requestTokenEntry = useAuthStore(state => state.requestTokenEntry)
     const hasResolvedPlan = useGenerationStore(state => state.lastResolvedPlan !== null)
     const r2Configured = useAssetModuleStore(state => state.profile.r2.enabled)
     const guidance = deriveProductGuidanceState({
         completedVersion: productGuidanceVersion,
-        vaultStatus,
         hasCredential,
         hasResolvedPlan,
         outputConfigured: savePath.trim().length > 0,
@@ -156,8 +154,8 @@ export function ProductGuidance() {
                 )}
                 <div className="space-y-3">
                     <GuideSection id="credential" title={t('productGuidance.steps.credential.title')} description={t('productGuidance.steps.credential.description')} status={status('credential')} active={activeSection === 'credential'}>
-                        <p>{t(vaultStatus === 'locked' ? 'productGuidance.steps.credential.locked' : hasCredential ? 'productGuidance.steps.credential.ready' : 'productGuidance.steps.credential.missing')}</p>
-                        <Button className="min-h-11" onClick={() => closeThen(requestCredentialUnlock)}>{t('productGuidance.steps.credential.action')}</Button>
+                        <p>{t(hasCredential ? 'productGuidance.steps.credential.ready' : 'productGuidance.steps.credential.missing')}</p>
+                        <Button className="min-h-11" onClick={() => closeThen(requestTokenEntry)}>{t('productGuidance.steps.credential.action')}</Button>
                     </GuideSection>
                     <GuideSection id="validation" title={t('productGuidance.steps.validation.title')} description={t('productGuidance.steps.validation.description')} status={status('validation')} active={activeSection === 'validation'}>
                         <p>{t('productGuidance.steps.validation.safe')}</p>

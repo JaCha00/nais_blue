@@ -4,27 +4,35 @@ import { describe, expect, it } from 'vitest'
 
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
-describe('global Queue activity entry contract', () => {
-    it('keeps a globally visible Queue link in the wrapping header utility row', async () => {
-        const layout = await source('src/components/layout/ThreeColumnLayout.tsx')
+describe('History Queue activity entry contract', () => {
+    it('keeps the Queue summary in the visible History sidebar instead of the global header', async () => {
+        const [layout, history] = await Promise.all([
+            source('src/components/layout/ThreeColumnLayout.tsx'),
+            source('src/components/layout/HistoryPanel.tsx'),
+        ])
 
-        expect(layout).toContain("import { QueueActivityLink } from './QueueActivityLink'")
-        expect(layout).toContain('<QueueActivityLink />')
-        expect(layout).toContain('composition routes retain their rail-free canvas width')
+        expect(layout).not.toContain("import { QueueActivityLink } from './QueueActivityLink'")
+        expect(history).toContain("import { QueueActivityLink } from './QueueActivityLink'")
+        expect(history).toContain('<QueueActivityLink />')
         expect(layout).toContain('historyPanelIsDocked = isDesktopShell && !compositionWorkspaceOwnsRails')
-        expect(layout).toContain('(!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"')
+        expect(layout).toContain('historyPanelIsDocked && rightSidebarVisible && <HistoryPanel />')
+        expect(layout).toContain('rightSheetOpen && <HistoryPanel />')
     })
 
-    it('uses indexed activity counts rather than Queue Center job projections', async () => {
+    it('shows all reserved-job counts and delegates details to Queue Center', async () => {
         const [link, repository] = await Promise.all([
             source('src/components/layout/QueueActivityLink.tsx'),
             source('src/services/queue/indexeddb-queue-repository.ts'),
         ])
 
         expect(link).toContain('to="/queue"')
-        expect(link).toContain('data-testid="global-queue-activity"')
+        expect(link).toContain('data-testid="history-queue-activity"')
         expect(link).toContain('getActivitySummary()')
         expect(link).not.toContain('listJobProjections')
+        expect(link).toContain('summary.processing')
+        expect(link).toContain('summary.waiting')
+        expect(link).toContain('summary.needsAttention')
+        expect(link).toContain('onClick={closeSupportSheet}')
         expect(link).toContain('document.addEventListener(\'visibilitychange\', refreshWhenVisible)')
         expect(link).toContain('window.setInterval(refreshWhenVisible, QUEUE_ACTIVITY_REFRESH_MS)')
         expect(link).toContain('min-h-11')

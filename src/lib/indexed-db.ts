@@ -10,7 +10,6 @@ import {
     type PersistenceFaultKind,
 } from '@/domain/persistence/fault'
 import { reportDiagnostic, reportPersistenceFault } from '@/services/diagnostics/error-registry'
-import { getRuntimeCredentialVault } from '@/services/credentials/stronghold-credential-vault'
 // Since I cannot install packages, I will implement a minimal wrapper similar to idb-keyval logic
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
@@ -461,28 +460,30 @@ export async function closeApplicationWithFlush(
             })
         }
     }
-    try {
-        await (options.cleanup ?? (() => getRuntimeCredentialVault().lock()))()
-    } catch (error) {
-        if (status === 'closed') status = 'closed-with-cleanup-failure'
-        const event = reportDiagnostic(error, {
-            operation: 'credential-vault.shutdown',
-            stage: 'close',
-            category: 'auth',
-            severity: 'error',
-            recoverable: true,
-        })
-        const notify = options.notify ?? defaultCloseFailureNotification
+    if (options.cleanup !== undefined) {
         try {
-            notify(`${event.userSummary}\nCredential vault를 닫지 못했지만 앱 프로세스를 종료합니다.`)
-        } catch (notificationError) {
-            reportDiagnostic(notificationError, {
-                operation: 'credential-vault.shutdown-notification',
+            await options.cleanup()
+        } catch (error) {
+            if (status === 'closed') status = 'closed-with-cleanup-failure'
+            const event = reportDiagnostic(error, {
+                operation: 'application.shutdown-cleanup',
                 stage: 'close',
-                category: 'auth',
-                severity: 'warning',
+                category: 'local_io',
+                severity: 'error',
                 recoverable: true,
             })
+            const notify = options.notify ?? defaultCloseFailureNotification
+            try {
+                notify(`${event.userSummary}\n종료 정리를 완료하지 못했지만 앱 프로세스를 종료합니다.`)
+            } catch (notificationError) {
+                reportDiagnostic(notificationError, {
+                    operation: 'application.shutdown-cleanup-notification',
+                    stage: 'close',
+                    category: 'local_io',
+                    severity: 'warning',
+                    recoverable: true,
+                })
+            }
         }
     }
     await options.exit()

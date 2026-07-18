@@ -63,14 +63,14 @@ describe('Phase 13 pre-change behavior characterization', () => {
         }
     })
 
-    it('keeps Credential Vault and output choices behind explicit user actions', async () => {
-        const [vaultCard, settings] = await Promise.all([
-            readFile(resolve(process.cwd(), 'src/components/credentials/CredentialVaultSettingsCard.tsx'), 'utf8'),
+    it('keeps local API token and output choices behind explicit user actions', async () => {
+        const [tokenCard, settings] = await Promise.all([
+            readFile(resolve(process.cwd(), 'src/components/credentials/ApiTokenSettingsCard.tsx'), 'utf8'),
             readFile(resolve(process.cwd(), 'src/pages/Settings.tsx'), 'utf8'),
         ])
 
-        expect(vaultCard).toContain('requestCredentialUnlock')
-        expect(vaultCard).toContain("t('credentialVault.manage')")
+        expect(tokenCard).toContain('requestTokenEntry')
+        expect(tokenCard).toContain("t('settingsPage.api.manage'")
         expect(settings).toContain('setSavePath')
         expect(settings).toContain('setImageFormat')
         expect(settings).toContain("<SelectItem value=\"png\">PNG</SelectItem>")

@@ -20,6 +20,8 @@ import {
     useRotationStore,
 } from '@/stores/character-rotation-store'
 import {
+    resolveSceneGeneration,
+    resolveScenePrompts,
     useSceneStore,
     type SceneCard,
     type SceneCompositionMode,
@@ -30,6 +32,7 @@ import { cloneCompositionRandomTrace } from '@/lib/generation-metadata'
 import {
     diagnosticsFromSceneResolution,
     resolveSceneComposition,
+    SCENE_DIRECT_RECIPE_ID,
     type SceneCompositionResolution,
     type SceneCompositionSnapshot,
     type SceneRuntimeCharacterOverride,
@@ -190,15 +193,16 @@ async function createSceneCompositionSnapshot(
     runtimeCharacterOverride?: SceneRuntimeCharacterOverride
 }> {
     const generation = useGenerationStore.getState()
+    const scenePrompts = {
+        ...resolveScenePrompts(scene),
+        // Compatibility previews may still supply the old single-prompt field.
+        ...(scenePrompt === scene.scenePrompt ? {} : { additional: scenePrompt }),
+    }
+    const sceneGeneration = resolveSceneGeneration(scene)
     const settings = useSettingsStore.getState()
-    const characterPrompts = useCharacterPromptStore.getState()
+    const characterPromptState = useCharacterPromptStore.getState()
     const referenceState = useCharacterStore.getState()
     const rotation = useRotationStore.getState()
-    const { usePresetStore } = await import('@/stores/preset-store')
-    const paramsPresetState = usePresetStore.getState()
-    const excludedPinnedIds = rotation.active && scene.excludePinned
-        ? new Set(rotation.pinnedCharacterIds)
-        : null
     // The active preset remains the default for interactive generation; a
     // durable cross-folder job provides its target preset explicitly.
     const sceneState = useSceneStore.getState()
@@ -206,22 +210,37 @@ async function createSceneCompositionSnapshot(
     const activePreset = sceneState.presets.find(preset => preset.id === targetPresetId)
     const sceneNumber = activePreset?.scenes.findIndex(candidate => candidate.id === scene.id)
     const fallbackDimensions = {
-        width: roundTo64(scene.width ?? generation.selectedResolution.width),
-        height: roundTo64(scene.height ?? generation.selectedResolution.height),
+        width: roundTo64(scene.width ?? 832),
+        height: roundTo64(scene.height ?? 1216),
     }
     const sourceDimensions = await resolveSourceDimensions(generation.sourceImage, fallbackDimensions)
 
-    const characters = characterPrompts.characters.filter(character => !excludedPinnedIds?.has(character.id))
-    const rotationSelection = getRuntimeSelection(rotation, seed)
-    const rotationPatches = createRuntimeCharacterOverrides(
-        rotationSelection,
-        characters.map(character => character.id),
-        { excludePinned: scene.excludePinned },
-    )
+    // Normal Scene work owns its character prompt. The explicit rotation
+    // workflow remains an opt-in exception and projects its selected stage.
+    const excludedPinnedIds = rotation.active && scene.excludePinned
+        ? new Set(rotation.pinnedCharacterIds)
+        : null
+    const characters = rotation.active
+        ? characterPromptState.characters.filter(character => !excludedPinnedIds?.has(character.id))
+        : scenePrompts.character.trim() || scenePrompts.characterNegative.trim()
+            ? [{
+                id: `scene:${scene.id}:character`,
+                name: scene.name,
+                prompt: scenePrompts.character,
+                negative: scenePrompts.characterNegative,
+                enabled: true,
+                position: { x: 0.5, y: 0.5 },
+            }]
+            : []
+    const rotationSelection = rotation.active ? getRuntimeSelection(rotation, seed) : null
     const runtimeCharacterOverride = rotationSelection === null
         ? undefined
         : {
-            characterPatches: rotationPatches,
+            characterPatches: createRuntimeCharacterOverrides(
+                rotationSelection,
+                characters.map(character => character.id),
+                { excludePinned: scene.excludePinned },
+            ),
             randomTrace: rotationSelection.trace,
         }
     const snapshot: SceneCompositionSnapshot = {
@@ -229,11 +248,16 @@ async function createSceneCompositionSnapshot(
         scene: {
             id: scene.id,
             name: scene.name,
-            scenePrompt,
+            // Legacy `scenePrompt` is no longer appended as a workflow slot;
+            // its content is normalized into prompts.additional above.
+            scenePrompt: '',
             ...(scene.width === undefined ? {} : { width: roundTo64(scene.width) }),
             ...(scene.height === undefined ? {} : { height: roundTo64(scene.height) }),
             createdAt: scene.createdAt,
-            ...(scene.compositionRef === undefined ? {} : { compositionRef: scene.compositionRef }),
+            compositionRef: {
+                recipeId: SCENE_DIRECT_RECIPE_ID,
+                selectionKind: 'direct',
+            },
         },
         ...(activePreset === undefined
             ? {}
@@ -245,38 +269,34 @@ async function createSceneCompositionSnapshot(
                 },
             }),
         prompt: {
-            base: generation.basePrompt,
-            inpainting: generation.i2iMode === 'inpaint' ? generation.inpaintingPrompt : '',
-            additional: generation.additionalPrompt,
-            detail: generation.detailPrompt,
-            negative: generation.negativePrompt,
+            base: scenePrompts.base,
+            inpainting: '',
+            additional: scenePrompts.additional,
+            detail: '',
+            negative: scenePrompts.negative,
         },
         characters,
-        characterPresets: characterPrompts.presets,
-        characterGroups: characterPrompts.groups,
-        positionEnabled: characterPrompts.positionEnabled,
+        positionEnabled: rotation.active ? characterPromptState.positionEnabled : false,
         references: referenceSnapshots(referenceState.characterImages, referenceState.vibeImages),
-        paramsPresets: paramsPresetState.presets,
-        activeParamsPresetId: paramsPresetState.activePresetId,
         params: {
-            model: generation.model,
-            width: roundTo64(generation.selectedResolution.width),
-            height: roundTo64(generation.selectedResolution.height),
-            steps: generation.steps,
-            cfgScale: generation.cfgScale,
-            cfgRescale: generation.cfgRescale,
-            sampler: generation.sampler,
-            scheduler: generation.scheduler,
-            smea: generation.smea,
-            smeaDyn: generation.smeaDyn,
-            variety: generation.variety ?? false,
+            model: sceneGeneration.model,
+            width: fallbackDimensions.width,
+            height: fallbackDimensions.height,
+            steps: sceneGeneration.steps,
+            cfgScale: sceneGeneration.cfgScale,
+            cfgRescale: sceneGeneration.cfgRescale,
+            sampler: sceneGeneration.sampler,
+            scheduler: sceneGeneration.scheduler,
+            smea: sceneGeneration.smea,
+            smeaDyn: sceneGeneration.smeaDyn,
+            variety: sceneGeneration.variety,
             seed,
-            qualityToggle: generation.qualityToggle,
-            ucPreset: generation.ucPreset,
+            qualityToggle: sceneGeneration.qualityToggle,
+            ucPreset: sceneGeneration.ucPreset,
             sourceMode: 'text-to-image',
             strength: generation.strength,
             noise: generation.noise,
-            characterPositionEnabled: characterPrompts.positionEnabled,
+            characterPositionEnabled: rotation.active ? characterPromptState.positionEnabled : false,
         },
         output: {
             autoSave: true,
@@ -565,8 +585,8 @@ export async function previewSceneComposition(
     if (authorityMode === 'legacy') {
         throw new Error('Composition preview is unavailable while legacy authority is active')
     }
-    const generation = useGenerationStore.getState()
-    const seed = options.seed ?? generation.previewSeed ?? (generation.seed || 1)
+    const sceneGeneration = resolveSceneGeneration(scene)
+    const seed = options.seed ?? (sceneGeneration.seed || 1)
     const now = options.now ?? new Date()
     const captured = await resolveSceneRuntimeComposition(scene, {
         mode: 'preview',
@@ -633,8 +653,8 @@ export async function buildSceneGenerationParams(
         }
     }
 
-    const generation = useGenerationStore.getState()
-    const seed = selectSceneGenerationSeed(generation.seedLocked, generation.seed)
+    const sceneGeneration = resolveSceneGeneration(scene)
+    const seed = selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
     const now = options.now ?? new Date()
     const captured = await resolveSceneRuntimeComposition(scene, {
         mode: 'generate',

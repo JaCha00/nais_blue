@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react'
 import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2, FolderKanban, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
-import { useAuthStore, waitForCredentialVaultReady } from '@/stores/auth-store'
+import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { readDir, readFile, remove, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
@@ -41,6 +41,7 @@ import {
     type GeneratedArtifactNotice,
     useArtifactLifecycleStore,
 } from '@/stores/artifact-lifecycle-store'
+import { QueueActivityLink } from './QueueActivityLink'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -792,7 +793,7 @@ export function HistoryPanel() {
 
         const token = useAuthStore.getState().token
         if (!token) {
-            useAuthStore.getState().requestCredentialUnlock()
+            useAuthStore.getState().requestTokenEntry()
             toast({ title: t('toast.tokenRequired.title', '토큰 필요'), variant: 'destructive' })
             return
         }
@@ -1038,7 +1039,7 @@ export function HistoryPanel() {
     const handleI2I = async (image: SavedImage) => {
         setSourceEditPreparing(true)
         try {
-            if (!await waitForCredentialVaultReady()) return
+            if (!await waitForApiTokenReady()) return
             let imageData = imageThumbnails[image.path]
             if (!imageData && !image.isTemporary) {
                 try {
@@ -1091,6 +1092,10 @@ export function HistoryPanel() {
                     </Button>
                 </div>
             </div>
+
+            {/* The indexed queue summary stays lightweight; Queue Center remains
+                the sole owner of detailed projections, retries, and job controls. */}
+            <QueueActivityLink />
 
             {/* History Grid */}
             <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pt-2">

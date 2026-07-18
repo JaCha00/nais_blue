@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PromptContribution } from '@/domain/composition/types'
 import {
+    resolveSceneGeneration,
+    resolveScenePrompts,
     useSceneStore,
     type SceneCard,
     type SceneCompositionRef,
@@ -132,6 +134,56 @@ beforeEach(() => {
 })
 
 describe('Scene store composition actions', () => {
+    it('owns five prompt slots and generation parameters per scene', () => {
+        const store = useSceneStore.getState()
+        store.updateScenePrompts(PRESET_ID, 'scene:a', {
+            base: 'scene base',
+            additional: 'scene additional',
+            character: 'scene character',
+            negative: 'scene negative',
+            characterNegative: 'scene character negative',
+        })
+        store.updateSceneGeneration(PRESET_ID, 'scene:a', {
+            model: 'nai-diffusion-4-5-curated',
+            steps: 41,
+            cfgScale: 6.5,
+            sampler: 'k_dpmpp_2m',
+            seed: 123456,
+            seedLocked: true,
+        })
+
+        const updated = useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!
+        const untouched = useSceneStore.getState().getScene(PRESET_ID, 'scene:b')!
+
+        expect(resolveScenePrompts(updated)).toEqual({
+            base: 'scene base',
+            additional: 'scene additional',
+            character: 'scene character',
+            negative: 'scene negative',
+            characterNegative: 'scene character negative',
+        })
+        expect(resolveSceneGeneration(updated)).toMatchObject({
+            model: 'nai-diffusion-4-5-curated',
+            steps: 41,
+            cfgScale: 6.5,
+            sampler: 'k_dpmpp_2m',
+            seed: 123456,
+            seedLocked: true,
+        })
+        expect(resolveSceneGeneration(untouched).steps).toBe(28)
+        expect(updated.scenePrompt).toBe('scene additional')
+    })
+
+    it('projects an old single scene prompt into the additional slot', () => {
+        expect(resolveScenePrompts(scene('scene:legacy', { scenePrompt: 'legacy only' }))).toMatchObject({
+            base: '',
+            additional: 'legacy only',
+            character: '',
+            negative: '',
+            characterNegative: '',
+        })
+    })
+
     it('bulk-applies a recipe while preserving queue, images, and per-scene overrides', () => {
         const beforeA = structuredClone(useSceneStore.getState().getScene(PRESET_ID, 'scene:a'))
         const beforeB = structuredClone(useSceneStore.getState().getScene(PRESET_ID, 'scene:b'))

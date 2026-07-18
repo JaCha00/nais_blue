@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout'
 import { Toaster } from '@/components/ui/toaster'
 import { DiagnosticsSurface } from '@/components/diagnostics/DiagnosticsSurface'
-import { CredentialVaultDialog } from '@/components/credentials/CredentialVaultDialog'
+import { ApiTokenDialog } from '@/components/credentials/ApiTokenDialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RuntimeProviders } from '@/components/runtime/RuntimeProviders'
 import MainMode from '@/pages/MainMode'
@@ -57,7 +57,7 @@ function App() {
             <BrowserRouter>
                 <RuntimeProviders>
                     <AppContent />
-                    <CredentialVaultDialog />
+                    <ApiTokenDialog />
                     <Toaster />
                     <DiagnosticsSurface />
                 </RuntimeProviders>

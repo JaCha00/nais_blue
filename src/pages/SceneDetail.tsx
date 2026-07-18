@@ -2,7 +2,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { ResolutionSelector, Resolution } from '@/components/ui/ResolutionSelector'
 import {
     ChevronLeft,
     Check,
@@ -22,7 +21,7 @@ import { Input } from '@/components/ui/input'
 import { AutocompleteTextarea } from "@/components/ui/AutocompleteTextarea";
 import { Tip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { hasSceneCompositionOverrides, useSceneStore, SceneImage, type SceneCompositionMode } from '@/stores/scene-store'
+import { hasSceneCompositionOverrides, resolveSceneGeneration, useSceneStore, SceneImage, type SceneCompositionMode } from '@/stores/scene-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
@@ -47,6 +46,7 @@ import {
     type SceneCompositionResolution,
 } from '@/lib/composition/scene-adapter'
 import { SceneCompositionWorkspace } from '@/components/scene/SceneCompositionWorkspace'
+import { ScenePromptEditor } from '@/components/scene/ScenePromptEditor'
 import { CharacterLayoutEditor } from '@/components/composition-workspace'
 import { portableIssuesForResolvedPlan } from '@/components/composition-workspace'
 import type {
@@ -67,6 +67,7 @@ import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import type { CharacterPosition, CharacterSlotPatch } from '@/domain/composition'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+import { ensureActiveGenerationCredential } from '@/services/generation/credential-guard'
 
 const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
@@ -124,7 +125,6 @@ export default function SceneDetail() {
         incrementQueue,
         decrementQueue,
         validateSceneImages,
-        updateSceneSettings,
         setSceneCompositionRef,
         resetSceneToRecipe,
         startNewGenerationSession,
@@ -139,31 +139,14 @@ export default function SceneDetail() {
     const assetProfile = useAssetModuleStore(state => state.profile)
     const assetHasConflict = useAssetModuleStore(state => state.hasConflict)
     const assetConflictMessage = useAssetModuleStore(state => state.conflictMessage)
-    const seed = useGenerationStore(state => state.seed)
-    const seedLocked = useGenerationStore(state => state.seedLocked)
-    const setSeed = useGenerationStore(state => state.setSeed)
-    const setSeedLocked = useGenerationStore(state => state.setSeedLocked)
-    const steps = useGenerationStore(state => state.steps)
     const generatingMode = useGenerationStore(state => state.generatingMode)
     const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
 
-    // --- Resolution Logic ---
+    // Scene dimensions are shared by the request builder and gallery frames so
+    // the saved scene snapshot has one visible resolution authority.
     const currentWidth = scene?.width || 832
     const currentHeight = scene?.height || 1216
-
-    // Handler for ResolutionSelector
-    const handleResolutionChange = (resolution: Resolution) => {
-        if (activePresetId && sceneId) {
-            updateSceneSettings(activePresetId, sceneId, { width: resolution.width, height: resolution.height })
-        }
-    }
-
-    // Current resolution value for ResolutionSelector
-    const currentResolution: Resolution = {
-        label: `${currentWidth} × ${currentHeight}`,
-        width: currentWidth,
-        height: currentHeight
-    }
+    const previewAspectRatio = `${currentWidth} / ${currentHeight}`
 
     const [editName, setEditName] = useState(scene?.name || '')
     // Dialog states
@@ -182,7 +165,6 @@ export default function SceneDetail() {
     const streamingSceneId = useSceneStore(s => s.streamingSceneId)
     const streamingImage = useSceneStore(s => s.streamingSceneId === sceneId ? s.streamingImage : null)
     const streamingProgress = useSceneStore(s => s.streamingSceneId === sceneId ? s.streamingProgress : 0)
-    const thumbnailLayout = useSceneStore(s => s.thumbnailLayout)
 
     // Edit mode state
     const [isEditMode, setIsEditMode] = useState(false)
@@ -199,8 +181,6 @@ export default function SceneDetail() {
     // Auto-save prompt logic - hooks must be before conditional return
     const updateScenePrompt = useSceneStore(state => state.updateScenePrompt)
     const [localPrompt, setLocalPrompt] = useState(scene?.scenePrompt || '')
-    const localPromptRef = useRef(localPrompt)
-    localPromptRef.current = localPrompt
 
     const nav = useNavigate()
 
@@ -250,34 +230,13 @@ export default function SceneDetail() {
         }
     }, [scene?.name])
 
-    // Sync local prompt when scene ID changes
+    // Compatibility editor mirrors the canonical Scene prompt module and must
+    // never write a stale value over the prompt tabs.
     useEffect(() => {
         if (scene) {
             setLocalPrompt(scene.scenePrompt)
         }
-    }, [scene?.id])
-
-    // Debounced save of prompt to store + save on unmount
-    useEffect(() => {
-        if (!scene || !activePresetId) return
-        if (localPrompt === scene.scenePrompt) return
-
-        const timer = setTimeout(() => {
-            updateScenePrompt(activePresetId, scene.id, localPrompt)
-        }, 1000)
-
-        return () => {
-            clearTimeout(timer)
-            // Save immediately on unmount if changed
-            const currentScene = useSceneStore.getState().presets
-                .find(p => p.id === activePresetId)?.scenes
-                .find(s => s.id === scene.id)
-            const latestPrompt = localPromptRef.current
-            if (currentScene && latestPrompt !== currentScene.scenePrompt) {
-                updateScenePrompt(activePresetId, scene.id, latestPrompt)
-            }
-        }
-    }, [localPrompt, scene, activePresetId, updateScenePrompt])
+    }, [scene?.id, scene?.scenePrompt])
 
     // Auto-validate images on mount - MUST be before conditional return to maintain hook order
     useEffect(() => {
@@ -318,10 +277,6 @@ export default function SceneDetail() {
     }, [scene?.id, activePresetId, validateSceneImages])
 
     const handleBack = () => {
-        // Save prompt immediately before leaving
-        if (scene && activePresetId && localPrompt !== scene.scenePrompt) {
-            updateScenePrompt(activePresetId, scene.id, localPrompt)
-        }
         nav('/scenes')
     }
 
@@ -368,7 +323,6 @@ export default function SceneDetail() {
     const handleResetSceneToRecipe = () => {
         // Update the visible editor before the store change can trigger the
         // prompt autosave cleanup with the previous text.
-        localPromptRef.current = ''
         setLocalPrompt('')
         setCompositionPreview(null)
         setCompositionPreviewError(null)
@@ -377,6 +331,7 @@ export default function SceneDetail() {
 
     const handleLocalPromptChange = (value: string) => {
         setLocalPrompt(value)
+        updateScenePrompt(activePresetId, scene.id, value)
         setCompositionPreview(null)
         setCompositionPreviewError(null)
     }
@@ -396,6 +351,13 @@ export default function SceneDetail() {
     }
 
     const startDurableSceneGeneration = async () => {
+        if (!ensureActiveGenerationCredential()) {
+            toast({
+                title: t('credentialVault.unlockRequired', 'API 토큰 잠금 해제 필요'),
+                description: t('credentialVault.unlockRequiredForGeneration', '이미지를 생성하려면 NovelAI API 토큰 보관소를 잠금 해제하세요.'),
+            })
+            return
+        }
         const coordinator = getRuntimeDurableQueueCoordinator()
         durableBatchIdRef.current = null
         durableCancelRequestedRef.current = false
@@ -525,6 +487,7 @@ export default function SceneDetail() {
     const sortedImages = showFavoritesOnly
         ? scene.images.filter(img => img.isFavorite)
         : scene.images
+    const sceneGeneration = resolveSceneGeneration(scene)
     const inheritedRecipeId = assetProfile.recipes.find(recipe => recipe.enabled)?.id
     const displayedRecipeId = scene.compositionRef?.selectionKind === 'direct'
         ? SCENE_DIRECT_SELECTION_ID
@@ -677,7 +640,7 @@ export default function SceneDetail() {
             state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'scene-detail' },
         })
     }
-    const estimatedCost = calculateAnlasCost(currentWidth, currentHeight, steps) * Math.max(1, scene.queueCount)
+    const estimatedCost = calculateAnlasCost(currentWidth, currentHeight, sceneGeneration.steps) * Math.max(1, scene.queueCount)
 
     const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {
         setCompositionPreview(null)
@@ -698,6 +661,7 @@ export default function SceneDetail() {
 
     return (
         <SceneCompositionWorkspace
+            simplified
             mode={{
                 value: sceneCompositionMode,
                 label: t('scene.composition.mode', 'Mode'),
@@ -724,17 +688,6 @@ export default function SceneDetail() {
             }}
             validation={validation}
             cost={{ value: String(estimatedCost), label: 'Anlas', severity: estimatedCost > 0 ? 'warning' : 'normal' }}
-            seed={{
-                value: seed,
-                locked: seedLocked,
-                onChange: value => {
-                    const parsed = Number(value)
-                    if (Number.isSafeInteger(parsed) && parsed >= 0) setSeed(parsed)
-                },
-                onToggleLock: () => setSeedLocked(!seedLocked),
-                onPreviewWildcard: () => window.dispatchEvent(new Event(SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG)),
-                wildcardPreviewLabel: t('scene.wildcardPreview', 'Wildcard preview'),
-            }}
             generation={{
                 generating: effectiveSceneGenerating || effectiveSceneCancelling,
                 disabled: effectiveSceneCancelling || (!effectiveSceneGenerating && generationConflict),
@@ -812,7 +765,10 @@ export default function SceneDetail() {
             onRepairIssue={handleRepairCompositionIssue}
             onResetOverride={handleResetSceneToRecipe}
         >
-        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3" data-testid="scene-detail-workspace">
+        <div
+            className="custom-scrollbar flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto overscroll-contain pr-1"
+            data-testid="scene-detail-workspace"
+        >
             {/* DESIGN.md: mobile keeps identity, generation, and queue controls in three scan-friendly rows. */}
             <header className="flex min-w-0 shrink-0 flex-col gap-2 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 items-center gap-1">
@@ -898,14 +854,8 @@ export default function SceneDetail() {
                     )}
                 </div>
 
-                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 lg:flex lg:items-center">
-                    <div className="min-w-0 [&_button]:h-11 [&_button]:rounded-control lg:w-52 lg:[&_button]:h-9">
-                        <ResolutionSelector
-                            value={currentResolution}
-                            onChange={handleResolutionChange}
-                        />
-                    </div>
-                    <div className="col-span-2 flex min-w-0 items-center justify-between rounded-control border border-border bg-card px-1 lg:col-span-1 lg:gap-1">
+                <div className="flex min-w-0 items-center">
+                    <div className="flex min-w-0 items-center justify-between rounded-control border border-border bg-card px-1 lg:gap-1">
                         <span className="px-2 text-xs font-medium text-muted-foreground lg:sr-only">
                             {t('scene.queue', '대기열')}
                         </span>
@@ -937,7 +887,13 @@ export default function SceneDetail() {
                 </div>
             </header>
 
-            <Card className="mt-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
+            <ScenePromptEditor
+                scene={scene}
+                presetId={activePresetId}
+                disabled={effectiveSceneGenerating || effectiveSceneCancelling}
+            />
+
+            <Card className="mt-1 flex min-h-[20rem] min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
                 <CardHeader className="min-w-0 shrink-0 gap-2 border-b border-border p-3 sm:p-4">
                     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
                         <CardTitle className="min-w-0 truncate text-sm">{t('scene.generatedImages')}</CardTitle>
@@ -1069,8 +1025,12 @@ export default function SceneDetail() {
                         <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]">
                             {/* Streaming Card Slot */}
                             {isStreaming && streamingImage && (
-                                <div className={cn("relative overflow-hidden rounded-panel border border-primary bg-muted/30", thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]")}>
-                                    <img src={streamingImage} alt="Generating..." className="w-full h-full object-cover animate-pulse opacity-80" />
+                                <div
+                                    className="relative overflow-hidden rounded-panel border border-primary bg-canvas"
+                                    style={{ aspectRatio: previewAspectRatio }}
+                                    data-scene-preview-resolution={`${currentWidth}x${currentHeight}`}
+                                >
+                                    <img src={streamingImage} alt="Generating..." className="h-full w-full object-contain animate-pulse opacity-80" />
                                     <div className="absolute inset-x-0 bottom-0 h-1 bg-muted">
                                         <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${streamingProgress * 100}%` }} />
                                     </div>
@@ -1081,7 +1041,8 @@ export default function SceneDetail() {
                                 <SceneImageCard
                                     key={image.id}
                                     image={image}
-                                    thumbnailLayout={thumbnailLayout}
+                                    aspectRatio={previewAspectRatio}
+                                    resolutionLabel={`${currentWidth}x${currentHeight}`}
                                     isEditMode={isEditMode}
                                     isSelected={selectedImageIds.has(image.id)}
                                     onSelect={() => {
@@ -1280,7 +1241,8 @@ import { SceneImageContextMenu } from '@/components/scene/SceneImageContextMenu'
 
 function SceneImageCard({
     image,
-    thumbnailLayout,
+    aspectRatio,
+    resolutionLabel,
     isEditMode,
     isSelected,
     onSelect,
@@ -1292,7 +1254,8 @@ function SceneImageCard({
     onInpaint,
 }: {
     image: SceneImage
-    thumbnailLayout: 'vertical' | 'horizontal'
+    aspectRatio: string
+    resolutionLabel: string
     isEditMode?: boolean
     isSelected?: boolean
     onSelect?: () => void
@@ -1334,14 +1297,15 @@ function SceneImageCard({
         >
             <div
                 className={cn(
-                    "group relative cursor-pointer overflow-hidden rounded-panel border bg-muted/30 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                    thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]",
+                    "group relative cursor-pointer overflow-hidden rounded-panel border bg-canvas outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     isEditMode && isSelected
                         ? "border-primary ring-2 ring-primary/30"
                         : image.isFavorite
                             ? "border-warning ring-1 ring-warning/40"
                             : "border-border hover:border-primary/60"
                 )}
+                style={{ aspectRatio }}
+                data-scene-preview-resolution={resolutionLabel}
                 role="button"
                 tabIndex={0}
                 aria-pressed={isEditMode ? Boolean(isSelected) : undefined}
@@ -1362,7 +1326,7 @@ function SceneImageCard({
                     <img
                         src={imgSrc}
                         alt={t('scene.generatedImage', '생성된 씬 이미지')}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-contain"
                         loading="lazy"
                     />
                 )}

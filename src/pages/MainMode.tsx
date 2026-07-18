@@ -309,7 +309,7 @@ export default function MainMode() {
 
         const token = useAuthStore.getState().token
         if (!token) {
-            useAuthStore.getState().requestCredentialUnlock()
+            useAuthStore.getState().requestTokenEntry()
             toast({
                 title: t('toast.tokenRequired.title', '토큰 필요'),
                 variant: 'destructive',

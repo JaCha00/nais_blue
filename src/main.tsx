@@ -379,15 +379,14 @@ async function runStartupMigrations(): Promise<void> {
         reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
     }
 
-    // AuthState v3 is hydrated from strict storage after legacy key migration.
-    // Raw v2 credentials stay read-only until the user unlocks Stronghold and
-    // the two-phase vault write/readback transaction can finish.
+    // NovelAI tokens hydrate directly from this device's strict app storage so
+    // generation is ready after restart without a separate unlock session.
     try {
-        setSplashStage('Hydrating credential vault metadata')
+        setSplashStage('Loading local API tokens')
         const { initializeAuthCredentialState } = await import('./stores/auth-store')
         await initializeAuthCredentialState()
     } catch (err) {
-        reportDiagnostic(err, { operation: 'startup.credential-vault', stage: 'hydrate', category: 'auth', severity: 'error', recoverable: true })
+        reportDiagnostic(err, { operation: 'startup.local-auth', stage: 'hydrate', category: 'auth', severity: 'error', recoverable: true })
     }
 
     try {

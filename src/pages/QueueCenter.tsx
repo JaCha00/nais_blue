@@ -3,6 +3,7 @@ import {
     Activity,
     AlertCircle,
     EllipsisVertical,
+    KeyRound,
     ListPlus,
     Pause,
     Play,
@@ -44,6 +45,7 @@ import {
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { useSceneStore } from '@/stores/scene-store'
+import { useAuthStore } from '@/stores/auth-store'
 
 const QUEUE_ROW_HEIGHT = 96
 const QUEUE_OVERSCAN = 5
@@ -97,6 +99,8 @@ export default function QueueCenter() {
     const setExecutionAuthority = useQueueStore(state => state.setExecutionAuthority)
     const setSelectedBatchId = useQueueStore(state => state.setSelectedBatchId)
     const scenePresets = useSceneStore(state => state.presets)
+    const activeTokenCount = useAuthStore(state => state.getActiveTokens().length)
+    const requestTokenEntry = useAuthStore(state => state.requestTokenEntry)
     const legacyQueueCount = useSceneStore(state => {
         const activePreset = state.presets.find(preset => preset.id === state.activePresetId)
         return activePreset?.scenes.reduce((total, scene) => total + scene.queueCount, 0) ?? 0
@@ -367,6 +371,8 @@ export default function QueueCenter() {
     }
 
     const visibleSummary = summary ?? emptySummary(selectedBatchId ?? '')
+    const credentialBlocked = activeTokenCount === 0
+        && visibleSummary.states.queued + visibleSummary.states.leased + visibleSummary.states.recovering > 0
     const progressPercent = visibleSummary.total === 0
         ? 0
         : Math.round((visibleSummary.progressCurrent / Math.max(1, visibleSummary.progressTotal)) * 100)
@@ -521,6 +527,27 @@ export default function QueueCenter() {
                         className="min-h-11"
                     >
                         {t('queue.convertLegacy', 'Move to background queue')}
+                    </Button>
+                </section>
+            )}
+
+            {credentialBlocked && (
+                <section
+                    className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning/10 px-3 py-3 sm:px-5"
+                    role="status"
+                    data-testid="queue-credential-required"
+                >
+                    <div className="min-w-0 text-sm">
+                        <p className="font-semibold text-warning">
+                            {t('credentialVault.unlockRequired', 'API 토큰 잠금 해제 필요')}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {t('settingsPage.api.addTokenToContinue', 'NovelAI API 토큰을 등록하거나 활성화하면 대기 중인 생성이 자동으로 시작됩니다.')}
+                        </p>
+                    </div>
+                    <Button type="button" variant="outline" className="min-h-11" onClick={requestTokenEntry}>
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        {t('settingsPage.api.manage', 'API 토큰 관리')}
                     </Button>
                 </section>
             )}

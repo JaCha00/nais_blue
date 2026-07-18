@@ -506,6 +506,14 @@ export function AutocompleteTextarea({
                     overflow: hidden !important;
                     height: 100% !important; /* Prevent internal scroll by matching container height */
                 }
+                /* The editor makes typed text transparent so the synchronized highlight layer
+                   can render it. Placeholders have no highlight counterpart, so restore their
+                   fill explicitly to keep empty prompt guidance fully visible in WebView. */
+                .prompt-editor-wrapper textarea::placeholder {
+                    color: oklch(var(--muted-foreground)) !important;
+                    -webkit-text-fill-color: oklch(var(--muted-foreground)) !important;
+                    opacity: 1 !important;
+                }
             `}</style>
 
             {/* Scrollable Container */}

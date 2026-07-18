@@ -263,8 +263,9 @@ check(
   'scene generation passes quality and UC to GenerationParams',
   /qualityToggle:\s*plan\.params\.qualityToggle/.test(sceneBuilder) &&
   /ucPreset:\s*plan\.params\.ucPreset/.test(sceneBuilder) &&
-  /qualityToggle:\s*genState\.qualityToggle/.test(legacySceneBuilder) &&
-  /ucPreset:\s*genState\.ucPreset/.test(legacySceneBuilder)
+  // Both builders now resolve these fields from the per-scene generation snapshot.
+  /qualityToggle:\s*sceneGeneration\.qualityToggle/.test(legacySceneBuilder) &&
+  /ucPreset:\s*sceneGeneration\.ucPreset/.test(legacySceneBuilder)
 )
 check(
   'main scene and stylelab force source edit requests through zip',

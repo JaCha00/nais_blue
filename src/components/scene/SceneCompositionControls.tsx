@@ -1,4 +1,4 @@
-import { Layers3 } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
     Dialog,
@@ -6,36 +6,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { useAssetModuleStore } from '@/stores/asset-module-store'
 import {
     hasSceneCompositionOverrides,
+    resolveSceneGeneration,
+    resolveScenePrompts,
     type SceneCard,
 } from '@/stores/scene-store'
 import type { SceneCompositionResolution } from '@/lib/composition/scene-adapter'
-
-function recipeLabel(scene: SceneCard, recipes: ReturnType<typeof useAssetModuleStore.getState>['profile']['recipes']): {
-    inherited: boolean
-    label: string
-} {
-    const recipeId = scene.compositionRef?.recipeId
-    if (scene.compositionRef?.selectionKind === 'direct') {
-        return { inherited: false, label: 'Direct prompts' }
-    }
-
-    if (recipeId !== undefined) {
-        const recipe = recipes.find(candidate => candidate.id === recipeId)
-        return {
-            inherited: false,
-            label: recipe?.label || recipe?.id || `${recipeId} (unavailable)`,
-        }
-    }
-
-    const inheritedRecipe = recipes.find(recipe => recipe.enabled)
-    return {
-        inherited: true,
-        label: inheritedRecipe?.label || inheritedRecipe?.id || 'Direct prompts',
-    }
-}
 
 export function SceneCompositionCardMeta({
     scene,
@@ -45,25 +22,26 @@ export function SceneCompositionCardMeta({
     hasOverrides?: boolean
 }) {
     const { t } = useTranslation()
-    const recipes = useAssetModuleStore(state => state.profile.recipes)
-    const recipe = recipeLabel(scene, recipes)
+    const prompts = resolveScenePrompts(scene)
+    const generation = resolveSceneGeneration(scene)
+    const promptCount = Object.values(prompts).filter(value => value.trim()).length
 
     return (
         <div
             className="mt-1 flex min-w-0 items-center gap-1 px-1 text-[11px] text-muted-foreground"
             data-testid={`scene-composition-summary-${scene.id}`}
         >
-            <Layers3 className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="shrink-0">
-                {recipe.inherited ? t('scene.composition.inherited', 'Default') : t('scene.composition.recipe', 'Recipe')}
+            <SlidersHorizontal className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate">
+                {t('scene.promptCount', '프롬프트 {{count}}개', { count: promptCount })}
+                {' · '}{generation.steps} steps · CFG {generation.cfgScale}
             </span>
-            <span className="min-w-0 flex-1 truncate" title={recipe.label}>{recipe.label}</span>
             {hasOverrides && (
                 <span
                     className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-medium text-primary"
                     data-testid={`scene-composition-override-${scene.id}`}
                 >
-                    {t('scene.composition.override', 'Override')}
+                    {t('scene.configured', '씬 설정')}
                 </span>
             )}
         </div>

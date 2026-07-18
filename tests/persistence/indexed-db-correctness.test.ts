@@ -280,7 +280,7 @@ describe('IndexedDB persistence correctness', () => {
         expect(exit).toHaveBeenCalledOnce()
         const { useDiagnosticsStore } = await import('@/stores/diagnostics-store')
         expect(useDiagnosticsStore.getState().events).toEqual(expect.arrayContaining([
-            expect.objectContaining({ operation: 'credential-vault.shutdown' }),
+            expect.objectContaining({ operation: 'application.shutdown-cleanup' }),
         ]))
     })
 })

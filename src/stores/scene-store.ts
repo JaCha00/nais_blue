@@ -23,10 +23,63 @@ export interface SceneImage {
     isFavorite: boolean
 }
 
+export interface ScenePromptConfig {
+    base: string
+    additional: string
+    character: string
+    negative: string
+    characterNegative: string
+}
+
+export interface SceneGenerationConfig {
+    model: string
+    steps: number
+    cfgScale: number
+    cfgRescale: number
+    sampler: string
+    scheduler: string
+    /** Provider compatibility fields are always normalized to false for Scene requests. */
+    smea: false
+    smeaDyn: false
+    variety: boolean
+    qualityToggle: boolean
+    ucPreset: number
+    seed: number
+    seedLocked: boolean
+}
+
+export const DEFAULT_SCENE_PROMPTS: ScenePromptConfig = {
+    base: '',
+    additional: '',
+    character: '',
+    negative: '',
+    characterNegative: '',
+}
+
+export const DEFAULT_SCENE_GENERATION: SceneGenerationConfig = {
+    model: 'nai-diffusion-4-5-full',
+    steps: 28,
+    cfgScale: 5,
+    cfgRescale: 0,
+    sampler: 'k_euler_ancestral',
+    scheduler: 'karras',
+    smea: false,
+    smeaDyn: false,
+    variety: false,
+    qualityToggle: true,
+    ucPreset: 0,
+    seed: 0,
+    seedLocked: false,
+}
+
 export interface SceneCard {
     id: string
     name: string
     scenePrompt: string
+    /** Scene-owned prompt module. `scenePrompt` remains as an import/sync compatibility alias. */
+    prompts?: Partial<ScenePromptConfig>
+    /** Scene-owned generation parameters; Main prompt-panel changes never mutate this snapshot. */
+    generation?: Partial<SceneGenerationConfig>
     queueCount: number  // Number of images to generate
     images: SceneImage[]  // Generated images for this scene
     width?: number
@@ -36,6 +89,25 @@ export interface SceneCard {
     createdAt: number
 }
 
+/** Old Scene cards remain readable while all new edits use the modular prompt shape. */
+export function resolveScenePrompts(scene: Pick<SceneCard, 'scenePrompt' | 'prompts'>): ScenePromptConfig {
+    return {
+        ...DEFAULT_SCENE_PROMPTS,
+        additional: scene.scenePrompt || '',
+        ...scene.prompts,
+    }
+}
+
+export function resolveSceneGeneration(scene: Pick<SceneCard, 'generation'>): SceneGenerationConfig {
+    return {
+        ...DEFAULT_SCENE_GENERATION,
+        ...scene.generation,
+        // NAI 4.5 no longer accepts SMEA controls. Ignore stale persisted flags.
+        smea: false,
+        smeaDyn: false,
+    }
+}
+
 export interface SceneCompositionRuntimeRecord {
     mode: SceneCompositionMode
     planHash?: DeepReadonly<CompositionPlanHash>
@@ -43,9 +115,10 @@ export interface SceneCompositionRuntimeRecord {
     errors: readonly DeepReadonly<CompositionEngineIssue>[]
 }
 
-export function hasSceneCompositionOverrides(scene: Pick<SceneCard, 'scenePrompt' | 'width' | 'height' | 'compositionRef'>): boolean {
+export function hasSceneCompositionOverrides(scene: Pick<SceneCard, 'scenePrompt' | 'prompts' | 'generation' | 'width' | 'height' | 'compositionRef'>): boolean {
     const ref = scene.compositionRef
-    return scene.scenePrompt.trim().length > 0
+    return Object.values(resolveScenePrompts(scene)).some(value => value.trim().length > 0)
+        || scene.generation !== undefined
         || scene.width !== undefined
         || scene.height !== undefined
         || (ref?.sceneContributions?.length ?? 0) > 0
@@ -79,7 +152,9 @@ interface SceneState {
     duplicateScene: (presetId: string, sceneId: string) => void
     renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
+    updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
     updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean }) => void
+    updateSceneGeneration: (presetId: string, sceneId: string, generation: Partial<SceneGenerationConfig>) => void
     setSceneCompositionRef: (presetId: string, sceneId: string, ref: SceneCompositionRef | undefined) => void
     resetSceneToRecipe: (presetId: string, sceneId: string) => void
     updateAllScenesResolution: (presetId: string, width: number, height: number) => void
@@ -293,6 +368,8 @@ export const useSceneStore = create<SceneState>()(
                             id: Date.now().toString(),
                             name: name || `씬 ${p.scenes.length + 1}`,
                             scenePrompt: '',
+                            prompts: { ...DEFAULT_SCENE_PROMPTS },
+                            generation: { ...DEFAULT_SCENE_GENERATION },
                             queueCount: 0,
                             images: [],
                             excludePinned: false,
@@ -417,11 +494,35 @@ export const useSceneStore = create<SceneState>()(
                         ? {
                             ...preset,
                             scenes: preset.scenes.map((scene) =>
-                                scene.id === sceneId ? { ...scene, scenePrompt: prompt } : scene
+                                scene.id === sceneId
+                                    ? {
+                                        ...scene,
+                                        scenePrompt: prompt,
+                                        prompts: { ...resolveScenePrompts(scene), additional: prompt },
+                                    }
+                                    : scene
                             ),
                         }
                         : preset
                 ),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
+            updateScenePrompts: (presetId, sceneId, promptPatch) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => {
+                            if (scene.id !== sceneId) return scene
+                            const prompts = { ...resolveScenePrompts(scene), ...promptPatch }
+                            return {
+                                ...scene,
+                                prompts,
+                                // Sync and older exports understand this field; generation no longer reads it directly.
+                                scenePrompt: prompts.additional,
+                            }
+                        }),
+                    }
+                    : preset),
                 sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
             })),
             updateSceneSettings: (presetId, sceneId, settings) => set((state) => ({
@@ -435,6 +536,17 @@ export const useSceneStore = create<SceneState>()(
                         }
                         : preset
                 ),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
+            updateSceneGeneration: (presetId, sceneId, generationPatch) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => scene.id === sceneId
+                            ? { ...scene, generation: { ...resolveSceneGeneration(scene), ...generationPatch } }
+                            : scene),
+                    }
+                    : preset),
                 sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
             })),
             setSceneCompositionRef: (presetId, sceneId, compositionRef) => set(state => ({

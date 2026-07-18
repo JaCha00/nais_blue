@@ -71,6 +71,8 @@ describe('Queue Center 10,000-job UI contract', () => {
         expect(page).toContain('safe-area-inset-bottom')
         expect(page).toContain('data-testid="queue-center-ready"')
         expect(page).toContain('data-testid="legacy-queue-migration"')
+        expect(page).toContain('data-testid="queue-credential-required"')
+        expect(page).toContain('requestTokenEntry')
         expect(page).toContain('enqueueCurrentSceneQueue()')
         expect(page).toContain('keeps existing item counts available for rollback')
         expect(page).toContain("t('queue.executionMode', 'Execution method')")

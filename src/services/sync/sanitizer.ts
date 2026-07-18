@@ -284,6 +284,10 @@ function projectSceneCard(value: unknown): JsonObject {
     if (width !== undefined) result.width = width
     if (height !== undefined) result.height = height
     if (excludePinned !== undefined) result.excludePinned = excludePinned
+    // Scene prompt modules and generation settings are portable, JSON-only
+    // state. The bounded tree projector strips forbidden keys before sync.
+    if (record.prompts !== undefined) result.prompts = projectTree(record.prompts)
+    if (record.generation !== undefined) result.generation = projectTree(record.generation)
     if (record.compositionRef !== undefined) result.compositionRef = projectSceneCompositionRef(record.compositionRef)
     return result
 }

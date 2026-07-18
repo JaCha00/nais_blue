@@ -33,6 +33,7 @@ export interface MobileCommandDockProps {
     onOpenModules: () => void
     onOpenInspector: () => void
     onOpenResolved: () => void
+    simplified?: boolean
 }
 
 /** Fixed mobile command dock; every critical action remains one tap from the canvas. */
@@ -46,13 +47,15 @@ export function MobileCommandDock({
     onOpenModules,
     onOpenInspector,
     onOpenResolved,
+    simplified = false,
 }: MobileCommandDockProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
     const actionDisabled = disabled || generation.disabled
     const dock = (
         <nav
             className={cn(
-                'fixed inset-x-0 bottom-0 z-40 grid min-w-0 grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)] gap-1 bg-card md:hidden',
+                'fixed inset-x-0 bottom-0 z-40 grid min-w-0 gap-1 bg-card md:hidden',
+                simplified ? 'grid-cols-1' : 'grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)]',
                 // Android OEM WebViews can expose a zero env() inset under three-button navigation;
                 // the larger runtime-only floor keeps every command target above the system bar.
                 isAndroidRuntime
@@ -65,22 +68,19 @@ export function MobileCommandDock({
             aria-label={labels.commands}
             data-testid={testId}
         >
-            <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.modules} onClick={onOpenModules}>
-                <Layers3 className="h-5 w-5" aria-hidden="true" />
-            </Button>
-            <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.inspector} onClick={onOpenInspector}>
-                <PanelRight className="h-5 w-5" aria-hidden="true" />
-            </Button>
-            <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={labels.resolved}
-                disabled={disabled || !resolvedAvailable}
-                onClick={onOpenResolved}
-            >
-                <Eye className="h-5 w-5" aria-hidden="true" />
-            </Button>
+            {!simplified && (
+                <>
+                    <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.modules} onClick={onOpenModules}>
+                        <Layers3 className="h-5 w-5" aria-hidden="true" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.inspector} onClick={onOpenInspector}>
+                        <PanelRight className="h-5 w-5" aria-hidden="true" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label={labels.resolved} disabled={disabled || !resolvedAvailable} onClick={onOpenResolved}>
+                        <Eye className="h-5 w-5" aria-hidden="true" />
+                    </Button>
+                </>
+            )}
             <Button
                 type="button"
                 variant={generation.generating ? 'destructive' : 'generate'}

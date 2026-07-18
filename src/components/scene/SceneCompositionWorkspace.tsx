@@ -45,6 +45,7 @@ export interface SceneCompositionWorkspaceProps {
     onOpenResolved: () => void
     onResetOverride?: () => void
     onRepairIssue?: (issue: ReadonlyCompositionIssue) => void
+    simplified?: boolean
 }
 
 /**
@@ -78,6 +79,7 @@ export function SceneCompositionWorkspace({
     onOpenResolved,
     onResetOverride,
     onRepairIssue,
+    simplified = false,
 }: SceneCompositionWorkspaceProps) {
     const { t } = useTranslation()
     const [modulesOpen, setModulesOpen] = useState(false)
@@ -200,6 +202,7 @@ export function SceneCompositionWorkspace({
             disabled={disabled}
             onOpenModules={openModules}
             onOpenInspector={openInspector}
+            simplified={simplified}
         />
     )
 
@@ -226,10 +229,12 @@ export function SceneCompositionWorkspace({
                         onOpenModules={openModules}
                         onOpenInspector={openInspector}
                         onOpenResolved={openResolved}
+                        simplified={simplified}
                     />
                 )}
             />
 
+            {!simplified && <>
             <CompositionWorkspaceSheet
                 open={modulesOpen}
                 onOpenChange={setModulesOpen}
@@ -295,6 +300,7 @@ export function SceneCompositionWorkspace({
                     }}
                 />
             </CompositionWorkspaceSheet>
+            </>}
         </div>
     )
 }

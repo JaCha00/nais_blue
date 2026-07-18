@@ -82,6 +82,8 @@ export interface CompositionCommandBarProps {
     className?: string
     onOpenModules?: () => void
     onOpenInspector?: () => void
+    /** Scene UX: keep internal composition authority out of the user-facing command strip. */
+    simplified?: boolean
 }
 
 function CommandSelect({
@@ -130,9 +132,48 @@ export function CompositionCommandBar({
     className,
     onOpenModules,
     onOpenInspector,
+    simplified = false,
 }: CompositionCommandBarProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
     const actionDisabled = disabled || generation.disabled
+
+    if (simplified) {
+        return (
+            <header
+                className={cn('flex min-w-0 flex-wrap items-center justify-end gap-2 rounded-panel bg-card p-2', className)}
+                aria-label={labels.commands}
+                data-testid="composition-command-bar"
+            >
+                {cost && (
+                    <span className="mr-auto font-mono text-xs text-muted-foreground" aria-label={`${cost.label ?? labels.cost}: ${cost.value}`}>
+                        {cost.label ? `${cost.label} ` : ''}{cost.value}
+                    </span>
+                )}
+                {seed && (
+                    <label className="flex min-w-48 flex-1 items-center gap-2 sm:max-w-72">
+                        <span className="text-xs font-medium text-muted-foreground">{seed.label ?? labels.seed}</span>
+                        <Input value={seed.value} onChange={event => seed.onChange?.(event.currentTarget.value)} readOnly={!seed.onChange} disabled={disabled || seed.disabled} inputMode="numeric" className="h-10 min-w-0 font-mono" />
+                        {seed.onToggleLock && (
+                            <Button type="button" variant="ghost" size="icon" disabled={disabled || seed.disabled} aria-label={seed.locked ? labels.unlockSeed : labels.lockSeed} onClick={seed.onToggleLock}>
+                                {seed.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                            </Button>
+                        )}
+                    </label>
+                )}
+                <Button
+                    type="button"
+                    variant={generation.generating ? 'destructive' : 'generate'}
+                    className="min-w-40"
+                    disabled={actionDisabled}
+                    onClick={generation.generating ? generation.onCancel : generation.onGenerate}
+                    data-testid={generation.generating ? generation.cancelTestId ?? generation.actionTestId : generation.actionTestId}
+                >
+                    {generation.generating ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
+                    <span className="truncate">{generation.progressLabel ?? (generation.generating ? generation.cancelLabel ?? labels.cancel : generation.generateLabel ?? labels.generate)}</span>
+                </Button>
+            </header>
+        )
+    }
 
     return (
         <header

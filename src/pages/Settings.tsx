@@ -57,7 +57,7 @@ import { importAllData, getStoreSizes } from '@/lib/indexed-db'
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
-import { CredentialVaultSettingsCard } from '@/components/credentials/CredentialVaultSettingsCard'
+import { ApiTokenSettingsCard } from '@/components/credentials/ApiTokenSettingsCard'
 import {
     ASSET_PROFILE_FILE_RESTORE_KEY,
     createCurrentBackupEnvelopeV3,
@@ -860,7 +860,7 @@ export default function Settings() {
                                 </p>
                             </div>
 
-                            <CredentialVaultSettingsCard />
+                            <ApiTokenSettingsCard />
 
                             <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="space-y-2 pt-4">

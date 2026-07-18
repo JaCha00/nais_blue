@@ -7,7 +7,6 @@ import { guideSectionForDiagnosticCode } from '../../src/services/guidance/diagn
 
 const base = {
     completedVersion: 0,
-    vaultStatus: 'unlocked' as const,
     hasCredential: true,
     hasResolvedPlan: false,
     outputConfigured: true,
@@ -24,11 +23,8 @@ describe('Phase 13 onboarding state', () => {
         }).showOnboardingCue).toBe(false)
     })
 
-    it.each([
-        ['locked', true],
-        ['unlocked', false],
-    ] as const)('marks credential attention for a %s vault with no credential', (vaultStatus, hasCredential) => {
-        const state = deriveProductGuidanceState({ ...base, vaultStatus, hasCredential })
+    it('marks credential attention when no local API token exists', () => {
+        const state = deriveProductGuidanceState({ ...base, hasCredential: false })
         expect(state.steps[0]).toEqual({ id: 'credential', status: 'attention' })
     })
 

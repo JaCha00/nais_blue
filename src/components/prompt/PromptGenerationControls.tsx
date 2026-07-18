@@ -47,6 +47,13 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
         if (isConflict) return
         void executePromptGenerationCommand(isSceneMode ? 'scene' : 'main')
             .then(outcome => {
+                if (outcome === 'credential-required') {
+                    toast({
+                        title: t('credentialVault.unlockRequired', 'API 토큰 잠금 해제 필요'),
+                        description: t('credentialVault.unlockRequiredForGeneration', '이미지를 생성하려면 NovelAI API 토큰 보관소를 잠금 해제하세요.'),
+                    })
+                    return
+                }
                 if (outcome !== 'rotation-stopped') return
                 toast({
                     title: t('rotation.stopped', '로테이션 중단'),

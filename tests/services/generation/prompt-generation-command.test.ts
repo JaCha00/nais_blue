@@ -8,6 +8,10 @@ const runtime = vi.hoisted(() => ({
     },
     rotation: { active: false, stop: vi.fn() },
     queue: { executionAuthority: 'durable' as 'durable' | 'legacy' },
+    auth: {
+        getActiveTokens: vi.fn(() => [{ slot: 1, token: 'token' }]),
+        requestTokenEntry: vi.fn(),
+    },
     scene: {
         activePresetId: 'preset:1' as string | null,
         isGenerating: false,
@@ -25,6 +29,7 @@ const runtime = vi.hoisted(() => ({
 vi.mock('@/stores/generation-store', () => ({ useGenerationStore: { getState: () => runtime.main } }))
 vi.mock('@/stores/character-rotation-store', () => ({ useRotationStore: { getState: () => runtime.rotation } }))
 vi.mock('@/stores/queue-store', () => ({ useQueueStore: { getState: () => runtime.queue } }))
+vi.mock('@/stores/auth-store', () => ({ useAuthStore: { getState: () => runtime.auth } }))
 vi.mock('@/stores/scene-store', () => ({ useSceneStore: { getState: () => runtime.scene } }))
 vi.mock('@/services/generation/generation-command', () => ({
     startMainGenerationCommand: runtime.startMain,
@@ -43,6 +48,7 @@ describe('prompt route generation command adapter', () => {
         runtime.main.generatingMode = null
         runtime.rotation.active = false
         runtime.queue.executionAuthority = 'durable'
+        runtime.auth.getActiveTokens.mockReturnValue([{ slot: 1, token: 'token' }])
         runtime.scene.activePresetId = 'preset:1'
         runtime.scene.isGenerating = false
         runtime.scene.isCancelling = false
@@ -114,5 +120,15 @@ describe('prompt route generation command adapter', () => {
         expect(runtime.enqueueScene).toHaveBeenCalledOnce()
         expect(runtime.drain).toHaveBeenCalledOnce()
         expect(runtime.scene.startNewGenerationSession).not.toHaveBeenCalled()
+    })
+
+    it('opens the credential vault instead of silently enqueueing work without an active token', async () => {
+        runtime.auth.getActiveTokens.mockReturnValue([])
+
+        await expect(executePromptGenerationCommand('scene')).resolves.toBe('credential-required')
+
+        expect(runtime.auth.requestTokenEntry).toHaveBeenCalledOnce()
+        expect(runtime.enqueueScene).not.toHaveBeenCalled()
+        expect(runtime.drain).not.toHaveBeenCalled()
     })
 })

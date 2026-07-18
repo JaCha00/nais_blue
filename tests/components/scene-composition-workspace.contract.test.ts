@@ -35,7 +35,7 @@ describe('Scene composition workspace information architecture', () => {
         expect(workspace).toMatch(/const selectModule[\s\S]*onSelectModule\(moduleId\)[\s\S]*if \(modulesOpen\) openInspector\(\)/)
     })
 
-    it('keeps Scene grid, create/edit, queue, bulk recipe and generation as first-class actions', async () => {
+    it('keeps Scene grid, create/edit, queue and generation as first-class actions', async () => {
         const sceneMode = await source('src/pages/SceneMode.tsx')
         const compactGroup = sceneMode.indexOf('Compact grouping keeps import')
         const dropdownStart = sceneMode.indexOf('<DropdownMenu>', compactGroup)
@@ -47,7 +47,8 @@ describe('Scene composition workspace information architecture', () => {
         expect(sceneMode).toContain('cancelTestId: \'scene-cancel-action\'')
         expect(sceneMode).toContain('handleWorkspaceRecipeChange')
         expect(sceneMode).toContain('setSceneCompositionRef(activePresetId, sceneId')
-        expect(sceneMode).toContain('data-testid="scene-bulk-recipe"')
+        expect(sceneMode).not.toContain('data-testid="scene-bulk-recipe"')
+        expect(sceneMode).toContain('editSceneSettingsIndividually')
         expect(sceneMode).toContain('<SceneCompositionCardMeta')
         expect(createAction).toBeGreaterThan(-1)
         expect(editAction).toBeGreaterThan(-1)
@@ -105,6 +106,8 @@ describe('Scene composition workspace information architecture', () => {
         expect(detail).toContain("id: 'output'")
         expect(detail).toContain('handleCharacterPositionChange')
         expect(detail).toContain('data-testid="scene-detail-workspace"')
+        expect(detail).toContain('overflow-y-auto overscroll-contain')
+        expect(detail).toContain('min-h-[20rem]')
         expect(detail).toContain('data-testid="scene-resolved-action"')
         expect(detail).toContain('SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG')
     })

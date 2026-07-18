@@ -212,7 +212,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
 
     const authState = useAuthStore.getState()
     if (!authState.token || !authState.isVerified) {
-        authState.requestCredentialUnlock()
+        authState.requestTokenEntry()
         toast({
             title: i18n.t('toast.tokenRequired.title'),
             description: i18n.t('toast.tokenRequired.desc'),

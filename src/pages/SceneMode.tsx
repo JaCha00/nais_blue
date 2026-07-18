@@ -76,12 +76,12 @@ import {
     Drama,
     UserMinus,
     UserCheck,
-    Layers3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tip } from '@/components/ui/tooltip'
 import {
     hasSceneCompositionOverrides,
+    resolveSceneGeneration,
     useSceneStore,
     type SceneCompositionMode,
 } from '@/stores/scene-store'
@@ -119,7 +119,6 @@ import {
 import { previewSceneComposition } from '@/lib/scene-generation/build-scene-params'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
-import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { useQueueStore } from '@/stores/queue-store'
 import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
@@ -133,6 +132,7 @@ import type {
 import { portableIssuesForResolvedPlan } from '@/components/composition-workspace'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+import { ensureActiveGenerationCredential } from '@/services/generation/credential-guard'
 
 const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
@@ -294,7 +294,6 @@ export default function SceneMode() {
     const deleteSelectedScenes = useSceneStore(s => s.deleteSelectedScenes)
     const moveSelectedScenesToPreset = useSceneStore(s => s.moveSelectedScenesToPreset)
     const updateSelectedScenesResolution = useSceneStore(s => s.updateSelectedScenesResolution)
-    const applyRecipeToSelectedScenes = useSceneStore(s => s.applyRecipeToSelectedScenes)
     const clearAllFavorites = useSceneStore(s => s.clearAllFavorites)
     const deleteAllImages = useSceneStore(s => s.deleteAllImages)
     const sceneCompositionMode = useSceneStore(s => s.sceneCompositionMode)
@@ -306,11 +305,6 @@ export default function SceneMode() {
     const assetProfileRevision = useAssetModuleStore(s => s.profile.revision)
     const assetHasConflict = useAssetModuleStore(s => s.hasConflict)
     const assetConflictMessage = useAssetModuleStore(s => s.conflictMessage)
-    const seed = useGenerationStore(s => s.seed)
-    const seedLocked = useGenerationStore(s => s.seedLocked)
-    const setSeed = useGenerationStore(s => s.setSeed)
-    const setSeedLocked = useGenerationStore(s => s.setSeedLocked)
-    const steps = useGenerationStore(s => s.steps)
     const generatingMode = useGenerationStore(s => s.generatingMode)
 
     // Resolution state for selected scenes
@@ -383,20 +377,6 @@ export default function SceneMode() {
         toast({ description: t('scene.resolutionApplied', { count: selectedSceneIds.length, width: editModeResolution.width, height: editModeResolution.height }) })
     }
 
-    const handleApplyRecipeToSelected = () => {
-        const selection = decodeSceneRecipeSelection(bulkRecipeId)
-        applyRecipeToSelectedScenes(
-            selection.recipeId,
-            assetProfileRevision,
-            selection.selectionKind,
-        )
-        toast({
-            description: t('scene.composition.bulkApplied', 'Recipe applied to {{count}} scenes', {
-                count: selectedSceneIds.length,
-            }),
-        })
-    }
-
     const runtimeDocument = useMemo(
         () => getRuntimeCompositionDocument(),
         [assetProfileRevision],
@@ -463,7 +443,11 @@ export default function SceneMode() {
                     : { severity: 'valid' }
     const estimatedCost = scenes.reduce((sum, scene) => {
         if (scene.queueCount <= 0) return sum
-        return sum + calculateAnlasCost(scene.width ?? 832, scene.height ?? 1216, steps) * scene.queueCount
+        return sum + calculateAnlasCost(
+            scene.width ?? 832,
+            scene.height ?? 1216,
+            resolveSceneGeneration(scene).steps,
+        ) * scene.queueCount
     }, 0)
     const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')
     const conflict: CompositionConflictSummary | null = assetHasConflict
@@ -581,6 +565,13 @@ export default function SceneMode() {
             return
         }
         if (totalQueue <= 0) return
+        if (!ensureActiveGenerationCredential()) {
+            toast({
+                title: t('credentialVault.unlockRequired', 'API 토큰 잠금 해제 필요'),
+                description: t('credentialVault.unlockRequiredForGeneration', '이미지를 생성하려면 NovelAI API 토큰 보관소를 잠금 해제하세요.'),
+            })
+            return
+        }
         if (queueExecutionAuthority === 'legacy') {
             startNewGenerationSession()
             return
@@ -857,6 +848,7 @@ export default function SceneMode() {
 
     return (
         <SceneCompositionWorkspace
+            simplified
             mode={{
                 value: sceneCompositionMode,
                 label: t('scene.composition.mode', 'Mode'),
@@ -886,17 +878,6 @@ export default function SceneMode() {
             }}
             validation={validation}
             cost={{ value: `${estimatedCost}`, label: 'Anlas', severity: estimatedCost > 0 ? 'warning' : 'normal' }}
-            seed={{
-                value: seed,
-                locked: seedLocked,
-                onChange: value => {
-                    const parsed = Number(value)
-                    if (Number.isSafeInteger(parsed) && parsed >= 0) setSeed(parsed)
-                },
-                onToggleLock: () => setSeedLocked(!seedLocked),
-                onPreviewWildcard: () => window.dispatchEvent(new Event(SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG)),
-                wildcardPreviewLabel: t('scene.wildcardPreview', 'Wildcard preview'),
-            }}
             generation={{
                 generating: isGenerating || isCancelling || rotationActive,
                 disabled: isCancelling || (!isGenerating && !rotationActive && (totalQueue === 0 || generationConflict)),
@@ -1012,42 +993,8 @@ export default function SceneMode() {
                             </Tip>
                         </div>
 
-                        <div className="flex min-w-0 items-center gap-2">
-                            <Select value={bulkRecipeId} onValueChange={setBulkRecipeId}>
-                                <SelectTrigger
-                                    className="h-11 min-w-0 flex-1"
-                                    aria-label={t('scene.composition.bulkRecipe', 'Recipe for selected scenes')}
-                                    data-testid="scene-bulk-recipe"
-                                >
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={SCENE_DIRECT_SELECTION_ID}>
-                                        {t('composition.recipe.direct', 'Direct prompts')}
-                                    </SelectItem>
-                                    {assetRecipes.map(recipe => (
-                                        <SelectItem
-                                            key={recipe.id}
-                                            value={sceneAssetRecipeSelectionId(recipe.id)}
-                                            disabled={!recipe.enabled}
-                                        >
-                                            {recipe.label || recipe.id}
-                                            {!recipe.enabled && ` ${t('composition.recipe.disabled', '(disabled)')}`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Button
-                                variant="secondary"
-                                size="icon"
-                                className="h-11 w-11 shrink-0"
-                                aria-label={t('scene.composition.applyBulkRecipe', 'Apply recipe to selected scenes')}
-                                onClick={handleApplyRecipeToSelected}
-                                disabled={selectedSceneIds.length === 0}
-                                data-testid="scene-apply-bulk-recipe"
-                            >
-                                <Layers3 className="h-4 w-4" />
-                            </Button>
+                        <div className="flex min-h-11 items-center rounded-control bg-canvas px-3 text-xs text-muted-foreground">
+                            {t('scene.editSceneSettingsIndividually', '프롬프트와 생성 설정은 각 씬에 들어가서 편집합니다.')}
                         </div>
                     </div>
 
