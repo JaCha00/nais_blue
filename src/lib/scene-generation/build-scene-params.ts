@@ -303,7 +303,7 @@ async function createSceneCompositionSnapshot(
             savePath: settings.sceneSavePath,
             useAbsolutePath: settings.useAbsoluteScenePath,
             imageFormat: settings.imageFormat,
-            metadataMode: settings.metadataMode,
+            metadataMode: scene.metadataMode ?? settings.metadataMode,
             portableRoot: runtimeCapabilities.absoluteOutputPath.supported
                 ? 'pictures'
                 : 'app-data',
@@ -540,8 +540,9 @@ async function materializeV2GenerationParams(
             imageFormat: output.imageFormat,
             metadataMode: modulePlan?.output.metadataMode ?? output.metadataMode,
             destinationKind: output.useAbsolutePath ? 'custom' : 'default',
-            writesSidecar: (modulePlan?.output.metadataMode ?? output.metadataMode) !== 'embedded'
-                || output.imageFormat === 'webp',
+            writesSidecar: (modulePlan?.output.metadataMode ?? output.metadataMode) !== 'strip-only'
+                && ((modulePlan?.output.metadataMode ?? output.metadataMode) !== 'embedded'
+                    || output.imageFormat === 'webp'),
             writesThumbnail: true,
             filenameTemplateId: plan.outputPolicy.filenameTemplate,
             collisionPolicy: plan.outputPolicy.collisionPolicy,

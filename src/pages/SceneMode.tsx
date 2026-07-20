@@ -64,6 +64,7 @@ import {
     CheckSquare,
     Square,
     FolderInput,
+    FolderTree,
     ArrowRight,
     Grid3x3,
     Upload,
@@ -84,12 +85,13 @@ import {
     resolveSceneGeneration,
     useSceneStore,
     type SceneCompositionMode,
+    getScenePresetPathSegments,
 } from '@/stores/scene-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { remove, writeFile } from '@tauri-apps/plugin-fs'
+import { writeFile } from '@tauri-apps/plugin-fs'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
 import { CharacterRotationDialog } from '@/components/scene/CharacterRotationDialog'
@@ -133,6 +135,14 @@ import { portableIssuesForResolvedPlan } from '@/components/composition-workspac
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
 import { ensureActiveGenerationCredential } from '@/services/generation/credential-guard'
+import { SceneFolderManagerDialog } from '@/components/scene/SceneFolderManagerDialog'
+import { useTrashStore } from '@/stores/trash-store'
+import {
+    archiveScene,
+    archiveSceneFolder,
+    archiveSceneImages,
+    archiveScenesIndividually,
+} from '@/services/trash/asset-trash-service'
 
 const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
@@ -291,11 +301,12 @@ export default function SceneMode() {
     const selectedSceneIds = useSceneStore(s => s.selectedSceneIds)
     const selectAllScenes = useSceneStore(s => s.selectAllScenes)
     const clearSelection = useSceneStore(s => s.clearSelection)
-    const deleteSelectedScenes = useSceneStore(s => s.deleteSelectedScenes)
+    const deleteScene = useSceneStore(s => s.deleteScene)
     const moveSelectedScenesToPreset = useSceneStore(s => s.moveSelectedScenesToPreset)
     const updateSelectedScenesResolution = useSceneStore(s => s.updateSelectedScenesResolution)
     const clearAllFavorites = useSceneStore(s => s.clearAllFavorites)
     const deleteAllImages = useSceneStore(s => s.deleteAllImages)
+    const addToTrash = useTrashStore(state => state.add)
     const sceneCompositionMode = useSceneStore(s => s.sceneCompositionMode)
     const setSceneCompositionMode = useSceneStore(s => s.setSceneCompositionMode)
     const sceneCompositionResults = useSceneStore(s => s.sceneCompositionResults)
@@ -598,6 +609,7 @@ export default function SceneMode() {
     // const [isExporting, setIsExporting] = useState(false) // Removed unused state
     const [activeId, setActiveId] = useState<string | null>(null)
     const [isRenamingPreset, setIsRenamingPreset] = useState(false)
+    const [showFolderManager, setShowFolderManager] = useState(false)
 
     // Generation Store values - used by export logic or future features?
     // Left empty for now as logic moved to hook
@@ -638,7 +650,9 @@ export default function SceneMode() {
     const handleAddScene = () => {
         if (activePresetId) {
             const sceneCount = scenes.length + 1
-            addScene(activePresetId, t('scene.defaultName', '씬 {{num}}', { num: sceneCount }))
+            // addScene materializes the folder template before navigation so the editor opens prefilled.
+            const sceneId = addScene(activePresetId, t('scene.defaultName', '씬 {{num}}', { num: sceneCount }))
+            navigate(`/scenes/${sceneId}`)
         }
     }
 
@@ -754,6 +768,8 @@ export default function SceneMode() {
     const [showExportDialog, setShowExportDialog] = useState(false)
     const [exportScenesFilter, setExportScenesFilter] = useState<'all' | 'selected'>('all')
     const [showDeletePresetDialog, setShowDeletePresetDialog] = useState(false)
+    const [showDeleteSelectedScenesDialog, setShowDeleteSelectedScenesDialog] = useState(false)
+    const [showDeleteSelectedImagesDialog, setShowDeleteSelectedImagesDialog] = useState(false)
     const [showRotationDialog, setShowRotationDialog] = useState(false)
 
     // Scenes to export based on filter
@@ -821,26 +837,71 @@ export default function SceneMode() {
         }
     }
 
-    const handleDeleteSelectedImages = async () => {
-        if (!activePresetId) return
-
-        let totalCount = 0
-        const allPaths: string[] = []
-        for (const sceneId of selectedSceneIds) {
-            const { count, paths } = deleteAllImages(activePresetId, sceneId)
-            totalCount += count
-            allPaths.push(...paths)
-        }
-
-        for (const filePath of allPaths) {
-            try {
-                await remove(filePath)
-            } catch (error) {
-                console.warn('Delete failed:', error)
+    /**
+     * Depends on the selected Scene ids and defers the existing store removal
+     * until each file has a trash snapshot. This keeps multi-scene image
+     * deletion on the same 30-day retention path as single-image deletion.
+     */
+    const moveSelectedImagesToTrash = async () => {
+        if (!activePresetId || !activePreset) return
+        try {
+            let totalCount = 0
+            for (const sceneId of selectedSceneIds) {
+                const scene = activePreset.scenes.find(candidate => candidate.id === sceneId)
+                if (!scene) continue
+                const trashItems = await archiveSceneImages(scene.images, {
+                    presetId: activePreset.id,
+                    presetName: activePreset.name,
+                    sceneId: scene.id,
+                    sceneName: scene.name,
+                })
+                trashItems.forEach(addToTrash)
+                totalCount += deleteAllImages(activePresetId, sceneId).count
             }
+            if (totalCount > 0) {
+                toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+            }
+        } catch (error) {
+            console.error('Failed to move selected scene images to trash:', error)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
         }
-        if (totalCount > 0) {
-            toast({ description: t('scene.deletedAllImages', '{{count}}개 이미지 전체 삭제됨', { count: totalCount }) })
+    }
+
+    const moveSelectedScenesToTrash = async () => {
+        if (!activePresetId || !activePreset) return
+        const selectedScenes = activePreset.scenes.filter(scene => selectedSceneIds.includes(scene.id))
+        const { archivedSceneIds, failedSceneIds } = await archiveScenesIndividually(
+            selectedScenes,
+            activePreset,
+            addToTrash,
+            sceneId => deleteScene(activePresetId, sceneId),
+        )
+        // The per-scene archive commit above means the remaining selection is
+        // always retryable: successfully archived cards disappear, failed cards
+        // stay selected without pointing at files that were already moved.
+        useSceneStore.setState({
+            selectedSceneIds: failedSceneIds,
+            lastSelectedSceneId: failedSceneIds.length > 0 ? failedSceneIds[failedSceneIds.length - 1] : null,
+        })
+        if (archivedSceneIds.length > 0) {
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+        }
+        if (failedSceneIds.length > 0) {
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
+        }
+    }
+
+    const moveActivePresetToTrash = async () => {
+        if (!activePreset || activePreset.id === 'scene-default') return
+        try {
+            const trashItem = await archiveSceneFolder(activePreset.id, presets)
+            if (!trashItem) return
+            addToTrash(trashItem)
+            deletePreset(activePreset.id)
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+        } catch (error) {
+            console.error('Failed to move Scene folder to trash:', error)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
         }
     }
 
@@ -1026,7 +1087,7 @@ export default function SceneMode() {
                                 size="icon"
                                 className="h-11 w-full min-w-0 lg:w-11"
                                 aria-label={t('scene.deleteSelected', '선택 삭제')}
-                                onClick={deleteSelectedScenes}
+                                onClick={() => setShowDeleteSelectedScenesDialog(true)}
                                 disabled={selectedSceneIds.length === 0}
                             >
                                 <Trash2 className="h-4 w-4" />
@@ -1050,7 +1111,7 @@ export default function SceneMode() {
                                 size="icon"
                                 className="h-11 w-full min-w-0 text-destructive hover:bg-destructive/10 hover:text-destructive lg:w-11"
                                 aria-label={t('scene.deleteAllImagesInSelected', '선택된 씬들의 이미지 전체 삭제')}
-                                onClick={handleDeleteSelectedImages}
+                                onClick={() => setShowDeleteSelectedImagesDialog(true)}
                                 disabled={selectedSceneIds.length === 0}
                             >
                                 <ImageOff className="h-4 w-4" />
@@ -1081,6 +1142,16 @@ export default function SceneMode() {
                         className="hidden"
                         onChange={handleFileInputChange}
                     />
+                    <Button
+                        variant="outline"
+                        className="h-11 shrink-0 px-3"
+                        aria-label={t('scene.folderManager.title', '씬 폴더 관리')}
+                        onClick={() => setShowFolderManager(true)}
+                        disabled={isGenerating || rotationActive}
+                    >
+                        <FolderTree className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{t('scene.folderManager.title', '씬 폴더 관리')}</span>
+                    </Button>
                     <Button
                         size="icon"
                         className="h-11 w-11 shrink-0 sm:w-auto sm:px-3"
@@ -1206,7 +1277,7 @@ export default function SceneMode() {
                                 <SelectContent className="max-h-[60vh]">
                                     {presets.map((preset) => (
                                         <SelectItem key={preset.id} value={preset.id}>
-                                            {preset.id === 'scene-default' ? t('scene.presetDefault') : preset.name} ({preset.scenes.length})
+                                            {getScenePresetPathSegments(presets, preset.id).join(' / ')} ({preset.scenes.length})
                                         </SelectItem>
                                     ))}
                                     <DropdownMenuSeparator />
@@ -1412,15 +1483,40 @@ export default function SceneMode() {
                 onOpenChange={setShowRotationDialog}
             />
 
+            <SceneFolderManagerDialog
+                open={showFolderManager}
+                onOpenChange={setShowFolderManager}
+            />
+
             <ConfirmDialog
                 open={showDeletePresetDialog}
                 onOpenChange={setShowDeletePresetDialog}
                 title={t('scene.deletePreset', '프리셋 삭제')}
-                description={t('scene.confirmDeletePreset', '이 프리셋을 삭제하시겠습니까?')}
-                confirmText={t('common.delete', '삭제')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
                 cancelText={t('common.cancel', '취소')}
                 variant="destructive"
-                onConfirm={() => { if (activePreset) deletePreset(activePreset.id) }}
+                onConfirm={moveActivePresetToTrash}
+            />
+            <ConfirmDialog
+                open={showDeleteSelectedScenesDialog}
+                onOpenChange={setShowDeleteSelectedScenesDialog}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={moveSelectedScenesToTrash}
+            />
+            <ConfirmDialog
+                open={showDeleteSelectedImagesDialog}
+                onOpenChange={setShowDeleteSelectedImagesDialog}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={moveSelectedImagesToTrash}
             />
             </div>
         </SceneCompositionWorkspace>
@@ -1433,6 +1529,7 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
     const navigate = useNavigate()
     const [isEditing, setIsEditing] = useState(false)
     const [editName, setEditName] = useState(scene.name)
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
     // Essential reactive state - only subscribe to what MUST trigger re-renders
     const activePresetId = useSceneStore(s => s.activePresetId)
@@ -1466,6 +1563,7 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
     const toggleSceneSelection = useSceneStore.getState().toggleSceneSelection
     const selectSceneRange = useSceneStore.getState().selectSceneRange
     const lastSelectedSceneId = useSceneStore.getState().lastSelectedSceneId
+    const addToTrash = useTrashStore(state => state.add)
 
     const thumbnail = getSceneThumbnail(scene)
     const [imageUrl, setImageUrl] = useState<string>('')
@@ -1491,7 +1589,26 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
         setIsEditing(false)
     }
 
-    const onDelete = () => { if (activePresetId) deleteScene(activePresetId, scene.id) }
+    /**
+     * Depends on the SceneStore record captured by this card and only deletes
+     * after the disk-backed snapshot is in the common trash. Keeping this
+     * locally avoids threading a destructive callback through virtualized cards.
+     */
+    const moveSceneToTrash = async () => {
+        if (!activePresetId) return
+        const preset = useSceneStore.getState().presets.find(candidate => candidate.id === activePresetId)
+        const currentScene = preset?.scenes.find(candidate => candidate.id === scene.id)
+        if (!preset || !currentScene) return
+        try {
+            addToTrash(await archiveScene(currentScene, preset))
+            deleteScene(activePresetId, scene.id)
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+        } catch (error) {
+            console.error('Failed to move Scene to trash:', error)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
+        }
+    }
+    const onDelete = () => setConfirmDeleteOpen(true)
     const onDuplicate = () => { if (activePresetId) duplicateScene(activePresetId, scene.id) }
     const onIncrement = () => { if (activePresetId) incrementQueue(activePresetId, scene.id, useGenerationStore.getState().batchCount) }
     const onDecrement = () => { if (activePresetId) decrementQueue(activePresetId, scene.id) }
@@ -1690,6 +1807,16 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                 <ContextMenuSeparator />
                 <ContextMenuItem className="min-h-11 text-destructive focus:text-destructive" onClick={() => onDelete()}> <Trash2 className="mr-2 h-4 w-4" /> {t('actions.delete')} </ContextMenuItem>
             </ContextMenuContent>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={setConfirmDeleteOpen}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={moveSceneToTrash}
+            />
         </ContextMenu>
     )
 })

@@ -68,6 +68,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface FragmentPromptDialogProps {
     open: boolean
@@ -101,6 +102,11 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
     const [isCreatingFolder, setIsCreatingFolder] = useState(false)
     const [hasChanges, setHasChanges] = useState(false)
     const [tooltipEnabled, setTooltipEnabled] = useState(false)
+    const [pendingDeletion, setPendingDeletion] = useState<
+        | { kind: 'file'; id: string }
+        | { kind: 'folder'; name: string }
+        | null
+    >(null)
 
     // Dialog 열릴 때 Tooltip 비활성화 후 500ms 뒤 활성화
     useEffect(() => {
@@ -158,7 +164,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
         setExpandedFolders(prev => new Set([...prev, folder]))
     }
 
-    const handleDeleteFile = async (id: string) => {
+    const deleteFileNow = async (id: string) => {
         await deleteFile(id)
         if (selectedFileId === id) {
             setSelectedFileId(null)
@@ -175,7 +181,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
         }
     }
 
-    const handleDeleteFolder = async (folderName: string) => {
+    const deleteFolderNow = async (folderName: string) => {
         // 폴더 내 모든 파일 삭제
         const folderFiles = files.filter(f => f.folder === folderName)
         for (const f of folderFiles) {
@@ -209,6 +215,19 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
             }
             return next
         })
+    }
+
+    /**
+     * Fragment files are persisted prompt content, not media assets, so they
+     * retain their existing store lifecycle but always pass through this shared
+     * confirmation boundary before a single file or an entire folder is removed.
+     */
+    const confirmDeletion = async () => {
+        const target = pendingDeletion
+        if (!target) return
+        if (target.kind === 'file') await deleteFileNow(target.id)
+        else await deleteFolderNow(target.name)
+        setPendingDeletion(null)
     }
 
     const handleResetCounters = () => {
@@ -519,7 +538,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                                 file={file}
                                                 isSelected={selectedFileId === file.id}
                                                 onSelect={() => handleSelectFile(file)}
-                                                onDelete={() => handleDeleteFile(file.id)}
+                                                onDelete={() => setPendingDeletion({ kind: 'file', id: file.id })}
                                                 onDuplicate={() => handleDuplicateFile(file.id)}
                                             />
                                         ))}
@@ -535,9 +554,9 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                             selectedFileId={selectedFileId}
                                             onToggle={() => toggleFolder(folder)}
                                             onSelectFile={handleSelectFile}
-                                            onDeleteFile={handleDeleteFile}
+                                            onDeleteFile={id => setPendingDeletion({ kind: 'file', id })}
                                             onDuplicateFile={handleDuplicateFile}
-                                            onDeleteFolder={() => handleDeleteFolder(folder)}
+                                            onDeleteFolder={() => setPendingDeletion({ kind: 'folder', name: folder })}
                                             onAddFile={() => handleCreateFile(folder)}
                                         />
                                     ))}
@@ -642,6 +661,19 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                     </div>
                 </div>
             </DialogContent>
+
+            <ConfirmDialog
+                open={pendingDeletion !== null}
+                onOpenChange={open => { if (!open) setPendingDeletion(null) }}
+                title={pendingDeletion?.kind === 'folder'
+                    ? t('fragment.confirmDeleteFolder', '폴더와 포함된 파일을 삭제할까요?')
+                    : t('fragment.confirmDeleteFile', '이 파일을 삭제할까요?')}
+                description={t('fragment.confirmDeleteDescription', '이 프롬프트 콘텐츠는 영구적으로 제거됩니다.')}
+                confirmText={t('common.delete', '삭제')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={confirmDeletion}
+            />
 
         </Dialog>
     )

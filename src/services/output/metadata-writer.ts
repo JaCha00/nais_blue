@@ -74,6 +74,7 @@ export class MetadataWriter implements OutputMetadataWriter {
         const shouldEmbed = request.imageFormat === 'png'
             && metadataMode !== 'sidecar-only'
             && metadataMode !== 'strip-and-sidecar'
+            && metadataMode !== 'strip-only'
         if (shouldEmbed) requireRuntimeCapability('embeddedPngMetadataWrite')
         const preparedImage = shouldEmbed
             ? base64ToBytes(embedNaisBlueParams(bytesToBase64(imageBytes), params))

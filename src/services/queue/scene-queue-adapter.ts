@@ -19,7 +19,7 @@ import { generateImage, generateImageStream } from '@/services/novelai-api'
 import { useCharacterStore } from '@/stores/character-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
-import { useSceneStore, type SceneCard, type ScenePreset } from '@/stores/scene-store'
+import { getScenePresetPathSegments, useSceneStore, type SceneCard, type ScenePreset } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
@@ -185,8 +185,9 @@ async function enqueueSceneQueueTargetsOnce(
             }
             const outputContext: SceneQueueWorkflowSnapshot['outputContext'] = {
                 useAbsoluteScenePath: settings.useAbsoluteScenePath,
-                metadataMode: settings.metadataMode,
+                metadataMode: scene.metadataMode ?? settings.metadataMode,
                 presetName: preset.name || 'Default',
+                presetPathSegments: getScenePresetPathSegments(sceneState.presets, preset.id),
                 sceneName: '',
             }
             for (let count = 0; count < target.count; count += 1) {

@@ -37,10 +37,7 @@ import {
     Database,
     AlertTriangle,
     HardDrive,
-    MessagesSquare,
-    ExternalLink,
 } from 'lucide-react'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { Slider } from '@/components/ui/slider'
 import { cn } from '@/lib/utils'
 import { useThemeStore } from '@/stores/theme-store'
@@ -502,15 +499,6 @@ export default function Settings() {
                                 ))}
                             </SelectContent>
                         </Select>
-                        <button
-                            type="button"
-                            onClick={() => openUrl('https://discord.gg/N78K9GPN')}
-                            title={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
-                            aria-label={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
-                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                            <MessagesSquare className="h-4 w-4" />
-                        </button>
                     </div>
                 </div>
             </header>
@@ -536,18 +524,6 @@ export default function Settings() {
                         </button>
                     ))}
                 </nav>
-
-                <div className="mt-4 pt-2">
-                    <button
-                        type="button"
-                        onClick={() => openUrl('https://discord.gg/N78K9GPN')}
-                        className="flex min-h-11 w-full items-center gap-3 rounded-control px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                        <MessagesSquare className="h-4 w-4" />
-                        <span className="flex-1 text-left">{t('settingsPage.sections.discord', '디스코드 커뮤니티')}</span>
-                        <ExternalLink className="h-4 w-4 opacity-60" />
-                    </button>
-                </div>
             </aside>
 
             {/* The content pane owns scrolling; the shell and mobile selector remain stable. */}

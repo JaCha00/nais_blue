@@ -63,6 +63,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface CharacterPromptPanelProps {
     open: boolean
@@ -96,6 +97,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
     const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
     const [editingGroupName, setEditingGroupName] = useState('')
     const [activeId, setActiveId] = useState<string | null>(null)
+    const [pendingGroupDeletion, setPendingGroupDeletion] = useState<string | null>(null)
 
     // DnD sensors
     const sensors = useSensors(
@@ -445,7 +447,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                             size="icon"
                                                             variant="ghost"
                                                             className="h-7 w-7 text-destructive hover:text-destructive"
-                                                            onClick={() => deleteGroup(group.id)}
+                                                            onClick={() => setPendingGroupDeletion(group.id)}
                                                             aria-label={t('characterPanel.deleteFolder', '폴더 삭제')}
                                                         >
                                                             <Trash2 className="w-4 h-4" />
@@ -557,6 +559,19 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                 onOpenChange={setPositionDialogOpen}
                 characters={characters}
                 onPositionChange={setPosition}
+            />
+            <ConfirmDialog
+                open={pendingGroupDeletion !== null}
+                onOpenChange={open => { if (!open) setPendingGroupDeletion(null) }}
+                title={t('characterPanel.confirmDeleteFolder', '캐릭터 폴더를 삭제할까요?')}
+                description={t('characterPanel.confirmDeleteFolderDescription', '폴더를 삭제해도 포함된 캐릭터는 미분류로 유지됩니다.')}
+                confirmText={t('common.delete', '삭제')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={() => {
+                    if (pendingGroupDeletion) deleteGroup(pendingGroupDeletion)
+                    setPendingGroupDeletion(null)
+                }}
             />
         </>
     )

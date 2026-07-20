@@ -23,18 +23,13 @@ describe('Artifact lifecycle routing', () => {
         expect(files.at(-1)).toContain('useArtifactLifecycleStore')
     })
 
-    it('retains optional queue lineage from History through the Organizer handoff', async () => {
-        const [history, handoff] = await Promise.all([
-            source('src/components/layout/HistoryPanel.tsx'),
-            source('src/services/organizer/handoff.ts'),
-        ])
+    it('retains optional queue lineage when History refreshes generated artifacts', async () => {
+        const history = await source('src/components/layout/HistoryPanel.tsx')
 
         for (const field of ['artifactId', 'sourceJobId', 'sourceSceneId']) {
             expect(history).toContain(`${field}?: string`)
             expect(history).toContain(`latestGeneratedArtifact.${field}`)
         }
-        expect(history).toContain('artifactId: image.artifactId')
-        expect(handoff).toContain('artifactId?: string')
     })
 
     it('rejoins durable artifact lineage after a History disk refresh without making History authoritative', async () => {

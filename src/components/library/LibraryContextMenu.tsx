@@ -9,10 +9,14 @@ import { Copy, FolderOpen, Save, Trash2, Wand2, Users, Pencil, FileSearch } from
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { save } from '@tauri-apps/plugin-dialog'
-import { writeFile, remove, readFile } from '@tauri-apps/plugin-fs'
+import { writeFile, readFile } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useNavigate } from 'react-router-dom'
 import { useToolsStore } from '@/stores/tools-store'
+import { useState } from 'react'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useTrashStore } from '@/stores/trash-store'
+import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
 
 interface LibraryContextMenuProps {
     item: LibraryItem
@@ -24,9 +28,11 @@ interface LibraryContextMenuProps {
 
 export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadMetadata }: LibraryContextMenuProps) {
     const { t } = useTranslation()
-    const { removeItem } = useLibraryStore()
+    const { items: libraryItems, removeItem } = useLibraryStore()
+    const addToTrash = useTrashStore(state => state.add)
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
+    const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
     const handleCopy = async () => {
         try {
@@ -87,15 +93,14 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
 
     const handleDelete = async () => {
         try {
-            // Optional: Ask for confirmation or just delete? 
-            // Usually direct delete in context menu is fine if there's no undo, but let's just delete for now as per requirement.
-            // Requirement didn't specify confirmation dialog.
-            await remove(item.path)
+            const sourceStackId = libraryItems.find(libraryItem => libraryItem.stackItems?.some(stackItem => stackItem.id === item.id))?.id ?? null
+            const trashItem = await archiveLibraryItems([item], sourceStackId)
+            addToTrash(trashItem)
             removeItem(item.id)
-            toast({ title: t('actions.deleted', '삭제 완료'), variant: 'success' })
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
         } catch (e) {
-            console.error('Delete failed:', e)
-            removeItem(item.id) // Still remove from store if file not found
+            console.error('Move to trash failed:', e)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
         }
     }
 
@@ -133,11 +138,21 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                     <FolderOpen className="h-4 w-4 mr-2" />
                     {t('actions.openFolder', '폴더 열기')}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={handleDelete} className="text-red-500 focus:text-red-500">
+                <ContextMenuItem onClick={() => setConfirmDeleteOpen(true)} className="text-red-500 focus:text-red-500">
                     <Trash2 className="h-4 w-4 mr-2" />
                     {t('actions.delete', '삭제')}
                 </ContextMenuItem>
             </ContextMenuContent>
+            <ConfirmDialog
+                open={confirmDeleteOpen}
+                onOpenChange={setConfirmDeleteOpen}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={handleDelete}
+            />
         </ContextMenu>
     )
 }

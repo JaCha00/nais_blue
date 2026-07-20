@@ -4,6 +4,39 @@
 @config "../../tailwind.config.js";
 @plugin "tailwindcss-animate";
 
+/* Tailwind typography tokens feed every text utility and the inherited body copy.
+   They are linked to all desktop panels, dialogs, and controls, so increasing only
+   font metrics (not rem-based spacing) delivers the requested +4px readability lift
+   without globally stretching grids, paddings, icons, or fixed window geometry. */
+@theme {
+  --text-xs: 1rem;
+  --text-xs--line-height: 1.5rem;
+  --text-sm: 1.125rem;
+  --text-sm--line-height: 1.625rem;
+  --text-base: 1.25rem;
+  --text-base--line-height: 1.875rem;
+  --text-lg: 1.375rem;
+  --text-lg--line-height: 1.875rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 1.75rem;
+  --text-2xl--line-height: 2.25rem;
+  --text-3xl: 2.125rem;
+  --text-3xl--line-height: 2.625rem;
+  --text-4xl: 2.5rem;
+  --text-4xl--line-height: 3rem;
+  --text-5xl: 3.25rem;
+  --text-5xl--line-height: 3.5rem;
+  --text-6xl: 4rem;
+  --text-6xl--line-height: 4.25rem;
+  --text-7xl: 4.75rem;
+  --text-7xl--line-height: 5rem;
+  --text-8xl: 6.25rem;
+  --text-8xl--line-height: 6.5rem;
+  --text-9xl: 8.25rem;
+  --text-9xl--line-height: 8.5rem;
+}
+
 @layer base {
   :root {
     --brand-core: 0.316 0.1719 263.65;
@@ -90,6 +123,8 @@
 @layer base {
   body {
     @apply bg-background text-foreground;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
     font-feature-settings: "rlig" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -155,6 +190,30 @@
   /* Focus ring */
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
+
+/* Narrow Android and small-window layouts use a +2px compact lift. These values
+   depend on the same global typography tokens and preserve the responsive shell's
+   existing one-column contracts while keeping captions at a readable 14px floor. */
+@media (max-width: 639px) {
+  :root {
+    --text-xs: 0.875rem;
+    --text-xs--line-height: 1.25rem;
+    --text-sm: 1rem;
+    --text-sm--line-height: 1.5rem;
+    --text-base: 1.125rem;
+    --text-base--line-height: 1.625rem;
+    --text-lg: 1.25rem;
+    --text-lg--line-height: 1.75rem;
+    --text-xl: 1.375rem;
+    --text-xl--line-height: 1.875rem;
+    --text-2xl: 1.625rem;
+    --text-2xl--line-height: 2.125rem;
+    --text-3xl: 2rem;
+    --text-3xl--line-height: 2.5rem;
+    --text-4xl: 2.375rem;
+    --text-4xl--line-height: 2.875rem;
   }
 }
 

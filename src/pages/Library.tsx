@@ -51,6 +51,9 @@ import { LibraryRenameDialog } from '@/components/library/LibraryRenameDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { readFile } from '@tauri-apps/plugin-fs'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useTrashStore } from '@/stores/trash-store'
+import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
 
 // ... existing imports
 
@@ -79,6 +82,7 @@ export default function Library() {
         setCurrentStackId,
         unstack
     } = useLibraryStore()
+    const addToTrash = useTrashStore(state => state.add)
     const { libraryPath, useAbsoluteLibraryPath } = useSettingsStore()
     const [activeId, setActiveId] = useState<string | null>(null)
     const [isDraggingFile, setIsDraggingFile] = useState(false)
@@ -95,6 +99,7 @@ export default function Library() {
     const [selectedImageRef, setSelectedImageRef] = useState<string | null>(null)
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
     const [selectedImageForMetadata, setSelectedImageForMetadata] = useState<string | undefined>()
+    const [confirmDeleteSelectedOpen, setConfirmDeleteSelectedOpen] = useState(false)
 
     // Fullscreen viewer state
     const [viewerImageSrc, setViewerImageSrc] = useState<string | null>(null)
@@ -353,6 +358,25 @@ export default function Library() {
         setGridColumns(next)
     }
 
+    /**
+     * Depends on the current stack-aware view and the Library store's existing
+     * selection removal. Archiving first preserves every selected file before
+     * the UI mutation clears the selection and returns the user to normal mode.
+     */
+    const handleTrashSelectedItems = async () => {
+        const selectedItems = viewItems.filter(item => selectedItemIds.includes(item.id))
+        if (selectedItems.length === 0) return
+        try {
+            const trashItem = await archiveLibraryItems(selectedItems, currentStackId)
+            addToTrash(trashItem)
+            deleteSelectedItems()
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+        } catch (error) {
+            console.error('Failed to move library selection to trash:', error)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
+        }
+    }
+
     // File import handler
     const handleImportClick = () => {
         fileInputRef.current?.click()
@@ -487,7 +511,7 @@ export default function Library() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-11 min-w-0 flex-1 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:flex-none sm:px-3 lg:h-9"
-                                onClick={deleteSelectedItems}
+                                onClick={() => setConfirmDeleteSelectedOpen(true)}
                                 disabled={selectedItemIds.length === 0}
                             >
                                 <Trash2 className="mr-1.5 h-4 w-4 shrink-0" />
@@ -725,6 +749,17 @@ export default function Library() {
                     if (!open) setSelectedImageForMetadata(undefined)
                 }}
                 initialImage={selectedImageForMetadata}
+            />
+
+            <ConfirmDialog
+                open={confirmDeleteSelectedOpen}
+                onOpenChange={setConfirmDeleteSelectedOpen}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={handleTrashSelectedItems}
             />
 
             {/* Full-Screen Image Viewer Overlay */}

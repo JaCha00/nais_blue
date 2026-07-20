@@ -35,7 +35,7 @@ export interface Nais2CharacterMetadata {
  */
 export interface Nais2OutputPolicySummary {
     imageFormat: 'png' | 'webp'
-    metadataMode: 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
+    metadataMode: 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
     destinationKind?: 'default' | 'custom' | 'download' | 'library'
     writesSidecar?: boolean
     writesThumbnail?: boolean
@@ -292,7 +292,7 @@ function isOutputPolicySummary(value: unknown): value is Nais2OutputPolicySummar
     ])
     if (Object.keys(value).some(key => !allowedKeys.has(key))) return false
     return (value.imageFormat === 'png' || value.imageFormat === 'webp')
-        && ['embedded', 'sidecar-only', 'strip-and-sidecar'].includes(String(value.metadataMode))
+        && ['embedded', 'sidecar-only', 'strip-and-sidecar', 'strip-only'].includes(String(value.metadataMode))
         && (value.destinationKind === undefined
             || ['default', 'custom', 'download', 'library'].includes(String(value.destinationKind)))
         && (value.writesSidecar === undefined || typeof value.writesSidecar === 'boolean')

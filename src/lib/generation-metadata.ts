@@ -18,7 +18,7 @@ export {
     toSidecarPath,
 } from '@/services/output/filename-policy'
 
-export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
+export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
 
 export const DEFAULT_METADATA_MODE: MetadataMode = 'embedded'
 
@@ -31,7 +31,9 @@ export function cloneCompositionRandomTrace(
 }
 
 export function shouldEmbedNais2Params(metadataMode: MetadataMode | undefined): boolean {
-    return metadataMode !== 'sidecar-only' && metadataMode !== 'strip-and-sidecar'
+    return metadataMode !== 'sidecar-only'
+        && metadataMode !== 'strip-and-sidecar'
+        && metadataMode !== 'strip-only'
 }
 
 export function shouldWriteNais2Sidecar(
@@ -39,6 +41,7 @@ export function shouldWriteNais2Sidecar(
     imageFormat: 'png' | 'webp' | undefined,
     includeWebpCompatibility = false,
 ): boolean {
+    if (metadataMode === 'strip-only') return false
     return metadataMode === 'sidecar-only'
         || metadataMode === 'strip-and-sidecar'
         || (includeWebpCompatibility && imageFormat === 'webp')

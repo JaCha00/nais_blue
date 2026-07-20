@@ -74,7 +74,13 @@ export const useLibraryStore = create<LibraryState>()(
             })),
 
             removeItem: (id) => set((state) => ({
-                items: state.items.filter((item) => item.id !== id)
+                // LibraryContextMenu also operates inside stacks; pruning both
+                // levels keeps its trash handoff aligned with the visible item.
+                items: state.items
+                    .filter(item => item.id !== id)
+                    .map(item => item.stackItems
+                        ? { ...item, stackItems: item.stackItems.filter(stackItem => stackItem.id !== id) }
+                        : item),
             })),
 
             removeItems: (ids) => set((state) => ({

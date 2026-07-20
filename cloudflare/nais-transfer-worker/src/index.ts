@@ -11,10 +11,12 @@ import {
     type SignedRequestMetadata,
     type StartTransferRequest,
 } from './protocol'
+import { notFoundImage, wrapImageWithCleanSvg } from './image-metadata-cleaner'
 
 interface Env {
     TRANSFER_STATE: DurableObjectNamespace<TransferStateObject>
     PRIME: R2Bucket
+    KV: KVNamespace
     R2_PREFIX: string
     PAIRING_CAPABILITY_SHA256: string
     PAIRING_EXPIRES_AT_MS: string
@@ -78,6 +80,26 @@ function pairingDenial(stage: 'request' | 'capability' | 'expiry' | 'body' | 'co
  */
 function readiness(env: Env): Response {
     return json({ versionId: env.CF_VERSION_METADATA.id })
+}
+
+function assetMime(url: URL, key: string, image: R2ObjectBody): 'image/png' | 'image/jpeg' | 'image/webp' {
+    const declared = image.httpMetadata?.contentType ?? url.searchParams.get('mime') ?? ''
+    if (declared === 'image/jpeg' || declared === 'image/webp' || declared === 'image/png') return declared
+    if (/\.jpe?g$/i.test(key)) return 'image/jpeg'
+    if (/\.webp$/i.test(key)) return 'image/webp'
+    return 'image/png'
+}
+
+/** Public image delivery is intentionally read-only and limited to this Worker's R2 prefix. */
+async function serveCleanAsset(request: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
+    if (request.method !== 'GET') return notFoundImage()
+    const encodedKey = url.pathname.slice('/v1/assets/'.length)
+    if (!encodedKey) return notFoundImage()
+    const key = decodeURIComponent(encodedKey)
+    if (!key.startsWith(`${env.R2_PREFIX}/`) || key.includes('\\')) return notFoundImage()
+    const image = await env.PRIME.get(key)
+    if (!image) return notFoundImage()
+    return wrapImageWithCleanSvg(env, key, image, assetMime(url, key, image), ctx)
 }
 
 async function sha256(bytes: ArrayBuffer | Uint8Array | string): Promise<string> {
@@ -172,9 +194,10 @@ async function pair(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
         try {
             const url = new URL(request.url)
+            if (url.pathname.startsWith('/v1/assets/')) return await serveCleanAsset(request, env, ctx, url)
             if (url.pathname === '/v1/ready' && request.method === 'GET'
                 && request.headers.get('origin') === null) return readiness(env)
             if (url.pathname === '/v1/pair') return await pair(request, env)

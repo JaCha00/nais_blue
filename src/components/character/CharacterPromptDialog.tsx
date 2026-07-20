@@ -29,6 +29,7 @@ import {
 import { Tip } from '@/components/ui/tooltip'
 import { useCharacterPromptStore, CHARACTER_COLORS, CharacterPrompt, CharacterPreset, CharacterGroup } from '@/stores/character-prompt-store'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 // --- Position Grid Component ---
 interface PositionGridProps {
@@ -365,6 +366,11 @@ export function CharacterPromptDialog() {
     const [newGroupName, setNewGroupName] = useState('')
     const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
     const [editingGroupName, setEditingGroupName] = useState('')
+    const [pendingDeletion, setPendingDeletion] = useState<
+        | { kind: 'preset' | 'group'; id: string }
+        | { kind: 'all' }
+        | null
+    >(null)
 
     // Group presets by groupId
     const ungroupedPresets = presets.filter(p => !p.groupId)
@@ -416,6 +422,14 @@ export function CharacterPromptDialog() {
         const index = characters.findIndex(c => c.presetId === presetId)
         if (index === -1) return null
         return CHARACTER_COLORS[index % CHARACTER_COLORS.length]
+    }
+
+    const confirmDeletion = () => {
+        if (!pendingDeletion) return
+        if (pendingDeletion.kind === 'preset') deletePreset(pendingDeletion.id)
+        else if (pendingDeletion.kind === 'group') deleteGroup(pendingDeletion.id)
+        else useCharacterPromptStore.getState().clearAll()
+        setPendingDeletion(null)
     }
 
     return (
@@ -543,7 +557,7 @@ export function CharacterPromptDialog() {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-6 w-6 text-destructive hover:text-destructive"
-                                                    onClick={() => deleteGroup(group.id)}
+                                                    onClick={() => setPendingDeletion({ kind: 'group', id: group.id })}
                                                 >
                                                     <Trash2 className="w-3 h-3" />
                                                 </Button>
@@ -561,7 +575,7 @@ export function CharacterPromptDialog() {
                                                         groups={groups}
                                                         onToggle={handleTogglePreset}
                                                         onEdit={(id) => setEditingPresetId(id)}
-                                                        onDelete={deletePreset}
+                                                        onDelete={id => setPendingDeletion({ kind: 'preset', id })}
                                                         onMoveToGroup={handleMoveToGroup}
                                                         getStateColor={getStateColor}
                                                         t={t}
@@ -591,7 +605,7 @@ export function CharacterPromptDialog() {
                                                     groups={groups}
                                                     onToggle={handleTogglePreset}
                                                     onEdit={(id) => setEditingPresetId(id)}
-                                                    onDelete={deletePreset}
+                                                    onDelete={id => setPendingDeletion({ kind: 'preset', id })}
                                                     onMoveToGroup={handleMoveToGroup}
                                                     getStateColor={getStateColor}
                                                     t={t}
@@ -634,7 +648,7 @@ export function CharacterPromptDialog() {
                                     size="sm"
                                     variant="outline"
                                     className="h-8 text-xs"
-                                    onClick={() => useCharacterPromptStore.getState().clearAll()}
+                                    onClick={() => setPendingDeletion({ kind: 'all' })}
                                     disabled={characters.length === 0}
                                 >
                                     <Trash2 className="w-3.5 h-3.5 mr-1" />
@@ -745,6 +759,18 @@ export function CharacterPromptDialog() {
                     }}
                 />
             )}
+            <ConfirmDialog
+                open={pendingDeletion !== null}
+                onOpenChange={open => { if (!open) setPendingDeletion(null) }}
+                title={pendingDeletion?.kind === 'all'
+                    ? t('characterPromptDialog.confirmClear', '활성 캐릭터를 모두 제거할까요?')
+                    : t('characterPromptDialog.confirmDelete', '이 항목을 삭제할까요?')}
+                description={t('characterPromptDialog.confirmDeleteDescription', '이 작업은 되돌릴 수 없습니다.')}
+                confirmText={t('common.delete', '삭제')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={confirmDeletion}
+            />
         </Dialog>
     )
 }

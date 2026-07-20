@@ -97,7 +97,7 @@ export interface MainOutputSnapshot {
     savePath: string
     useAbsolutePath: boolean
     imageFormat: 'png' | 'webp'
-    metadataMode: 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
+    metadataMode: 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
     /** Platform adapter choice for newly projected relative destinations. */
     portableRoot?: PortablePathRoot
 }

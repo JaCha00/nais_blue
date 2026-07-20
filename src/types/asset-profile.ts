@@ -14,7 +14,7 @@ export interface AssetProfileOutput {
     fileName?: string
     filenameTemplate?: string
     format?: string
-    metadataMode?: 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
+    metadataMode?: 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
     metadataSidecar?: boolean
     settings?: AssetProfileJsonRecord
 }

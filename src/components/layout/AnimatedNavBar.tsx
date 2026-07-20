@@ -34,8 +34,8 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
     const location = useLocation()
     const reduceMotion = useReducedMotion()
 
-    // Four daily destinations plus one overflow keep every route accessible
-    // without allowing navigation chrome to compete with the working canvas.
+    // Compact shells retain the four daily destinations while routing every
+    // remaining page through one overflow control; large desktops expose all labels.
     const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
     const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
     const moreLabel = t('nav.more', 'More')
@@ -53,7 +53,8 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                 aria-label={label}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                    'relative z-0 inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                    'relative z-0 inline-flex h-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                    showLabel ? 'w-auto px-2' : 'w-11',
                     isActive
                         ? 'text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -68,7 +69,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                             : { type: 'tween', duration: 0.18, ease: [0.2, 0, 0, 1] }}
                     />
                 )}
-                <span className="relative z-10 flex min-w-0 items-center gap-2">
+                <span className={cn('relative z-10 flex min-w-0 items-center', showLabel ? 'gap-1.5' : 'gap-2')}>
                     <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                     {showLabel && <span className="truncate">{label}</span>}
                 </span>
@@ -81,8 +82,19 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             aria-label={t('nav.navigation', 'Primary navigation')}
             className="flex w-full min-w-0 items-center justify-center"
         >
-            <div className="flex w-full max-w-[15rem] min-w-0 items-center justify-between gap-1">
-                {primaryItems.map(item => renderItem(item, 'activeTab-mobile', false))}
+            {/* Full labels depend on the center workspace width shared with both
+                side docks. The 2200px threshold keeps enlarged labels away from
+                sidebar toggles; ordinary desktops retain clear icons and tooltips. */}
+            <div className="hidden min-[2200px]:flex min-w-0 items-center justify-center gap-0">
+                {items.map(item => renderItem(item, 'activeTab-desktop', true))}
+            </div>
+
+            <div className="hidden min-w-0 items-center justify-center gap-1 lg:flex min-[2200px]:!hidden">
+                {items.map(item => renderItem(item, 'activeTab-compact', false))}
+            </div>
+
+            <div className="flex w-full max-w-[15rem] min-w-0 items-center justify-between gap-1 lg:hidden">
+                {primaryItems.map(item => renderItem(item, 'activeTab-condensed', false))}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button

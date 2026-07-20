@@ -132,7 +132,7 @@ const NON_PARAM_SETTING_KEYS = new Set([
 ])
 
 const KNOWN_SOURCE_MODES = new Set(['text-to-image', 'image-to-image', 'inpaint'])
-const KNOWN_METADATA_MODES = new Set(['embedded', 'sidecar-only', 'strip-and-sidecar'])
+const KNOWN_METADATA_MODES = new Set(['embedded', 'sidecar-only', 'strip-and-sidecar', 'strip-only'])
 const KNOWN_MODULE_KINDS = new Set(['prompt', 'character', 'params', 'output', 'composite'])
 
 function isRecord(value: unknown): value is UnknownRecord {

@@ -13,25 +13,32 @@ const VIEWPORTS = [
     // Wide desktop restores both command sidebars, leaving the authoring/main
     // center intentionally narrower than the viewport.
     { width: 1536, height: 960, minCenterWidth: 680 },
+    // The fully labelled primary navigation activates only on spacious desktops.
+    { width: 1920, height: 1080, minCenterWidth: 980 },
 ]
 
-const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/asset-modules', '/queue', '/organizer']
+const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/queue', '/r2']
 
 // These routes represent each responsive information architecture used by the
 // production shell: command canvas, split editor, dense grids, and settings.
-const routes = [
+const defaultRoutes = [
     '/',
     '/style-lab',
     '/scenes',
-    '/prompts',
     '/tools',
     '/library',
     '/web',
-    '/asset-modules',
     '/queue',
-    '/organizer',
+    '/r2',
     '/settings',
 ]
+// A route filter keeps focused accessibility checks fast and isolates layout
+// failures from unrelated page-startup delays in the full release gate.
+const requestedRoutes = (process.env.RESPONSIVE_CONTRACT_ROUTES ?? '')
+    .split(',')
+    .map(route => route.trim())
+    .filter(Boolean)
+const routes = requestedRoutes.length > 0 ? requestedRoutes : defaultRoutes
 const port = Number(process.env.RESPONSIVE_CONTRACT_PORT || 5177)
 const baseUrl = process.env.RESPONSIVE_CONTRACT_URL || `http://127.0.0.1:${port}`
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
@@ -420,6 +427,85 @@ async function collectText200OverflowReport(page) {
     })
 }
 
+// R2 contains user-controlled paths and long Korean action labels. Global
+// overflow checks cannot detect a flex/grid column that stays inside the page
+// while collapsing its text to one character per line, so this report also
+// rejects pathologically narrow multi-line text at normal and 200% text size.
+async function collectR2ReadabilityReport(page, enlargedText) {
+    return page.evaluate(async enlarged => {
+        const previousFontSize = document.documentElement.style.fontSize
+        if (enlarged) document.documentElement.style.fontSize = '200%'
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+
+        const root = document.querySelector('[data-testid="native-r2-guided-setup"]')
+        const visible = element => {
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 1 && rect.height > 1
+        }
+        const pathologicalTextColumns = root
+            ? Array.from(root.querySelectorAll('*')).flatMap((element, index) => {
+                if (!visible(element) || element.matches('input, option, script, style')) return []
+                const directText = Array.from(element.childNodes)
+                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                    .map(node => node.textContent ?? '')
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                if (directText.length < 8) return []
+                const rect = element.getBoundingClientRect()
+                const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight) || 16
+                return rect.width < 80 && rect.height > lineHeight * 4
+                    ? [{ index, text: directText.slice(0, 80), width: rect.width, height: rect.height, lineHeight }]
+                    : []
+            })
+            : []
+        const trackedText = root
+            ? Array.from(root.querySelectorAll('[data-r2-readable-text]')).filter(visible).map(element => {
+                const rect = element.getBoundingClientRect()
+                return {
+                    text: (element.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
+                    width: rect.width,
+                    height: rect.height,
+                    scrollWidth: element.scrollWidth,
+                    clientWidth: element.clientWidth,
+                }
+            })
+            : []
+        const actionOverflow = root
+            ? Array.from(root.querySelectorAll('button')).filter(visible).flatMap(button => (
+                button.scrollWidth > button.clientWidth + 1
+                    ? [{ text: (button.textContent ?? '').trim().slice(0, 80), scrollWidth: button.scrollWidth, clientWidth: button.clientWidth }]
+                    : []
+            ))
+            : []
+
+        const report = {
+            missingRoot: !root,
+            stepCount: root?.querySelectorAll('ol > li').length ?? 0,
+            guideCount: root?.querySelectorAll('ol > li > aside').length ?? 0,
+            pathologicalTextColumns,
+            trackedText,
+            actionOverflow,
+        }
+        document.documentElement.style.fontSize = previousFontSize
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+        return report
+    }, enlargedText)
+}
+
+function assertR2Readability(report, context) {
+    assert.equal(report.missingRoot, false, `${context} is missing the R2 setup root`)
+    assert.equal(report.stepCount, 10, `${context} must keep all ten R2 workflow steps`)
+    assert.equal(report.guideCount, 10, `${context} must keep one guide beside each R2 step`)
+    assert.deepEqual(report.pathologicalTextColumns, [], `${context} collapses text into a vertical column: ${JSON.stringify(report.pathologicalTextColumns)}`)
+    assert.deepEqual(report.actionOverflow, [], `${context} has action text outside its button: ${JSON.stringify(report.actionOverflow)}`)
+    for (const tracked of report.trackedText) {
+        assert.ok(tracked.width >= 120, `${context} makes tracked text too narrow: ${JSON.stringify(tracked)}`)
+        assert.ok(tracked.scrollWidth <= tracked.clientWidth + 1, `${context} overflows tracked text: ${JSON.stringify(tracked)}`)
+    }
+}
+
 async function collectCompositionQualityReport(page, rootSelector, coarsePointer) {
     return page.evaluate(({ selector, coarse }) => {
         const root = document.querySelector(selector)
@@ -738,7 +824,9 @@ async function main() {
                     }
                     return route.abort()
                 })
-                const viewportRoutes = viewport.width === 1536 ? WIDE_COMPOSITION_ROUTES : routes
+                const viewportRoutes = viewport.width === 1536
+                    ? WIDE_COMPOSITION_ROUTES.filter(route => routes.includes(route))
+                    : routes
                 for (const route of viewportRoutes) {
                     console.log(`Checking ${route} at ${viewport.width}x${viewport.height}`)
                     await page.goto(`${baseUrl}${route}`, { waitUntil: 'domcontentloaded' })
@@ -902,56 +990,24 @@ async function main() {
                         }
                     }
 
-                    if (route === '/asset-modules') {
-                        const studio = page.locator('[data-testid="composition-studio-v2"]')
-                        const studioAvailable = await studio.count() > 0
-
-                        if (studioAvailable) {
-                            assertCompositionQuality(
-                                await collectCompositionQualityReport(
-                                    page,
-                                    '[data-testid="composition-studio-v2"]',
-                                    Boolean(viewport.mobile),
-                                ),
-                                `/asset-modules quality @ ${viewport.width}px`,
-                            )
-                        }
-
-                        if (studioAvailable && viewport.mobile) {
-                            const shortTargets = await studio.locator('button:visible').evaluateAll(buttons => (
-                                buttons
-                                    .map(button => {
-                                        const rect = button.getBoundingClientRect()
-                                        return { label: button.textContent?.trim() || button.getAttribute('aria-label'), height: rect.height }
-                                    })
-                                    .filter(target => target.height > 0 && target.height < 44)
-                            ))
-                            assert.deepEqual(shortTargets, [], `/asset-modules @ ${viewport.width}px has coarse-pointer targets below 44px`)
-                        }
-
-                        const text200Report = studioAvailable ? await page.evaluate(async () => {
-                            document.documentElement.style.fontSize = '200%'
-                            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-                            const main = document.querySelector('main')
-                            const report = {
-                                bodyScrollWidth: document.body.scrollWidth,
-                                documentWidth: document.documentElement.clientWidth,
-                                mainScrollWidth: main?.scrollWidth ?? 0,
-                                mainClientWidth: main?.clientWidth ?? 0,
-                            }
-                            document.documentElement.style.fontSize = ''
-                            return report
-                        }) : null
-                        if (text200Report) {
-                            assert.ok(
-                                text200Report.bodyScrollWidth <= text200Report.documentWidth + 1,
-                                `/asset-modules @ ${viewport.width}px creates page overflow at 200% text`,
-                            )
-                            assert.ok(
-                                text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
-                                `/asset-modules @ ${viewport.width}px creates main overflow at 200% text`,
-                            )
-                        }
+                    if (route === '/r2') {
+                        assertR2Readability(
+                            await collectR2ReadabilityReport(page, false),
+                            `/r2 readability @ ${viewport.width}px`,
+                        )
+                        assertR2Readability(
+                            await collectR2ReadabilityReport(page, true),
+                            `/r2 readability at 200% text @ ${viewport.width}px`,
+                        )
+                        const text200Report = await collectText200OverflowReport(page)
+                        assert.ok(
+                            text200Report.bodyScrollWidth <= text200Report.documentWidth + 1,
+                            `/r2 @ ${viewport.width}px creates page overflow at 200% text`,
+                        )
+                        assert.ok(
+                            text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
+                            `/r2 @ ${viewport.width}px creates main overflow at 200% text`,
+                        )
                     }
 
                     if (route === '/style-lab') {

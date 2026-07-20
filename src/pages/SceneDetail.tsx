@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input'
 import { AutocompleteTextarea } from "@/components/ui/AutocompleteTextarea";
 import { Tip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { hasSceneCompositionOverrides, resolveSceneGeneration, useSceneStore, SceneImage, type SceneCompositionMode } from '@/stores/scene-store'
+import { getScenePresetPathSegments, hasSceneCompositionOverrides, resolveSceneGeneration, useSceneStore, SceneImage, type SceneCompositionMode } from '@/stores/scene-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
@@ -31,8 +31,9 @@ import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { join } from '@tauri-apps/api/path'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { exists, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
+import { exists, readDir, readFile } from '@tauri-apps/plugin-fs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import { sanitizePathComponent } from '@/lib/scene-output-path'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
@@ -68,6 +69,9 @@ import type { CharacterPosition, CharacterSlotPatch } from '@/domain/composition
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
 import { ensureActiveGenerationCredential } from '@/services/generation/credential-guard'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useTrashStore } from '@/stores/trash-store'
+import { archiveSceneImages } from '@/services/trash/asset-trash-service'
 
 const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
@@ -121,10 +125,10 @@ export default function SceneDetail() {
         renameScene,
         toggleFavorite,
         deleteImage,
-        deleteNonFavoriteImages,
         incrementQueue,
         decrementQueue,
         validateSceneImages,
+        updateSceneSettings,
         setSceneCompositionRef,
         resetSceneToRecipe,
         startNewGenerationSession,
@@ -141,6 +145,7 @@ export default function SceneDetail() {
     const assetConflictMessage = useAssetModuleStore(state => state.conflictMessage)
     const generatingMode = useGenerationStore(state => state.generatingMode)
     const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
+    const addToTrash = useTrashStore(state => state.add)
 
     // Scene dimensions are shared by the request builder and gallery frames so
     // the saved scene snapshot has one visible resolution authority.
@@ -169,6 +174,7 @@ export default function SceneDetail() {
     // Edit mode state
     const [isEditMode, setIsEditMode] = useState(false)
     const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set())
+    const [pendingImagesToTrash, setPendingImagesToTrash] = useState<SceneImage[]>([])
     const [compositionPreviewLoading, setCompositionPreviewLoading] = useState(false)
     const [compositionPreview, setCompositionPreview] = useState<SceneCompositionResolution | null>(null)
     const [compositionPreviewError, setCompositionPreviewError] = useState<string | null>(null)
@@ -191,6 +197,44 @@ export default function SceneDetail() {
         const returnFocusTarget = viewerReturnFocusRef.current
         window.requestAnimationFrame(() => returnFocusTarget?.focus())
     }, [])
+
+    const requestTrashImages = (images: readonly SceneImage[]) => {
+        if (images.length > 0) setPendingImagesToTrash([...images])
+    }
+
+    /**
+     * Depends on the active Scene snapshot and is shared by card, viewer, and
+     * bulk controls. Files move into the trash before SceneStore removes their
+     * ids, so every image deletion keeps a preview and recoverable metadata.
+     */
+    const movePendingImagesToTrash = async () => {
+        if (!scene || !activePresetId || pendingImagesToTrash.length === 0) return
+        const preset = useSceneStore.getState().presets.find(candidate => candidate.id === activePresetId)
+        if (!preset) return
+        try {
+            const currentImages = scene.images.filter(image => pendingImagesToTrash.some(pending => pending.id === image.id))
+            const trashItems = await archiveSceneImages(currentImages, {
+                presetId: preset.id,
+                presetName: preset.name,
+                sceneId: scene.id,
+                sceneName: scene.name,
+            })
+            trashItems.forEach(addToTrash)
+            currentImages.forEach(image => deleteImage(activePresetId, scene.id, image.id))
+            setSelectedImageIds(current => {
+                const next = new Set(current)
+                currentImages.forEach(image => next.delete(image.id))
+                return next
+            })
+            if (viewerImage && currentImages.some(image => image.id === viewerImage.id)) closeImageViewer()
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
+        } catch (error) {
+            console.error('Failed to move Scene images to trash:', error)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
+        } finally {
+            setPendingImagesToTrash([])
+        }
+    }
 
     // ESC key handler for closing viewer or navigating back
     useEffect(() => {
@@ -455,13 +499,14 @@ export default function SceneDetail() {
             }
 
             const currentPreset = useSceneStore.getState().presets.find(p => p.id === activePresetId)
-            const safePresetName = sanitizePathComponent(currentPreset?.name || 'Default', 'Default')
+            const safePresetSegments = getScenePresetPathSegments(useSceneStore.getState().presets, currentPreset?.id || activePresetId)
+                .map(segment => sanitizePathComponent(segment, 'Default'))
             const safeSceneName = sanitizePathComponent(scene.name || 'Untitled_Scene', 'Untitled_Scene')
             const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
             const sceneRootPath = shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath
                 ? sceneSavePath
                 : await join(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
-            const presetPath = await join(sceneRootPath, safePresetName)
+            const presetPath = await join(sceneRootPath, ...safePresetSegments)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 
             if (folderPath) {
@@ -893,6 +938,33 @@ export default function SceneDetail() {
                 disabled={effectiveSceneGenerating || effectiveSceneCancelling}
             />
 
+            {/* This policy feeds both request metadata embedding and output persistence for direct/queued generation. */}
+            <div className="flex min-w-0 items-center justify-between gap-4 rounded-panel border border-border bg-card px-4 py-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold">{t('scene.metadataPolicy.title', '이미지 메타데이터')}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                        {scene.metadataMode === 'strip-only'
+                            ? t('scene.metadataPolicy.purgeDescription', '일반 메타데이터와 Stealth pnginfo를 제거한 출력만 저장합니다.')
+                            : t('scene.metadataPolicy.preserveDescription', '프롬프트와 생성 설정을 이미지에 보존합니다.')}
+                    </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                        {scene.metadataMode === 'strip-only'
+                            ? t('scene.metadataPolicy.purge', '즉각 삭제')
+                            : t('scene.metadataPolicy.preserve', '보존')}
+                    </span>
+                    <Switch
+                        checked={scene.metadataMode !== 'strip-only'}
+                        onChange={event => updateSceneSettings(activePresetId, scene.id, {
+                            metadataMode: event.currentTarget.checked ? 'embedded' : 'strip-only',
+                        })}
+                        disabled={effectiveSceneGenerating || effectiveSceneCancelling}
+                        aria-label={t('scene.metadataPolicy.toggle', '메타데이터 보존 또는 즉각 삭제')}
+                    />
+                </div>
+            </div>
+
             <Card className="mt-1 flex min-h-[20rem] min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
                 <CardHeader className="min-w-0 shrink-0 gap-2 border-b border-border p-3 sm:p-4">
                     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -933,19 +1005,7 @@ export default function SceneDetail() {
                                     variant="outline"
                                     size="sm"
                                     className="h-11 rounded-control px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-9"
-                                    onClick={async () => {
-                                        if (activePresetId && sceneId && selectedImageIds.size > 0) {
-                                            for (const imgId of selectedImageIds) {
-                                                const img = scene.images.find(i => i.id === imgId)
-                                                if (img && !img.url.startsWith('data:')) {
-                                                    try { await remove(img.url) } catch (e) { console.warn('Delete failed:', e) }
-                                                }
-                                                deleteImage(activePresetId, scene.id, imgId)
-                                            }
-                                            toast({ description: t('scene.deletedSelected', '{{count}}개 이미지 삭제됨', { count: selectedImageIds.size }) })
-                                            setSelectedImageIds(new Set())
-                                        }
-                                    }}
+                                    onClick={() => requestTrashImages(scene.images.filter(image => selectedImageIds.has(image.id)))}
                                     disabled={selectedImageIds.size === 0}
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -981,22 +1041,7 @@ export default function SceneDetail() {
                                     variant="outline"
                                     size="sm"
                                     className="h-11 rounded-control px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-9"
-                                    onClick={async () => {
-                                        if (activePresetId && sceneId) {
-                                            const { count, paths } = deleteNonFavoriteImages(activePresetId, sceneId)
-                                            // Delete actual files
-                                            for (const filePath of paths) {
-                                                try {
-                                                    await remove(filePath)
-                                                } catch (e) {
-                                                    console.warn('Failed to delete file:', filePath, e)
-                                                }
-                                            }
-                                            if (count > 0) {
-                                                toast({ description: t('scene.deletedNonFavorites', '{{count}}개 이미지 삭제됨', { count }) })
-                                            }
-                                        }
-                                    }}
+                                    onClick={() => requestTrashImages(scene.images.filter(image => !image.isFavorite))}
                                     disabled={scene.images.filter(img => !img.isFavorite).length === 0}
                                 >
                                     <Trash2 className="h-4 w-4" />
@@ -1054,7 +1099,7 @@ export default function SceneDetail() {
                                         }
                                         setSelectedImageIds(newSet)
                                     }}
-                                    onDelete={() => deleteImage(activePresetId, scene.id, image.id)}
+                                    onDelete={() => requestTrashImages([image])}
                                     onToggleFavorite={() => toggleFavorite(activePresetId, scene.id, image.id)}
                                     // Handlers for new context menu items
                                     onAddRef={async () => {
@@ -1136,6 +1181,17 @@ export default function SceneDetail() {
                 sourceImage={selectedImageForInpaint}
             />
 
+            <ConfirmDialog
+                open={pendingImagesToTrash.length > 0}
+                onOpenChange={open => { if (!open) setPendingImagesToTrash([]) }}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={movePendingImagesToTrash}
+            />
+
             {/* DESIGN.md: fixed viewers honor every safe-area edge and keep a 44px escape target. */}
             {viewerImageSrc && viewerImage && (
                 <div
@@ -1163,12 +1219,7 @@ export default function SceneDetail() {
                 >
                     <SceneImageContextMenu
                         image={viewerImage}
-                        onDelete={() => {
-                            if (activePresetId && scene) {
-                                deleteImage(activePresetId, scene.id, viewerImage.id)
-                            }
-                            closeImageViewer()
-                        }}
+                        onDelete={() => requestTrashImages([viewerImage])}
                         onAddRef={async () => {
                             try {
                                 let dataUrl = viewerImage.url

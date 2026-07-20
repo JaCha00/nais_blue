@@ -198,29 +198,33 @@ if (-not (Test-Path -LiteralPath $taggerServerExe)) {
     throw "Required tagger sidecar is missing from release directory: $taggerServerExe"
 }
 
+# Tauri derives bundle filenames from the spaced productName, while the public
+# artifact contract keeps hyphenated destination names for stable download URLs.
+$bundleStem = "NAIS blue_$($version)_x64"
+
 $files = @(
     @{
-        Source = Join-Path $buildRelease 'nais2.exe'
-        Destination = Join-Path $releaseRoot 'portable\nais2.exe'
+        Source = Join-Path $buildRelease 'Nais_blue.exe'
+        Destination = Join-Path $releaseRoot 'portable\Nais_blue.exe'
         Role = 'portable-exe'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\nsis\NAIS-blue_$($version)_x64-setup.exe"
+        Source = Join-Path $buildRelease "bundle\nsis\$bundleStem-setup.exe"
         Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe"
         Role = 'nsis-installer'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\nsis\NAIS-blue_$($version)_x64-setup.exe.sig"
+        Source = Join-Path $buildRelease "bundle\nsis\$bundleStem-setup.exe.sig"
         Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe.sig"
         Role = 'nsis-updater-signature'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\msi\NAIS-blue_$($version)_x64_en-US.msi"
+        Source = Join-Path $buildRelease "bundle\msi\$($bundleStem)_en-US.msi"
         Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi"
         Role = 'msi-installer'
     },
     @{
-        Source = Join-Path $buildRelease "bundle\msi\NAIS-blue_$($version)_x64_en-US.msi.sig"
+        Source = Join-Path $buildRelease "bundle\msi\$($bundleStem)_en-US.msi.sig"
         Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi.sig"
         Role = 'msi-updater-signature'
     }

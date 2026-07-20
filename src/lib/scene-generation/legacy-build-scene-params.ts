@@ -167,7 +167,8 @@ export async function buildLegacySceneGenerationParams(
     }
 
     const { imageFormat, metadataMode } = useSettingsStore.getState()
-    const effectiveMetadataMode = metadataMode
+    // Scene policy overrides Settings so folder templates and per-Scene toggles survive every builder path.
+    const effectiveMetadataMode = scene.metadataMode ?? metadataMode
     const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
     const characterImagesWithData = characterImages.filter(img => img.base64)
     const vibeImagesWithData = vibeImages.filter(img => img.base64)

@@ -1,6 +1,7 @@
 name = "nais-transfer-executor"
 main = "cloudflare/nais-transfer-worker/src/index.ts"
-compatibility_date = "2026-07-15"
+compatibility_date = "2026-07-19"
+compatibility_flags = ["nodejs_compat"]
 
 # /v1/ready returns only this public version ID so rotation can wait for the exact edge version
 # that owns the freshly changed pairing secrets before sending the one-use capability.
@@ -18,6 +19,10 @@ new_sqlite_classes = ["TransferStateObject"]
 [[r2_buckets]]
 binding = "PRIME"
 bucket_name = "prime"
+
+# Wrangler provisions this namespace on deploy; the Worker uses it only for sanitized image caches.
+[[kv_namespaces]]
+binding = "KV"
 
 [vars]
 R2_PREFIX = "nais"

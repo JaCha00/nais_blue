@@ -175,6 +175,7 @@ function snapshotFromSource(input: CompositionMigrationShadowInput): MainComposi
             imageFormat: settings.imageFormat === 'webp' ? 'webp' : 'png',
             metadataMode: settings.metadataMode === 'sidecar-only'
                 || settings.metadataMode === 'strip-and-sidecar'
+                || settings.metadataMode === 'strip-only'
                 ? settings.metadataMode
                 : 'embedded',
         },

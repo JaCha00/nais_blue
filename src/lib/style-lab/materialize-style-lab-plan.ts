@@ -123,7 +123,8 @@ export async function materializeStyleLabPlanForNai(
             imageFormat: input.imageFormat,
             metadataMode: input.metadataMode ?? 'embedded',
             destinationKind: input.useAbsolutePath ? 'custom' : 'default',
-            writesSidecar: input.metadataMode !== 'embedded' || input.imageFormat === 'webp',
+            writesSidecar: input.metadataMode !== 'strip-only'
+                && (input.metadataMode !== 'embedded' || input.imageFormat === 'webp'),
             writesThumbnail: true,
             filenameTemplateId: plan.outputPolicy.filenameTemplate,
             collisionPolicy: plan.outputPolicy.collisionPolicy,

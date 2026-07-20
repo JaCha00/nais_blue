@@ -219,7 +219,7 @@ export type OutputDestination =
     | { kind: 'filesystem'; directory: PortablePathRef; extensions?: Extensions }
 
 export type OutputFormat = 'png' | 'webp'
-export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar'
+export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
 
 export interface OutputPolicy {
     destination: OutputDestination

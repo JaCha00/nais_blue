@@ -44,7 +44,6 @@ describe('startup legacy source capture', () => {
             'useSceneStore',
             'useCharacterPromptStore',
             'useFragmentStore',
-            'usePromptLibraryStore',
             'usePresetStore',
             'useAssetModuleStore',
             'useCharacterStore',

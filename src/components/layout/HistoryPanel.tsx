@@ -1,11 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react'
-import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2, FolderKanban, Images } from 'lucide-react'
+import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { readDir, readFile, remove, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import { readDir, readFile, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
 import { join } from '@tauri-apps/api/path'
 import {
@@ -22,6 +22,7 @@ import { generateImage } from '@/services/novelai-api'
 import { toast } from '@/components/ui/use-toast'
 import { useToolsStore } from '@/stores/tools-store'
 import { useLibraryStore } from '@/stores/library-store'
+import { useSceneStore } from '@/stores/scene-store'
 import { useNavigate } from 'react-router-dom'
 import { Wand2 } from 'lucide-react'
 import {
@@ -32,7 +33,6 @@ import {
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
-import { queueOrganizerHandoff } from '@/services/organizer/handoff'
 import { buildArtifactHistoryShadow, artifactHistoryPathKey } from '@/services/organizer/artifact-history-shadow'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
 import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
@@ -42,6 +42,9 @@ import {
     useArtifactLifecycleStore,
 } from '@/stores/artifact-lifecycle-store'
 import { QueueActivityLink } from './QueueActivityLink'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useTrashStore } from '@/stores/trash-store'
+import { archiveSceneImage } from '@/services/trash/asset-trash-service'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -84,7 +87,6 @@ interface HistoryImageItemProps {
     onOpenFolder: (image: SavedImage) => void
     onLoadMetadata: (image: SavedImage) => void
     onAddToLibrary: (image: SavedImage) => void
-    onSendToOrganizer: (image: SavedImage) => void
     onLoadComplete: (path: string, data: string) => void
 }
 
@@ -92,7 +94,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
     image, thumbnail, index, getTypeIcon,
     onImageClick, onDelete, onSaveAs, onCopy, onRegenerate,
     onOpenSmartTools, onAddAsReference, onInpaint, onI2I, onOpenFolder, onLoadMetadata,
-    onAddToLibrary, onSendToOrganizer,
+    onAddToLibrary,
     onLoadComplete
 }: HistoryImageItemProps) {
     const { t } = useTranslation()
@@ -220,10 +222,6 @@ const HistoryImageItem = memo(function HistoryImageItem({
                     <Images className="mr-2 h-4 w-4" />
                     {t('history.addToLibrary', 'Add to library')}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => onSendToOrganizer(image)} disabled={image.isTemporary}>
-                    <FolderKanban className="mr-2 h-4 w-4" />
-                    {t('history.sendToOrganizer', 'Send to Organizer')}
-                </ContextMenuItem>
                 <ContextMenuItem onClick={() => onRegenerate(image)}>
                     <RotateCcw className="h-4 w-4 mr-2" />
                     {t('actions.regenerate', '재생성')}
@@ -274,10 +272,13 @@ export function HistoryPanel() {
     // Inpainting dialog state
     const [inpaintDialogOpen, setInpaintDialogOpen] = useState(false)
     const [selectedImageForInpaint, setSelectedImageForInpaint] = useState<string | null>(null)
+    const [pendingDeleteImage, setPendingDeleteImage] = useState<SavedImage | null>(null)
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
+    const addToTrash = useTrashStore(state => state.add)
     const libraryItems = useLibraryStore(state => state.items)
     const addLibraryItem = useLibraryStore(state => state.addItem)
+    const historyRefreshTrigger = useSceneStore(state => state.historyRefreshTrigger)
     const isTauriRuntime = isTauri()
     const artifactRepository = useMemo(() => getRuntimeArtifactRepository(), [])
     const outputPlatform = useMemo(() => createRuntimeOutputPlatformAdapter(), [])
@@ -636,7 +637,7 @@ export function HistoryPanel() {
 
     useEffect(() => {
         loadSavedImages()
-    }, [savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath])
+    }, [savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath, historyRefreshTrigger])
 
     const latestGeneratedArtifact = useArtifactLifecycleStore(state => state.latestGeneratedArtifact)
 
@@ -703,30 +704,40 @@ export function HistoryPanel() {
         navigate('/') // Navigate to main mode to show the image
     }
 
-    const handleDeleteImage = async (image: SavedImage, e?: React.MouseEvent) => {
+    const requestDeleteImage = (image: SavedImage, e?: React.MouseEvent) => {
         e?.stopPropagation()
+        setPendingDeleteImage(image)
+    }
 
-        // Handle temporary image deletion (just state update)
-        if (image.isTemporary) {
-            setSavedImages(prev => prev.filter(img => img.path !== image.path))
-            setImageThumbnails(prev => {
-                const next = { ...prev }
-                delete next[image.path]
-                return next
-            })
-            return
-        }
-
+    /**
+     * Depends on the History thumbnail cache for memory-only results and the
+     * unified asset trash service for disk files. Archive succeeds before the
+     * local grid is updated, avoiding a visual delete that loses recovery data.
+     */
+    const moveHistoryImageToTrash = async () => {
+        const image = pendingDeleteImage
+        if (!image) return
         try {
-            await remove(image.path)
+            const dataUrl = image.isTemporary ? imageThumbnails[image.path] : undefined
+            const trashItem = await archiveSceneImage({
+                id: `history-${image.path}`,
+                url: dataUrl || image.path,
+                timestamp: image.timestamp,
+                isFavorite: false,
+            }, 'history', image.name, { historyPath: image.path })
+            addToTrash(trashItem)
             setSavedImages(prev => prev.filter(img => img.path !== image.path))
             setImageThumbnails(prev => {
                 const next = { ...prev }
                 delete next[image.path]
                 return next
             })
+            toast({ title: t('trash.moved', '휴지통으로 이동했습니다.'), variant: 'success' })
         } catch (e) {
-            console.error('Failed to delete image:', e)
+            console.error('Failed to move history image to trash:', e)
+            toast({ title: t('common.error', '오류'), variant: 'destructive' })
+        } finally {
+            setPendingDeleteImage(null)
         }
     }
 
@@ -1007,16 +1018,6 @@ export function HistoryPanel() {
         toast({ title: t('history.addedToLibrary', 'Added to library'), variant: 'success' })
     }
 
-    const handleSendToOrganizer = (image: SavedImage) => {
-        if (image.isTemporary) return
-        queueOrganizerHandoff({
-            path: image.path,
-            fileName: image.name,
-            artifactId: image.artifactId,
-        })
-        navigate('/organizer')
-    }
-
     // Inpainting: Open dialog directly with image (source/mode set when mask is saved)
     const handleInpaint = async (image: SavedImage) => {
         let imageData = imageThumbnails[image.path]
@@ -1122,7 +1123,7 @@ export function HistoryPanel() {
                                 index={index}
                                 getTypeIcon={getTypeIcon}
                                 onImageClick={handleImageClick}
-                                onDelete={handleDeleteImage}
+                                onDelete={requestDeleteImage}
                                 onSaveAs={handleSaveAs}
                                 onCopy={handleCopyImage}
                                 onRegenerate={handleRegenerate}
@@ -1133,7 +1134,6 @@ export function HistoryPanel() {
                                 onOpenFolder={handleOpenFolder}
                                 onLoadMetadata={handleLoadMetadata}
                                 onAddToLibrary={handleAddToLibrary}
-                                onSendToOrganizer={handleSendToOrganizer}
                             />
                         ))}
                     </div>
@@ -1162,6 +1162,17 @@ export function HistoryPanel() {
                     if (!open) setSelectedImageForInpaint(null)
                 }}
                 sourceImage={selectedImageForInpaint}
+            />
+
+            <ConfirmDialog
+                open={pendingDeleteImage !== null}
+                onOpenChange={open => { if (!open) setPendingDeleteImage(null) }}
+                title={t('trash.confirmMoveTitle', '휴지통으로 이동할까요?')}
+                description={t('trash.confirmMoveDescription', '항목은 30일 동안 휴지통에 보관됩니다.')}
+                confirmText={t('trash.move', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={moveHistoryImageToTrash}
             />
         </div>
     )

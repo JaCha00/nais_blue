@@ -264,7 +264,6 @@ const sheet = read('src/components/ui/sheet.tsx')
 const localTagger = read('src/services/local-tagger-server.ts')
 const shortcuts = read('src/hooks/useShortcuts.ts')
 const promptGenerator = read('src/components/prompt/PromptGeneratorDialog.tsx')
-const assetModuleStudio = read('src/pages/AssetModuleStudio.tsx')
 const animatedNavBar = read('src/components/layout/AnimatedNavBar.tsx')
 const settingsPage = read('src/pages/Settings.tsx')
 const autoBackup = read('src/lib/auto-backup.ts')
@@ -401,12 +400,6 @@ assert.ok(
         promptGenerator.includes('canVerifyDanbooru'),
     'Danbooru verifier UI must be disabled when the local tagger sidecar is unsupported',
 )
-assert.ok(
-    assetModuleStudio.includes('runtimeCapabilities.localTaggerSidecar.supported') &&
-        assetModuleStudio.includes('canUseLocalTagger'),
-    'Asset module auto-verification must skip local tagger calls on mobile',
-)
-
 // When Android-specific capabilities are split out, this contract should also
 // reject desktop-only updater and shell permissions from that mobile surface.
 console.log('Android port contract passed.')

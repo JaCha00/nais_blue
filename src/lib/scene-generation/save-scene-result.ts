@@ -5,11 +5,12 @@ import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/out
 import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
-import { useSceneStore, type SceneCard } from '@/stores/scene-store'
+import { getScenePresetPathSegments, useSceneStore, type SceneCard } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
+import { eradicateImageMetadata } from '@/lib/image-metadata-purge'
 
 export interface SaveSceneResultContext {
     activePresetId: string
@@ -39,6 +40,7 @@ export interface SaveSceneResultOptions {
         useAbsoluteScenePath: boolean
         metadataMode: GenerationParams['metadataMode']
         presetName: string
+        presetPathSegments?: string[]
         sceneName: string
     }
 }
@@ -71,16 +73,20 @@ function sceneOutputDirectory(params: {
     sceneSavePath: string
     useAbsoluteScenePath: boolean
     presetName: string
+    presetPathSegments?: readonly string[]
     sceneName: string
     rotationCharacterId?: string
     rotationCharacterFolderName?: string
 }): { directory: string; capabilityFallbackDirectory: string; nestedSegments: string[] } {
-    const safePresetName = sanitizePathComponent(params.presetName || 'Default', 'Default')
+    const safePresetPath = (params.presetPathSegments?.length
+        ? params.presetPathSegments
+        : [params.presetName || 'Default'])
+        .map(segment => sanitizePathComponent(segment, 'Default'))
     const safeSceneName = sanitizePathComponent(params.sceneName || 'Untitled_Scene', 'Untitled_Scene')
     const safeCharacterName = params.rotationCharacterFolderName
         ? sanitizePathComponent(params.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(params.rotationCharacterId)
-    const nestedSegments = [safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
+    const nestedSegments = [...safePresetPath, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
     const relativeRoot = sanitizePathComponent(params.sceneSavePath || 'NAIS_Scene', 'NAIS_Scene')
     const relativeDirectory = [relativeRoot, ...nestedSegments].join('/')
     const requestedRoot = params.sceneSavePath.replace(/[\\/]+$/, '')
@@ -120,6 +126,8 @@ export async function saveSceneResult(
     const useAbsoluteScenePath = options.outputContext?.useAbsoluteScenePath ?? liveSettings.useAbsoluteScenePath
     const metadataMode = options.outputContext?.metadataMode ?? liveSettings.metadataMode
     const presetName = options.outputContext?.presetName ?? currentPreset?.name ?? 'Default'
+    const presetPathSegments = options.outputContext?.presetPathSegments
+        ?? getScenePresetPathSegments(useSceneStore.getState().presets, ctx.activePresetId)
     const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fallbackFileName = `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
@@ -138,13 +146,20 @@ export async function saveSceneResult(
         params.assetModulePlan?.output.fileName ?? policyFileName ?? fallbackFileName,
         fileExt,
     ) ?? `${fallbackFileName}.${fileExt}`
-    const dataUrl = toDataUrl(imageData, mimeType)
-    const base64Data = toBase64(imageData)
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
+    const rawDataUrl = toDataUrl(imageData, mimeType)
+    const effectiveMetadataMode = params.metadataMode ?? metadataMode
+    // strip-only must sanitize provider-owned chunks and stealth pixels before OutputWriter sees bytes.
+    const cleanOutput = effectiveMetadataMode === 'strip-only'
+        ? await eradicateImageMetadata(rawDataUrl, fileExt)
+        : null
+    const dataUrl = cleanOutput?.dataUrl ?? rawDataUrl
+    const binaryData = cleanOutput?.bytes
+        ?? Uint8Array.from(atob(toBase64(imageData)), c => c.charCodeAt(0))
     const destination = sceneOutputDirectory({
         sceneSavePath: ctx.sceneSavePath,
         useAbsoluteScenePath,
         presetName,
+        presetPathSegments,
         sceneName,
         rotationCharacterId: ctx.rotationCharacterId,
         rotationCharacterFolderName: ctx.rotationCharacterFolderName,
@@ -198,7 +213,7 @@ export async function saveSceneResult(
             metadata: {
                 params: metadataParams,
                 imageFormat: fileExt,
-                metadataMode: params.metadataMode ?? metadataMode,
+                metadataMode: effectiveMetadataMode,
                 fallbackPromptParts: getFallbackPromptParts(),
                 includeWebpCompatibilitySidecar: true,
             },

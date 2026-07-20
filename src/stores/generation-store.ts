@@ -652,6 +652,7 @@ async function buildV2GenerationParams(params: {
             metadataMode: params.plan.outputPolicy.metadataMode,
             destinationKind: params.plan.outputPolicy.destination.kind === 'filesystem' ? 'custom' : 'default',
             writesSidecar: params.plan.outputPolicy.metadataMode !== 'embedded'
+                && params.plan.outputPolicy.metadataMode !== 'strip-only'
                 || params.plan.outputPolicy.format === 'webp',
             writesThumbnail: true,
             filenameTemplateId: params.plan.outputPolicy.filenameTemplate,

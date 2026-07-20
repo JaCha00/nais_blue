@@ -13,6 +13,7 @@ import type {
     SceneCompositionRef,
 } from '@/lib/composition/scene-adapter'
 import { abortSceneSessionRequests } from '@/lib/scene-generation/request-cancellation'
+import type { MetadataMode } from '@/lib/generation-metadata'
 
 export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
@@ -84,9 +85,24 @@ export interface SceneCard {
     images: SceneImage[]  // Generated images for this scene
     width?: number
     height?: number
+    /** Scene-level output policy; undefined keeps the global Settings policy for legacy cards. */
+    metadataMode?: MetadataMode
     excludePinned?: boolean // Rotation-only: skip pinned characters for this scene.
     compositionRef?: SceneCompositionRef
     createdAt: number
+}
+
+export interface SceneFolderTemplate {
+    sourceSceneId: string
+    sourceSceneName: string
+    scenePrompt: string
+    prompts: ScenePromptConfig
+    generation: SceneGenerationConfig
+    width?: number
+    height?: number
+    excludePinned?: boolean
+    metadataMode?: MetadataMode
+    compositionRef?: SceneCompositionRef
 }
 
 /** Old Scene cards remain readable while all new edits use the modular prompt shape. */
@@ -131,7 +147,24 @@ export interface ScenePreset {
     id: string
     name: string
     scenes: SceneCard[]
+    /** Presets remain the persistence contract while parentId turns them into Scene folders. */
+    parentId?: string | null
+    defaultTemplate?: SceneFolderTemplate
     createdAt: number
+}
+
+/** Resolves the logical folder tree into the same path segments used by Scene output persistence. */
+export function getScenePresetPathSegments(presets: readonly ScenePreset[], presetId: string): string[] {
+    const byId = new Map(presets.map(preset => [preset.id, preset]))
+    const visited = new Set<string>()
+    const segments: string[] = []
+    let current = byId.get(presetId)
+    while (current && !visited.has(current.id)) {
+        visited.add(current.id)
+        segments.unshift(current.name || 'Default')
+        current = current.parentId ? byId.get(current.parentId) : undefined
+    }
+    return segments
 }
 
 interface SceneState {
@@ -139,21 +172,25 @@ interface SceneState {
     activePresetId: string | null
 
     // Actions - Presets
-    addPreset: (name: string) => void
+    addPreset: (name: string, parentId?: string | null) => string
     deletePreset: (id: string) => void
     renamePreset: (id: string, name: string) => void
+    movePresets: (ids: string[], parentId: string | null) => void
+    duplicatePresets: (ids: string[]) => void
+    setPresetDefaultFromScene: (targetPresetIds: string[], sourcePresetId: string, sceneId: string) => void
+    clearPresetDefault: (presetIds: string[]) => void
     reorderPresets: (oldIndex: number, newIndex: number) => void
     setActivePreset: (id: string) => void
     getActivePreset: () => ScenePreset | undefined
 
     // Actions - Scenes
-    addScene: (presetId: string, name?: string) => void
+    addScene: (presetId: string, name?: string) => string
     deleteScene: (presetId: string, sceneId: string) => void
     duplicateScene: (presetId: string, sceneId: string) => void
     renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
     updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
-    updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean }) => void
+    updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean, metadataMode?: MetadataMode }) => void
     updateSceneGeneration: (presetId: string, sceneId: string, generation: Partial<SceneGenerationConfig>) => void
     setSceneCompositionRef: (presetId: string, sceneId: string, ref: SceneCompositionRef | undefined) => void
     resetSceneToRecipe: (presetId: string, sceneId: string) => void
@@ -256,8 +293,38 @@ const createDefaultPreset = (): ScenePreset => ({
     id: DEFAULT_PRESET_ID,
     name: '기본',
     scenes: [],
+    parentId: null,
     createdAt: Date.now(),
 })
+
+const createSceneEntityId = (): string => `${Date.now()}-${crypto.randomUUID()}`
+
+/** Template cloning isolates folder defaults from later edits to either the source or created Scene. */
+function cloneSceneFolderTemplate(template: SceneFolderTemplate): SceneFolderTemplate {
+    return {
+        ...template,
+        prompts: { ...template.prompts },
+        generation: { ...template.generation },
+        ...(template.compositionRef === undefined
+            ? {}
+            : { compositionRef: structuredClone(template.compositionRef) }),
+    }
+}
+
+function sceneFolderTemplateFromScene(scene: SceneCard): SceneFolderTemplate {
+    return {
+        sourceSceneId: scene.id,
+        sourceSceneName: scene.name,
+        scenePrompt: scene.scenePrompt,
+        prompts: resolveScenePrompts(scene),
+        generation: resolveSceneGeneration(scene),
+        ...(scene.width === undefined ? {} : { width: scene.width }),
+        ...(scene.height === undefined ? {} : { height: scene.height }),
+        ...(scene.excludePinned === undefined ? {} : { excludePinned: scene.excludePinned }),
+        ...(scene.metadataMode === undefined ? {} : { metadataMode: scene.metadataMode }),
+        ...(scene.compositionRef === undefined ? {} : { compositionRef: structuredClone(scene.compositionRef) }),
+    }
+}
 
 function withoutSceneCompositionResult(
     records: Record<string, SceneCompositionRuntimeRecord>,
@@ -314,26 +381,50 @@ export const useSceneStore = create<SceneState>()(
             })),
 
             // Preset Actions
-            addPreset: (name) => {
+            addPreset: (name, parentId = null) => {
                 const newPreset: ScenePreset = {
-                    id: Date.now().toString(),
+                    id: createSceneEntityId(),
                     name,
                     scenes: [],
+                    parentId,
                     createdAt: Date.now(),
                 }
                 set(state => ({
                     presets: [...state.presets, newPreset],
                     activePresetId: newPreset.id,
                 }))
+                return newPreset.id
             },
 
             deletePreset: (id) => {
                 if (id === DEFAULT_PRESET_ID) return
-                const wasActive = get().activePresetId === id
-                set(state => ({
-                    presets: state.presets.filter(p => p.id !== id),
-                    activePresetId: wasActive ? DEFAULT_PRESET_ID : state.activePresetId,
-                }))
+                set(state => {
+                    // Removing a folder owns its descendants so the persisted tree can never retain orphans.
+                    const deleted = new Set([id])
+                    let changed = true
+                    while (changed) {
+                        changed = false
+                        state.presets.forEach(preset => {
+                            if (preset.parentId && deleted.has(preset.parentId) && !deleted.has(preset.id)) {
+                                deleted.add(preset.id)
+                                changed = true
+                            }
+                        })
+                    }
+                    const deletedSceneIds = state.presets
+                        .filter(preset => deleted.has(preset.id))
+                        .flatMap(preset => preset.scenes.map(scene => scene.id))
+                    return {
+                        presets: state.presets.filter(preset => !deleted.has(preset.id)),
+                        activePresetId: state.activePresetId && deleted.has(state.activePresetId)
+                            ? DEFAULT_PRESET_ID
+                            : state.activePresetId,
+                        sceneCompositionResults: withoutSceneCompositionResults(
+                            state.sceneCompositionResults,
+                            deletedSceneIds,
+                        ),
+                    }
+                })
             },
 
             renamePreset: (id, name) => {
@@ -343,6 +434,90 @@ export const useSceneStore = create<SceneState>()(
                     ),
                 }))
             },
+
+            movePresets: (ids, parentId) => set(state => {
+                const selected = new Set(ids.filter(id => id !== DEFAULT_PRESET_ID))
+                if (selected.size === 0 || (parentId !== null && !state.presets.some(preset => preset.id === parentId))) {
+                    return state
+                }
+                // Reject moves into any selected folder's descendant to keep path resolution acyclic.
+                const descendants = new Set(selected)
+                let changed = true
+                while (changed) {
+                    changed = false
+                    state.presets.forEach(preset => {
+                        if (preset.parentId && descendants.has(preset.parentId) && !descendants.has(preset.id)) {
+                            descendants.add(preset.id)
+                            changed = true
+                        }
+                    })
+                }
+                if (parentId !== null && descendants.has(parentId)) return state
+                return {
+                    presets: state.presets.map(preset => selected.has(preset.id)
+                        ? { ...preset, parentId }
+                        : preset),
+                }
+            }),
+
+            duplicatePresets: (ids) => set(state => {
+                const selected = new Set(ids)
+                // If parent and child are both selected, cloning the parent already includes that child.
+                const roots = state.presets.filter(preset => selected.has(preset.id)
+                    && !(preset.parentId && selected.has(preset.parentId)))
+                if (roots.length === 0) return state
+                const additions: ScenePreset[] = []
+                const cloneBranch = (source: ScenePreset, parentId: string | null, root: boolean): void => {
+                    const cloneId = createSceneEntityId()
+                    additions.push({
+                        ...source,
+                        id: cloneId,
+                        name: root ? `${source.name} (복사본)` : source.name,
+                        parentId,
+                        scenes: source.scenes.map(scene => ({
+                            ...scene,
+                            id: createSceneEntityId(),
+                            queueCount: 0,
+                            images: [],
+                            prompts: scene.prompts ? { ...scene.prompts } : undefined,
+                            generation: scene.generation ? { ...scene.generation } : undefined,
+                            compositionRef: scene.compositionRef ? structuredClone(scene.compositionRef) : undefined,
+                            createdAt: Date.now(),
+                        })),
+                        defaultTemplate: source.defaultTemplate
+                            ? cloneSceneFolderTemplate(source.defaultTemplate)
+                            : undefined,
+                        createdAt: Date.now(),
+                    })
+                    state.presets
+                        .filter(candidate => candidate.parentId === source.id)
+                        .forEach(child => cloneBranch(child, cloneId, false))
+                }
+                roots.forEach(root => cloneBranch(root, root.parentId ?? null, true))
+                return { presets: [...state.presets, ...additions] }
+            }),
+
+            setPresetDefaultFromScene: (targetPresetIds, sourcePresetId, sceneId) => set(state => {
+                const source = state.presets.find(preset => preset.id === sourcePresetId)
+                    ?.scenes.find(scene => scene.id === sceneId)
+                if (!source) return state
+                const targets = new Set(targetPresetIds)
+                const template = sceneFolderTemplateFromScene(source)
+                return {
+                    presets: state.presets.map(preset => targets.has(preset.id)
+                        ? { ...preset, defaultTemplate: cloneSceneFolderTemplate(template) }
+                        : preset),
+                }
+            }),
+
+            clearPresetDefault: (presetIds) => set(state => {
+                const targets = new Set(presetIds)
+                return {
+                    presets: state.presets.map(preset => targets.has(preset.id)
+                        ? { ...preset, defaultTemplate: undefined }
+                        : preset),
+                }
+            }),
 
             reorderPresets: (oldIndex, newIndex) => {
                 set(state => {
@@ -361,23 +536,32 @@ export const useSceneStore = create<SceneState>()(
 
             // Scene Actions
             addScene: (presetId, name) => {
+                const sceneId = createSceneEntityId()
                 set(state => ({
                     presets: state.presets.map(p => {
                         if (p.id !== presetId) return p
+                        const template = p.defaultTemplate
                         const newScene: SceneCard = {
-                            id: Date.now().toString(),
+                            id: sceneId,
                             name: name || `씬 ${p.scenes.length + 1}`,
-                            scenePrompt: '',
-                            prompts: { ...DEFAULT_SCENE_PROMPTS },
-                            generation: { ...DEFAULT_SCENE_GENERATION },
+                            scenePrompt: template?.scenePrompt ?? '',
+                            prompts: template ? { ...template.prompts } : { ...DEFAULT_SCENE_PROMPTS },
+                            generation: template ? { ...template.generation } : { ...DEFAULT_SCENE_GENERATION },
                             queueCount: 0,
                             images: [],
-                            excludePinned: false,
+                            ...(template?.width === undefined ? {} : { width: template.width }),
+                            ...(template?.height === undefined ? {} : { height: template.height }),
+                            excludePinned: template?.excludePinned ?? false,
+                            ...(template?.metadataMode === undefined ? {} : { metadataMode: template.metadataMode }),
+                            ...(template?.compositionRef === undefined
+                                ? {}
+                                : { compositionRef: structuredClone(template.compositionRef) }),
                             createdAt: Date.now(),
                         }
                         return { ...p, scenes: [...p.scenes, newScene] }
                     }),
                 }))
+                return sceneId
             },
 
             deleteScene: (presetId, sceneId) => {
@@ -423,7 +607,8 @@ export const useSceneStore = create<SceneState>()(
                 const oldName = scene.name
                 const safeOldName = oldName.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled_Scene'
                 const safeNewName = name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled_Scene'
-                const safePresetName = (preset?.name || 'Default').replace(/[<>:"/\\|?*]/g, '_').trim()
+                const safePresetSegments = getScenePresetPathSegments(state.presets, presetId)
+                    .map(segment => segment.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Default')
                 
                 // B's rename behavior intentionally covers only the direct
                 // preset/scene folder in this phase. Rotation character
@@ -435,13 +620,13 @@ export const useSceneStore = create<SceneState>()(
                     let newFolderPath: string
                     
                     if (shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath) {
-                        oldFolderPath = await join(sceneSavePath, safePresetName, safeOldName)
-                        newFolderPath = await join(sceneSavePath, safePresetName, safeNewName)
+                        oldFolderPath = await join(sceneSavePath, ...safePresetSegments, safeOldName)
+                        newFolderPath = await join(sceneSavePath, ...safePresetSegments, safeNewName)
                     } else {
                         const baseDir = await getMediaStorageRoot()
                         const sceneRoot = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
-                        oldFolderPath = await join(baseDir, sceneRoot, safePresetName, safeOldName)
-                        newFolderPath = await join(baseDir, sceneRoot, safePresetName, safeNewName)
+                        oldFolderPath = await join(baseDir, sceneRoot, ...safePresetSegments, safeOldName)
+                        newFolderPath = await join(baseDir, sceneRoot, ...safePresetSegments, safeNewName)
                     }
                     
                     if (await exists(oldFolderPath) && !(await exists(newFolderPath))) {

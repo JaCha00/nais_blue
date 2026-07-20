@@ -820,7 +820,7 @@ function validateOutputPolicy(value: unknown, path: readonly SchemaPathSegment[]
     })
     required(record, 'filenameTemplate', path, context, validateFilenameTemplate)
     required(record, 'metadataMode', path, context, (item, itemPath, itemContext) => {
-        validateEnum(item, ['embedded', 'sidecar-only', 'strip-and-sidecar'], itemPath, itemContext)
+        validateEnum(item, ['embedded', 'sidecar-only', 'strip-and-sidecar', 'strip-only'], itemPath, itemContext)
     })
     required(record, 'collisionPolicy', path, context, (item, itemPath, itemContext) => {
         validateEnum(item, ['unique', 'overwrite', 'error'], itemPath, itemContext)

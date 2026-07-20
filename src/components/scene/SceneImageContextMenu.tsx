@@ -9,7 +9,7 @@ import { Copy, FolderOpen, Save, Trash2, Wand2, Users, FileSearch, Paintbrush, I
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { save } from '@tauri-apps/plugin-dialog'
-import { writeFile, remove, readFile } from '@tauri-apps/plugin-fs'
+import { writeFile, readFile } from '@tauri-apps/plugin-fs'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useNavigate } from 'react-router-dom'
 import { useToolsStore } from '@/stores/tools-store'
@@ -156,17 +156,10 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
         navigate('/')
     }
 
-    const handleDelete = async () => {
-        if (isFile) {
-            try {
-                await remove(image.url)
-            } catch (e) {
-                console.error('File delete failed (might already be deleted):', e)
-            }
-        }
-        // Always call parent onDelete to remove from UI store
+    const handleDelete = () => {
+        // The owner opens the shared confirmation and archives the file before
+        // changing SceneStore. This menu deliberately never removes disk data.
         onDelete()
-        toast({ title: t('actions.deleted', '삭제 완료'), variant: 'success' })
     }
 
     return (
