@@ -1,8 +1,8 @@
 version: 2
 
 # These entries connect each tracked lockfile/workflow ecosystem to Dependabot.
-# Weekly grouped PRs keep compatible updates reviewable while major upgrades
-# remain isolated, so CI can expose migration work without creating alert debt.
+# npm toolchain peers (for example Vite/plugin-react and ESLint plugins) must move
+# together; grouping every npm update keeps the lockfile installable in CI.
 updates:
   - package-ecosystem: npm
     directory: /
@@ -17,6 +17,7 @@ updates:
         patterns:
           - "*"
         update-types:
+          - major
           - minor
           - patch
 

@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect, useId, Fragment, KeyboardEvent, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import Editor from 'react-simple-code-editor'
+import EditorExport from 'react-simple-code-editor'
 import { getCaretCoordinates } from '@/utils/caret-coords'
 import { cn } from '@/lib/utils'
 import { loadAutocompleteTagIndex } from '@/lib/tag-data'
 import { useFragmentStore } from '@/stores/fragment-store'
+
+// react-simple-code-editor publishes a transpiled CommonJS default; Vite 8 can
+// preserve that wrapper, so normalize both the wrapped and direct ESM shapes.
+const Editor = (EditorExport as unknown as { default?: typeof EditorExport }).default ?? EditorExport
 
 interface SuggestionItem {
     label: string

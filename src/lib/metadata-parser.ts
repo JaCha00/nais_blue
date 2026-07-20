@@ -52,7 +52,7 @@ async function decompressGzip(data: Uint8Array): Promise<string> {
     // Fallback to pako if available
     try {
         const pako = await import('pako')
-        return pako.ungzip(data, { to: 'string' })
+        return pako.ungzip(data, { toText: true })
     } catch (e) {
         console.error('Gzip decompression failed:', e)
         throw new Error('Failed to decompress gzip data')

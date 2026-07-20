@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
-import * as ts from 'typescript'
+import { parse } from '@babel/parser'
+import * as t from '@babel/types'
 import { describe, expect, it } from 'vitest'
 
 const CORE_ROOT = path.resolve(process.cwd(), 'src/domain/composition')
@@ -30,21 +31,39 @@ function forbiddenModuleReason(specifier: string): string | undefined {
     return undefined
 }
 
-function moduleSpecifier(node: ts.Node): string | undefined {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
-        return ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : undefined
+function moduleSpecifier(node: t.Node): string | undefined {
+    if ((t.isImportDeclaration(node) || t.isExportNamedDeclaration(node) || t.isExportAllDeclaration(node)) && node.source) {
+        return node.source.value
     }
-    if (ts.isImportEqualsDeclaration(node)
-        && ts.isExternalModuleReference(node.moduleReference)
-        && node.moduleReference.expression
-        && ts.isStringLiteral(node.moduleReference.expression)) {
-        return node.moduleReference.expression.text
+    if (t.isTSImportEqualsDeclaration(node)
+        && t.isTSExternalModuleReference(node.moduleReference)
+        && t.isStringLiteral(node.moduleReference.expression)) {
+        return node.moduleReference.expression.value
     }
-    if (ts.isCallExpression(node) && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0])) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) return node.arguments[0].text
-        if (ts.isIdentifier(node.expression) && node.expression.text === 'require') return node.arguments[0].text
+    if (t.isCallExpression(node) && node.arguments.length === 1 && t.isStringLiteral(node.arguments[0])) {
+        if (t.isImport(node.callee)) return node.arguments[0].value
+        if (t.isIdentifier(node.callee, { name: 'require' })) return node.arguments[0].value
     }
     return undefined
+}
+
+function isNode(value: unknown): value is t.Node {
+    return typeof value === 'object'
+        && value !== null
+        && 'type' in value
+        && typeof value.type === 'string'
+}
+
+function visitChildren(node: t.Node, visit: (child: t.Node) => void): void {
+    // Babel nodes expose children as node-valued properties or arrays; walking
+    // that shape keeps this architecture check independent of compiler APIs.
+    for (const value of Object.values(node)) {
+        if (Array.isArray(value)) {
+            for (const entry of value) if (isNode(entry)) visit(entry)
+        } else if (isNode(value)) {
+            visit(value)
+        }
+    }
 }
 
 describe('Composition core boundary', () => {
@@ -53,28 +72,31 @@ describe('Composition core boundary', () => {
 
         for (const file of sourceFiles(CORE_ROOT)) {
             const source = readFileSync(file, 'utf8')
-            const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
+            const tree = parse(source, {
+                sourceType: 'module',
+                plugins: ['typescript', 'jsx'],
+            })
             const relative = path.relative(CORE_ROOT, file).replaceAll('\\', '/')
 
-            const visit = (node: ts.Node): void => {
+            const visit = (node: t.Node): void => {
                 const specifier = moduleSpecifier(node)
                 if (specifier !== undefined) {
                     const reason = forbiddenModuleReason(specifier)
                     if (reason !== undefined) {
-                        const line = tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1
+                        const line = node.loc?.start.line ?? 1
                         violations.push(`${relative}:${line} imports ${specifier} (${reason})`)
                     }
                 }
 
-                if (ts.isIdentifier(node)
+                if (t.isIdentifier(node)
                     && ['indexedDB', 'IDBDatabase', 'showOpenFilePicker', 'showSaveFilePicker',
-                        'FileSystemHandle', 'Buffer', '__dirname', '__filename'].includes(node.text)) {
-                    const line = tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1
-                    violations.push(`${relative}:${line} references platform global ${node.text}`)
+                        'FileSystemHandle', 'Buffer', '__dirname', '__filename'].includes(node.name)) {
+                    const line = node.loc?.start.line ?? 1
+                    violations.push(`${relative}:${line} references platform global ${node.name}`)
                 }
-                ts.forEachChild(node, visit)
+                visitChildren(node, visit)
             }
-            visit(tree)
+            visit(tree.program)
         }
 
         expect(violations).toEqual([])

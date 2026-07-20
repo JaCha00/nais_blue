@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import vm from 'node:vm'
-import ts from 'typescript'
+import { transformSync } from '@babel/core'
 
 const root = process.cwd()
 const read = path => readFileSync(join(root, path), 'utf8')
@@ -57,14 +57,17 @@ const types = read('src/services/novelai-types.ts')
 
 function loadTsCommonJs(path, deps = {}) {
   const source = read(path)
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2020,
-      esModuleInterop: true,
-    },
-    fileName: path,
+  // Babel transpiles these isolated fixtures because TypeScript 7 exposes the
+  // compiler as a CLI and no longer exports the legacy transpileModule API.
+  const transformed = transformSync(source, {
+    filename: path,
+    babelrc: false,
+    configFile: false,
+    presets: ['@babel/preset-typescript'],
+    plugins: ['@babel/plugin-transform-modules-commonjs'],
   })
+  const outputText = transformed?.code
+  assert.equal(typeof outputText, 'string', `Failed to transpile verifier fixture: ${path}`)
   const module = { exports: {} }
   const require = specifier => {
     if (specifier in deps) return deps[specifier]

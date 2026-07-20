@@ -1,6 +1,18 @@
-import tsParser from '@typescript-eslint/parser'
+import babelParser from '@babel/eslint-parser'
 import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
+
+// Babel 8 uses extension-independent TypeScript parsing for ESLint, while the
+// JSX syntax plugin keeps the same parser contract for both .ts and .tsx files.
+const typescriptParserOptions = {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    requireConfigFile: false,
+    babelOptions: {
+        presets: [['@babel/preset-typescript', { ignoreExtensions: true }]],
+        plugins: ['@babel/plugin-syntax-jsx'],
+    },
+}
 
 export default [
     {
@@ -16,12 +28,10 @@ export default [
     {
         files: ['src/**/*.{ts,tsx}', 'vite.config.ts'],
         languageOptions: {
-            parser: tsParser,
-            parserOptions: {
-                ecmaVersion: 'latest',
-                sourceType: 'module',
-                ecmaFeatures: { jsx: true },
-            },
+            // Babel's ESLint parser supplies the TypeScript/TSX ESTree consumed by
+            // React Hooks and import-boundary rules without coupling lint to tsc.
+            parser: babelParser,
+            parserOptions: typescriptParserOptions,
             globals: {
                 ...globals.browser,
                 ...globals.es2020,
@@ -32,7 +42,9 @@ export default [
             'react-hooks': reactHooks,
         },
         rules: {
-            ...reactHooks.configs.recommended.rules,
+            // Keep the established hook correctness gate while React Hooks 7's
+            // compiler-oriented rules are evaluated in a dedicated refactor.
+            'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'off',
             'no-restricted-imports': ['error', {
                 paths: [{
@@ -69,11 +81,8 @@ export default [
     {
         files: ['tests/**/*.ts', 'vitest.config.ts'],
         languageOptions: {
-            parser: tsParser,
-            parserOptions: {
-                ecmaVersion: 'latest',
-                sourceType: 'module',
-            },
+            parser: babelParser,
+            parserOptions: typescriptParserOptions,
             globals: {
                 ...globals.es2020,
                 ...globals.node,
@@ -83,11 +92,8 @@ export default [
     {
         files: ['cloudflare/**/*.ts'],
         languageOptions: {
-            parser: tsParser,
-            parserOptions: {
-                ecmaVersion: 'latest',
-                sourceType: 'module',
-            },
+            parser: babelParser,
+            parserOptions: typescriptParserOptions,
             globals: {
                 ...globals.es2020,
                 ...globals.worker,
