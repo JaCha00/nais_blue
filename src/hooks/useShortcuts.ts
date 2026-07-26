@@ -22,6 +22,15 @@ export const SHORTCUT_EVENTS = {
 // reachable without pointer input while preserving the existing route order.
 const MENU_ROUTES = ['/', '/scenes', '/tools', '/queue', '/web', '/library', '/data', '/settings']
 
+/**
+ * Depends on the browser's native focus model and runs before persisted app
+ * shortcuts. Unmodified Tab/Shift+Tab always remain available to forms and
+ * dialogs, including profiles saved before the accessible default migration.
+ */
+export function shouldPreserveNativeTabNavigation(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey'>): boolean {
+    return event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey
+}
+
 export function useShortcuts() {
     const navigate = useNavigate()
     const location = useLocation()
@@ -32,6 +41,8 @@ export function useShortcuts() {
         if (!supportsKeyboardShortcuts || !enabled) return
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (shouldPreserveNativeTabNavigation(e)) return
+
             // 각 바인딩 체크
             const actions: ShortcutAction[] = [
                 'navigate:main',
@@ -57,14 +68,9 @@ export function useShortcuts() {
                 if (!binding) continue
 
                 if (matchesBinding(e, binding)) {
-                    // 네비게이션은 입력 필드에서도 작동
+                    // Modifier-based navigation remains available in inputs;
+                    // unmodified Tab was already reserved above for focus traversal.
                     if (action.startsWith('navigate:')) {
-                        // 다이얼로그가 열려 있으면 Tab/Shift+Tab은 네이티브 포커스 이동에 양보
-                        if ((action === 'navigate:next' || action === 'navigate:prev') &&
-                            document.querySelector('[role="dialog"][data-state="open"]')) {
-                            return
-                        }
-
                         e.preventDefault()
 
                         // 다음/이전 메뉴 이동

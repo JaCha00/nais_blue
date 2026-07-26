@@ -129,7 +129,6 @@ import type {
     CompositionOverrideDiffItem,
     CompositionValidationSummary,
     ModuleStackItem,
-    ReadonlyCompositionIssue,
 } from '@/components/composition-workspace'
 import { portableIssuesForResolvedPlan } from '@/components/composition-workspace'
 import { runtimeCapabilities } from '@/platform/capabilities'
@@ -557,15 +556,6 @@ export default function SceneMode() {
         }
     }
 
-    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
-        const repairTarget = issue.entityRef?.id ?? issue.code
-        const params = new URLSearchParams({ repair: repairTarget })
-        if (issue.actionId) params.set('action', issue.actionId)
-        navigate(`/asset-modules?${params.toString()}`, {
-            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'scenes' },
-        })
-    }
-
     const handleSceneGenerate = () => {
         if (rotationActive) {
             useRotationStore.getState().stop({ reason: 'scene workspace stop', keepSnapshot: true })
@@ -975,9 +965,7 @@ export default function SceneMode() {
                 </section>
             )}
             onSelectModule={setActiveModuleId}
-            onEditModule={moduleId => navigate(`/asset-modules?module=${encodeURIComponent(moduleId)}`)}
             onOpenResolved={handleOpenResolvedPlan}
-            onRepairIssue={handleRepairCompositionIssue}
         >
             <div
                 className="relative flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden p-1 sm:gap-3"

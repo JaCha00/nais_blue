@@ -239,7 +239,7 @@ export function SceneCompositionWorkspace({
                 open={modulesOpen}
                 onOpenChange={setModulesOpen}
                 title={t('composition.modules', 'Modules')}
-                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module, then inspect or edit it.')}
+                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module to review its applied content and validation state.')}
                 closeLabel={t('common.close', 'Close')}
                 side="left"
                 testId="scene-modules-sheet"
@@ -252,7 +252,7 @@ export function SceneCompositionWorkspace({
                 open={inspectorOpen}
                 onOpenChange={setInspectorOpen}
                 title={t('scene.composition.inspector', 'Scene inspector')}
-                description={t('composition.workspace.inspectorHelp', 'Review module context before opening the canonical editor.')}
+                description={t('composition.workspace.inspectorHelp', 'Review how the selected module affects prompts and parameters.')}
                 closeLabel={t('common.close', 'Close')}
                 side="right"
                 level="secondary"

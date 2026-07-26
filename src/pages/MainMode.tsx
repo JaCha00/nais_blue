@@ -52,7 +52,6 @@ import {
 import type {
     CompositionValidationSummary,
     ModuleStackItem,
-    ReadonlyCompositionIssue,
 } from '@/components/composition-workspace/types'
 import {
     CompositionCommandBar,
@@ -614,22 +613,9 @@ export default function MainMode() {
         }
     }
 
-    const handleEditModule = (moduleId: string) => {
-        navigate('/asset-modules', { state: { moduleId, from: 'main' } })
-    }
-
     const handleOpenResolvedPlan = () => {
         resolvedSheetTriggerRef.current = currentTrigger()
         setResolvedSheetOpen(true)
-    }
-
-    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
-        const repairTarget = issue.entityRef?.id ?? issue.code
-        const params = new URLSearchParams({ repair: repairTarget })
-        if (issue.actionId) params.set('action', issue.actionId)
-        navigate(`/asset-modules?${params.toString()}`, {
-            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'main' },
-        })
     }
 
     // Drag counter to prevent flickering from child elements
@@ -749,7 +735,6 @@ export default function MainMode() {
             searchLabel={t('composition.module.search', 'Search modules')}
             labels={workspaceLabels}
             onSelectModule={handleSelectModule}
-            onEditModule={handleEditModule}
         />
     )
     const inspector = (
@@ -779,7 +764,6 @@ export default function MainMode() {
                 resetOverride: t('composition.override.reset', 'Reset override'),
                 resolvedPlan: t('composition.plan.open', 'Open resolved plan'),
             }}
-            onEditModule={handleEditModule}
             onOpenResolvedPlan={handleOpenResolvedPlan}
         >
             <div className="p-3 pt-5">
@@ -797,7 +781,6 @@ export default function MainMode() {
             loading={profileLoading}
             error={profileConflict ? profileConflictMessage : null}
             title={t('composition.plan.title', 'Resolved plan')}
-            onRepairIssue={handleRepairCompositionIssue}
         />
     )
     const commandBar = (
@@ -1075,7 +1058,7 @@ export default function MainMode() {
                 open={moduleSheetOpen}
                 onOpenChange={setModuleSheetOpen}
                 title={t('composition.workspace.moduleStack', 'Module Stack')}
-                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module, then inspect or edit it.')}
+                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module to review its applied content and validation state.')}
                 side={isMobileWorkspace ? 'bottom' : 'left'}
                 level="primary"
                 testId="main-module-stack-sheet"
@@ -1092,7 +1075,7 @@ export default function MainMode() {
                 open={inspectorSheetOpen}
                 onOpenChange={setInspectorSheetOpen}
                 title={t('composition.workspace.inspector', 'Context Inspector')}
-                description={t('composition.workspace.inspectorHelp', 'Review module context before opening the canonical editor.')}
+                description={t('composition.workspace.inspectorHelp', 'Review how the selected module affects prompts and parameters.')}
                 side={isMobileWorkspace ? 'bottom' : 'right'}
                 level="secondary"
                 testId="main-composition-inspector-sheet"

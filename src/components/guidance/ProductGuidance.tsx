@@ -194,7 +194,7 @@ export function ProductGuidance() {
                                 <p className="mt-1">{t('productGuidance.capabilities.r2.alternative')}</p>
                             </div>
                         )}
-                        <Button variant="outline" className="min-h-11" onClick={() => closeThen(() => navigate('/asset-modules'))}>{t('productGuidance.steps.r2.action')}</Button>
+                        <Button variant="outline" className="min-h-11" onClick={() => closeThen(() => navigate('/r2'))}>{t('productGuidance.steps.r2.action')}</Button>
                     </GuideSection>
                     <GuideSection id="queue" title={t('productGuidance.steps.queue.title')} description={t('productGuidance.steps.queue.description')} status={status('queue')} active={activeSection === 'queue'}>
                         <p>{t('productGuidance.steps.queue.help')}</p>

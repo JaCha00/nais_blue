@@ -39,11 +39,12 @@ freshly passing tests와 사용자 방향이 과거 계획 문서보다 우선�
 
 ## 2.11.1 release candidate 판정
 
-- Gate 1~5와 7: PASS. High/critical 0, 전체 1,094 tests/반응형 62 scenarios, Windows cold launch,
+- Gate 1~5, 7과 8: PASS. High/critical 0, 전체 1,094 tests/반응형 62 scenarios, Windows cold launch,
   Hiby same-signer update와 실제 backup export→restore→mobile reload를 확인했다.
 - Gate 6: MANUAL PENDING. Private LAN 설정은 완료됐지만 세 번의 자동화가 120초 invitation 만료로 끝났다.
   Fresh QR을 Hiby에서 즉시 scan→connect하는 수동 1회가 필요하다.
-- Gate 8: TAG WORKFLOW PENDING. 이 release candidate commit을 push/tag한 뒤 desktop/Android publication과
-  main/tag/release target SHA 및 assets를 확인한다.
+- Gate 8: PASS. Release 시점의 `origin/main`, annotated `v2.11.1` tag와 public release target이
+  `e1bc2eebb233fd3e42d6f84d558e3e1d1186b3fb`로 일치하고 desktop/Android publication workflow와 13개
+  release asset을 확인했다.
 
-Gate 6과 8의 증거가 모두 생기기 전에는 다른 기능이 안정적이어도 “v1 전체 완료”로 표현하지 않는다.
+Gate 6의 증거가 생기기 전에는 다른 기능이 안정적이어도 “v1 전체 완료”로 표현하지 않는다.

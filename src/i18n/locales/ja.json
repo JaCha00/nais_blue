@@ -294,9 +294,9 @@
         "workspace": {
             "modules": "モジュール",
             "moduleStack": "モジュールスタック",
-            "moduleStackHelp": "レシピのモジュールを選択し、確認または編集します。",
+            "moduleStackHelp": "レシピモジュールを選択して、適用内容と検証状態を確認します。",
             "inspector": "コンテキストインスペクター",
-            "inspectorHelp": "canonicalエディターを開く前にモジュールの状態を確認します。"
+            "inspectorHelp": "選択したモジュールがプロンプトとパラメーターに与える結果を確認します。"
         },
         "mode": {
             "title": "生成方式",
@@ -1058,7 +1058,7 @@
         "error": "操作失敗",
         "saveChanges": "変更を保存",
         "analysisTitle": "スマート分析結果",
-        "analysisDescription": "WD TaggerとKaloscopeを使用して画像のタグとスタイルを分析します。",
+        "analysisDescription": "オンラインのKaloscopeでアーティスト・スタイル候補を分析します。",
         "wdTags": "WD タグ",
         "kaloscopeStyle": "Kaloscope スタイル",
         "detected": "{{count}}件検出",
@@ -1069,7 +1069,7 @@
         "copyTags": "タグをコピー",
         "copyStyle": "スタイルをコピー",
         "noImage": "画像なし",
-        "modelDownloadNote": "* WD Taggerは初回実行時にモデルダウンロード(約200MB)が必要です。Kaloscopeはインターネット接続が必要です。",
+        "modelDownloadNote": "* 分析にはインターネット接続が必要で、外部サービスの稼働状況に依存します。",
         "close": "閉じる",
         "taggerError": "タグ分析失敗",
         "smartAnalysis": "スマートタグ＆スタイル分析",

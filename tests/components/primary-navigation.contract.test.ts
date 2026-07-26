@@ -17,6 +17,18 @@ describe('Primary navigation contract', () => {
         expect(app).toContain('<Navigate to="/" replace />')
     })
 
+    it('does not leave live controls pointing at retired feature routes', async () => {
+        const activeUi = await Promise.all([
+            source('src/pages/MainMode.tsx'),
+            source('src/pages/SceneMode.tsx'),
+            source('src/pages/SceneDetail.tsx'),
+            source('src/components/guidance/ProductGuidance.tsx'),
+        ])
+
+        for (const contents of activeUi) expect(contents).not.toContain('/asset-modules')
+        expect(activeUi.at(-1)).toContain("navigate('/r2')")
+    })
+
     it('keeps every remaining destination in the top navigation', async () => {
         const layout = await source('src/components/layout/ThreeColumnLayout.tsx')
 

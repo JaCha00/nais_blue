@@ -4,8 +4,8 @@
 
 ```mermaid
 flowchart LR
-    GUI["Main / Scene / Queue Center / Organizer / Style Lab / AssetModuleStudio"]
-    CMD["Typed authoring commands\nchange set + base revision"]
+    GUI["Main / Scene / Queue Center / Library / Style Lab / Data Hub"]
+    CMD["Retained authoring service\nchange set + base revision"]
     REPO["CompositionRepository\nCAS + canonical v2 document"]
     ENGINE["CompositionEngine\npure resolve + validation + provenance"]
     ADAPTER["Workflow adapters\nMain / Scene / Style Lab"]
@@ -26,7 +26,8 @@ flowchart LR
         SSAN --> SDOM --> SDB
     end
 
-    GUI --> CMD --> REPO
+    GUI --> REPO
+    CMD --> REPO
     REPO --> ENGINE --> ADAPTER
     ADAPTER --> QUEUE --> EXEC --> OUT
     GUI --> R2Q --> R2N
@@ -43,6 +44,8 @@ flowchart LR
 
 - `src/domain/composition/**`: React, Zustand, Tauri, IndexedDB, Node, filesystem, Sharp, SQLite를 import하지 않는 pure domain.
 - `CompositionRepository`: authority, revision, CAS, staging, migration lease와 canonical command commit의 유일한 persistence boundary.
+- authoring service: typed change set, undo/redo와 conflict transaction은 테스트 가능한 service boundary로 남아 있다.
+  Standalone `AssetModuleStudio` route는 퇴역했으며 현재 GUI가 authoring 기능을 제공한다고 해석하지 않는다.
 - `CompositionEngine`: recipe/modules/characters/params/random/output을 deterministic plan으로 resolve하고 warning/error/random trace/provenance를 반환.
 - workflow adapters: Main/Scene/Style Lab의 입력을 engine input으로 materialize한다. Main/Scene enqueue adapter는 resolved plan을 immutable queue snapshot으로 고정하고 required resource를 managed AppData에 materialize한다.
 - durable queue repository: Main/Scene의 새 enqueue와 claim/snapshot/status authority다. CAS lease, attempt,

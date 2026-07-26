@@ -39,8 +39,8 @@ const DEFAULT_BINDINGS: Record<ShortcutAction, KeyBinding> = {
     'navigate:web': { key: '4', ctrl: true, label: 'Ctrl+4', description: 'shortcuts.actions.navigateWeb' },
     'navigate:library': { key: '5', ctrl: true, label: 'Ctrl+5', description: 'shortcuts.actions.navigateLibrary' },
     'navigate:settings': { key: '6', ctrl: true, label: 'Ctrl+6', description: 'shortcuts.actions.navigateSettings' },
-    'navigate:next': { key: 'Tab', label: 'Tab', description: 'shortcuts.actions.navigateNext' },
-    'navigate:prev': { key: 'Tab', shift: true, label: 'Shift+Tab', description: 'shortcuts.actions.navigatePrev' },
+    'navigate:next': { key: 'PageDown', ctrl: true, label: 'Ctrl+PageDown', description: 'shortcuts.actions.navigateNext' },
+    'navigate:prev': { key: 'PageUp', ctrl: true, label: 'Ctrl+PageUp', description: 'shortcuts.actions.navigatePrev' },
     'open:promptGenerator': { key: 'g', ctrl: true, label: 'Ctrl+G', description: 'shortcuts.actions.promptGenerator' },
     'open:fragmentDialog': { key: 'f', ctrl: true, label: 'Ctrl+F', description: 'shortcuts.actions.fragmentDialog' },
     'open:parameterSettings': { key: 'p', ctrl: true, label: 'Ctrl+P', description: 'shortcuts.actions.parameterSettings' },
@@ -100,6 +100,27 @@ export function matchesBinding(e: KeyboardEvent, binding: KeyBinding): boolean {
     return ctrlMatch && shiftMatch && altMatch && keyMatch
 }
 
+/**
+ * Depends on the legacy persisted shortcut shape and feeds Zustand hydration.
+ * Unmodified Tab/Shift+Tab used to change pages, so those exact defaults are
+ * upgraded to Ctrl+PageDown/PageUp and native form traversal becomes reliable.
+ */
+function mergeAccessibleBindings(persistedBindings?: Partial<Record<ShortcutAction, KeyBinding>>): Record<ShortcutAction, KeyBinding> {
+    const bindings = {
+        ...DEFAULT_BINDINGS,
+        ...(persistedBindings ?? {}),
+    }
+
+    for (const action of ['navigate:next', 'navigate:prev'] as const) {
+        const binding = bindings[action]
+        if (binding.key.toLowerCase() === 'tab' && !binding.ctrl && !binding.alt) {
+            bindings[action] = DEFAULT_BINDINGS[action]
+        }
+    }
+
+    return bindings
+}
+
 export const useShortcutStore = create<ShortcutState>()(
     persist(
         (set, get) => ({
@@ -146,10 +167,7 @@ export const useShortcutStore = create<ShortcutState>()(
                     ...currentState,
                     ...persisted,
                     // 저장된 바인딩에 누락된 새 바인딩은 기본값으로 채움
-                    bindings: {
-                        ...DEFAULT_BINDINGS,
-                        ...(persisted.bindings || {}),
-                    },
+                    bindings: mergeAccessibleBindings(persisted.bindings),
                 }
             },
         }

@@ -1,6 +1,8 @@
 import * as React from "react"
 
-const TOAST_LIMIT = 1
+// The global Toaster consumes this bounded queue. Three entries preserve rapid
+// success/error feedback without letting transient notifications cover the app.
+const TOAST_LIMIT = 3
 const TOAST_REMOVE_DELAY = 5000
 
 type ToastProps = {

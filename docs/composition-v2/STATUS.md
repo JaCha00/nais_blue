@@ -32,15 +32,13 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 
 따라서 이번 최종 정리에서는 caller search로 definition-only임이 확인된 작은 public alias만 제거했다. legacy request builder, shadow 비교, migration projection, authority feature flag와 recovery importer/parser는 삭제하지 않았다.
 
-Phase 12 secure sync transport는 **진행 중이며 지원 완료로 선언하지 않는다.** 현재 source에는 TLS 1.3
+Phase 12 secure sync transport는 **제한 프리뷰이며 지원 완료로 선언하지 않는다.** 현재 source에는 TLS 1.3
 mTLS desktop LAN agent, 120초 이하 pairing, Stronghold-backed device/peer identity, revoke와
-sequence/nonce replay fence, bounded sanitized JSON 교환 경계가 추가됐다. 첫 listener는 사용자가 명시적으로
-시작하고 한 번에 active peer 한 대만 허용한다. 그러나 optional LAN blob은 interface/validation만 있고
-native resumable temp-file channel은 비활성이다. Android에는 paired Cloudflare Worker/R2 executor가 headless
-scheduler에 연결됐지만 live pairing 검증이 fixed denial로 끝나 capability가 계속 unsupported다. Desktop end-to-end loopback은
-통과했고 verified ARM64 libsodium static archive를 process-local로 연결한 Kotlin/Gradle/APK build와 Samsung
-SM-S928N final-ID install/cold-start와 user-signed ARM64 debug/release build도 통과했다. 그러나 live executor-backed
-notification/checkpoint/byte transfer evidence가 완료되기 전에는 production cutover나 Phase 12 완료 조건 충족으로 간주하지 않는다.
+sequence/nonce replay fence, bounded sanitized JSON 교환 경계가 있다. 첫 listener는 사용자가 명시적으로
+시작하고 한 번에 active peer 한 대만 허용한다. Hiby M500_MIKU의 signed 2.11.1에서 native TLS와 preset push는
+USB tunnel 경로로 실제 통과했지만, Private LAN에서 tunnel 없는 QR pairing은 세 번 모두 invitation 만료로 끝나
+수동 즉시 scan→connect 1회가 남았다. Optional blob/resumable file channel, directory mirror, multi-peer와 restart-persistent
+pairing은 비활성이다. 따라서 session-only preset sync 범위를 넘어 production 완료로 확대하지 않는다.
 
 ## 선행 조건 판정
 
@@ -64,7 +62,8 @@ notification/checkpoint/byte transfer evidence가 완료되기 전에는 product
 - native R2: non-secret R2ProfileV2와 UploadJob/manifest v2를 별도 IndexedDB repository가 소유하고, Rust가
   OS vault credential을 resolve해 official SDK로 file streaming, conditional PUT와 multipart를 실행한다.
   Renderer에는 secret read command가 없고 Android/iOS는 profile read만 지원한다.
-- authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
+- authoring: typed draft/validate/commit/undo/conflict/repair 서비스와 테스트는 유지되지만 standalone
+  `AssetModuleStudio` route는 퇴역했다. 현재 Main/Scene workspace는 적용 결과를 읽고 검사하며 authoring UI로 표시하지 않는다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
 - local-first sync: user-scoped 별도 IndexedDB가 sanitized shadow entity, outbox/inbox, tombstone와
@@ -81,7 +80,8 @@ notification/checkpoint/byte transfer evidence가 완료되기 전에는 product
 - Phase 11~17: Main/Scene/Style Lab adapter, shadow path와 workflow integration.
 - Phase 18: repository migration, backup v3, old backup ignored-key compatibility, authoring conflict transaction.
 - Phase 19: retired online catalog/remote auth/deep-link runtime와 dependency 제거.
-- Phase 20 구현: OutputWriter/metadata v2, canonical authoring studio, Main/Scene information architecture, portable resource/capability adapter, Android/responsive contracts.
+- Phase 20 구현: OutputWriter/metadata v2, authoring transaction foundation, Main/Scene information architecture,
+  portable resource/capability adapter, Android/responsive contracts. Standalone authoring studio는 이후 UI 정리에서 퇴역했다.
 - 최종 cleanup: caller audit, definition-only export 정리, CI compatibility gates와 운영 문서 연결.
 - 후속 hardening Phase 01~05: secret-safe backup projection, redacted diagnostic kernel,
   persistence correctness/rescue startup, Stronghold-backed Credential Vault/AuthState v3,

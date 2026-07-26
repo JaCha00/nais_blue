@@ -56,7 +56,6 @@ import type {
     CompositionOverrideDiffItem,
     CompositionValidationSummary,
     ModuleStackItem,
-    ReadonlyCompositionIssue,
 } from '@/components/composition-workspace'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
@@ -111,7 +110,6 @@ async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: str
 
 export default function SceneDetail() {
     const { id: sceneId } = useParams()
-    const navigate = useNavigate()
     const { t } = useTranslation()
     const activePresetId = useSceneStore(state => state.activePresetId)
 
@@ -677,14 +675,6 @@ export default function SceneDetail() {
     const resolvedIssues = compositionPreview
         ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
         : portableResolvedIssues
-    const handleRepairCompositionIssue = (issue: ReadonlyCompositionIssue) => {
-        const repairTarget = issue.entityRef?.id ?? issue.code
-        const params = new URLSearchParams({ repair: repairTarget })
-        if (issue.actionId) params.set('action', issue.actionId)
-        navigate(`/asset-modules?${params.toString()}`, {
-            state: { repairTarget, actionId: issue.actionId, issueCode: issue.code, from: 'scene-detail' },
-        })
-    }
     const estimatedCost = calculateAnlasCost(currentWidth, currentHeight, sceneGeneration.steps) * Math.max(1, scene.queueCount)
 
     const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {
@@ -805,9 +795,7 @@ export default function SceneDetail() {
                 </>
             )}
             onSelectModule={setActiveModuleId}
-            onEditModule={moduleId => nav(`/asset-modules?module=${encodeURIComponent(moduleId)}`)}
             onOpenResolved={handlePreviewSceneComposition}
-            onRepairIssue={handleRepairCompositionIssue}
             onResetOverride={handleResetSceneToRecipe}
         >
         <div
