@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { openPath } from '@tauri-apps/plugin-opener'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'

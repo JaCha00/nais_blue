@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { useGenerationStore } from '@/stores/generation-store'
 import { useTranslation } from 'react-i18next'
 import { Image as ImageIcon, Wand2, Minus, Plus, Loader2 } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 interface I2IDialogProps {
     open: boolean

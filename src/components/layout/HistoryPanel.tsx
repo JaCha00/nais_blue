@@ -23,7 +23,7 @@ import { toast } from '@/components/ui/use-toast'
 import { useToolsStore } from '@/stores/tools-store'
 import { useLibraryStore } from '@/stores/library-store'
 import { useSceneStore } from '@/stores/scene-store'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Wand2 } from 'lucide-react'
 import {
     ContextMenu,

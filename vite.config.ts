@@ -54,7 +54,7 @@ export default defineConfig({
                     if (
                         packageName === 'react' ||
                         packageName === 'react-dom' ||
-                        packageName === 'react-router-dom' ||
+                        packageName === 'react-router' ||
                         packageName === 'scheduler'
                     ) {
                         return 'react-vendor'

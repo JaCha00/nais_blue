@@ -1,6 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { onBackButtonPress } from '@tauri-apps/api/app'
-import { useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { PromptPanel } from './PromptPanel'

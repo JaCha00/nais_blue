@@ -31,7 +31,7 @@ import {
     getMediaStorageRoot,
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useToolsStore } from '@/stores/tools-store'
 import { Wand2 } from 'lucide-react'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'

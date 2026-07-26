@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router'
 import { useShortcutStore, matchesBinding, ShortcutAction } from '@/stores/shortcut-store'
 import { useFragmentStore } from '@/stores/fragment-store'
 import { useGenerationStore } from '@/stores/generation-store'

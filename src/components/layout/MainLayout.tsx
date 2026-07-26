@@ -1,5 +1,5 @@
 import { ReactNode, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router'
 import { cn } from '@/lib/utils'
 import {
     LayoutDashboard,
