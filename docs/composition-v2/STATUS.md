@@ -4,19 +4,23 @@
 
 ## 2026-07-26 current runtime update
 
-현재 checkout과 2.11.0 user direction은 아래의 historical Phase 11/12 기록보다 우선한다. Data Hub의
+현재 checkout과 2.11.1 user direction은 아래의 historical Phase 11/12 기록보다 우선한다. Data Hub의
 프롬프트 preset/생성 parameter subset은 production caller에 연결됐다. Desktop은 사용자가 버튼을 누를 때만
 private IPv4/CIDR에 TLS 1.3 mTLS listener를 열고, Android는 outbound `pair_client`/`exchange`/`cancel_request`만
 사용한다. QR 또는 manual invitation과 별도 6자리 code로 한 active peer를 120초 동안 pairing하며 token,
 image/base64, absolute path는 sanitizer와 native payload gate 양쪽에서 차단한다.
 
-Hiby M500_MIKU(Android 14)에 same-signer ARM64 debug APK를 update-install하고 actual Android native client가
-Windows host의 production TLS/router code와 pairing해 sanitized `prompt.preset` 1개를 push했다. Host durable
-ingress와 Android UI의 `Connected · 1 processed`를 함께 확인했다. 현재 PC의 Ethernet profile이 Public이고
-Windows inbound firewall이 관리자 rule 없이 직접 Wi-Fi port를 차단했으므로, 최종 protocol/device 증거는
-ADB reverse tunnel로 완료했다. 따라서 Android native TLS/payload path는 PASS지만 이 PC 조건의 direct Wi-Fi
-reachability는 PASS로 과장하지 않는다. 2.11.0 UI는 Windows private-network firewall 안내와
-`E_SYNC_TRANSPORT` 복구 설명을 제공한다.
+Hiby M500_MIKU(Android 14)에 same-signer signed ARM64 2.11.1 APK를 update-install했고 최초 설치 시각과
+사용자 데이터를 보존했다. 앱에서 직접 만든 257,754-byte backup envelope v3를 Android DocumentsUI에서
+다시 읽어 10개 store를 검증·복원하고, 같은 MainActivity 안에서 WebView를 reload해 restored state를
+재수화했다. 이 QA에서 발견한 native content-URI read stall, preset persistence v3 ceiling drift,
+Android process relaunch 종료 문제를 각각 Web File API, shared version constant, mobile reload로 수정했다.
+
+PC Ethernet profile은 이제 Private이고 host/Hiby 주소는 각각 `192.168.0.100`/`192.168.0.179`다. 다만
+direct Wi-Fi QA의 세 번의 자동화 시도는 Android UI 조작 중 120초 invitation이 만료되어 transport success를
+확정하지 못했다. QR decode와 이전 ADB reverse 기반 actual native TLS/preset push는 PASS지만 USB 없는 direct
+Wi-Fi는 별도 수동 scan/tap 1회 전까지 PASS로 과장하지 않는다. 2.11.1 UI는 Windows private-network 안내와
+`E_SYNC_TRANSPORT`/`E_SYNC_PAIRING_EXPIRED` 복구 설명을 제공한다.
 
 이번 지원 범위는 session-only preset upsert다. 앱 restart 뒤 재페어링하며 delete propagation, image bytes,
 multi-peer, automatic discovery/port forwarding, WAN relay와 persistent device key는 지원하지 않는다.

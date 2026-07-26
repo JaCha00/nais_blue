@@ -6,13 +6,25 @@ const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
 describe('Backup restore UI contract', () => {
     it.each([
+        'src/pages/Settings.tsx',
+        'src/components/backup/RestoreDialog.tsx',
+        'src/components/backup/StoreSnapshotRestoreDialog.tsx',
+    ])('uses an in-app confirmation that is visible in Android WebView in %s', async (path) => {
+        const restoreUi = await source(path)
+
+        expect(restoreUi).toContain('<ConfirmDialog')
+        expect(restoreUi).not.toContain('window.confirm')
+        expect(restoreUi).toContain("t('settingsPage.backup.confirmRestoreDesc')")
+    })
+
+    it.each([
         {
             path: 'src/components/backup/RestoreDialog.tsx',
-            restoreCall: 'restoreFullAutoBackup\\(selectedRelPath\\)',
+            restoreCall: 'restoreFullAutoBackup\\(pendingRestore\\.relPath\\)',
         },
         {
             path: 'src/components/backup/StoreSnapshotRestoreDialog.tsx',
-            restoreCall: 'restoreStoreSnapshot\\(selectedGroup\\.storeKey, selectedRelPath\\)',
+            restoreCall: 'restoreStoreSnapshot\\(pendingRestore\\.storeKey, pendingRestore\\.relPath\\)',
         },
     ])('restarts immediately after a verified restore in $path', async ({ path, restoreCall }) => {
         const restoreDialog = await source(path)
@@ -29,5 +41,14 @@ describe('Backup restore UI contract', () => {
         expect(restoreDialog).not.toContain('pendingRestart')
         expect(restoreDialog).not.toContain('setPendingRestart')
         expect(restoreDialog).toContain('settingsPage.backup.credentialReentryRequired')
+    })
+
+    it('reads Android document-picker files through the WebView File API', async () => {
+        const settings = await source('src/pages/Settings.tsx')
+
+        expect(settings).toContain('if (isMobileRuntime)')
+        expect(settings).toContain('backupFileInputRef.current?.click()')
+        expect(settings).toContain('prepareImportedBackup(await file.text())')
+        expect(settings).toContain('const content = await readTextFile(filePath)')
     })
 })

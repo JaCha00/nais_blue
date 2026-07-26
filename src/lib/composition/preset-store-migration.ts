@@ -1,6 +1,9 @@
 import { deterministicMigrationId } from '@/lib/composition/legacy-migration-id'
 
 export const DEFAULT_GENERATION_PRESET_ID = 'default'
+// The Zustand writer and backup preflight share this ceiling so a backup made
+// by the current preset store is always accepted by the matching app build.
+export const GENERATION_PRESET_STORE_VERSION = 3 as const
 
 export interface NormalizedGenerationPreset {
     id: string

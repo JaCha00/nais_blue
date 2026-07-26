@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
@@ -55,6 +55,7 @@ import { importAllData, getStoreSizes } from '@/lib/indexed-db'
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ApiTokenSettingsCard } from '@/components/credentials/ApiTokenSettingsCard'
 import {
     ASSET_PROFILE_FILE_RESTORE_KEY,
@@ -62,6 +63,7 @@ import {
     createFullAutoBackup,
     DISK_AUTO_BACKUP_LAST_KEY,
     prepareBackupRestore,
+    type PreparedBackupRestore,
 } from '@/lib/auto-backup'
 import { isMobileRuntime } from '@/platform/runtime'
 import {
@@ -167,7 +169,9 @@ export default function Settings() {
     // 백업 관련 상태
     const [isExporting, setIsExporting] = useState(false)
     const [isImporting, setIsImporting] = useState(false)
+    const backupFileInputRef = useRef<HTMLInputElement>(null)
     const [isCreatingAutoBackup, setIsCreatingAutoBackup] = useState(false)
+    const [pendingBackupRestore, setPendingBackupRestore] = useState<PreparedBackupRestore | null>(null)
     const [restoreDialogOpen, setRestoreDialogOpen] = useState(false)
     const [storeSnapshotRestoreDialogOpen, setStoreSnapshotRestoreDialogOpen] = useState(false)
     const [storeSizes, setStoreSizes] = useState<{ [key: string]: number }>({})
@@ -379,8 +383,36 @@ export default function Settings() {
         }
     }
     
-    // 백업 복원
+    // Both desktop and mobile readers feed this single verifier so every
+    // restore path gets the same schema checks and in-app confirmation.
+    const prepareImportedBackup = (content: string) => {
+        const backup = JSON.parse(content) as unknown
+        const prepared = prepareBackupRestore(backup)
+
+        if (!prepared.report.canRestore) {
+            toast({
+                title: t('settingsPage.backup.importFailed'),
+                description: prepared.report.errors
+                    .map(issue => `${issue.code}: ${issue.message}`)
+                    .join('\n') || t('settingsPage.backup.invalidFile'),
+                variant: 'destructive',
+            })
+            return
+        }
+
+        setPendingBackupRestore(prepared)
+    }
+
+    // Desktop uses the native Tauri path. Android delegates the selected
+    // document to WebView's File API because content-URI reads can stall in
+    // the filesystem plugin on vendor DocumentsUI implementations.
     const handleImportBackup = async () => {
+        if (isMobileRuntime) {
+            backupFileInputRef.current?.click()
+            return
+        }
+
+        setIsImporting(true)
         try {
             // 파일 선택 다이얼로그
             const filePath = await open({
@@ -392,37 +424,64 @@ export default function Settings() {
             if (!filePath || typeof filePath !== 'string') return
             
             const content = await readTextFile(filePath)
-            const backup = JSON.parse(content) as unknown
-            const prepared = prepareBackupRestore(backup)
+            prepareImportedBackup(content)
+        } catch (err) {
+            console.error('Backup import failed:', err)
+            toast({
+                title: t('settingsPage.backup.importFailed'),
+                description: String(err),
+                variant: 'destructive',
+            })
+        } finally {
+            setIsImporting(false)
+        }
+    }
 
-            if (!prepared.report.canRestore) {
-                toast({
-                    title: t('settingsPage.backup.importFailed'),
-                    description: prepared.report.errors
-                        .map(issue => `${issue.code}: ${issue.message}`)
-                        .join('\n') || t('settingsPage.backup.invalidFile'),
-                    variant: 'destructive',
-                })
-                return
-            }
+    const handleMobileBackupFile = async (event: ChangeEvent<HTMLInputElement>) => {
+        const input = event.currentTarget
+        const file = input.files?.[0]
+        input.value = ''
+        if (!file) return
 
-            // Restore is only allowed after displaying the pure dry-run report.
-            const confirmed = window.confirm([
-                t('settingsPage.backup.confirmRestoreDesc'),
-                '',
-                `Dry run: ${prepared.report.restoreKeys.length} store(s) ready, ${prepared.report.ignoredKeys.length} ignored`,
-                ...prepared.report.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
-                prepared.report.ignoredKeys.length > 5
-                    ? `- +${prepared.report.ignoredKeys.length - 5} more`
-                    : '',
-                prepared.report.credentialReentryRequired
-                    ? t('settingsPage.backup.credentialReentryRequired')
-                    : '',
-                t('settingsPage.backup.restoreWarning'),
-            ].filter(Boolean).join('\n'))
-            if (!confirmed) return
+        setIsImporting(true)
+        try {
+            prepareImportedBackup(await file.text())
+        } catch (err) {
+            console.error('Mobile backup import failed:', err)
+            toast({
+                title: t('settingsPage.backup.importFailed'),
+                description: String(err),
+                variant: 'destructive',
+            })
+        } finally {
+            setIsImporting(false)
+        }
+    }
 
-            setIsImporting(true)
+    const describePreparedRestore = (prepared: PreparedBackupRestore) => [
+        t('settingsPage.backup.confirmRestoreDesc'),
+        '',
+        `Dry run: ${prepared.report.restoreKeys.length} store(s) ready, ${prepared.report.ignoredKeys.length} ignored`,
+        ...prepared.report.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
+        prepared.report.ignoredKeys.length > 5
+            ? `- +${prepared.report.ignoredKeys.length - 5} more`
+            : '',
+        prepared.report.credentialReentryRequired
+            ? t('settingsPage.backup.credentialReentryRequired')
+            : '',
+        t('settingsPage.backup.restoreWarning'),
+    ].filter(Boolean).join('\n')
+
+    /**
+     * Applies only the detached payload produced by prepareBackupRestore,
+     * then relaunches so hydrated stores cannot overwrite verified data.
+     */
+    const applyPreparedBackupRestore = async () => {
+        const prepared = pendingBackupRestore
+        if (!prepared) return
+
+        setIsImporting(true)
+        try {
             const assetPreimage = prepared.assetProfileJson === undefined
                 ? undefined
                 : await loadRawAssetProfileFile()
@@ -444,6 +503,8 @@ export default function Settings() {
                 description: t('settingsPage.backup.importedDesc', { success: result.success.length }),
                 variant: 'success',
             })
+
+            setPendingBackupRestore(null)
 
             // 앱 재시작
             setTimeout(() => {
@@ -1365,6 +1426,13 @@ export default function Settings() {
                                                 {t('settingsPage.backup.importDesc')}
                                             </p>
                                         </div>
+                                        <input
+                                            ref={backupFileInputRef}
+                                            type="file"
+                                            accept=".json,application/json"
+                                            className="hidden"
+                                            onChange={handleMobileBackupFile}
+                                        />
                                         <Button variant="outline" onClick={handleImportBackup} disabled={isImporting}>
                                             {isImporting ? (
                                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -1507,6 +1575,21 @@ export default function Settings() {
                             <StoreSnapshotRestoreDialog
                                 open={storeSnapshotRestoreDialogOpen}
                                 onOpenChange={setStoreSnapshotRestoreDialogOpen}
+                            />
+                            <ConfirmDialog
+                                open={pendingBackupRestore !== null}
+                                onOpenChange={(nextOpen) => {
+                                    if (!nextOpen && !isImporting) setPendingBackupRestore(null)
+                                }}
+                                title={t('settingsPage.backup.confirmRestore')}
+                                description={pendingBackupRestore
+                                    ? describePreparedRestore(pendingBackupRestore)
+                                    : undefined}
+                                confirmText={t('settingsPage.backup.confirmRestore')}
+                                cancelText={t('common.cancel')}
+                                variant="destructive"
+                                busy={isImporting}
+                                onConfirm={applyPreparedBackupRestore}
                             />
                         </section>
                     )}

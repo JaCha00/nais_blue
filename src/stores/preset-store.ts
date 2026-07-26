@@ -4,6 +4,7 @@ import { useGenerationStore } from './generation-store'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import {
     DEFAULT_GENERATION_PRESET_ID,
+    GENERATION_PRESET_STORE_VERSION,
     createDefaultGenerationPreset,
     migrateGenerationPresetPersistedState,
     normalizeLegacyGenerationPreset,
@@ -346,7 +347,7 @@ export const usePresetStore = create<PresetState>()(
         {
             name: 'nais2-presets',
             storage: createJSONStorage(() => indexedDBStorage),
-            version: 3,
+            version: GENERATION_PRESET_STORE_VERSION,
             migrate: (persistedState) => (
                 migratePresetPersistedState(persistedState) as unknown as PresetState
             ),

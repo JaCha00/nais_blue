@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
     confirmText?: string
     cancelText?: string
     variant?: 'default' | 'destructive'
+    busy?: boolean
     onConfirm: () => void | Promise<void>
 }
 
@@ -22,16 +23,18 @@ export function ConfirmDialog({
     confirmText = '확인',
     cancelText = '취소',
     variant = 'default',
+    busy = false,
     onConfirm,
 }: ConfirmDialogProps) {
     const handleConfirm = async () => {
+        if (busy) return
         await onConfirm()
         onOpenChange(false)
     }
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-sm">
+        <Dialog open={open} onOpenChange={(nextOpen) => !busy && onOpenChange(nextOpen)}>
+            <DialogContent className="max-w-sm" aria-busy={busy}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         {variant === 'destructive' && <AlertTriangle className="h-4 w-4 text-destructive" />}
@@ -42,10 +45,15 @@ export function ConfirmDialog({
                     )}
                 </DialogHeader>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
                         {cancelText}
                     </Button>
-                    <Button variant={variant === 'destructive' ? 'destructive' : 'default'} onClick={handleConfirm}>
+                    <Button
+                        variant={variant === 'destructive' ? 'destructive' : 'default'}
+                        onClick={handleConfirm}
+                        disabled={busy}
+                    >
+                        {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         {confirmText}
                     </Button>
                 </DialogFooter>

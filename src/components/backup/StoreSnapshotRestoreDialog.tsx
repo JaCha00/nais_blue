@@ -4,6 +4,7 @@ import { relaunchApplication } from '@/lib/app-relaunch'
 import { AlertTriangle, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
@@ -20,6 +21,12 @@ interface StoreSnapshotRestoreDialogProps {
     onOpenChange: (open: boolean) => void
 }
 
+interface PendingStoreRestore {
+    storeKey: StoreSnapshotGroup['storeKey']
+    relPath: string
+    description: string
+}
+
 export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshotRestoreDialogProps) {
     const { t } = useTranslation()
     const [groups, setGroups] = useState<StoreSnapshotGroup[]>([])
@@ -27,6 +34,7 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
     const [selectedRelPath, setSelectedRelPath] = useState('')
     const [loading, setLoading] = useState(false)
     const [restoring, setRestoring] = useState(false)
+    const [pendingRestore, setPendingRestore] = useState<PendingStoreRestore | null>(null)
 
     const selectedGroup = useMemo(
         () => groups.find((group) => group.storeKey === selectedStoreKey),
@@ -75,6 +83,8 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
         window.location.reload()
     }
 
+    // Keep the dry-run and destructive confirmation inside the React tree so
+    // desktop and Android share the same accessible restore gate.
     const handleRestore = async () => {
         if (!selectedGroup || !selectedRelPath) return
 
@@ -86,20 +96,38 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
             if (!dryRun.canRestore) {
                 throw new Error(dryRun.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n'))
             }
-            const confirmed = window.confirm([
-                t('settingsPage.backup.confirmRestoreDesc'),
-                '',
-                selectedGroup.storeKey,
-                label,
-                `Dry run: ${dryRun.restoreKeys.length} store(s) ready`,
-                dryRun.credentialReentryRequired
-                    ? t('settingsPage.backup.credentialReentryRequired')
-                    : '',
-                t('settingsPage.backup.restoreWarning'),
-            ].filter(Boolean).join('\n'))
-            if (!confirmed) return
+            setPendingRestore({
+                storeKey: selectedGroup.storeKey,
+                relPath: selectedRelPath,
+                description: [
+                    t('settingsPage.backup.confirmRestoreDesc'),
+                    '',
+                    selectedGroup.storeKey,
+                    label,
+                    `Dry run: ${dryRun.restoreKeys.length} store(s) ready`,
+                    dryRun.credentialReentryRequired
+                        ? t('settingsPage.backup.credentialReentryRequired')
+                        : '',
+                    t('settingsPage.backup.restoreWarning'),
+                ].filter(Boolean).join('\n'),
+            })
+        } catch (error) {
+            console.error('[StoreSnapshot] Store snapshot restore failed:', error)
+            toast({
+                title: t('settingsPage.backup.importFailed'),
+                description: String(error),
+                variant: 'destructive',
+            })
+        } finally {
+            setRestoring(false)
+        }
+    }
 
-            const result = await restoreStoreSnapshot(selectedGroup.storeKey, selectedRelPath)
+    const applyPendingRestore = async () => {
+        if (!pendingRestore) return
+        setRestoring(true)
+        try {
+            const result = await restoreStoreSnapshot(pendingRestore.storeKey, pendingRestore.relPath)
             if (result.failed.length > 0) {
                 throw new Error(`Restore verification failed for: ${result.failed.join(', ')}`)
             }
@@ -124,6 +152,7 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={(nextOpen) => !restoring && onOpenChange(nextOpen)}>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
@@ -213,5 +242,19 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ConfirmDialog
+            open={pendingRestore !== null}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen && !restoring) setPendingRestore(null)
+            }}
+            title={t('settingsPage.backup.confirmRestore')}
+            description={pendingRestore?.description}
+            confirmText={t('settingsPage.backup.confirmRestore')}
+            cancelText={t('common.cancel')}
+            variant="destructive"
+            busy={restoring}
+            onConfirm={applyPendingRestore}
+        />
+        </>
     )
 }

@@ -221,11 +221,14 @@
 67. Data Hub의 host/client private identity는 current renderer process memory에만 있고 앱을 다시 열면
     재페어링한다. 56/57의 Stronghold long-term identity 설명은 이 current caller에 적용되지 않는다. Persistent
     device key는 vault lock/revoke/restart lifecycle이 검증되는 후속 security stage다.
-68. Hiby M500_MIKU(Android 14) actual native client는 TLS pairing과 sanitized preset push를 통과했다. 다만
-    검증 PC의 Ethernet이 Windows Public profile이고 inbound firewall이 직접 Wi-Fi port를 차단했으며 현재 권한으로
-    rule을 바꾸지 않았다. 최종 protocol/device evidence는 ADB reverse tunnel로 완료했으므로 동일 PC에서의 direct
-    Wi-Fi reachability를 PASS로 선언하지 않는다. 사용자는 firewall prompt에서 private network만 허용하거나 backup
-    transfer를 사용해야 한다.
+68. Hiby M500_MIKU(Android 14) actual native client는 TLS pairing과 sanitized preset push를 ADB reverse에서
+    통과했다. 이후 검증 PC Ethernet을 Private으로 전환했지만 direct Wi-Fi 세 시도는 Android UI 자동화가 QR
+    scan/connect 전에 120초 invitation TTL을 소진해 `E_SYNC_PAIRING_EXPIRED`로 끝났다. QR decode는 통과했으나
+    USB 없는 reachability/push는 아직 PASS가 아니다. Fresh invitation 직후 Hiby에서 수동 scan→connect 한 번과
+    양쪽 processed/ingress 확인이 남는다. 실패 시 앱의 backup transfer가 안전한 fallback이다.
 69. Current LAN sync는 한 active peer의 session-only preset upsert에 제한된다. Image bytes, thumbnail, absolute
     path, token/credential, delete propagation, multi-peer fan-out, discovery, port forwarding과 WAN relay를 지원하지
     않으며 silent fallback도 하지 않는다.
+70. Backup restore는 NovelAI token과 runtime account credential을 의도적으로 복원하지 않는다. 2.11.1 Android
+    round-trip은 store data와 composition authority를 검증했지만, 복원 뒤 사용자는 API 설정에서 credential을
+    다시 입력해야 한다. 이는 누락이 아니라 secret-redaction/credential-vault 경계다.

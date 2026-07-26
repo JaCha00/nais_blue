@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "NAIS blue",
   "mainBinaryName": "Nais_blue",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "identifier": "com.bluhair.naisblue",
   "build": {
     "frontendDist": "../dist",

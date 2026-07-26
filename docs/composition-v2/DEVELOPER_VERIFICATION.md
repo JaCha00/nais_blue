@@ -334,11 +334,18 @@ npm run test:responsive-layout
 durable ingress를 그대로 사용한다. Payload는 `prompt.preset` upsert를 포함하고 native secret/path/image gate를
 통과해야 한다. Invitation/code/private key/prompt 전문은 log나 retained artifact에 남기지 않는다.
 
-Hiby M500_MIKU(Android 14)에서는 same-signer ARM64 debug update install, native pair/exchange, Connected UI와
-1개 preset push가 PASS했다. 검증 PC의 Ethernet profile이 Public이라 Windows firewall이 Wi-Fi TCP를 차단했고
-관리자 rule 변경은 수행하지 않았다. ADB reverse를 사용한 최종 PASS는 Android native TLS/application payload
-evidence이며 direct Wi-Fi reachability evidence가 아니다. Direct LAN QA에서는 Windows firewall prompt에서 private
-network만 허용한 별도 환경이 필요하다. 제품 UI는 이 조건과 backup fallback을 안내해야 한다.
+Hiby M500_MIKU(Android 14)에서는 same-signer signed ARM64 2.11.1 update install, native pair/exchange,
+Connected UI와 1개 preset push가 PASS했다. Native transport evidence는 ADB reverse run에서 얻었다. 이후 PC
+Ethernet을 Private으로 전환하고 direct Wi-Fi를 세 번 검증했으나 자동화가 invitation의 120초 TTL 안에 scan과
+connect를 끝내지 못해 모두 `E_SYNC_PAIRING_EXPIRED`로 종료됐다. 이 세 시도는 reachability denial 증거가 아니며
+direct Wi-Fi PASS도 아니다. 다음 물리 QA는 fresh invitation을 연 직후 사용자가 Hiby에서 QR scan→connect만
+수동 수행하고 desktop ingress/Android processed count를 함께 기록한다.
+
+2.11.1 backup smoke는 Android DocumentsUI의 HTML file input/File API로 앱 자체의 257,754-byte envelope v3를
+선택해 10개 store ready/3개 ignored dry run, restore write verification, same-Activity WebView reload를 통과했다.
+`adb install -r` 전후 최초 설치 시각은 유지됐고 치명 Android log는 0건이었다. Android backup import를 Tauri
+path + `readTextFile`로 되돌리거나 mobile restore 뒤 process plugin relaunch를 사용하면 vendor WebView에서 각각
+stall 또는 launcher exit가 재발하므로 desktop/mobile 분기를 보존한다.
 ## Phase 13 product guidance and token gate
 
 Run the characterization gate first, then the focused Phase 13 suite:

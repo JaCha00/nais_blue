@@ -146,6 +146,20 @@ describe('Backup Envelope v3', () => {
         })
     })
 
+    it('accepts the current generation preset persistence version', () => {
+        const source = rawBackup()
+        source['nais2-presets'] = {
+            version: 3,
+            state: { presets: [], activePresetId: 'default' },
+        }
+        const envelope = createBackupEnvelopeV3(source, {
+            compositionDocument: document(),
+            createdAt: '2026-07-12T00:00:00.000Z',
+        })
+
+        expect(prepareBackupRestore(envelope).report.canRestore).toBe(true)
+    })
+
     it('exports a typed, hashed manifest with CompositionDocument and explicit file inclusion policy', () => {
         const envelope = createBackupEnvelopeV3(rawBackup(), {
             compositionDocument: document(),

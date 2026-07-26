@@ -47,6 +47,7 @@ import {
     restoreRawAssetProfileFile,
     restoreRawAssetProfileFilePreimage,
 } from '@/services/asset-profile-file'
+import { GENERATION_PRESET_STORE_VERSION } from '@/lib/composition/preset-store-migration'
 
 const BACKUP_ROOT = 'NAIS_Backup'
 const FULL_BACKUP_DIR = `${BACKUP_ROOT}/full`
@@ -103,7 +104,7 @@ export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedB
     'nais2-generation': { version: 8, schemaVersion: 2 },
     'nais2-character-store': { version: 2, schemaVersion: 2 },
     'nais2-character-prompts': { version: 2, schemaVersion: 2 },
-    'nais2-presets': { version: 2, schemaVersion: 2 },
+    'nais2-presets': { version: GENERATION_PRESET_STORE_VERSION, schemaVersion: 2 },
     'nais2-settings': { version: 2, schemaVersion: 2 },
     'nais2-auth': { version: 3, schemaVersion: 2 },
     'nais2-scenes': { version: 1, schemaVersion: 2 },

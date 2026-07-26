@@ -2749,3 +2749,33 @@ remediation and leaves manual invitation entry as a fallback.
 - Local release artifacts: `src-tauri/target/release/Nais_blue.exe`, NSIS/MSI bundles and signatures, and signed ARM64 APK under the ignored Android build output.
 - Live NovelAI generation was not repeated: the immediately preceding 2.10.0 QA already exhausted the authorized three bounded live attempts, and LAN sync neither reads nor transfers the NAI token.
 - Rollback: install the prior signed v2.10.0 release, preserve app/user/vault/output/queue data, and do not delete IndexedDB journals or Android app data. Pairing identities are process-scoped, so stopping either app already revokes or discards the active session.
+
+## v2.11.1 — RELEASE CANDIDATE CLOSURE AND ANDROID BACKUP ROUND-TRIP
+
+Date: 2026-07-26 (Asia/Seoul)
+
+This patch aligns the current preset persistence writer and backup restore ceiling, replaces Android native dialog-path
+reads with WebView File API bytes, makes all destructive restore confirmations visible in-app, and reloads the mobile
+WebView after verified restore instead of terminating the Activity through the desktop process relaunch path. Desktop
+native picker/read and executable relaunch behavior remain unchanged.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| TypeScript / ESLint / production build | 0 / 0 / 0 | PASS |
+| full `test:composition` | 0 | 156 passed + 2 skipped files; 1,094 passed + 4 skipped tests |
+| responsive layout | 0 | 62 route/viewport checks |
+| npm audit | 0 | 0 vulnerabilities |
+| backup/relaunch focused contracts | 0 | 37/37 tests |
+| release/version, Android source/release, removed-runtime | 0 | all contracts PASS; 2.11.1 / 2011001 |
+| secret redaction / Cloudflare transfer | 0 | 17/17 and 4/4 tests; worker TypeScript PASS |
+| signed Android ARM64 | 0 | SHA-256 `A004814E22056139EA3E8486192039AB52CE61E8E8E9392432B50D50D684E88B`; v2 signer/zipalign PASS |
+| Hiby M500_MIKU update/restore | 0 | data-preserving `install -r`; 257,754-byte envelope; 10 stores restored; Activity retained; fatal logs 0 |
+| Windows EXE / NSIS / MSI | 0 | ProductVersion 2.11.1; SHA-256 `92DF7913…9C3A`, `4B7815B1…EF50`, `A38A7768…07C1` |
+| QA desktop overwrite/cold launch | 0 | exact `NAIS blue/Nais_blue.exe`; responsive process; final hash matched |
+| direct Wi-Fi Hiby sync | limited | three automation runs expired the 120-second invitation; manual fresh scan/connect remains |
+
+The public release must build a signed universal APK in CI; the local physical-device artifact is intentionally arm64-only
+and therefore is not evidence for the universal four-ABI contract. Release publication and immutable target-SHA checks are
+performed after this commit is tagged. Direct Wi-Fi remains the only manual v1 completion gate.

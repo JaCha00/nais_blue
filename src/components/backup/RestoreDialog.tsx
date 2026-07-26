@@ -4,6 +4,7 @@ import { relaunchApplication } from '@/lib/app-relaunch'
 import { AlertTriangle, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/use-toast'
@@ -20,12 +21,18 @@ interface RestoreDialogProps {
     onOpenChange: (open: boolean) => void
 }
 
+interface PendingFullRestore {
+    relPath: string
+    description: string
+}
+
 export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
     const { t } = useTranslation()
     const [entries, setEntries] = useState<FullAutoBackupEntry[]>([])
     const [selectedRelPath, setSelectedRelPath] = useState('')
     const [loading, setLoading] = useState(false)
     const [restoring, setRestoring] = useState(false)
+    const [pendingRestore, setPendingRestore] = useState<PendingFullRestore | null>(null)
 
     const reload = async () => {
         setLoading(true)
@@ -61,6 +68,8 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
         window.location.reload()
     }
 
+    // Dry-run first, then hand the immutable selection to an in-app dialog;
+    // Android WebView does not reliably surface native JavaScript prompts.
     const handleRestore = async () => {
         if (!selectedRelPath) return
         const entry = entries.find((item) => item.relPath === selectedRelPath)
@@ -72,21 +81,38 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
             if (!dryRun.canRestore) {
                 throw new Error(dryRun.errors.map(issue => `${issue.code}: ${issue.message}`).join('\n'))
             }
-            const confirmed = window.confirm([
-                t('settingsPage.backup.confirmRestoreDesc'),
-                '',
-                label,
-                `Dry run: ${dryRun.restoreKeys.length} store(s) ready, ${dryRun.ignoredKeys.length} ignored`,
-                ...dryRun.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
-                dryRun.ignoredKeys.length > 5 ? `- +${dryRun.ignoredKeys.length - 5} more` : '',
-                dryRun.credentialReentryRequired
-                    ? t('settingsPage.backup.credentialReentryRequired')
-                    : '',
-                t('settingsPage.backup.restoreWarning'),
-            ].filter(Boolean).join('\n'))
-            if (!confirmed) return
+            setPendingRestore({
+                relPath: selectedRelPath,
+                description: [
+                    t('settingsPage.backup.confirmRestoreDesc'),
+                    '',
+                    label,
+                    `Dry run: ${dryRun.restoreKeys.length} store(s) ready, ${dryRun.ignoredKeys.length} ignored`,
+                    ...dryRun.ignoredKeys.slice(0, 5).map(item => `- ${item.key} (${item.reason})`),
+                    dryRun.ignoredKeys.length > 5 ? `- +${dryRun.ignoredKeys.length - 5} more` : '',
+                    dryRun.credentialReentryRequired
+                        ? t('settingsPage.backup.credentialReentryRequired')
+                        : '',
+                    t('settingsPage.backup.restoreWarning'),
+                ].filter(Boolean).join('\n'),
+            })
+        } catch (error) {
+            console.error('[AutoBackup] Disk snapshot restore failed:', error)
+            toast({
+                title: t('settingsPage.backup.importFailed'),
+                description: String(error),
+                variant: 'destructive',
+            })
+        } finally {
+            setRestoring(false)
+        }
+    }
 
-            const result = await restoreFullAutoBackup(selectedRelPath)
+    const applyPendingRestore = async () => {
+        if (!pendingRestore) return
+        setRestoring(true)
+        try {
+            const result = await restoreFullAutoBackup(pendingRestore.relPath)
             if (result.failed.length > 0) {
                 throw new Error(`Restore verification failed for: ${result.failed.join(', ')}`)
             }
@@ -112,6 +138,7 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
     }
 
     return (
+        <>
         <Dialog open={open} onOpenChange={(nextOpen) => !restoring && onOpenChange(nextOpen)}>
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
@@ -176,5 +203,19 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <ConfirmDialog
+            open={pendingRestore !== null}
+            onOpenChange={(nextOpen) => {
+                if (!nextOpen && !restoring) setPendingRestore(null)
+            }}
+            title={t('settingsPage.backup.confirmRestore')}
+            description={pendingRestore?.description}
+            confirmText={t('settingsPage.backup.confirmRestore')}
+            cancelText={t('common.cancel')}
+            variant="destructive"
+            busy={restoring}
+            onConfirm={applyPendingRestore}
+        />
+        </>
     )
 }
