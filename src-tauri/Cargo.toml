@@ -1,6 +1,6 @@
 [package]
 name = "nais2"
-version = "2.10.0"
+version = "2.11.0"
 description = "NovelAI Image Studio"
 authors = ["sunakgo"]
 license = "GPL-3.0"
@@ -39,6 +39,19 @@ zip = "2.2"
 base64 = "0.22"
 sha2 = "0.10"
 
+# Phase 12 LAN sync shares one audited TLS/client implementation between the
+# desktop listener and Android's outbound-only client. These crates provide the
+# common request, certificate, pinned-rustls, and zeroization types; command
+# gates in src/sync_transport.rs still prevent Android from opening a listener.
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
+axum-server = { version = "=0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
+ipnet = "=2.12.0"
+rcgen = { version = "=0.14.8", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser", "zeroize"] }
+rustls = { version = "=0.23.41", default-features = false, features = ["aws_lc_rs", "std"] }
+subtle = "=2.6.1"
+tower = { version = "=0.5.3", default-features = false, features = ["limit"] }
+zeroize = { version = "=1.9.0", features = ["derive"] }
+
 # Tracked lifecycle/control source for Android user-initiated R2/LAN transfers.
 # Its executor remains fail-closed, so registering the plugin does not enable a
 # background transfer capability or add a provider SDK to desktop/mobile.
@@ -65,19 +78,6 @@ default-features = true
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
-
-# Phase 12 desktop LAN sync uses TLS 1.3/mTLS from rustls and certificate/CSR
-# handling from rcgen. The HTTP crates only expose bounded JSON endpoints; key
-# agreement, record encryption, certificate validation, and nonces remain in
-# audited libraries rather than application-defined cryptographic primitives.
-axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
-axum-server = { version = "=0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
-ipnet = "=2.12.0"
-rcgen = { version = "=0.14.8", default-features = false, features = ["aws_lc_rs", "pem", "x509-parser", "zeroize"] }
-rustls = { version = "=0.23.41", default-features = false, features = ["aws_lc_rs", "std"] }
-subtle = "=2.6.1"
-tower = { version = "=0.5.3", default-features = false, features = ["limit"] }
-zeroize = { version = "=1.9.0", features = ["derive"] }
 
 # Recommended by the official Stronghold plugin setup to keep the password KDF
 # usable in development builds without changing release cryptography.

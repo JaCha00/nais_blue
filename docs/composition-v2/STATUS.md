@@ -1,6 +1,26 @@
 # Composition Domain v2 최종 상태
 
-기준일: 2026-07-15 (Asia/Seoul)
+기준일: 2026-07-26 (Asia/Seoul)
+
+## 2026-07-26 current runtime update
+
+현재 checkout과 2.11.0 user direction은 아래의 historical Phase 11/12 기록보다 우선한다. Data Hub의
+프롬프트 preset/생성 parameter subset은 production caller에 연결됐다. Desktop은 사용자가 버튼을 누를 때만
+private IPv4/CIDR에 TLS 1.3 mTLS listener를 열고, Android는 outbound `pair_client`/`exchange`/`cancel_request`만
+사용한다. QR 또는 manual invitation과 별도 6자리 code로 한 active peer를 120초 동안 pairing하며 token,
+image/base64, absolute path는 sanitizer와 native payload gate 양쪽에서 차단한다.
+
+Hiby M500_MIKU(Android 14)에 same-signer ARM64 debug APK를 update-install하고 actual Android native client가
+Windows host의 production TLS/router code와 pairing해 sanitized `prompt.preset` 1개를 push했다. Host durable
+ingress와 Android UI의 `Connected · 1 processed`를 함께 확인했다. 현재 PC의 Ethernet profile이 Public이고
+Windows inbound firewall이 관리자 rule 없이 직접 Wi-Fi port를 차단했으므로, 최종 protocol/device 증거는
+ADB reverse tunnel로 완료했다. 따라서 Android native TLS/payload path는 PASS지만 이 PC 조건의 direct Wi-Fi
+reachability는 PASS로 과장하지 않는다. 2.11.0 UI는 Windows private-network firewall 안내와
+`E_SYNC_TRANSPORT` 복구 설명을 제공한다.
+
+이번 지원 범위는 session-only preset upsert다. 앱 restart 뒤 재페어링하며 delete propagation, image bytes,
+multi-peer, automatic discovery/port forwarding, WAN relay와 persistent device key는 지원하지 않는다.
+Optional LAN blob/R2 background worker까지 포함한 historical Phase 12 전체는 계속 미완료다.
 
 ## 결론
 

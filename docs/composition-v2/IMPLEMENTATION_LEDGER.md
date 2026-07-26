@@ -2691,3 +2691,61 @@ Responsive PASS는 Phase 14 변경이 아니라 시작부터 존재한 out-of-sc
   tree, runtime source/tests, app/user/vault/output/queue/sync/R2 data, backup/importer/parser/fixtures and generated
   tooling; do not reset, clean, clear data, delete artifacts or perform a destructive migration
 - Next phase readiness: BLOCKED
+
+## v2.11.0 — ANDROID/DESKTOP SESSION SYNC CUTOVER
+
+Date: 2026-07-26 (Asia/Seoul)
+
+This release connects the existing Phase 12 transport to a production Data Hub
+workflow. The desktop app opens an explicit, private-IPv4 TLS listener and
+Android remains an outbound-only client. A two-minute invitation and separate
+confirmation code admit one peer; the same native rustls client, replay
+journal, cancellation path, and bounded JSON exchange run on both platforms.
+
+The production projection is intentionally narrow: only `prompt.preset`
+upserts enter the IndexedDB sync repository and local preset store. The existing
+sanitizer rejects provider tokens, Authorization material, absolute paths,
+signed URLs, image/Base64 payloads, history, unknown fields, and delete
+operations. Image bytes, directory mirroring, multi-peer sessions, unattended
+background sync, and restart-persistent pairing are not claimed by this
+cutover.
+
+Data Hub now provides desktop network suggestion/editing, start/stop and
+invitation refresh controls, a scannable QR code, Android QR-photo decoding,
+manual invitation/code fallback, explicit connection state, manual resync, and
+mobile-visible disconnect controls. The UI also explains session-only pairing,
+the sanitizer boundary, TLS transport, same-Wi-Fi requirements, and the common
+Windows first-firewall/private-network remediation without weakening the
+listener allowlist.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| focused LAN/session TypeScript | 0 | 18 files, 194/194 tests |
+| Rust sync transport | 0 | 15 passed, 1 explicitly ignored hardware contract |
+| TypeScript / lint / Vite build | 0 / 0 / 0 | clean production build |
+| full `test:composition` | 0 | 155 passed + 2 skipped files; 1088 passed + 4 skipped tests |
+| responsive layout | 0 | 62 route/viewport checks, including 427x759 Hiby-equivalent viewport |
+| release/version/Android contracts | 0 | 2.11.0 / 2011000; port and signing policy retained |
+| secret redaction / removed runtime | 0 / 0 | 13/13 and source search gate PASS |
+| Windows release build | 0 | production EXE, NSIS, MSI and updater signatures generated |
+| signed Android ARM64 build | 0 | official signer, arm64-v8a, zipalign, package/version gates PASS |
+| Hiby M500_MIKU install/launch | 0 | Android 14, update install, 2.11.0/2011000, non-debuggable, crash buffer clean |
+| Hiby native TLS pair/push | 0 | production Android client pushed one sanitized preset through an ADB reverse USB tunnel |
+| direct Wi-Fi reachability | limited | Windows active network was Public and inbound TCP timed out; non-admin QA could not add a firewall rule |
+
+The USB-tunnel run is evidence for the installed Android Rust/TLS pair and sync
+path, not evidence that the current Windows Public profile permits direct
+Wi-Fi ingress. Local listener reachability passed and the exact Hiby Wi-Fi
+address timed out. No broad or persistent firewall exception was created; the
+product guidance keeps changing the trusted network to Private as the preferred
+remediation and leaves manual invitation entry as a fallback.
+
+### Release handoff
+
+- Target version/tag: `2.11.0` / `v2.11.0`; Android versionCode `2011000`.
+- QA desktop replacement: `E:\AI_Project_Library\projects\nais\NAIS blue\Nais_blue.exe`, ProductVersion 2.11.0, SHA-256 `6FBAA325636D39A1117344B6FC903CCA80DDD6B63866E6FD4517D28991A6A34F`.
+- Local release artifacts: `src-tauri/target/release/Nais_blue.exe`, NSIS/MSI bundles and signatures, and signed ARM64 APK under the ignored Android build output.
+- Live NovelAI generation was not repeated: the immediately preceding 2.10.0 QA already exhausted the authorized three bounded live attempts, and LAN sync neither reads nor transfers the NAI token.
+- Rollback: install the prior signed v2.10.0 release, preserve app/user/vault/output/queue data, and do not delete IndexedDB journals or Android app data. Pairing identities are process-scoped, so stopping either app already revokes or discards the active session.

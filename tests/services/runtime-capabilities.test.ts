@@ -16,7 +16,7 @@ describe('RuntimeCapabilities', () => {
         expect(capabilities.localTaggerSidecar.supported).toBe(true)
         expect(capabilities.embeddedBrowser.supported).toBe(true)
         expect(capabilities.r2DeployTooling.supported).toBe(true)
-        expect(capabilities.secureLanSyncTransport.supported).toBe(false)
+        expect(capabilities.secureLanSyncTransport.supported).toBe(true)
         expect(capabilities.lanBlobTransfer.supported).toBe(false)
         expect(capabilities.embeddedPngMetadataWrite.supported).toBe(true)
         expect(capabilities.supportedImageFormats).toEqual(['png', 'webp'])
@@ -32,7 +32,6 @@ describe('RuntimeCapabilities', () => {
             capabilities.r2DeployTooling,
             capabilities.r2ForegroundUpload,
             capabilities.r2BackgroundUpload,
-            capabilities.secureLanSyncTransport,
             capabilities.lanBlobTransfer,
         ]
 
@@ -41,6 +40,7 @@ describe('RuntimeCapabilities', () => {
             && Boolean(capability.reason)
             && Boolean(capability.alternative)
         ))).toBe(true)
+        expect(capabilities.secureLanSyncTransport.supported).toBe(true)
         expect(capabilities.embeddedPngMetadataWrite.supported).toBe(true)
         expect(capabilities.supportedImageFormats).toEqual(['png', 'webp'])
     })

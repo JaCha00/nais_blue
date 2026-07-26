@@ -816,6 +816,7 @@ pub fn run() {
             r2_native::r2_upload_part,
             r2_native::r2_complete_multipart,
             r2_native::r2_abort_multipart,
+            sync_transport::sync_transport_detect_lan_network,
             sync_transport::sync_transport_start,
             sync_transport::sync_transport_stop,
             sync_transport::sync_transport_status,

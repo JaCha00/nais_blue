@@ -87,6 +87,7 @@ interface PresetState {
     renamePreset: (id: string, name: string) => void
     reorderPresets: (oldIndex: number, newIndex: number) => void
     replacePresetFromExternal: (preset: Preset) => void
+    upsertPresetFromSync: (preset: Preset) => void
     getActivePreset: () => Preset | undefined
 }
 
@@ -302,6 +303,40 @@ export const usePresetStore = create<PresetState>()(
                     } : {}),
                 }))
                 if (active) useGenerationStore.getState().applyPreset(replacement)
+            },
+
+            /**
+             * LAN sync depends on the same normalized preset schema and
+             * generation-store batch apply as local selection. Existing IDs are
+             * replaced, remote IDs are appended, and the active draft changes
+             * only when its own preset changed.
+             */
+            upsertPresetFromSync: (preset) => {
+                const normalized = normalizeLegacyPreset(preset)
+                const active = get().activePresetId === normalized.id
+                set(state => {
+                    const index = state.presets.findIndex(entry => entry.id === normalized.id)
+                    const current = index < 0 ? null : state.presets[index]
+                    const replacement: Preset = {
+                        ...normalized,
+                        ...(current?.isDefault === true || normalized.id === DEFAULT_PRESET_ID
+                            ? { isDefault: true }
+                            : { isDefault: undefined }),
+                    }
+                    const presets = [...state.presets]
+                    if (index < 0) presets.push(replacement)
+                    else presets[index] = replacement
+                    const snapshot = active ? workingCopyFromPreset(replacement) : null
+                    return {
+                        presets,
+                        ...(snapshot === null ? {} : {
+                            workingCopy: snapshot,
+                            savedSnapshot: snapshot,
+                            dirty: false,
+                        }),
+                    }
+                })
+                if (active) useGenerationStore.getState().applyPreset(normalized)
             },
 
             getActivePreset: () => {

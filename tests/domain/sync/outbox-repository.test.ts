@@ -70,6 +70,10 @@ describe('transactional sync outbox repository', () => {
             sourceOpId: 'op:a:1',
             payload: { scenePrompt: 'offline prompt' },
         })
+        expect(await sync.listEntities('scene.card')).toEqual([
+            expect.objectContaining({ entityId: 'scene:1', sourceOpId: 'op:a:1' }),
+        ])
+        expect(await sync.listEntities('prompt.preset')).toEqual([])
         expect(await sync.getOutbox('op:a:1')).toMatchObject({
             state: 'pending',
             attemptCount: 0,

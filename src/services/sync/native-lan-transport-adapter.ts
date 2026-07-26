@@ -38,6 +38,11 @@ export interface NativeSyncBindings {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>
 }
 
+export interface NativeLanNetworkSuggestion {
+    readonly bindIp: string
+    readonly allowCidr: string
+}
+
 const TAURI_BINDINGS: NativeSyncBindings = {
     isTauri,
     invoke: (command, args) => invoke(command, args),
@@ -378,13 +383,35 @@ async function callNative<T>(
     args?: Record<string, unknown>,
 ): Promise<T> {
     if (!bindings.isTauri()) {
-        throw new SyncTransportError('E_SYNC_TRANSPORT', 'Secure LAN sync requires the desktop Tauri runtime.', false)
+        throw new SyncTransportError('E_SYNC_TRANSPORT', 'Secure LAN sync requires an installed Tauri runtime.', false)
     }
     try {
         return await bindings.invoke<T>(command, args)
     } catch (error) {
         throw safeNativeFailure(error)
     }
+}
+
+/**
+ * Reads the desktop routing-table suggestion exposed by Rust. The native
+ * command depends on an installed Tauri host and returns no interface names or
+ * device identifiers; this strict projection feeds the editable setup form.
+ */
+export async function detectNativeLanNetwork(
+    bindings: NativeSyncBindings = TAURI_BINDINGS,
+): Promise<NativeLanNetworkSuggestion> {
+    const raw = asRecord(
+        await callNative<unknown>(bindings, 'sync_transport_detect_lan_network'),
+        'Native LAN network suggestion',
+    )
+    assertExactKeys(raw, ['bindIp', 'allowCidr'], 'Native LAN network suggestion')
+    const bindIp = boundedString(raw.bindIp, 'bindIp', 64)
+    const allowCidr = boundedString(raw.allowCidr, 'allowCidr', 64)
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(bindIp)
+        || !/^\d{1,3}(?:\.\d{1,3}){3}\/(?:1[6-9]|2\d|3[0-2])$/.test(allowCidr)) {
+        protocolError('Native LAN network suggestion is invalid.')
+    }
+    return { bindIp, allowCidr }
 }
 
 function abortError(): SyncTransportError {

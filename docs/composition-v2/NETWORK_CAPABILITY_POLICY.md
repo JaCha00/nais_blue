@@ -1,6 +1,6 @@
 # Phase 12 Network Capability Policy
 
-기준일: 2026-07-15 (Asia/Seoul)
+기준일: 2026-07-26 (Asia/Seoul)
 
 ## 허용 범위
 
@@ -15,9 +15,9 @@ Listener scope는 다음 두 모드뿐이다.
 - `lan`: 사용자가 선택한 private/link-local interface 주소에 bind하고 명시한 CIDR allowlist를 함께 적용한다.
 
 Wildcard public bind, public/routable allowlist, automatic port forwarding, network discovery broadcast와
-internet relay fallback은 허용하지 않는다. Mobile은 listener가 아니라 paired outbound client와
-user-initiated transfer worker로만 동작하는 것이 target contract다. Current native sync command의 mobile branch는
-`E_SYNC_UNSUPPORTED`이고 executor/capability도 disabled이므로 이 target을 지원 완료로 표시하지 않는다.
+internet relay fallback은 허용하지 않는다. Android는 listener가 아니라 paired outbound client로만 동작한다.
+2.11.0 runtime은 Android의 `pair_client`, `exchange`, `cancel_request`만 활성화하고 listener, host queue,
+network discovery command는 계속 `E_SYNC_UNSUPPORTED`로 막는다. iOS와 web capability는 비활성이다.
 
 ## 인증과 암호화
 
@@ -28,8 +28,10 @@ verification과 ciphertext tamper rejection은 rustls가 소유하며 앱이 pri
 
 Pairing listener는 최대 120초, 한 번만 사용할 수 있는 OS CSPRNG capability와 6자리 사용자 확인 코드를
 요구한다. Client가 생성한 private key/CSR 중 CSR만 host에 보내고 host CA가 client certificate를 서명한다.
-장기 client identity와 host device identity는 Credential Vault에 저장한다. Native runtime은 사용자가
-agent/transfer를 시작하고 vault가 unlocked인 동안만 필요한 secret을 memory에 보유한다.
+2.11.0의 client/host identity는 renderer process의 현재 연결 session에만 보유하며 disk에 저장하지 않는다.
+앱을 다시 열면 재페어링한다. 장기 device key를 OS Credential Vault에 보존하는 기능은 vault lock/revoke
+lifecycle과 physical restart gate가 완료되는 후속 보안 단계로 남긴다. Native durable journal에는
+fingerprint, revoke, sequence/nonce high-water와 checkpoint 같은 non-secret만 기록한다.
 
 Data route는 TLS가 검증한 peer certificate fingerprint를 active peer allowlist에 먼저 대조한다. Revoke는
 새 요청을 차단한 뒤 vault identity를 삭제한다. 인증 실패, 만료 invitation, revoked/unpaired certificate는
@@ -68,9 +70,17 @@ WorkManager를 쓴다.
 Android 16에서 long-running WorkManager가 ordinary job quota를 소비하므로 API 34+ primary로 사용하지 않는다.
 Tracked scheduler/plugin은 Cloudflare R2 executor를 UI와 headless process에 설치하고 Android Keystore request
 signing, 5 MiB part, R2 acknowledgement 뒤 checkpoint와 remote cancel tombstone을 사용한다. Credential은 vault
-reference이고 pairing capability는 일회성 memory 입력이다. LAN은 여전히 visible blocked다. Live Worker pairing과
+reference이고 pairing capability는 일회성 memory 입력이다. 프리셋 JSON LAN sync는 Data Hub에서 visible enabled지만
+LAN image/blob과 R2 background capability는 계속 blocked다. Live Worker pairing과
 physical notification/cancel/recreation/byte gate 전에는 R2 capability도 unsupported이며, generation request의 장기
 background 실행은 이 capability에 포함하지 않는다.
+
+## Windows 방화벽과 초보자 안내
+
+Windows listener는 앱이 실행 중일 때만 고정 data port와 인접 pairing port를 연다. 첫 연결 시 Windows
+방화벽 알림이 표시되면 사용자는 **개인 네트워크만** 허용해야 한다. 앱은 관리자 권한을 요청하거나 firewall
+rule/network profile을 자동 변경하지 않는다. 네트워크가 Public으로 분류되어 인바운드가 차단되면 UI는
+`E_SYNC_TRANSPORT`와 개인 네트워크 안내를 보여주고, 안전한 대안으로 backup export/restore를 제공한다.
 
 ## Logging과 diagnostics
 

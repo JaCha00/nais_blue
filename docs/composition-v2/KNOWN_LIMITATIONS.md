@@ -212,3 +212,20 @@
     diagnostic rail is clipped by 8px, while insetting or lowering it trades that failure for organizer-slot overlap or bottom
     clipping. Experimental runtime changes were reverted after three attempts. Do not claim the complete device/responsive
     matrix until a route-specific organizer placement passes the unchanged gate.
+65. 2.11.0 Data Hub caller는 `prompt.preset` upsert와 generation parameter projection을 current preset store에
+    연결한다. 따라서 44/51/53의 “production caller 없음”은 historical Phase 11 상태이며 prompt preset에는 더 이상
+    적용되지 않는다. Composition document, Scene, artifact, delete propagation은 여전히 이 caller 범위가 아니다.
+66. Android native `sync_transport_pair_client`, `sync_transport_exchange`, `sync_transport_cancel_request`가
+    outbound-only로 활성화되어 62의 blanket unsupported 상태를 대체한다. Android listener/network discovery/host
+    queue command와 iOS/web는 계속 fail closed다.
+67. Data Hub의 host/client private identity는 current renderer process memory에만 있고 앱을 다시 열면
+    재페어링한다. 56/57의 Stronghold long-term identity 설명은 이 current caller에 적용되지 않는다. Persistent
+    device key는 vault lock/revoke/restart lifecycle이 검증되는 후속 security stage다.
+68. Hiby M500_MIKU(Android 14) actual native client는 TLS pairing과 sanitized preset push를 통과했다. 다만
+    검증 PC의 Ethernet이 Windows Public profile이고 inbound firewall이 직접 Wi-Fi port를 차단했으며 현재 권한으로
+    rule을 바꾸지 않았다. 최종 protocol/device evidence는 ADB reverse tunnel로 완료했으므로 동일 PC에서의 direct
+    Wi-Fi reachability를 PASS로 선언하지 않는다. 사용자는 firewall prompt에서 private network만 허용하거나 backup
+    transfer를 사용해야 한다.
+69. Current LAN sync는 한 active peer의 session-only preset upsert에 제한된다. Image bytes, thumbnail, absolute
+    path, token/credential, delete propagation, multi-peer fan-out, discovery, port forwarding과 WAN relay를 지원하지
+    않으며 silent fallback도 하지 않는다.

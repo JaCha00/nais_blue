@@ -3035,7 +3035,7 @@ dependencies = [
 
 [[package]]
 name = "nais2"
-version = "2.10.0"
+version = "2.11.0"
 dependencies = [
  "aws-sdk-s3",
  "axum",

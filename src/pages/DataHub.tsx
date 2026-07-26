@@ -1,14 +1,18 @@
-import { useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { openPath } from '@tauri-apps/plugin-opener'
+import QRCode from 'qrcode'
+import jsQR from 'jsqr'
 import {
     ArrowRight,
     Bot,
     Cable,
+    Camera,
     Check,
     CircleAlert,
     CircleCheck,
+    ClipboardCopy,
     DatabaseZap,
     FileJson,
     FileSpreadsheet,
@@ -16,24 +20,29 @@ import {
     ImageIcon,
     KeyRound,
     LoaderCircle,
+    Link2,
     Monitor,
     RefreshCw,
     ScanSearch,
     ShieldCheck,
     Smartphone,
+    Unplug,
     Upload,
+    Wifi,
     WifiOff,
     X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import { exportTextFile } from '@/platform/export-text-file'
 import { runtimeCapabilities } from '@/platform/capabilities'
-import { getRuntimePlatform, isDesktopRuntime } from '@/platform/runtime'
+import { getRuntimePlatform, isAndroidRuntime, isDesktopRuntime } from '@/platform/runtime'
 import {
     getAgentWorkspaceAbsolutePath,
     getAgentWorkspaceBridgeStatus,
@@ -50,6 +59,7 @@ import {
     type MetadataBatchProgress,
     type MetadataBatchStatus,
 } from '@/services/metadata/batch-metadata-reader'
+import { getLanSessionRuntime } from '@/services/sync/lan-session-runtime'
 
 function formatBytes(bytes: number): string {
     if (bytes < 1_024) return `${bytes} B`
@@ -488,11 +498,128 @@ function AgentWorkspacePanel() {
     )
 }
 
+function PairingQrCode({ value }: { value: string }) {
+    const [dataUrl, setDataUrl] = useState<string | null>(null)
+
+    useEffect(() => {
+        let active = true
+        void QRCode.toDataURL(value, {
+            errorCorrectionLevel: 'M',
+            margin: 2,
+            width: 280,
+            color: { dark: '#111827', light: '#ffffff' },
+        }).then(url => {
+            if (active) setDataUrl(url)
+        }).catch(() => {
+            if (active) setDataUrl(null)
+        })
+        return () => { active = false }
+    }, [value])
+
+    return dataUrl === null ? (
+        <div className="flex aspect-square w-full max-w-[280px] items-center justify-center rounded-panel bg-muted text-xs text-muted-foreground">
+            QR…
+        </div>
+    ) : (
+        <img
+            src={dataUrl}
+            alt="NAIS blue secure pairing QR"
+            className="aspect-square w-full max-w-[280px] rounded-panel border bg-white p-2"
+        />
+    )
+}
+
+/** Decodes only the selected camera/photo frame; the image is never persisted. */
+async function decodePairingQr(file: File): Promise<string> {
+    const bitmap = await createImageBitmap(file)
+    try {
+        const maximum = 1_920
+        const scale = Math.min(1, maximum / Math.max(bitmap.width, bitmap.height))
+        const width = Math.max(1, Math.round(bitmap.width * scale))
+        const height = Math.max(1, Math.round(bitmap.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+        if (context === null) throw new Error('QR canvas is unavailable.')
+        context.drawImage(bitmap, 0, 0, width, height)
+        const image = context.getImageData(0, 0, width, height)
+        const result = jsQR(image.data, width, height, { inversionAttempts: 'attemptBoth' })
+        if (result === null || result.data.length < 4 || result.data.length > 16_384) {
+            throw new Error('Pairing QR was not found.')
+        }
+        return result.data
+    } finally {
+        bitmap.close()
+    }
+}
+
 function DeviceConnectionPanel() {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const capability = runtimeCapabilities.secureLanSyncTransport
     const platform = getRuntimePlatform()
+    const session = useMemo(() => getLanSessionRuntime(), [])
+    const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
+    const cameraInput = useRef<HTMLInputElement>(null)
+    const [invitation, setInvitation] = useState('')
+    const [confirmationCode, setConfirmationCode] = useState('')
+    const [busy, setBusy] = useState(false)
+    const [manualBindIp, setManualBindIp] = useState('')
+    const [manualCidr, setManualCidr] = useState('')
+    const [manualPort, setManualPort] = useState('41921')
+
+    const run = async (operation: () => Promise<void>, success?: string) => {
+        setBusy(true)
+        try {
+            await operation()
+            if (success) toast({ title: success })
+        } catch {
+            toast({
+                variant: 'destructive',
+                title: t('dataHub.sync.failed', '연결을 완료하지 못했습니다'),
+                description: t('dataHub.sync.failedDescription', '같은 Wi-Fi인지 확인한 뒤 새 연결 코드를 만들어 다시 시도하세요.'),
+            })
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const copyInvitation = async () => {
+        if (snapshot.invitation === null) return
+        try {
+            await navigator.clipboard.writeText(snapshot.invitation)
+            toast({ title: t('dataHub.sync.invitationCopied', '연결 정보가 복사되었습니다') })
+        } catch {
+            toast({ variant: 'destructive', title: t('dataHub.sync.copyFailed', '복사할 수 없습니다') })
+        }
+    }
+
+    const readQr = async (file: File | undefined) => {
+        if (file === undefined) return
+        setBusy(true)
+        try {
+            setInvitation(await decodePairingQr(file))
+            toast({ title: t('dataHub.sync.qrRead', '연결 QR을 읽었습니다') })
+        } catch {
+            toast({
+                variant: 'destructive',
+                title: t('dataHub.sync.qrFailed', 'QR을 읽지 못했습니다'),
+                description: t('dataHub.sync.qrFailedDescription', 'QR이 화면 안에 선명하게 보이도록 다시 촬영하세요.'),
+            })
+        } finally {
+            setBusy(false)
+        }
+    }
+
+    const connected = snapshot.phase === 'connected' || snapshot.phase === 'syncing'
+    const statusBadge = !capability.supported
+        ? <><WifiOff className="mr-1.5 h-3.5 w-3.5" />{t('dataHub.sync.unsupported', '지원 안 함')}</>
+        : connected
+            ? <><Wifi className="mr-1.5 h-3.5 w-3.5" />{t('dataHub.sync.connected', '연결됨')}</>
+            : snapshot.phase === 'error'
+                ? <><CircleAlert className="mr-1.5 h-3.5 w-3.5" />{t('dataHub.sync.needsAttention', '확인 필요')}</>
+                : <><Link2 className="mr-1.5 h-3.5 w-3.5" />{t('dataHub.sync.ready', '연결 준비')}</>
 
     return (
         <div className="space-y-4" data-testid="device-connection-panel">
@@ -502,11 +629,14 @@ function DeviceConnectionPanel() {
                         <div>
                             <CardTitle>{t('dataHub.sync.title', '모바일 · 데스크톱 연결')}</CardTitle>
                             <CardDescription className="mt-1 max-w-2xl">
-                                {t('dataHub.sync.description', '프롬프트와 설정을 안전하게 이어 쓰는 기능입니다. 현재 자동 LAN 연결은 복구 검증이 끝날 때까지 닫혀 있습니다.')}
+                                {t('dataHub.sync.description', '같은 Wi-Fi에서 프롬프트 프리셋과 생성 파라미터를 기기끼리 직접 이어 씁니다.')}
                             </CardDescription>
                         </div>
-                        <Badge variant="outline" className="border-warning/40 text-warning">
-                            <WifiOff className="mr-1.5 h-3.5 w-3.5" />{t('dataHub.sync.qaPending', 'QA 준비 중')}
+                        <Badge variant="outline" className={cn(
+                            connected && 'border-success/40 text-success',
+                            snapshot.phase === 'error' && 'border-destructive/40 text-destructive',
+                        )}>
+                            {statusBadge}
                         </Badge>
                     </div>
                 </CardHeader>
@@ -518,8 +648,8 @@ function DeviceConnectionPanel() {
                                 <p className="text-sm font-semibold">{t('dataHub.sync.desktop', '데스크톱')}</p>
                                 <p className="text-xs text-muted-foreground">
                                     {capability.supported
-                                        ? t('dataHub.sync.desktopReady', '보안 수신 준비됨')
-                                        : t('dataHub.sync.transportOff', '자동 연결 비활성')}
+                                        ? t('dataHub.sync.desktopReady', '사용자가 열 때만 보안 수신')
+                                        : t('dataHub.sync.transportOff', '직접 연결 비활성')}
                                 </p>
                             </div>
                         </div>
@@ -530,28 +660,176 @@ function DeviceConnectionPanel() {
                                 <p className="text-sm font-semibold">{t('dataHub.sync.mobile', '모바일')}</p>
                                 <p className="text-xs text-muted-foreground">
                                     {capability.supported && platform === 'android'
-                                        ? t('dataHub.sync.androidReady', 'Android 연결 준비됨')
+                                        ? t('dataHub.sync.androidReady', 'QR로 outbound 연결')
                                         : capability.supported
-                                            ? t('dataHub.sync.clientReady', '클라이언트 연결 준비됨')
-                                            : t('dataHub.sync.clientQaPending', '클라이언트 검증 전')}
+                                            ? t('dataHub.sync.clientReady', 'Android 클라이언트 대기')
+                                            : t('dataHub.sync.clientQaPending', '클라이언트 지원 안 함')}
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-3">
-                        {[
-                            [true, t('dataHub.sync.safeData', '민감 데이터 제외'), t('dataHub.sync.safeDataDescription', '토큰·이미지·절대 경로를 전송하지 않습니다.')],
-                            [true, t('dataHub.sync.pairing', '암호화 페어링 기반'), t('dataHub.sync.pairingDescription', '짧은 확인 코드와 기기별 인증서를 사용합니다.')],
-                            [false, t('dataHub.sync.deviceQa', 'Hiby 실기기 검증'), t('dataHub.sync.deviceQaDescription', 'Android 클라이언트와 재시작 복구를 검증한 뒤 활성화합니다.')],
-                        ].map(([done, title, description]) => (
-                            <div key={String(title)} className="rounded-panel border p-4">
-                                {done ? <Check className="h-4 w-4 text-success" /> : <LoaderCircle className="h-4 w-4 text-warning" />}
-                                <p className="mt-3 text-sm font-semibold">{title}</p>
-                                <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+                    {capability.supported && isDesktopRuntime && snapshot.phase === 'idle' && (
+                        <div className="rounded-panel border bg-gradient-to-br from-primary/8 via-background to-background p-5">
+                            <div className="flex items-start gap-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-primary/10 text-primary"><Wifi className="h-5 w-5" /></span>
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold">{t('dataHub.sync.openDesktop', '이 데스크톱에서 연결 열기')}</p>
+                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                        {t('dataHub.sync.openDesktopDescription', '같은 Wi-Fi의 Android 한 대만 2분 동안 페어링할 수 있습니다. 인터넷 중계 서버는 사용하지 않습니다.')}
+                                    </p>
+                                    {platform === 'windows' && (
+                                        <div className="mt-3 flex items-start gap-2 rounded-control border border-warning/25 bg-warning/5 p-3 text-xs leading-5 text-muted-foreground">
+                                            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                                            <div>
+                                                <p className="font-semibold text-foreground">{t('dataHub.sync.windowsFirewallTitle', 'Windows 첫 연결 안내')}</p>
+                                                <p>{t('dataHub.sync.windowsFirewallDescription', '방화벽 알림이 뜨면 개인 네트워크만 허용하세요. 공용 네트워크에서는 직접 연결 대신 백업 이동을 권장합니다.')}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <Button className="mt-4 min-h-11" disabled={busy} onClick={() => void run(
+                                        () => session.startHost(),
+                                    )}>
+                                        {busy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+                                        {t('dataHub.sync.createCode', '연결 코드 만들기')}
+                                    </Button>
+                                </div>
                             </div>
-                        ))}
-                    </div>
+                            <details className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer font-medium text-foreground">{t('dataHub.sync.manualNetwork', '네트워크를 직접 지정해야 하나요?')}</summary>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_7rem_auto]">
+                                    <Input value={manualBindIp} onChange={event => setManualBindIp(event.target.value)} placeholder="192.168.0.10" aria-label="Bind IP" />
+                                    <Input value={manualCidr} onChange={event => setManualCidr(event.target.value)} placeholder="192.168.0.0/24" aria-label="Allowed CIDR" />
+                                    <Input value={manualPort} onChange={event => setManualPort(event.target.value)} inputMode="numeric" aria-label="Port" />
+                                    <Button variant="outline" disabled={busy || !manualBindIp || !manualCidr} onClick={() => void run(() => session.startHost({
+                                        bindIp: manualBindIp.trim(),
+                                        allowCidr: manualCidr.trim(),
+                                        port: Number(manualPort),
+                                    }))}>{t('dataHub.sync.open', '열기')}</Button>
+                                </div>
+                            </details>
+                        </div>
+                    )}
+
+                    {capability.supported && isDesktopRuntime && snapshot.phase === 'awaiting-peer' && snapshot.invitation !== null && (
+                        <div className="grid gap-5 rounded-panel border p-4 sm:grid-cols-[minmax(0,280px)_1fr] sm:p-5">
+                            <PairingQrCode value={snapshot.invitation} />
+                            <div className="min-w-0">
+                                <Badge variant="secondary">{t('dataHub.sync.stepDesktop', 'Android에서 QR 스캔')}</Badge>
+                                <p className="mt-4 text-sm font-medium text-muted-foreground">{t('dataHub.sync.confirmationCode', '확인 코드')}</p>
+                                <p className="mt-1 font-mono text-4xl font-semibold tracking-[0.2em] text-foreground">{snapshot.confirmationCode}</p>
+                                <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                                    {t('dataHub.sync.codeDescription', 'Android 화면에 이 6자리를 입력하세요. 코드는 QR과 분리되어 있으며 2분 뒤 만료됩니다.')}
+                                </p>
+                                <div className="mt-4 flex flex-wrap gap-2">
+                                    <Button variant="outline" onClick={() => void copyInvitation()}><ClipboardCopy className="mr-2 h-4 w-4" />{t('dataHub.sync.copyInstead', 'QR 대신 복사')}</Button>
+                                    <Button variant="ghost" disabled={busy} onClick={() => void run(() => session.refreshInvitation())}><RefreshCw className="mr-2 h-4 w-4" />{t('dataHub.sync.newCode', '새 코드')}</Button>
+                                    <Button variant="ghost" disabled={busy} onClick={() => void run(() => session.stop())}><Unplug className="mr-2 h-4 w-4" />{t('dataHub.sync.cancel', '취소')}</Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {capability.supported && isAndroidRuntime && snapshot.phase === 'idle' && (
+                        <div className="space-y-4 rounded-panel border bg-gradient-to-br from-primary/8 via-background to-background p-4">
+                            <div>
+                                <p className="font-semibold">{t('dataHub.sync.scanDesktop', '데스크톱의 연결 QR 스캔')}</p>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">{t('dataHub.sync.scanDesktopDescription', '데스크톱 앱에서 데이터 허브 → 기기 연결 → 연결 코드 만들기를 먼저 누르세요.')}</p>
+                            </div>
+                            <input
+                                ref={cameraInput}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                onChange={event => {
+                                    const file = event.currentTarget.files?.[0]
+                                    event.currentTarget.value = ''
+                                    void readQr(file)
+                                }}
+                            />
+                            <Button className="min-h-12 w-full" disabled={busy} onClick={() => cameraInput.current?.click()}>
+                                {busy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                                {t('dataHub.sync.scanQr', 'QR 촬영 또는 사진 선택')}
+                            </Button>
+                            <details>
+                                <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{t('dataHub.sync.pasteInvitation', '연결 정보를 직접 붙여넣기')}</summary>
+                                <Textarea className="mt-2 min-h-24 font-mono text-[11px]" value={invitation} onChange={event => setInvitation(event.target.value)} placeholder="{ … }" />
+                            </details>
+                            {invitation && (
+                                <div className="rounded-control bg-muted/40 p-3">
+                                    <label className="text-xs font-medium" htmlFor="lan-confirmation-code">{t('dataHub.sync.enterCode', '데스크톱의 6자리 확인 코드')}</label>
+                                    <Input
+                                        id="lan-confirmation-code"
+                                        className="mt-2 h-12 text-center font-mono text-xl tracking-[0.3em]"
+                                        value={confirmationCode}
+                                        onChange={event => setConfirmationCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        inputMode="numeric"
+                                        autoComplete="one-time-code"
+                                        maxLength={6}
+                                    />
+                                    <Button className="mt-3 min-h-11 w-full" disabled={busy || confirmationCode.length !== 6} onClick={() => void run(
+                                        () => session.connectClient({ invitation, confirmationCode }),
+                                        t('dataHub.sync.syncComplete', '프리셋 동기화가 완료되었습니다'),
+                                    )}>
+                                        {busy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Cable className="mr-2 h-4 w-4" />}
+                                        {t('dataHub.sync.connectAndSync', '연결하고 동기화')}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {capability.supported && connected && (
+                        <div className="rounded-panel border border-success/30 bg-success/5 p-4 sm:p-5">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex min-w-0 items-start gap-3">
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15 text-success"><Check className="h-5 w-5" /></span>
+                                    <div className="min-w-0">
+                                        <p className="font-semibold">{snapshot.peerName ?? t('dataHub.sync.pairedDevice', '페어링된 기기')}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                            {snapshot.phase === 'syncing'
+                                                ? t('dataHub.sync.syncing', '프리셋을 안전하게 맞추는 중…')
+                                                : snapshot.lastSyncAt
+                                                    ? t('dataHub.sync.lastSync', '마지막 동기화 {{time}} · {{count}}개 처리', { time: new Date(snapshot.lastSyncAt).toLocaleTimeString(), count: snapshot.transferred })
+                                                    : t('dataHub.sync.connectedDescription', '연결되었습니다. 프리셋 변경 사항을 직접 동기화할 수 있습니다.')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex shrink-0 gap-2">
+                                    <Button disabled={busy || snapshot.phase === 'syncing'} onClick={() => void run(
+                                        () => session.synchronizeNow(),
+                                        t('dataHub.sync.syncComplete', '프리셋 동기화가 완료되었습니다'),
+                                    )}><RefreshCw className={cn('mr-2 h-4 w-4', snapshot.phase === 'syncing' && 'animate-spin')} />{t('dataHub.sync.syncNow', '지금 동기화')}</Button>
+                                    <Button variant="outline" className="whitespace-nowrap" disabled={busy} onClick={() => void run(() => session.stop())}><Unplug className="mr-2 h-4 w-4" />{t('dataHub.sync.disconnect', '연결 종료')}</Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {capability.supported && snapshot.phase === 'error' && (
+                        <div className="rounded-panel border border-destructive/30 bg-destructive/5 p-4">
+                            <div className="flex items-start gap-3">
+                                <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold">{t('dataHub.sync.failed', '연결을 완료하지 못했습니다')}</p>
+                                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{t('dataHub.sync.errorCode', '오류 코드: {{code}}', { code: snapshot.errorCode ?? 'E_SYNC_SESSION' })}</p>
+                                    {snapshot.errorCode === 'E_SYNC_TRANSPORT' && (
+                                        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                                            {t('dataHub.sync.transportHelp', '두 기기가 같은 Wi-Fi인지 확인하세요. Windows에서는 방화벽 알림의 개인 네트워크를 허용하고, 네트워크가 공용으로 설정되어 있다면 백업 이동을 사용하세요.')}
+                                        </p>
+                                    )}
+                                    <Button className="mt-3" variant="outline" disabled={busy} onClick={() => void run(() => session.stop())}>{t('dataHub.sync.backToStart', '처음부터 다시')}</Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {capability.supported && <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-panel border p-4"><ShieldCheck className="h-4 w-4 text-success" /><p className="mt-3 text-sm font-semibold">{t('dataHub.sync.safeData', '민감 데이터 제외')}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t('dataHub.sync.safeDataDescription', '토큰·이미지·절대 경로를 전송하지 않습니다.')}</p></div>
+                        <div className="rounded-panel border p-4"><KeyRound className="h-4 w-4 text-success" /><p className="mt-3 text-sm font-semibold">{t('dataHub.sync.pairing', 'TLS 1.3 기기 인증')}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t('dataHub.sync.pairingDescription', '2분짜리 QR과 별도 6자리 코드로 한 대만 페어링합니다.')}</p></div>
+                        <div className="rounded-panel border p-4"><RefreshCw className="h-4 w-4 text-warning" /><p className="mt-3 text-sm font-semibold">{t('dataHub.sync.sessionOnly', '실행 중인 세션에만 연결')}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{t('dataHub.sync.sessionOnlyDescription', '앱을 다시 열면 재페어링합니다. 장기 기기 키 저장은 다음 보안 단계에서 제공합니다.')}</p></div>
+                    </div>}
 
                     <div className="flex flex-col gap-3 rounded-panel bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
@@ -601,7 +879,7 @@ export default function DataHub() {
 
                 <div className="grid gap-2 sm:grid-cols-3" aria-label={t('dataHub.overview', '기능 상태')}>
                     {[
-                        [Cable, t('dataHub.overviewSync', '기기 연결'), t('dataHub.statusQa', 'QA 준비 중')],
+                        [Cable, t('dataHub.overviewSync', '기기 연결'), runtimeCapabilities.secureLanSyncTransport.supported ? t('dataHub.statusReady', '사용 가능') : t('dataHub.statusBackup', '백업으로 이동')],
                         [ScanSearch, t('dataHub.overviewMetadata', '이미지 정보'), t('dataHub.statusReady', '사용 가능')],
                         [Bot, t('dataHub.overviewAgent', 'AI 편집'), isDesktopRuntime ? t('dataHub.statusReady', '사용 가능') : t('dataHub.statusDesktop', '데스크톱 전용')],
                     ].map(([Icon, label, status]) => {

@@ -53,7 +53,6 @@ describe('Phase 13 pre-change behavior characterization', () => {
             android.localTaggerSidecar,
             android.r2ForegroundUpload,
             android.r2BackgroundUpload,
-            android.secureLanSyncTransport,
         ]) {
             expect(capability.supported).toBe(false)
             expect(capability.reason).toEqual(expect.any(String))
@@ -61,6 +60,7 @@ describe('Phase 13 pre-change behavior characterization', () => {
             expect(capability.alternative).toEqual(expect.any(String))
             expect(capability.alternative?.trim()).not.toBe('')
         }
+        expect(android.secureLanSyncTransport.supported).toBe(true)
     })
 
     it('keeps local API token and output choices behind explicit user actions', async () => {

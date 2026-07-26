@@ -885,6 +885,24 @@ export class IndexedDBSyncOutboxRepository {
         return value === undefined ? null : clone(parseEntityRecord(value))
     }
 
+    /**
+     * Projects a bounded entity type through the existing IndexedDB index. LAN
+     * runtime reconciliation depends on this read after inbox commit; sorting
+     * keeps store application deterministic across browser and Android engines.
+     */
+    async listEntities(entityType: ActiveSyncEntityType): Promise<SyncEntityRecord[]> {
+        const values = await this.runTransaction(['entities'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('entities').index('by-entity-type').getAll(entityType))
+        ))
+        return values
+            .map(parseEntityRecord)
+            .sort((left, right) => (
+                compareSyncText(left.entityId, right.entityId)
+                || compareSyncText(left.sourceOpId, right.sourceOpId)
+            ))
+            .map(clone)
+    }
+
     async listConflictCopies(
         entityType: ActiveSyncEntityType,
         originalEntityId: string,

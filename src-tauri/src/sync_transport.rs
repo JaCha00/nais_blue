@@ -44,6 +44,21 @@ mod tests {
     }
 
     #[test]
+    fn automatic_lan_suggestion_is_private_and_narrow() {
+        let home = suggested_lan_network("192.168.8.42".parse().expect("valid private IPv4"))
+            .expect("private Wi-Fi should produce a suggestion");
+        assert_eq!(home.bind_ip, "192.168.8.42");
+        assert_eq!(home.allow_cidr, "192.168.8.0/24");
+
+        let link_local =
+            suggested_lan_network("169.254.4.9".parse().expect("valid link-local IPv4"))
+                .expect("link-local should produce a bounded suggestion");
+        assert_eq!(link_local.allow_cidr, "169.254.0.0/16");
+        assert!(suggested_lan_network("8.8.8.8".parse().expect("valid global IPv4")).is_err());
+        assert!(suggested_lan_network("127.0.0.1".parse().expect("valid loopback IPv4")).is_err());
+    }
+
+    #[test]
     fn pairing_capability_is_short_lived_and_consumed_once() {
         assert!(validate_pairing_ttl(120).is_ok());
         assert!(validate_pairing_ttl(121).is_err());
@@ -491,6 +506,37 @@ const MAX_PAIRING_TTL_SECONDS: u64 = 120;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DetectedLanNetwork {
+    pub bind_ip: String,
+    pub allow_cidr: String,
+}
+
+fn suggested_lan_network(ip: std::net::Ipv4Addr) -> Result<DetectedLanNetwork, SyncTransportError> {
+    if ip.is_link_local() {
+        return Ok(DetectedLanNetwork {
+            bind_ip: ip.to_string(),
+            allow_cidr: "169.254.0.0/16".to_string(),
+        });
+    }
+    if !ip.is_private() {
+        return Err(SyncTransportError::new(
+            "E_SYNC_ENDPOINT",
+            "A private IPv4 LAN address could not be detected.",
+            true,
+        ));
+    }
+    let octets = ip.octets();
+    Ok(DetectedLanNetwork {
+        bind_ip: ip.to_string(),
+        // A /24 default is intentionally narrower than the RFC1918 block. The
+        // UI exposes both values so unusual networks can be corrected before
+        // the listener opens, while ordinary home Wi-Fi needs no networking UI.
+        allow_cidr: format!("{}.{}.{}.0/24", octets[0], octets[1], octets[2]),
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncTransportError {
     pub code: &'static str,
     pub message: &'static str,
@@ -510,7 +556,7 @@ impl SyncTransportError {
     fn unsupported() -> Self {
         Self::new(
             "E_SYNC_UNSUPPORTED",
-            "Secure LAN sync transport is available on desktop builds only.",
+            "LAN listener and host-queue commands are desktop-only; Android supports outbound client commands.",
             false,
         )
     }
@@ -537,7 +583,6 @@ pub struct SyncClientCredentialBundle {
     pub peer_fingerprint: String,
 }
 
-#[cfg(not(mobile))]
 impl Drop for SyncDeviceIdentityBundle {
     fn drop(&mut self) {
         use zeroize::Zeroize;
@@ -545,7 +590,6 @@ impl Drop for SyncDeviceIdentityBundle {
     }
 }
 
-#[cfg(not(mobile))]
 impl Drop for SyncClientCredentialBundle {
     fn drop(&mut self) {
         use zeroize::Zeroize;
@@ -616,7 +660,6 @@ pub struct PairingInvitation {
     pub sync_scope_id: String,
 }
 
-#[cfg(not(mobile))]
 impl Drop for PairingInvitation {
     fn drop(&mut self) {
         use zeroize::Zeroize;
@@ -735,7 +778,6 @@ pub struct SyncExchangeResult {
     pub response: serde_json::Value,
 }
 
-#[cfg(not(mobile))]
 mod desktop {
     use super::*;
     use axum::{
@@ -3428,9 +3470,20 @@ mod desktop {
         }
 
         fn start_data_listener(ca: &Arc<CaMaterial>, store: Arc<DurableStore>) -> TestListener {
-            let policy = loopback_policy();
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")
-                .expect("loopback data listener should bind");
+            start_data_listener_with_policy(ca, store, loopback_policy())
+        }
+
+        /// Shares the production acceptor/router with the ignored Android QA.
+        /// NetworkPolicy supplies the explicit private bind and CIDR gate, while
+        /// the returned handle lets both loopback and real-device tests stop the
+        /// listener without leaving a background socket behind.
+        fn start_data_listener_with_policy(
+            ca: &Arc<CaMaterial>,
+            store: Arc<DurableStore>,
+            policy: NetworkPolicy,
+        ) -> TestListener {
+            let listener = std::net::TcpListener::bind(SocketAddr::new(policy.bind_ip(), 0))
+                .expect("test data listener should bind");
             listener
                 .set_nonblocking(true)
                 .expect("test data listener should be nonblocking");
@@ -3469,9 +3522,31 @@ mod desktop {
             session_expires_at: u64,
             invitation_expires_at: u64,
         ) -> (TestListener, PairingInvitation) {
-            let policy = loopback_policy();
-            let listener = std::net::TcpListener::bind("127.0.0.1:0")
-                .expect("loopback pairing listener should bind");
+            start_pairing_listener_with_policy(
+                ca,
+                store,
+                sync_endpoint,
+                capability,
+                confirmation_code,
+                session_expires_at,
+                invitation_expires_at,
+                loopback_policy(),
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn start_pairing_listener_with_policy(
+            ca: &Arc<CaMaterial>,
+            store: Arc<DurableStore>,
+            sync_endpoint: &str,
+            capability: &str,
+            confirmation_code: &str,
+            session_expires_at: u64,
+            invitation_expires_at: u64,
+            policy: NetworkPolicy,
+        ) -> (TestListener, PairingInvitation) {
+            let listener = std::net::TcpListener::bind(SocketAddr::new(policy.bind_ip(), 0))
+                .expect("test pairing listener should bind");
             listener
                 .set_nonblocking(true)
                 .expect("test pairing listener should be nonblocking");
@@ -3522,6 +3597,142 @@ mod desktop {
                 },
                 invitation,
             )
+        }
+
+        /// Manual hardware contract: the installed Android app must pair over
+        /// the real private interface and push at least one sanitized preset.
+        /// It is ignored by normal CI and writes only a two-minute invitation to
+        /// the caller-selected temp file so ADB automation never needs a test-
+        /// only command in the production application.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        #[ignore = "requires an explicitly authorized Android device on the same private LAN"]
+        async fn actual_android_client_pairs_and_pushes_sanitized_preset() {
+            assert_eq!(
+                std::env::var("NAIS_LAN_QA").as_deref(),
+                Ok("1"),
+                "set NAIS_LAN_QA=1 only for an authorized real-device run"
+            );
+            let bind_ip = std::env::var("NAIS_LAN_QA_BIND_IP")
+                .expect("NAIS_LAN_QA_BIND_IP must name the desktop private IPv4");
+            let allow_cidr = std::env::var("NAIS_LAN_QA_CIDR")
+                .expect("NAIS_LAN_QA_CIDR must bound the authorized Wi-Fi subnet");
+            let output_path = PathBuf::from(
+                std::env::var("NAIS_LAN_QA_OUTPUT")
+                    .expect("NAIS_LAN_QA_OUTPUT must be an isolated temporary file"),
+            );
+            let expected_parent = std::env::temp_dir()
+                .canonicalize()
+                .expect("system temp directory should resolve");
+            let output_parent = output_path
+                .parent()
+                .expect("QA output must have a parent")
+                .canonicalize()
+                .expect("QA output parent should resolve");
+            let output_name = output_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .expect("QA output must have a UTF-8 file name");
+            assert_eq!(output_parent, expected_parent);
+            assert!(
+                output_name.starts_with("nais-lan-device-qa-") && output_name.ends_with(".json")
+            );
+            assert!(!output_path.exists(), "QA output must be a fresh temp file");
+            struct EphemeralQaOutput(PathBuf);
+            impl Drop for EphemeralQaOutput {
+                fn drop(&mut self) {
+                    let _ = std::fs::remove_file(&self.0);
+                }
+            }
+            let _output_cleanup = EphemeralQaOutput(output_path.clone());
+            let policy = NetworkPolicy::parse(&bind_ip, &[allow_cidr])
+                .expect("real-device QA network policy must be private and explicit");
+            let directory = test_directory("android-device");
+            let (_device_bundle, ca) = generate_device_identity("qa-host", "NAIS QA Desktop")
+                .expect("QA host identity should generate");
+            let store = Arc::new(DurableStore::open(&directory).expect("QA journal should open"));
+            store
+                .ensure_scope(&ca.sync_scope_id)
+                .expect("QA sync scope should initialize");
+            let data = start_data_listener_with_policy(&ca, Arc::clone(&store), policy.clone());
+            let now = now_epoch_seconds();
+            let confirmation_code = "472819";
+            let (pairing, invitation) = start_pairing_listener_with_policy(
+                &ca,
+                Arc::clone(&store),
+                &data.endpoint,
+                "nais-android-device-qa-capability",
+                confirmation_code,
+                now + MAX_PAIRING_TTL_SECONDS,
+                now + MAX_PAIRING_TTL_SECONDS,
+                policy,
+            );
+            let mut stored_invitation =
+                serde_json::to_value(&invitation).expect("QA invitation should serialize");
+            stored_invitation
+                .as_object_mut()
+                .expect("QA invitation should be an object")
+                .remove("confirmationCode");
+            let automation_payload = serde_json::json!({
+                "invitation": serde_json::to_string(&stored_invitation)
+                    .expect("stored invitation should encode"),
+                "confirmationCode": confirmation_code,
+            });
+            let mut output = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&output_path)
+                .expect("QA automation payload should create a fresh temp file");
+            output
+                .write_all(
+                    &serde_json::to_vec(&automation_payload)
+                        .expect("QA automation payload should encode"),
+                )
+                .expect("QA automation payload should write to the isolated temp file");
+            output
+                .sync_all()
+                .expect("QA automation payload should flush before ADB reads it");
+            println!("NAIS_ANDROID_LAN_QA_READY");
+
+            let deadline = Instant::now() + Duration::from_secs(MAX_PAIRING_TTL_SECONDS);
+            let inbound = loop {
+                if let Some(item) = store
+                    .peek_inbound(1)
+                    .expect("QA inbound journal should remain readable")
+                    .into_iter()
+                    .next()
+                {
+                    break item;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "Android did not pair and push a preset before the invitation expired"
+                );
+                sleep(Duration::from_millis(250)).await;
+            };
+            let payload_bytes = serde_json::to_vec(&inbound.payload)
+                .expect("Android inbound payload should serialize");
+            validate_sync_payload(&payload_bytes)
+                .expect("Android inbound payload must pass the production secret/path/image gate");
+            let envelopes = inbound
+                .payload
+                .as_array()
+                .expect("Android push should contain a bounded envelope batch");
+            assert!(envelopes.iter().any(|envelope| {
+                envelope.get("entityType").and_then(Value::as_str) == Some("prompt.preset")
+                    && envelope.get("op").and_then(Value::as_str) == Some("upsert")
+            }));
+
+            // The client performs two final idle passes after its push. Keeping
+            // both listeners alive briefly lets the UI reach Connected instead
+            // of observing a synthetic shutdown during its success transition.
+            sleep(Duration::from_secs(4)).await;
+            pairing.shutdown().await;
+            data.shutdown().await;
+            drop(inbound);
+            drop(invitation);
+            drop(store);
+            remove_test_journal(&directory);
+            println!("NAIS_ANDROID_LAN_QA_OK");
         }
 
         fn client_from_bundle(bundle: &SyncClientCredentialBundle) -> reqwest::Client {
@@ -3907,26 +4118,72 @@ use desktop::{
 };
 
 /// Managed command state owns only the live transport execution context. The
-/// frontend Stronghold vault supplies private identity bundles at start/pair/
-/// exchange boundaries, while this state links cancellation, listeners, and
-/// the nonsecret durable journal and drops all in-memory secrets on stop.
+/// renderer supplies process-scoped identity bundles at start/pair/exchange
+/// boundaries, while this state links cancellation, listeners, and the
+/// nonsecret durable journal and drops all in-memory secrets on stop.
 pub struct SyncTransportState {
-    #[cfg(not(mobile))]
     inner: desktop::DesktopRuntime,
 }
 
 impl Default for SyncTransportState {
     fn default() -> Self {
         Self {
-            #[cfg(not(mobile))]
             inner: desktop::DesktopRuntime::default(),
         }
     }
 }
 
-/// Starts the explicitly opted-in desktop listener. Mobile builds keep the
-/// same invoke surface for compatibility but fail closed until a native mobile
-/// LAN executor is deliberately introduced.
+/// Chooses the private IPv4 route Windows/macOS/Linux would use for an
+/// outbound packet without sending one. The user can edit the returned /24
+/// before start; mobile never exposes a listener or network-discovery command.
+#[tauri::command]
+pub fn sync_transport_detect_lan_network() -> Result<DetectedLanNetwork, SyncTransportError> {
+    #[cfg(not(mobile))]
+    {
+        let socket =
+            std::net::UdpSocket::bind((std::net::Ipv4Addr::UNSPECIFIED, 0)).map_err(|_| {
+                SyncTransportError::new(
+                    "E_SYNC_NETWORK",
+                    "The local LAN route could not be inspected.",
+                    true,
+                )
+            })?;
+        // UDP connect only asks the routing table for a source interface; no
+        // datagram is emitted. TEST-NET-1 avoids depending on a real service.
+        socket
+            .connect((std::net::Ipv4Addr::new(192, 0, 2, 1), 9))
+            .map_err(|_| {
+                SyncTransportError::new(
+                    "E_SYNC_NETWORK",
+                    "The local LAN route could not be inspected.",
+                    true,
+                )
+            })?;
+        let address = socket.local_addr().map_err(|_| {
+            SyncTransportError::new(
+                "E_SYNC_NETWORK",
+                "The local LAN address could not be read.",
+                true,
+            )
+        })?;
+        match address.ip() {
+            std::net::IpAddr::V4(ip) => suggested_lan_network(ip),
+            std::net::IpAddr::V6(_) => Err(SyncTransportError::new(
+                "E_SYNC_ENDPOINT",
+                "An IPv4 LAN address is required for automatic setup.",
+                true,
+            )),
+        }
+    }
+    #[cfg(mobile)]
+    {
+        Err(SyncTransportError::unsupported())
+    }
+}
+
+/// Starts the explicitly opted-in desktop listener. Android keeps the invoke
+/// surface for typed adapter compatibility but rejects every host/listener
+/// command; only its outbound pair/exchange/cancel commands are enabled.
 #[tauri::command]
 pub async fn sync_transport_start(
     app: tauri::AppHandle,
@@ -4008,23 +4265,18 @@ pub async fn sync_transport_close_pairing(
     }
 }
 
-/// The client private bundle is returned exactly once for immediate Stronghold
-/// persistence. Native code has no secret read-back command and retains only
-/// the request-scoped key material needed to complete this CSR exchange.
+/// The client private bundle is returned once to the process-scoped renderer
+/// session. Native code has no secret read-back command and retains only the
+/// request-scoped key material needed to complete this CSR exchange.
 #[tauri::command]
 pub async fn sync_transport_pair_client(
     request: PairClientRequest,
     state: tauri::State<'_, SyncTransportState>,
 ) -> Result<PairClientResult, SyncTransportError> {
-    #[cfg(not(mobile))]
-    {
-        desktop::pair_client(request, &state.inner).await
-    }
-    #[cfg(mobile)]
-    {
-        let _ = (request, state);
-        Err(SyncTransportError::unsupported())
-    }
+    // The shared native client depends only on pinned rustls/reqwest and the
+    // app-data sequence journal. Desktop pairing UI and Android outbound-only
+    // UI both use it; mobile listener commands remain fail-closed below.
+    desktop::pair_client(request, &state.inner).await
 }
 
 #[tauri::command]
@@ -4140,15 +4392,10 @@ pub async fn sync_transport_exchange(
     request: SyncExchangeRequest,
     state: tauri::State<'_, SyncTransportState>,
 ) -> Result<SyncExchangeResult, SyncTransportError> {
-    #[cfg(not(mobile))]
-    {
-        desktop::exchange(app, request, &state.inner).await
-    }
-    #[cfg(mobile)]
-    {
-        let _ = (app, request, state);
-        Err(SyncTransportError::unsupported())
-    }
+    // Android is deliberately a client, never a hidden listener. Reusing the
+    // same mTLS exchange keeps certificate pinning, cancellation, replay
+    // counters, and bounded JSON behavior identical across both platforms.
+    desktop::exchange(app, request, &state.inner).await
 }
 
 #[tauri::command]
@@ -4156,13 +4403,5 @@ pub fn sync_transport_cancel_request(
     request_id: String,
     state: tauri::State<'_, SyncTransportState>,
 ) -> bool {
-    #[cfg(not(mobile))]
-    {
-        state.inner.cancel_request(&request_id)
-    }
-    #[cfg(mobile)]
-    {
-        let _ = (request_id, state);
-        false
-    }
+    state.inner.cancel_request(&request_id)
 }

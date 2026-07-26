@@ -53,6 +53,9 @@
 
 ### 📚 Additional Features
 - **Library**: Image gallery with metadata viewer
+- **Data Hub**: Read generation metadata from up to 500 images at once
+- **AI Agent Workspace**: Review and safely edit prompts, parameters, and app data on desktop
+- **Android · Desktop Sync**: Session-only TLS sync for prompt presets and generation parameters (tokens, images, and absolute paths are excluded)
 - **Fragment Prompts**: Save & reuse prompt snippets
 - **Multi-language**: English, 한국어, 日本語
 - **WebView**: Embedded NovelAI browser

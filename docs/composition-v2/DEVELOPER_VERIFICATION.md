@@ -316,6 +316,29 @@ Live NovelAI/R2 credential은 이 gate에 필요하지 않다. Actual R2/large-L
 opt-in한 local profile에서만 수행하고 token, Authorization, certificate private key, signed URL, prompt, image/base64,
 raw path를 terminal/log/artifact에 남기지 않는다. Relay는 local fake contract만 실행하며 production provider
 endpoint를 구성하지 않는다.
+
+### 2026-07-26 Data Hub preset sync continuation
+
+Current runtime은 Android outbound client와 user-facing Data Hub caller를 포함한다. Normal gate는 아래를 추가한다.
+
+```text
+npx --no-install vitest run tests/domain/sync tests/services/sync
+cargo test --manifest-path src-tauri/Cargo.toml sync_transport
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android-signed-local.ps1 -Variant debug
+npm run test:responsive-layout
+```
+
+`actual_android_client_pairs_and_pushes_sanitized_preset`은 normal CI에서 ignored다. 명시적으로 승인된 Android
+기기와 격리된 OS temp output을 지정한 경우에만 실행한다. Test는 fresh
+`nais-lan-device-qa-*.json`을 `create_new`로 만들고 success/panic 모두에서 삭제하며, production TLS acceptor/router와
+durable ingress를 그대로 사용한다. Payload는 `prompt.preset` upsert를 포함하고 native secret/path/image gate를
+통과해야 한다. Invitation/code/private key/prompt 전문은 log나 retained artifact에 남기지 않는다.
+
+Hiby M500_MIKU(Android 14)에서는 same-signer ARM64 debug update install, native pair/exchange, Connected UI와
+1개 preset push가 PASS했다. 검증 PC의 Ethernet profile이 Public이라 Windows firewall이 Wi-Fi TCP를 차단했고
+관리자 rule 변경은 수행하지 않았다. ADB reverse를 사용한 최종 PASS는 Android native TLS/application payload
+evidence이며 direct Wi-Fi reachability evidence가 아니다. Direct LAN QA에서는 Windows firewall prompt에서 private
+network만 허용한 별도 환경이 필요하다. 제품 UI는 이 조건과 backup fallback을 안내해야 한다.
 ## Phase 13 product guidance and token gate
 
 Run the characterization gate first, then the focused Phase 13 suite:
