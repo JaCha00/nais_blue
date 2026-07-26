@@ -10,7 +10,6 @@ import { useSettingsStore } from '@/stores/settings-store'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
-import { eradicateImageMetadata } from '@/lib/image-metadata-purge'
 
 export interface SaveSceneResultContext {
     activePresetId: string
@@ -148,13 +147,9 @@ export async function saveSceneResult(
     ) ?? `${fallbackFileName}.${fileExt}`
     const rawDataUrl = toDataUrl(imageData, mimeType)
     const effectiveMetadataMode = params.metadataMode ?? metadataMode
-    // strip-only must sanitize provider-owned chunks and stealth pixels before OutputWriter sees bytes.
-    const cleanOutput = effectiveMetadataMode === 'strip-only'
-        ? await eradicateImageMetadata(rawDataUrl, fileExt)
-        : null
-    const dataUrl = cleanOutput?.dataUrl ?? rawDataUrl
-    const binaryData = cleanOutput?.bytes
-        ?? Uint8Array.from(atob(toBase64(imageData)), c => c.charCodeAt(0))
+    // OutputWriter owns metadata sanitization for every workflow and both strip modes.
+    const dataUrl = rawDataUrl
+    const binaryData = Uint8Array.from(atob(toBase64(imageData)), c => c.charCodeAt(0))
     const destination = sceneOutputDirectory({
         sceneSavePath: ctx.sceneSavePath,
         useAbsoluteScenePath,

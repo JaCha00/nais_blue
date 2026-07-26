@@ -13,6 +13,7 @@ import {
     readNaisBlueSidecar,
     type Nais2Params,
 } from '@/lib/nais2-png-meta'
+import { QUALITY_TAGS_SUFFIX, UC_PRESETS_V45_FULL } from '@/lib/nai-preset-text'
 
 /**
  * Decompress gzip data using native Web API or fallback
@@ -457,14 +458,7 @@ function extractWebpExifMetadata(bytes: Uint8Array): NAIMetadata | null {
                             const metadata = convertNAIFormat(inner)
                             metadata.source = 'text_chunk'
                             if (typeof outer.Source === 'string') metadata.model = outer.Source
-                            const modelKey = detectModelKey(metadata.model)
-                            const inferred = inferNAIPresets(metadata.prompt, metadata.negativePrompt, modelKey)
-                            if (metadata.qualityToggle === undefined && inferred.qualityToggle !== undefined) {
-                                metadata.qualityToggle = inferred.qualityToggle
-                            }
-                            if (metadata.ucPreset === undefined && inferred.ucPreset !== undefined) {
-                                metadata.ucPreset = inferred.ucPreset
-                            }
+                            applyInferredNAIPresets(metadata)
                             return metadata
                         }
                     } catch (e) {
@@ -626,14 +620,7 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
     // third-party tools, etc.). NAI v4/v4.5 never embeds these flags in the
     // Comment JSON.
     if (metadata) {
-        const modelKey = detectModelKey(metadata.model)
-        const inferred = inferNAIPresets(metadata.prompt, metadata.negativePrompt, modelKey)
-        if (metadata.qualityToggle === undefined && inferred.qualityToggle !== undefined) {
-            metadata.qualityToggle = inferred.qualityToggle
-        }
-        if (metadata.ucPreset === undefined && inferred.ucPreset !== undefined) {
-            metadata.ucPreset = inferred.ucPreset
-        }
+        applyInferredNAIPresets(metadata)
     }
 
     return metadata
@@ -654,7 +641,7 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
 // so we match only the stable trailing phrases. Multiple entries allow us to
 // catch both canonical and shortened variants seen in real exports.
 const QUALITY_TAG_SIGNATURES: Record<string, string[]> = {
-    v45_full: ['very aesthetic, masterpiece, no text'],
+    v45_full: [QUALITY_TAGS_SUFFIX.replace(/^,\s*/, '')],
     v45_curated: ['masterpiece, no text, -0.8::feet::, rating:general', 'rating:general'],
     v4_full: ['best quality, very aesthetic, absurdres', 'no text, best quality, very aesthetic, absurdres'],
     v4_curated: ['amazing quality, very aesthetic, absurdres', 'rating:general, amazing quality, very aesthetic, absurdres'],
@@ -665,12 +652,7 @@ const QUALITY_TAG_SIGNATURES: Record<string, string[]> = {
 // UC preset texts prepended to uc when ucPreset=N. Index = preset number.
 // Curated Heavy variants are omitted (rarely used in practice per user).
 const UC_PRESET_PREFIXES: Record<string, Record<number, string>> = {
-    v45_full: {
-        0: 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page',
-        1: 'lowres, artistic error, scan artifacts, worst quality, bad quality, jpeg artifacts, multiple views, very displeasing, too many watermarks, negative space, blank page',
-        2: 'lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy',
-        3: '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic',
-    },
+    v45_full: UC_PRESETS_V45_FULL,
     v4_full: {
         0: 'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks',
         1: 'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing',
@@ -686,7 +668,7 @@ const UC_PRESET_PREFIXES: Record<string, Record<number, string>> = {
 function detectModelKey(source: string | null | undefined): string | null {
     if (!source) return null
     const s = source.toLowerCase()
-    if (s.includes('v4.5')) return 'v45_full'
+    if (s.includes('v4.5') || s.includes('4-5')) return 'v45_full'
     if (s.includes('v4')) return 'v4_full'
     if (s.includes('furry') && s.includes('v3')) return 'v3_furry'
     if (s.includes('v3')) return 'v3_anime'
@@ -695,12 +677,35 @@ function detectModelKey(source: string | null | undefined): string | null {
 
 // Returns { qualityToggle, ucPreset } inferred from prompt/uc text.
 // Only sets a field when a preset match is found.
+interface InferredNAIPresets {
+    qualityToggle?: boolean
+    ucPreset?: number
+    prompt?: string
+    negativePrompt?: string
+    qualitySignature?: string
+    ucPrefix?: string
+}
+
+function stripTrailingPresetText(input: string, signature: string): string {
+    const withoutTrailingSeparators = input.trimEnd().replace(/[,\s]+$/, '')
+    if (!withoutTrailingSeparators.endsWith(signature)) return input
+    return withoutTrailingSeparators
+        .slice(0, -signature.length)
+        .replace(/[,\s]+$/, '')
+}
+
+function stripEmbeddedPresetText(input: string, index: number, prefix: string): string {
+    const before = input.slice(0, index).replace(/[,\s]+$/, '')
+    const after = input.slice(index + prefix.length).replace(/^[,\s]+/, '')
+    return [before, after].filter(Boolean).join(', ')
+}
+
 function inferNAIPresets(
     prompt: string | undefined,
     uc: string | undefined,
     modelKey: string | null
-): { qualityToggle?: boolean; ucPreset?: number } {
-    const out: { qualityToggle?: boolean; ucPreset?: number } = {}
+): InferredNAIPresets {
+    const out: InferredNAIPresets = {}
 
     // Quality Tags: check tail of prompt against known signatures.
     // Allow trailing comma/whitespace since real NAI exports often end with them.
@@ -712,7 +717,12 @@ function inferNAIPresets(
             : Object.keys(QUALITY_TAG_SIGNATURES)
         outer: for (const k of keys) {
             for (const sig of QUALITY_TAG_SIGNATURES[k] || []) {
-                if (tail.endsWith(sig)) { out.qualityToggle = true; break outer }
+                if (tail.endsWith(sig)) {
+                    out.qualityToggle = true
+                    out.qualitySignature = sig
+                    out.prompt = stripTrailingPresetText(prompt, sig)
+                    break outer
+                }
             }
         }
         if (out.qualityToggle === undefined && modelKey && QUALITY_TAG_SIGNATURES[modelKey]) {
@@ -728,14 +738,72 @@ function inferNAIPresets(
         // Sort keys by prefix length desc so longer / more-specific presets win
         // (Human Focus is a superset of Heavy on v4.5 Full).
         const orderedPresets = Object.entries(table)
+            .filter(([, prefix]) => prefix.length > 0)
             .sort(([, a], [, b]) => b.length - a.length)
         for (const [numStr, prefix] of orderedPresets) {
             const idx = uc.indexOf(prefix)
-            if (idx >= 0 && idx <= 50) { out.ucPreset = Number(numStr); break }
+            if (idx >= 0 && idx <= 50) {
+                out.ucPreset = Number(numStr)
+                out.ucPrefix = prefix
+                out.negativePrompt = stripEmbeddedPresetText(uc, idx, prefix)
+                break
+            }
         }
     }
 
     return out
+}
+
+/**
+ * Depends on the same preset text used by NAI payload assembly and supports
+ * external images that omit UI flags. It restores the flags while removing
+ * provider-expanded text, so importing and regenerating cannot duplicate tags.
+ */
+export function inferNAIPresetImport(
+    prompt: string | undefined,
+    negativePrompt: string | undefined,
+    modelSource: string | null | undefined,
+): InferredNAIPresets {
+    return inferNAIPresets(prompt, negativePrompt, detectModelKey(modelSource))
+}
+
+function applyInferredNAIPresets(metadata: NAIMetadata): void {
+    const positive = metadata.prompt ?? metadata.v4_prompt?.caption?.base_caption
+    const negative = metadata.negativePrompt ?? metadata.v4_negative_prompt?.caption?.base_caption
+    const inferred = inferNAIPresetImport(positive, negative, metadata.model)
+
+    if (metadata.qualityToggle === undefined && inferred.qualityToggle !== undefined) {
+        metadata.qualityToggle = inferred.qualityToggle
+        if (inferred.prompt !== undefined) metadata.prompt = inferred.prompt
+        const caption = metadata.v4_prompt?.caption
+        if (caption?.base_caption && inferred.qualitySignature) {
+            metadata.v4_prompt = {
+                ...metadata.v4_prompt,
+                caption: {
+                    ...caption,
+                    base_caption: stripTrailingPresetText(caption.base_caption, inferred.qualitySignature),
+                },
+            }
+        }
+    }
+
+    if (metadata.ucPreset === undefined && inferred.ucPreset !== undefined) {
+        metadata.ucPreset = inferred.ucPreset
+        if (inferred.negativePrompt !== undefined) metadata.negativePrompt = inferred.negativePrompt
+        const caption = metadata.v4_negative_prompt?.caption
+        if (caption?.base_caption && inferred.ucPrefix) {
+            const prefixIndex = caption.base_caption.indexOf(inferred.ucPrefix)
+            if (prefixIndex >= 0 && prefixIndex <= 50) {
+                metadata.v4_negative_prompt = {
+                    ...metadata.v4_negative_prompt,
+                    caption: {
+                        ...caption,
+                        base_caption: stripEmbeddedPresetText(caption.base_caption, prefixIndex, inferred.ucPrefix),
+                    },
+                }
+            }
+        }
+    }
 }
 
 /**

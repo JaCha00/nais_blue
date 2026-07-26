@@ -200,7 +200,7 @@ export default function Trash() {
                                         className="flex w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                         onClick={() => item.kind === 'image' && preview ? void openMetadata(preview) : setSelected(item)}
                                         aria-label={item.kind === 'image'
-                                            ? t('trash.openImageMetadata', '{{name}} 메타데이터 보기', { name: item.title })
+                                            ? t('trash.openImageMetadataNamed', '{{name}} 메타데이터 보기', { name: item.title })
                                             : t('trash.openContents', '{{name}} 내용물 보기', { name: item.title })}
                                     >
                                         <div className="flex h-28 w-28 shrink-0 items-center justify-center bg-muted/40">

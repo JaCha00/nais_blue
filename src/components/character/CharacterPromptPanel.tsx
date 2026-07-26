@@ -257,7 +257,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
             {/* 패널 - absolute로 프롬프트 영역 위에 오버레이 */}
             <div
                 className={cn(
-                    "absolute inset-0 z-10 flex flex-col bg-muted/95 backdrop-blur-sm rounded-xl border border-border/50",
+                    "absolute inset-0 z-10 flex flex-col bg-muted rounded-panel border border-border/50",
                     "animate-in slide-in-from-bottom-4 duration-200"
                 )}
             >
@@ -779,7 +779,7 @@ function CharacterCard({
                                 className={cn(
                                     "w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-semibold shrink-0 transition-colors",
                                     positionEnabled
-                                        ? "text-white"
+                                        ? "text-scrim"
                                         : "bg-muted-foreground/20 text-muted-foreground"
                                 )}
                                 style={positionEnabled ? { backgroundColor: color } : undefined}
@@ -895,7 +895,7 @@ function CharacterCard({
                                         onClick={() => onMoveToGroup(character.id, group.id)}
                                         disabled={character.groupId === group.id}
                                     >
-                                        <Folder className="h-4 w-4 mr-2 text-amber-500" />
+                                        <Folder className="h-4 w-4 mr-2 text-warning" />
                                         {group.name}
                                     </ContextMenuItem>
                                 ))}
@@ -1072,8 +1072,8 @@ function PositionDialog({ open, onOpenChange, characters, onPositionChange }: Po
                             <div
                                 key={char.id}
                                 className={cn(
-                                    "absolute flex h-11 w-11 touch-none cursor-grab items-center justify-center rounded-full text-sm font-bold text-white shadow-lg transition-transform active:cursor-grabbing",
-                                    selectedId === char.id && "ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110 z-10",
+                                    "absolute flex h-11 w-11 touch-none cursor-grab items-center justify-center rounded-full text-sm font-bold text-scrim transition-transform active:cursor-grabbing",
+                                    selectedId === char.id && "ring-2 ring-foreground ring-offset-2 ring-offset-scrim/50 scale-110 z-10",
                                     dragging === char.id && "scale-125 z-20"
                                 )}
                                 style={{

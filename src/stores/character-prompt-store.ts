@@ -16,23 +16,23 @@ export type {
 
 // Color palette for character markers (up to 6 characters)
 export const CHARACTER_COLORS = [
-    '#22c55e', // Green
-    '#ef4444', // Red
-    '#3b82f6', // Blue
-    '#f59e0b', // Amber
-    '#a855f7', // Purple
-    '#06b6d4', // Cyan
+    'oklch(var(--chart-2))',
+    'oklch(var(--chart-5))',
+    'oklch(var(--chart-1))',
+    'oklch(var(--chart-3))',
+    'oklch(var(--chart-4))',
+    'oklch(var(--info))',
 ]
 
 // Folder color palette
 export const FOLDER_COLORS = [
-    { name: 'amber', icon: 'text-amber-500', border: 'border-amber-500/40', bg: 'bg-amber-500/10' },
-    { name: 'blue', icon: 'text-blue-500', border: 'border-blue-500/40', bg: 'bg-blue-500/10' },
-    { name: 'green', icon: 'text-green-500', border: 'border-green-500/40', bg: 'bg-green-500/10' },
-    { name: 'purple', icon: 'text-purple-500', border: 'border-purple-500/40', bg: 'bg-purple-500/10' },
-    { name: 'pink', icon: 'text-pink-500', border: 'border-pink-500/40', bg: 'bg-pink-500/10' },
-    { name: 'cyan', icon: 'text-cyan-500', border: 'border-cyan-500/40', bg: 'bg-cyan-500/10' },
-    { name: 'red', icon: 'text-red-500', border: 'border-red-500/40', bg: 'bg-red-500/10' },
+    { name: 'amber', icon: 'text-chart-3', border: 'border-chart-3/40', bg: 'bg-chart-3/10' },
+    { name: 'blue', icon: 'text-chart-1', border: 'border-chart-1/40', bg: 'bg-chart-1/10' },
+    { name: 'green', icon: 'text-chart-2', border: 'border-chart-2/40', bg: 'bg-chart-2/10' },
+    { name: 'purple', icon: 'text-chart-4', border: 'border-chart-4/40', bg: 'bg-chart-4/10' },
+    { name: 'pink', icon: 'text-chart-5', border: 'border-chart-5/40', bg: 'bg-chart-5/10' },
+    { name: 'cyan', icon: 'text-info', border: 'border-info/40', bg: 'bg-info/10' },
+    { name: 'red', icon: 'text-destructive', border: 'border-destructive/40', bg: 'bg-destructive/10' },
 ]
 
 export interface CharacterPreset {
@@ -361,10 +361,8 @@ export const useCharacterPromptStore = create<CharacterPromptState>()(
                     const groupCount = state.groups?.length || 0
                     console.log(`[CharacterPromptStore] Hydrated: ${presetCount} presets, ${charCount} characters, ${groupCount} groups`)
                     
-                    // 빈 배열이면 경고 (데이터 손실 가능성)
-                    if (presetCount === 0 && charCount === 0) {
-                        console.warn('[CharacterPromptStore] Warning: No data after hydration - possible data loss')
-                    }
+                    // Empty collections are the valid first-run state. The
+                    // hydration error branch above remains the actionable loss signal.
                 }
             },
             // 저장할 필드 명시

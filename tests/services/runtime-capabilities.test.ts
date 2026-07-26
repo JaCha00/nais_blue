@@ -11,6 +11,7 @@ describe('RuntimeCapabilities', () => {
         const capabilities = createRuntimeCapabilities('windows')
 
         expect(capabilities.platform).toBe('windows')
+        expect(capabilities.nativePluginRuntime.supported).toBe(true)
         expect(capabilities.absoluteOutputPath.supported).toBe(true)
         expect(capabilities.externalProfileFileWatch.supported).toBe(true)
         expect(capabilities.localTaggerSidecar.supported).toBe(true)
@@ -20,6 +21,8 @@ describe('RuntimeCapabilities', () => {
         expect(capabilities.lanBlobTransfer.supported).toBe(false)
         expect(capabilities.embeddedPngMetadataWrite.supported).toBe(true)
         expect(capabilities.supportedImageFormats).toEqual(['png', 'webp'])
+        expect(createRuntimeCapabilities('web').nativePluginRuntime.supported).toBe(false)
+        expect(createRuntimeCapabilities('web').embeddedBrowser.supported).toBe(false)
     })
 
     it('provides a reason and alternative for every unsupported Android capability', () => {

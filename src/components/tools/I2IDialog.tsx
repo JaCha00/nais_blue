@@ -121,7 +121,7 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
                     <Button
                         onClick={handleGenerate}
                         disabled={!propSourceImage || isGenerating}
-                        className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                     >
                         {isGenerating ? (
                             <>

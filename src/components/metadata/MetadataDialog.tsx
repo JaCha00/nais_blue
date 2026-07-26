@@ -487,9 +487,9 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                                     )}
 
                                     {metadata.hasCharacterReference && (
-                                        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                                            <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                                        <div className="flex items-start gap-2 p-3 rounded-control bg-warning/10 border border-warning/20">
+                                            <AlertCircle className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                                            <p className="text-xs text-warning">
                                                 {t('metadata.charRefWarning', 'Character Reference detected. Extraction supported via Director Tools.')}
                                             </p>
                                         </div>
@@ -525,7 +525,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                                                     key={`${issue.code}:${issue.path ?? ''}`}
                                                     className={applyPreview.validation.errors.includes(issue)
                                                         ? 'text-destructive'
-                                                        : 'text-amber-600 dark:text-amber-400'}
+                                                        : 'text-warning'}
                                                 >
                                                     {issue.message}
                                                 </p>

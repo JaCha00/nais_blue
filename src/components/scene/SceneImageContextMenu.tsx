@@ -212,7 +212,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
                     </ContextMenuItem>
                 )}
 
-                <ContextMenuItem onClick={handleDelete} className="text-red-500 focus:text-red-500">
+                <ContextMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
                     <Trash2 className="h-4 w-4 mr-2" />
                     {t('actions.delete', '삭제')}
                 </ContextMenuItem>

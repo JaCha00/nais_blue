@@ -174,6 +174,7 @@ export function ProductGuidance() {
                                 <option value="embedded">{t('productGuidance.steps.output.metadata.embedded')}</option>
                                 <option value="sidecar-only">{t('productGuidance.steps.output.metadata.sidecar')}</option>
                                 <option value="strip-and-sidecar">{t('productGuidance.steps.output.metadata.stripped')}</option>
+                                <option value="strip-only">{t('settingsPage.save.metadataMode.stripOnly')}</option>
                             </select>
                         </label>
                         <p className="break-all text-xs text-muted-foreground">{t('productGuidance.steps.output.location')}: {savePath}</p>

@@ -180,7 +180,7 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
                         </div>
                     )}
 
-                    <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-yellow-700 dark:text-yellow-400">
+                    <div className="rounded-control border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
                         <AlertTriangle className="inline h-3 w-3 mr-1" />
                         {t('settingsPage.backup.restoreWarning')}
                     </div>

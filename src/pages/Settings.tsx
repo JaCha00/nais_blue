@@ -121,6 +121,8 @@ export default function Settings() {
         setLibraryPath,
         imageFormat,
         setImageFormat,
+        metadataMode,
+        setMetadataMode,
     } = useSettingsStore()
     const { bindings, enabled: shortcutsEnabled, setBinding, resetBinding, resetAllBindings, setEnabled: setShortcutsEnabled } = useShortcutStore()
     const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey)
@@ -1240,6 +1242,32 @@ export default function Settings() {
                                     {t('settingsPage.save.imageFormat.help', 'WebP offers smaller file sizes with similar quality. PNG provides lossless quality.')}
                                 </p>
                             </div>
+
+                            {/* This global policy feeds Main, Scene, and Style Lab output writers. */}
+                            <div className="space-y-4 rounded-panel bg-card p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="space-y-0.5">
+                                        <label className="text-sm font-medium">{t('settingsPage.save.metadataMode.title')}</label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('settingsPage.save.metadataMode.description')}
+                                        </p>
+                                    </div>
+                                    <Select value={metadataMode} onValueChange={(value: typeof metadataMode) => setMetadataMode(value)}>
+                                        <SelectTrigger className="w-full sm:w-64">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="embedded">{t('settingsPage.save.metadataMode.embedded')}</SelectItem>
+                                            <SelectItem value="sidecar-only">{t('settingsPage.save.metadataMode.sidecarOnly')}</SelectItem>
+                                            <SelectItem value="strip-and-sidecar">{t('settingsPage.save.metadataMode.stripAndSidecar')}</SelectItem>
+                                            <SelectItem value="strip-only">{t('settingsPage.save.metadataMode.stripOnly')}</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {t('settingsPage.save.metadataMode.help')}
+                                </p>
+                            </div>
                         </section>
                     )}
 
@@ -1537,7 +1565,7 @@ export default function Settings() {
                                 </div>
                                 
                                 <div className="space-y-2 text-sm">
-                                    {Object.entries(storeSizes).map(([key, size]) => (
+                                    {Object.entries(storeSizes).filter(([, size]) => size > 0).map(([key, size]) => (
                                         <div key={key} className="flex items-center justify-between py-1">
                                             <span className="text-muted-foreground">
                                                 {key.replace('nais2-', '')}

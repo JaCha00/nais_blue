@@ -15,6 +15,7 @@ import {
     zoomBrowserView,
     type BrowserOpenTarget,
 } from '@/platform/browser'
+import { runtimeCapabilities } from '@/platform/capabilities'
 import { Store } from '@tauri-apps/plugin-store'
 import {
     Globe,
@@ -41,6 +42,7 @@ const DEFAULT_QUICK_LINKS: QuickLink[] = [
 ]
 
 const STORE_KEY = 'webview_quick_links'
+const BROWSER_STORE_KEY = 'nais2-webview-quick-links'
 const WEBVIEW_RESIZE_THROTTLE_MS = 80
 
 interface WebViewRect {
@@ -128,6 +130,16 @@ export default function WebView() {
     useEffect(() => {
         const initStore = async () => {
             try {
+                // Browser preview has no Tauri store backend. Keeping the same
+                // quick-link contract in localStorage avoids a noisy native call.
+                if (!runtimeCapabilities.nativePluginRuntime.supported) {
+                    const raw = localStorage.getItem(BROWSER_STORE_KEY)
+                    const savedLinks: unknown = raw ? JSON.parse(raw) : null
+                    if (Array.isArray(savedLinks) && savedLinks.length > 0) {
+                        setQuickLinks(savedLinks as QuickLink[])
+                    }
+                    return
+                }
                 storeRef.current = await Store.load('webview-settings.json')
                 const savedLinks = await storeRef.current.get<QuickLink[]>(STORE_KEY)
                 if (savedLinks && savedLinks.length > 0) {
@@ -143,6 +155,10 @@ export default function WebView() {
     // Save quick links when changed
     const saveQuickLinks = useCallback(async (links: QuickLink[]) => {
         try {
+            if (!runtimeCapabilities.nativePluginRuntime.supported) {
+                localStorage.setItem(BROWSER_STORE_KEY, JSON.stringify(links))
+                return
+            }
             if (storeRef.current) {
                 await storeRef.current.set(STORE_KEY, links)
                 await storeRef.current.save()

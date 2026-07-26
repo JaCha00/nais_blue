@@ -47,6 +47,7 @@ interface SettingsState {
     imageFormat: 'png' | 'webp'
     metadataMode: MetadataMode
     productGuidanceVersion: number
+    remoteImageProcessingConsentVersion: number
 
     // Actions
     setSavePath: (path: string, useAbsolute?: boolean) => void
@@ -68,6 +69,7 @@ interface SettingsState {
     setImageFormat: (format: 'png' | 'webp') => void
     setMetadataMode: (mode: MetadataMode) => void
     setProductGuidanceVersion: (version: number) => void
+    setRemoteImageProcessingConsentVersion: (version: number) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -96,6 +98,7 @@ export const useSettingsStore = create<SettingsState>()(
             imageFormat: 'png', // Default: PNG format
             metadataMode: DEFAULT_METADATA_MODE,
             productGuidanceVersion: 0,
+            remoteImageProcessingConsentVersion: 0,
 
             setSavePath: (savePath, useAbsolute) => set({
                 savePath,
@@ -140,6 +143,9 @@ export const useSettingsStore = create<SettingsState>()(
             setImageFormat: (format) => set({ imageFormat: format }),
             setMetadataMode: (metadataMode) => set({ metadataMode }),
             setProductGuidanceVersion: (productGuidanceVersion) => set({ productGuidanceVersion }),
+            setRemoteImageProcessingConsentVersion: (remoteImageProcessingConsentVersion) => set({
+                remoteImageProcessingConsentVersion: Math.max(0, Math.trunc(remoteImageProcessingConsentVersion)),
+            }),
         }),
         {
             name: 'nais2-settings',

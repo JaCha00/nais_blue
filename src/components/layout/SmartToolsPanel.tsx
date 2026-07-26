@@ -8,6 +8,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/use-toast'
 import { smartTools, TagResult } from '@/services/smart-tools'
+import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImageProcessingConsent'
+import { REMOTE_IMAGE_PROCESSING_POLICY_VERSION } from '@/services/privacy/remote-image-processing'
+import { useSettingsStore } from '@/stores/settings-store'
 
 
 interface SmartToolsPanelProps {
@@ -22,6 +25,8 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
     const [activeTool, setActiveTool] = useState<'none' | 'mosaic' | 'rembg' | 'style'>('none')
     const [isLoading, setIsLoading] = useState(false)
     const [progress, setProgress] = useState(0)
+    const consentVersion = useSettingsStore(state => state.remoteImageProcessingConsentVersion)
+    const consentAccepted = consentVersion >= REMOTE_IMAGE_PROCESSING_POLICY_VERSION
 
     // Style Analysis State
     const [styleTags, setStyleTags] = useState<TagResult[]>([])
@@ -44,7 +49,11 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
         setIsLoading(true)
         setProgress(0)
         try {
-            const result = await smartTools.removeBackground(processedImage, (p) => setProgress(Math.round(p * 100)))
+            const result = await smartTools.removeBackground(
+                processedImage,
+                (p) => setProgress(Math.round(p * 100)),
+                consentVersion,
+            )
             setProcessedImage(result)
             toast({ title: t('smartTools.rembgComplete', '배경 제거 완료'), variant: 'success' })
         } catch (e) {
@@ -63,7 +72,11 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
         setIsLoading(true)
         setProgress(0)
         try {
-            const result = await smartTools.analyzeStyle(processedImage, (p) => setProgress(Math.round(p * 100)))
+            const result = await smartTools.analyzeStyle(
+                processedImage,
+                (p) => setProgress(Math.round(p * 100)),
+                consentVersion,
+            )
             const filtered = result.filter(r => r.score > 0.1).sort((a, b) => b.score - a.score)
             setStyleTags(filtered)
             toast({ title: t('smartTools.styleComplete', '스타일 분석 완료'), variant: 'success' })
@@ -168,7 +181,7 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
                     )}
 
                     {isLoading && (
-                        <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white backdrop-blur-sm">
+                        <div className="absolute inset-0 bg-scrim/72 flex flex-col items-center justify-center text-primary-foreground">
                             <RefreshCw className="h-8 w-8 animate-spin mb-2" />
                             <span className="text-sm font-medium">{progress}%</span>
                         </div>
@@ -177,18 +190,19 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
 
                 {/* Toolbar */}
                 <div className="space-y-4">
+                    <RemoteImageProcessingConsent />
 
                     {/* Background Removal */}
                     <div className="p-3 border rounded-lg bg-card hover:bg-muted/10 transition-colors">
                         <div className="flex items-center gap-3 mb-2">
-                            <Eraser className="h-5 w-5 text-rose-400" />
+                            <Eraser className="h-5 w-5 text-destructive" />
                             <span className="font-medium text-sm">{t('smartTools.rembg', '배경 제거')}</span>
                         </div>
                         <Button
                             className="w-full"
                             variant="secondary"
                             onClick={handleRemoveBackground}
-                            disabled={isLoading || !processedImage}
+                            disabled={isLoading || !processedImage || !consentAccepted}
                         >
                             {t('smartTools.runRembg', '배경 제거 실행')}
                         </Button>
@@ -197,14 +211,14 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
                     {/* Style Analysis (Kaloscope) */}
                     <div className="p-3 border rounded-lg bg-card hover:bg-muted/10 transition-colors">
                         <div className="flex items-center gap-3 mb-2">
-                            <Palette className="h-5 w-5 text-purple-400" />
+                            <Palette className="h-5 w-5 text-primary" />
                             <span className="font-medium text-sm">{t('smartTools.kaloscopeStyle', '스타일 분석')}</span>
                         </div>
                         <Button
                             className="w-full"
                             variant="secondary"
                             onClick={handleAnalyzeStyle}
-                            disabled={isLoading || !processedImage}
+                            disabled={isLoading || !processedImage || !consentAccepted}
                         >
                             {t('smartTools.runStyle', '스타일 분석 실행')}
                         </Button>
@@ -237,7 +251,7 @@ export function SmartToolsPanel({ imageUrl, onClose, onUpdateImage }: SmartTools
                     {/* Mosaic */}
                     <div className="p-3 border rounded-lg bg-card hover:bg-muted/10 transition-colors">
                         <div className="flex items-center gap-3 mb-2">
-                            <Grid3X3 className="h-5 w-5 text-amber-400" />
+                            <Grid3X3 className="h-5 w-5 text-warning" />
                             <span className="font-medium text-sm">{t('smartTools.mosaic', '모자이크')}</span>
                         </div>
                         {activeTool === 'mosaic' ? (

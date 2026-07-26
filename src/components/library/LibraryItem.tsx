@@ -25,9 +25,12 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        // Use convertFileSrc for efficient native asset URL (no Base64 memory overhead)
+        // Browser imports are persisted data URLs; native files still use the
+        // efficient asset protocol without copying their bytes into React state.
         try {
-            const assetUrl = convertFileSrc(item.path)
+            const assetUrl = /^(data:|blob:|https?:)/i.test(item.path)
+                ? item.path
+                : convertFileSrc(item.path)
             setImageUrl(assetUrl)
             setIsLoading(false)
         } catch (e) {
@@ -51,7 +54,7 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
             className={cn(
                 "relative group aspect-[2/3] rounded-xl overflow-hidden bg-muted/30 border border-border/50 shadow-sm transition-all hover:ring-2 hover:ring-primary/50",
                 isOverlay && "ring-2 ring-primary shadow-xl cursor-grabbing z-50",
-                isEditMode && isSelected && "ring-2 ring-orange-500",
+                isEditMode && isSelected && "ring-2 ring-primary",
                 className
             )}
             onClick={handleClick}
@@ -74,7 +77,7 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
                 <div className="absolute top-2 left-2 z-30">
                     <div className={cn(
                         "h-6 w-6 rounded-md flex items-center justify-center transition-all",
-                        isSelected ? "bg-orange-500 text-white" : "bg-black/50 text-white/70"
+                        isSelected ? "bg-primary text-primary-foreground" : "bg-scrim/50 text-primary-foreground/70"
                     )}>
                         {isSelected ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                     </div>
@@ -83,14 +86,14 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
 
             {/* Stack Badge */}
             {item.isStack && (
-                <div className="absolute top-2 right-2 z-30 px-2 py-1 bg-purple-500 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                <div className="absolute top-2 right-2 z-30 px-2 py-1 bg-primary text-primary-foreground text-xs font-bold rounded-full flex items-center gap-1">
                     <Layers className="h-3 w-3" />
                     {t('library.stackCount', '{{count}}개', { count: item.stackItems?.length || 0 })}
                 </div>
             )}
 
-            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
-                <p className="text-xs text-white truncate px-1">{item.name}</p>
+            <div className="absolute bottom-0 left-0 right-0 bg-scrim/70 p-2 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
+                <p className="text-xs text-primary-foreground truncate px-1">{item.name}</p>
             </div>
         </div>
     )

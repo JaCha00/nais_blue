@@ -121,6 +121,7 @@ import {
 import { previewSceneComposition } from '@/lib/scene-generation/build-scene-params'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
@@ -252,6 +253,7 @@ function ScenePresetReorderDialog({ presets, activePresetId, onReorder, t }: {
 export default function SceneMode() {
     const { t } = useTranslation()
     const navigate = useNavigate()
+    const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
     // const { token } = useAuthStore()
     // const { savePath } = useSettingsStore()
 
@@ -457,6 +459,10 @@ export default function SceneMode() {
             scene.width ?? 832,
             scene.height ?? 1216,
             resolveSceneGeneration(scene).steps,
+            1,
+            0,
+            0,
+            activeCredentialsAreOpus,
         ) * scene.queueCount
     }, 0)
     const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')

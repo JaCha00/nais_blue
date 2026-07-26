@@ -59,6 +59,7 @@ import type {
 } from '@/components/composition-workspace'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useQueueStore } from '@/stores/queue-store'
@@ -138,6 +139,7 @@ export default function SceneDetail() {
     const setSceneCompositionMode = useSceneStore(state => state.setSceneCompositionMode)
     const sceneCompositionRecord = useSceneStore(state => sceneId ? state.sceneCompositionResults[sceneId] : undefined)
     const { promptFontSize } = useSettingsStore()
+    const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
     const assetProfile = useAssetModuleStore(state => state.profile)
     const assetHasConflict = useAssetModuleStore(state => state.hasConflict)
     const assetConflictMessage = useAssetModuleStore(state => state.conflictMessage)
@@ -675,7 +677,15 @@ export default function SceneDetail() {
     const resolvedIssues = compositionPreview
         ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
         : portableResolvedIssues
-    const estimatedCost = calculateAnlasCost(currentWidth, currentHeight, sceneGeneration.steps) * Math.max(1, scene.queueCount)
+    const estimatedCost = calculateAnlasCost(
+        currentWidth,
+        currentHeight,
+        sceneGeneration.steps,
+        1,
+        0,
+        0,
+        activeCredentialsAreOpus,
+    ) * Math.max(1, scene.queueCount)
 
     const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {
         setCompositionPreview(null)

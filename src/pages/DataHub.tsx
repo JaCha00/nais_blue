@@ -503,11 +503,16 @@ function PairingQrCode({ value }: { value: string }) {
 
     useEffect(() => {
         let active = true
+        const rootStyle = getComputedStyle(document.documentElement)
+        const foreground = rootStyle.getPropertyValue('--foreground').trim()
+        const card = rootStyle.getPropertyValue('--card').trim()
         void QRCode.toDataURL(value, {
             errorCorrectionLevel: 'M',
             margin: 2,
             width: 280,
-            color: { dark: '#111827', light: '#ffffff' },
+            // QR pixels depend on the same high-contrast design tokens as the
+            // surrounding pairing card, while the generated data remains local.
+            color: { dark: `oklch(${foreground})`, light: `oklch(${card})` },
         }).then(url => {
             if (active) setDataUrl(url)
         }).catch(() => {
@@ -524,7 +529,7 @@ function PairingQrCode({ value }: { value: string }) {
         <img
             src={dataUrl}
             alt="NAIS blue secure pairing QR"
-            className="aspect-square w-full max-w-[280px] rounded-panel border bg-white p-2"
+            className="aspect-square w-full max-w-[280px] rounded-panel border bg-card p-2"
         />
     )
 }

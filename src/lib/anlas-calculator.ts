@@ -30,22 +30,19 @@ export function calculateAnlasCost(
 ): number {
     const totalPixels = width * height
 
-    // Opus tier: Free if within limits and single generation
-    if (isOpus && totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT && batchCount === 1) {
-        return 0
-    }
-
-    // Calculate base cost
-    let cost = BASE_ANLAS_COST
+    // Each queued image is billed independently. Opus waives only the base
+    // generation cost; character references and uncached vibes remain billable.
+    const baseIsFree = isOpus && totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT
+    let cost = baseIsFree ? 0 : BASE_ANLAS_COST
 
     // Higher resolution costs more
-    if (totalPixels > FREE_PIXEL_LIMIT) {
+    if (!baseIsFree && totalPixels > FREE_PIXEL_LIMIT) {
         const pixelMultiplier = Math.ceil(totalPixels / FREE_PIXEL_LIMIT)
         cost = cost * pixelMultiplier
     }
 
     // More steps cost more
-    if (steps > FREE_STEPS_LIMIT) {
+    if (!baseIsFree && steps > FREE_STEPS_LIMIT) {
         const stepsMultiplier = Math.ceil(steps / FREE_STEPS_LIMIT)
         cost = cost * stepsMultiplier
     }
@@ -59,11 +56,7 @@ export function calculateAnlasCost(
         cost += (vibeCount * 2) // Vibe Transfer per image cost
     }
 
-    // Batch generation does NOT multiply cost (User request: "Picking one by one")
-    // Use cost as per-image cost. The loop in generation handles total cost deduction.
-    // cost = cost * batchCount // REMOVED
-
-    return cost
+    return cost * Math.max(1, Math.trunc(batchCount))
 }
 
 /**
@@ -87,7 +80,7 @@ export function isFreeGeneration(
     batchCount: number = 1
 ): boolean {
     const totalPixels = width * height
-    return totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT && batchCount === 1
+    return totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT && batchCount >= 1
 }
 
 /**

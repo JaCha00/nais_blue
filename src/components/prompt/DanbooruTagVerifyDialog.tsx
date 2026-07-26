@@ -325,11 +325,11 @@ function getStatusIcon(status: DanbooruTagStatus) {
 function getStatusTextClass(status: DanbooruTagStatus): string {
     switch (status) {
         case 'OK':
-            return 'text-green-500'
+            return 'text-success'
         case 'LOW':
-            return 'text-yellow-500'
+            return 'text-warning'
         case 'GHOST':
-            return 'text-red-500'
+            return 'text-destructive'
         case 'ERROR':
             return 'text-destructive'
         case 'SKIPPED':
@@ -340,11 +340,11 @@ function getStatusTextClass(status: DanbooruTagStatus): string {
 function getStatusContainerClass(status: DanbooruTagStatus): string {
     switch (status) {
         case 'OK':
-            return 'border-green-500/40 bg-green-500/10'
+            return 'border-success/40 bg-success/10'
         case 'LOW':
-            return 'border-yellow-500/40 bg-yellow-500/10'
+            return 'border-warning/40 bg-warning/10'
         case 'GHOST':
-            return 'border-red-500/40 bg-red-500/10'
+            return 'border-destructive/40 bg-destructive/10'
         case 'ERROR':
             return 'border-destructive/40 bg-destructive/10'
         case 'SKIPPED':

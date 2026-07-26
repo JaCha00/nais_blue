@@ -75,5 +75,9 @@ export async function isBrowserViewOpen(): Promise<boolean> {
 }
 
 export async function openExternalUrl(url: string): Promise<void> {
+    if (!runtimeCapabilities.nativePluginRuntime.supported) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+        return
+    }
     await openUrl(url)
 }

@@ -110,8 +110,8 @@ export function BackgroundRemovalDialog({
                 {/* Comparison Container */}
                 <div
                     ref={containerRef}
-                    className="flex-1 relative overflow-hidden rounded-lg cursor-ew-resize select-none"
-                    style={{ backgroundColor: '#4a4a4a', minHeight: '500px', aspectRatio: '4/3' }}
+                    className="flex-1 relative overflow-hidden rounded-panel cursor-ew-resize select-none"
+                    style={{ backgroundColor: 'oklch(var(--muted))', minHeight: '500px', aspectRatio: '4/3' }}
                     onMouseDown={handleMouseDown}
                 >
                     {/* Checkerboard pattern */}
@@ -119,14 +119,14 @@ export function BackgroundRemovalDialog({
                         className="absolute inset-0 pointer-events-none"
                         style={{
                             backgroundImage: `
-                                linear-gradient(45deg, #555 25%, transparent 25%),
-                                linear-gradient(-45deg, #555 25%, transparent 25%),
-                                linear-gradient(45deg, transparent 75%, #555 75%),
-                                linear-gradient(-45deg, transparent 75%, #555 75%)
+                                linear-gradient(45deg, oklch(var(--border)) 25%, transparent 25%),
+                                linear-gradient(-45deg, oklch(var(--border)) 25%, transparent 25%),
+                                linear-gradient(45deg, transparent 75%, oklch(var(--border)) 75%),
+                                linear-gradient(-45deg, transparent 75%, oklch(var(--border)) 75%)
                             `,
                             backgroundSize: '20px 20px',
                             backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-                            backgroundColor: '#666'
+                            backgroundColor: 'oklch(var(--card))'
                         }}
                     />
 
@@ -162,22 +162,22 @@ export function BackgroundRemovalDialog({
 
                     {/* Draggable Slider */}
                     <div
-                        className="absolute top-0 bottom-0 w-1 bg-white shadow-lg z-10 pointer-events-none"
+                        className="absolute top-0 bottom-0 w-1 bg-foreground z-10 pointer-events-none"
                         style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }}
                     >
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center border-2 border-gray-300">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-card rounded-full shadow-overlay flex items-center justify-center border-2 border-border">
                             <div className="flex gap-1">
-                                <div className="w-0.5 h-4 bg-gray-500 rounded" />
-                                <div className="w-0.5 h-4 bg-gray-500 rounded" />
+                                <div className="w-0.5 h-4 bg-muted-foreground rounded" />
+                                <div className="w-0.5 h-4 bg-muted-foreground rounded" />
                             </div>
                         </div>
                     </div>
 
                     {/* Labels */}
-                    <div className="absolute bottom-4 left-4 px-2 py-1 bg-black/60 text-white text-xs rounded pointer-events-none">
+                    <div className="absolute bottom-4 left-4 px-2 py-1 bg-scrim/72 text-primary-foreground text-xs rounded-control pointer-events-none">
                         {t('smartTools.processed', '결과')}
                     </div>
-                    <div className="absolute bottom-4 right-4 px-2 py-1 bg-black/60 text-white text-xs rounded pointer-events-none">
+                    <div className="absolute bottom-4 right-4 px-2 py-1 bg-scrim/72 text-primary-foreground text-xs rounded-control pointer-events-none">
                         {t('smartTools.original', '원본')}
                     </div>
                 </div>

@@ -12,6 +12,7 @@ export interface RuntimeCapability {
 
 export interface RuntimeCapabilities {
     readonly platform: RuntimePlatform
+    readonly nativePluginRuntime: RuntimeCapability
     readonly absoluteOutputPath: RuntimeCapability
     readonly externalProfileFileWatch: RuntimeCapability
     readonly localTaggerSidecar: RuntimeCapability
@@ -35,23 +36,27 @@ const unsupported = (reason: string, alternative: string): RuntimeCapability => 
 })
 
 const APP_SCOPED_OUTPUT = unsupported(
-    'Android and iOS cannot write to arbitrary absolute desktop paths.',
-    'Choose an app-data destination or grant access with the system file picker.',
+    'This runtime cannot write to arbitrary absolute desktop paths.',
+    'Choose an app-scoped destination or use the installed desktop app.',
+)
+const NO_NATIVE_PLUGIN_RUNTIME = unsupported(
+    'Tauri file, store, and opener plugins are unavailable in the browser runtime.',
+    'Use browser storage, file inputs, and normal browser links instead.',
 )
 const NO_EXTERNAL_WATCH = unsupported(
-    'External profile file watching is unavailable in the mobile app sandbox.',
-    'Import the profile explicitly, then refresh it from the system file picker.',
+    'External profile file watching is available only in the installed desktop app.',
+    'Import the profile explicitly, then refresh it when the source changes.',
 )
 const NO_LOCAL_TAGGER = unsupported(
-    'The desktop Python tagger sidecar is not bundled on mobile.',
+    'The desktop Python tagger sidecar is not bundled in this runtime.',
     'Generate without local verification or verify tags on the desktop app.',
 )
 const NO_EMBEDDED_BROWSER = unsupported(
-    'The desktop embedded browser view is unavailable on mobile.',
+    'The embedded browser view is available only in the installed desktop app.',
     'Open the page in the system browser and return to NAIS blue when finished.',
 )
 const NO_R2_TOOLING = unsupported(
-    'R2 deploy tooling requires the desktop sidecar and local Wrangler environment.',
+    'R2 deploy tooling requires the installed desktop app and local Wrangler environment.',
     'Export locally and deploy from the desktop app or Wrangler CLI.',
 )
 const NO_NATIVE_R2_FOREGROUND = unsupported(
@@ -82,14 +87,18 @@ const NO_LAN_BLOB_TRANSFER = unsupported(
 export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCapabilities {
     const mobile = platform === 'android' || platform === 'ios'
     const nativeR2Desktop = platform === 'windows' || platform === 'macos' || platform === 'linux' || platform === 'desktop'
+    const nativePluginRuntime = mobile || nativeR2Desktop
 
     return Object.freeze({
         platform,
-        absoluteOutputPath: mobile ? APP_SCOPED_OUTPUT : supported(),
-        externalProfileFileWatch: mobile ? NO_EXTERNAL_WATCH : supported(),
-        localTaggerSidecar: mobile ? NO_LOCAL_TAGGER : supported(),
-        embeddedBrowser: mobile ? NO_EMBEDDED_BROWSER : supported(),
-        r2DeployTooling: mobile ? NO_R2_TOOLING : supported(),
+        nativePluginRuntime: nativePluginRuntime ? supported() : NO_NATIVE_PLUGIN_RUNTIME,
+        // `unknown` remains desktop-compatible for headless characterization;
+        // an actual unconfigured browser is detected as `web` below.
+        absoluteOutputPath: mobile || platform === 'web' ? APP_SCOPED_OUTPUT : supported(),
+        externalProfileFileWatch: nativeR2Desktop ? supported() : NO_EXTERNAL_WATCH,
+        localTaggerSidecar: nativeR2Desktop ? supported() : NO_LOCAL_TAGGER,
+        embeddedBrowser: nativeR2Desktop ? supported() : NO_EMBEDDED_BROWSER,
+        r2DeployTooling: nativeR2Desktop ? supported() : NO_R2_TOOLING,
         r2ProfileRead: supported(),
         r2ForegroundUpload: mobile ? NO_NATIVE_R2_FOREGROUND : nativeR2Desktop ? supported() : NO_NATIVE_R2_HOST,
         r2BackgroundUpload: NO_NATIVE_R2_BACKGROUND,
@@ -120,6 +129,7 @@ const detectedPlatform = (() => {
         if (agent.includes('android')) return 'android'
         if (/iphone|ipad|ipod/.test(agent)) return 'ios'
     }
+    if (typeof window !== 'undefined') return 'web'
     return 'unknown'
 })() satisfies RuntimePlatform
 

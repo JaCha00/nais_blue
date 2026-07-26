@@ -223,6 +223,37 @@ beforeEach(() => {
 })
 
 describe('OutputWriter fault containment', () => {
+    it.each(['strip-and-sidecar', 'strip-only'] as const)(
+        'purges provider metadata before writing and thumbnailing %s output',
+        async metadataMode => {
+            const adapter = new InMemoryOutputAdapter()
+            const cleanBytes = new Uint8Array([9, 8, 7])
+            const cleanDataUrl = 'data:image/png;base64,CQgH'
+            const purge = vi.fn(async () => ({ bytes: cleanBytes, dataUrl: cleanDataUrl }))
+            let thumbnailInput = ''
+            const outputWriter = new OutputWriter(
+                adapter,
+                new DeterministicMetadataWriter(),
+                () => `txn-${metadataMode}`,
+                () => new Date(FIXED_NOW),
+                purge,
+            )
+
+            await outputWriter.write(request({
+                metadata: { ...metadataRequest(), metadataMode },
+                generateThumbnail: async imageDataUrl => {
+                    thumbnailInput = imageDataUrl
+                    return 'data:image/png;base64,dGh1bWI='
+                },
+            }))
+
+            expect(purge).toHaveBeenCalledOnce()
+            expect(purge).toHaveBeenCalledWith('data:image/png;base64,AQIDBA==', 'png')
+            expect(bytesEqual(adapter.file('output/result.png'), cleanBytes)).toBe(true)
+            expect(thumbnailInput).toBe(cleanDataUrl)
+        },
+    )
+
     it('uses a pre-bound queue transaction and exposes its files-committed recovery link', async () => {
         const adapter = new InMemoryOutputAdapter()
         const outputWriter = writer(adapter, 'factory-id-must-not-win')

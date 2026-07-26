@@ -6,6 +6,7 @@ import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migra
 import { createCurrentBackupEnvelopeV3, createFullAutoBackup } from './lib/auto-backup'
 import { setRuntimeCompositionAuthority } from './lib/composition-authority'
 import { runStartupGate } from './lib/startup-mode'
+import { scheduleAfterVisiblePaint } from './lib/after-visible-paint'
 import { reportDiagnostic, reportPersistenceFault } from './services/diagnostics/error-registry'
 import type { DiagnosticEvent } from './domain/diagnostics/types'
 
@@ -95,7 +96,7 @@ const showSplashError = (message: string) => {
     const splash = document.getElementById('splash-screen')
     if (splash) {
         const errorDiv = document.createElement('div')
-        errorDiv.style.cssText = 'color: #ef4444; margin-top: 20px; padding: 10px; max-width: 400px; text-align: center;'
+        errorDiv.style.cssText = 'color: oklch(var(--destructive)); margin-top: 20px; padding: 10px; max-width: 400px; text-align: center;'
         errorDiv.textContent = message
         splash.appendChild(errorDiv)
     }
@@ -478,7 +479,7 @@ async function runStartupAttempt(): Promise<void> {
         })
         setSplashStage('Recovery mode')
         await renderRescueMode(event)
-        requestAnimationFrame(() => requestAnimationFrame(hideSplash))
+        scheduleAfterVisiblePaint(hideSplash)
         return
     }
     if (startup.migrationError !== undefined) {
@@ -498,13 +499,12 @@ async function runStartupAttempt(): Promise<void> {
     // NOW render React app
     await renderApp()
 
-    // Delay slightly to ensure app renders, then hide splash
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            setSplashStage('Ready')
-            hideSplash()
-            schedulePostRenderStartupTasks()
-        })
+    // The scheduler waits for paint when possible and falls back when a hidden
+    // window suspends animation frames, so the splash never traps input.
+    scheduleAfterVisiblePaint(() => {
+        setSplashStage('Ready')
+        hideSplash()
+        schedulePostRenderStartupTasks()
     })
 }
 

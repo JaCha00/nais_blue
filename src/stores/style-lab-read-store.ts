@@ -14,6 +14,20 @@ interface StyleLabReadState {
     replacePreviewAssets: (assets: readonly StylePreviewAsset[]) => void
 }
 
+const EMPTY_STYLE_PREVIEW_ASSETS: readonly StylePreviewAsset[] = Object.freeze([])
+
+/**
+ * Depends on the atomic preview projection and is consumed by combination cards.
+ * Returning one shared empty value keeps Zustand's external-store snapshot
+ * reference stable when a combination has no rendered previews.
+ */
+export function selectStylePreviewAssets(
+    state: Pick<StyleLabReadState, 'previewAssetsByCombo'>,
+    comboId: string,
+): readonly StylePreviewAsset[] {
+    return state.previewAssetsByCombo[comboId] ?? EMPTY_STYLE_PREVIEW_ASSETS
+}
+
 /**
  * UI components depend on this non-persisted read cache, while IndexedDB events and
  * projections remain owned by the repository. Replacing the complete projection map

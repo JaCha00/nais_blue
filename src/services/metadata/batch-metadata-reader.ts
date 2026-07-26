@@ -72,6 +72,15 @@ export interface ReadMetadataBatchOptions {
     yieldToUi?: () => Promise<void>
 }
 
+/**
+ * Depends only on the event-loop timer and is shared by sequential batch reads.
+ * Timers continue while the window is obscured, unlike animation frames, so a
+ * long metadata scan remains cancellable and keeps making progress in background.
+ */
+export function yieldToMetadataEventLoop(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, 0))
+}
+
 function abortError(): Error {
     const error = new Error('Metadata reading was cancelled.')
     error.name = 'AbortError'
@@ -195,10 +204,7 @@ export async function readMetadataBatch(
 ): Promise<MetadataBatchItem[]> {
     assertBatchInput(files)
     const parse = options.parse ?? parseMetadataFromFile
-    const yieldToUi = options.yieldToUi ?? (() => new Promise<void>(resolve => {
-        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => resolve())
-        else setTimeout(resolve, 0)
-    }))
+    const yieldToUi = options.yieldToUi ?? yieldToMetadataEventLoop
     const items: MetadataBatchItem[] = []
 
     for (const [index, file] of files.entries()) {

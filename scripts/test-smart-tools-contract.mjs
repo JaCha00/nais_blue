@@ -151,7 +151,7 @@ test('Kaloscope style analysis sends only the intended explicit Gradio payload',
             return { data: ['artist one, artist two'] }
         },
         async ({ smartTools, calls }) => {
-            const tags = await smartTools.analyzeStyle('test://input-style.png')
+            const tags = await smartTools.analyzeStyle('test://input-style.png', undefined, 1)
 
             assert.equal(calls.length, 1)
             assert.deepEqual(tags, [
@@ -186,7 +186,7 @@ test('BRIA background removal uses the processed file output instead of the orig
 
     const { server, smartTools } = await loadSmartTools()
     try {
-        const result = await smartTools.removeBackground('test://input-background.png')
+        const result = await smartTools.removeBackground('test://input-background.png', undefined, 1)
 
         assert.match(result, /^data:image\/png;base64,/)
         assert.deepEqual(runtime.fetchedUrls, [
@@ -224,7 +224,7 @@ test('anime-remove-background fallback uses the result image instead of the mask
 
     const { server, smartTools } = await loadSmartTools()
     try {
-        const result = await smartTools.removeBackground('test://input-fallback.png')
+        const result = await smartTools.removeBackground('test://input-fallback.png', undefined, 1)
 
         assert.match(result, /^data:image\/png;base64,/)
         assert.deepEqual(runtime.fetchedUrls, [

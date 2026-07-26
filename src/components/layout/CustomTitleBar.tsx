@@ -183,7 +183,7 @@ export function CustomTitleBar() {
                     onClick={handleClose}
                     className={cn(
                         "h-full w-[46px] flex items-center justify-center",
-                        "text-muted-foreground hover:text-white hover:bg-red-500",
+                        "text-muted-foreground hover:bg-destructive hover:text-destructive-foreground",
                         "transition-colors"
                     )}
                     data-titlebar-no-drag="true"

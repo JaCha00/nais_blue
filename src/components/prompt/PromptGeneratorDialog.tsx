@@ -165,11 +165,11 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
     const getStatusIcon = (result: TagMatchResult) => {
         switch (result.status) {
             case 'matched':
-                return <Check className="h-3.5 w-3.5 text-green-500" />
+                return <Check className="h-3.5 w-3.5 text-success" />
             case 'fuzzy':
-                return <AlertCircle className="h-3.5 w-3.5 text-yellow-500" />
+                return <AlertCircle className="h-3.5 w-3.5 text-warning" />
             case 'unmatched':
-                return <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                return <AlertCircle className="h-3.5 w-3.5 text-destructive" />
         }
     }
 
@@ -180,11 +180,11 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
         }
         switch (result.status) {
             case 'matched':
-                return 'border-green-500/50 bg-green-500/10'
+                return 'border-success/50 bg-success/10'
             case 'fuzzy':
-                return 'border-yellow-500/50 bg-yellow-500/10'
+                return 'border-warning/50 bg-warning/10'
             case 'unmatched':
-                return 'border-red-500/50 bg-red-500/10'
+                return 'border-destructive/50 bg-destructive/10'
         }
     }
 
@@ -274,11 +274,11 @@ export function PromptGeneratorDialog({ open, onOpenChange, onApply }: PromptGen
                                 </h4>
                                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                                     <span className="flex items-center gap-1">
-                                        <Check className="h-3 w-3 text-green-500" />
+                                        <Check className="h-3 w-3 text-success" />
                                         {t('promptGenerator.matched', '매칭됨')}
                                     </span>
                                     <span className="flex items-center gap-1">
-                                        <AlertCircle className="h-3 w-3 text-yellow-500" />
+                                        <AlertCircle className="h-3 w-3 text-warning" />
                                         {t('promptGenerator.selectRequired', '선택 필요')}
                                     </span>
                                 </div>

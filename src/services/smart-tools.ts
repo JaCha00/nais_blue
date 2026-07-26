@@ -1,6 +1,7 @@
 // @ts-ignore
 import { Client } from "@gradio/client";
 import { augmentImage, upscaleImage } from '@/services/novelai-api'
+import { assertRemoteImageProcessingConsent } from '@/services/privacy/remote-image-processing'
 
 const KALOSCOPE_SPACE = "DraconicDragon/Kaloscope-artist-style-classifier"
 const KALOSCOPE_ENDPOINT = "/predict"
@@ -36,7 +37,12 @@ class SmartToolsService {
     /**
      * Analyze Artist/Style using Kaloscope (Hugging Face Space API)
      */
-    public async analyzeStyle(imageUrl: string, _progressCallback?: (progress: number) => void): Promise<TagResult[]> {
+    public async analyzeStyle(
+        imageUrl: string,
+        _progressCallback: ((progress: number) => void) | undefined,
+        consentVersion: number,
+    ): Promise<TagResult[]> {
+        assertRemoteImageProcessingConsent(consentVersion)
         try {
             const response = await fetch(imageUrl);
             const blob = await response.blob();
@@ -84,8 +90,10 @@ class SmartToolsService {
      */
     public async removeBackground(
         imageUrl: string,
-        _progressCallback?: (progress: number) => void
+        _progressCallback: ((progress: number) => void) | undefined,
+        consentVersion: number,
     ): Promise<string> {
+        assertRemoteImageProcessingConsent(consentVersion)
         const response = await fetch(imageUrl);
         const blob = await response.blob();
         const failureReasons: string[] = [];

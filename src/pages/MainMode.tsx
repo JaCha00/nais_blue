@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
-import { useAuthStore } from '@/stores/auth-store'
+import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
@@ -139,6 +139,7 @@ export default function MainMode() {
     const profileConflictMessage = useAssetModuleStore(state => state.conflictMessage)
     const characterImages = useCharacterStore(state => state.characterImages)
     const vibeImages = useCharacterStore(state => state.vibeImages)
+    const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
     const isMobileWorkspace = useMediaQuery('(max-width: 767px)')
     const [moduleSheetOpen, setModuleSheetOpen] = useState(false)
     const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false)
@@ -300,6 +301,7 @@ export default function MainMode() {
         batchCount,
         resolvedParams === undefined ? enabledCharacterCount : lastResolvedPlan?.characters.length ?? enabledCharacterCount,
         uncachedVibeCount,
+        activeCredentialsAreOpus,
     )
 
     // Regenerate with metadata - direct API call without modifying UI

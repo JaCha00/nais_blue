@@ -54,8 +54,31 @@ import { readFile } from '@tauri-apps/plugin-fs'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrashStore } from '@/stores/trash-store'
 import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
+import { runtimeCapabilities } from '@/platform/capabilities'
 
-// ... existing imports
+/**
+ * Browser preview depends on FileReader and the IndexedDB-backed Library store.
+ * A data URL keeps imported images usable after reload without invoking native fs.
+ */
+async function createBrowserLibraryItem(file: File): Promise<LibraryItem> {
+    const path = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => typeof reader.result === 'string'
+            ? resolve(reader.result)
+            : reject(new Error('Image import did not produce a data URL.'))
+        reader.onerror = () => reject(reader.error ?? new Error('Image import failed.'))
+        reader.readAsDataURL(file)
+    })
+    const id = crypto.randomUUID()
+    return {
+        id,
+        name: file.name.replace(/\.[^.]+$/, ''),
+        path,
+        width: 0,
+        height: 0,
+        createdAt: Date.now(),
+    }
+}
 
 export default function Library() {
     const { t } = useTranslation()
@@ -128,6 +151,9 @@ export default function Library() {
 
     // Ensure Library Directory Exists & Sync Files
     useEffect(() => {
+        // Browser preview persists data URLs and has no native directory to sync.
+        if (!runtimeCapabilities.nativePluginRuntime.supported) return
+
         const initDir = async () => {
             try {
                 // 1. Ensure Dir Exists
@@ -220,6 +246,16 @@ export default function Library() {
             if (imageFiles.length === 0) return
 
             try {
+                if (!runtimeCapabilities.nativePluginRuntime.supported) {
+                    const browserItems = await Promise.all(imageFiles.map(createBrowserLibraryItem))
+                    browserItems.forEach(addItem)
+                    toast({
+                        title: t('library.added', '이미지 추가됨'),
+                        description: t('library.addedDesc', { count: browserItems.length }),
+                        variant: 'success',
+                    })
+                    return
+                }
                 const mediaStorageRoot = await getMediaStorageRoot()
                 const relPath = libraryPath || 'NAIS_Library'
                 const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
@@ -296,7 +332,7 @@ export default function Library() {
                 })
             }
         }
-    }, [addItem, t])
+    }, [addItem, libraryPath, t, useAbsoluteLibraryPath])
 
     const activeItem = activeId ? items.find(i => i.id === activeId) : null
 
@@ -331,6 +367,11 @@ export default function Library() {
 
     const handleAddRefClick = async (item: LibraryItem) => {
         try {
+            if (item.path.startsWith('data:')) {
+                setSelectedImageRef(item.path)
+                setImageRefDialogOpen(true)
+                return
+            }
             const data = await readFile(item.path)
             const base64 = arrayBufferToBase64(data)
             setSelectedImageRef(`data:image/png;base64,${base64}`)
@@ -343,6 +384,11 @@ export default function Library() {
 
     const handleLoadMetadata = async (item: LibraryItem) => {
         try {
+            if (item.path.startsWith('data:')) {
+                setSelectedImageForMetadata(item.path)
+                setMetadataDialogOpen(true)
+                return
+            }
             const data = await readFile(item.path)
             const base64 = arrayBufferToBase64(data)
             setSelectedImageForMetadata(`data:image/png;base64,${base64}`)
@@ -390,6 +436,17 @@ export default function Library() {
         if (imageFiles.length === 0) return
 
         try {
+            if (!runtimeCapabilities.nativePluginRuntime.supported) {
+                const browserItems = await Promise.all(imageFiles.map(createBrowserLibraryItem))
+                browserItems.forEach(addItem)
+                toast({
+                    title: t('library.added', '이미지 추가됨'),
+                    description: t('library.addedDesc', { count: browserItems.length }),
+                    variant: 'success',
+                })
+                e.target.value = ''
+                return
+            }
             const mediaStorageRoot = await getMediaStorageRoot()
             const relPath = libraryPath || 'NAIS_Library'
             const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
@@ -470,12 +527,12 @@ export default function Library() {
             onDrop={onFileDrop}
         >
             {/* Header */}
-            <div className="z-10 flex min-h-14 w-full shrink-0 items-center border-b bg-background/50 px-3 py-2 backdrop-blur-sm sm:px-4 lg:px-6">
+            <div className="z-10 flex min-h-14 w-full shrink-0 items-center border-b bg-background px-3 py-2 sm:px-4 lg:px-6">
                 {isEditMode ? (
                     /* Edit Mode Header */
                     <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex min-w-0 items-center gap-2">
-                            <Button variant="ghost" size="sm" className="h-11 shrink-0 hover:bg-white/10 lg:h-9" onClick={() => setEditMode(false)}>
+                            <Button variant="ghost" size="sm" className="h-11 shrink-0 hover:bg-accent lg:h-9" onClick={() => setEditMode(false)}>
                                 <X className="h-4 w-4 mr-2" /> {t('actions.cancel', '취소')}
                             </Button>
                             <span className="min-w-0 truncate text-sm text-muted-foreground">
@@ -486,19 +543,19 @@ export default function Library() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-11 min-w-0 flex-1 px-2 hover:bg-white/10 sm:flex-none sm:px-3 lg:h-9"
+                                className="h-11 min-w-0 flex-1 px-2 hover:bg-accent sm:flex-none sm:px-3 lg:h-9"
                                 onClick={selectAllItems}
                             >
                                 <CheckSquare className="mr-1.5 h-4 w-4 shrink-0" />
                                 <span className="min-w-0 truncate">{t('scene.selectAll', '전체 선택')}</span>
                             </Button>
-                            <div className="hidden h-5 w-px bg-white/10 sm:block" />
+                            <div className="hidden h-5 w-px bg-border sm:block" />
                             {!currentStackId && (
                                 <Tip content={t('library.createStackDesc', '선택한 이미지를 하나의 스택으로 묶음')}>
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-11 min-w-0 flex-1 px-2 hover:bg-white/10 sm:flex-none sm:px-3 lg:h-9"
+                                        className="h-11 min-w-0 flex-1 px-2 hover:bg-accent sm:flex-none sm:px-3 lg:h-9"
                                         onClick={createStackFromSelected}
                                         disabled={selectedItemIds.length < 2}
                                     >
@@ -528,7 +585,7 @@ export default function Library() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-11 w-11 shrink-0 px-0 hover:bg-white/10 sm:w-auto sm:px-3 lg:h-9"
+                                        className="h-11 w-11 shrink-0 px-0 hover:bg-accent sm:w-auto sm:px-3 lg:h-9"
                                         onClick={() => setCurrentStackId(null)}
                                         aria-label={t('actions.back', '뒤로')}
                                     >
@@ -556,7 +613,7 @@ export default function Library() {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9 lg:w-9"
+                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground lg:h-9 lg:w-9"
                                     onClick={handleImportClick}
                                     aria-label={t('library.import', '이미지 불러오기')}
                                 >
@@ -567,7 +624,7 @@ export default function Library() {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9 lg:w-9"
+                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground lg:h-9 lg:w-9"
                                     onClick={() => setEditMode(true)} 
                                     disabled={viewItems.length === 0}
                                     aria-label={t('library.editModeDesc', '여러 이미지를 선택하여 일괄 편집')}
@@ -580,7 +637,7 @@ export default function Library() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-11 w-11 shrink-0 px-0 hover:bg-white/10 sm:w-auto sm:px-3 lg:h-9"
+                                        className="h-11 w-11 shrink-0 px-0 hover:bg-accent sm:w-auto sm:px-3 lg:h-9"
                                         onClick={() => unstack(currentStackId)}
                                         aria-label={t('library.unstack', '스택 해제')}
                                     >
@@ -593,7 +650,7 @@ export default function Library() {
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-11 shrink-0 px-2 text-muted-foreground hover:bg-white/10 hover:text-foreground lg:h-9"
+                                    className="h-11 shrink-0 px-2 text-muted-foreground hover:bg-accent hover:text-foreground lg:h-9"
                                     onClick={handleToggleGrid}
                                     aria-label={t('library.gridColumnsDesc', '그리드 열 개수 변경')}
                                 >
@@ -698,19 +755,16 @@ export default function Library() {
 
             {/* File Drop Overlay - Modern Style from MainMode */}
             {isDraggingFile && (
-                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center transition-all duration-300 pointer-events-none">
+                <div className="absolute inset-0 z-50 bg-scrim/72 flex items-center justify-center transition-all duration-300 pointer-events-none">
                     <div className="relative">
-                        {/* Animated ring */}
-                        <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-primary via-purple-500 to-primary animate-pulse opacity-50 blur-xl" />
-
                         {/* Main card */}
-                        <div className="relative bg-background/80 backdrop-blur-xl border border-white/20 rounded-3xl p-12 shadow-2xl transform transition-transform scale-100">
+                        <div className="relative rounded-panel bg-popover p-12 shadow-overlay transform transition-transform scale-100">
                             <div className="text-center space-y-4">
                                 {/* Animated icon container */}
                                 <div className="relative mx-auto w-20 h-20">
                                     <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-inner">
-                                        <ImagePlus className="h-10 w-10 text-white" />
+                                    <div className="relative w-full h-full rounded-full bg-primary flex items-center justify-center">
+                                        <ImagePlus className="h-10 w-10 text-primary-foreground" />
                                     </div>
                                 </div>
 
@@ -765,7 +819,7 @@ export default function Library() {
             {/* Full-Screen Image Viewer Overlay */}
             {viewerImageSrc && (
                 <div
-                    className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center cursor-pointer"
+                    className="fixed inset-0 z-50 bg-scrim/90 flex items-center justify-center cursor-pointer"
                     onClick={() => setViewerImageSrc(null)}
                 >
                     <img
@@ -777,7 +831,7 @@ export default function Library() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-lg h-10 w-10"
+                        className="absolute top-4 right-4 text-primary-foreground bg-scrim/50 hover:bg-scrim/70 rounded-control h-11 w-11"
                         onClick={() => setViewerImageSrc(null)}
                         aria-label={t('common.close', '닫기')}
                     >

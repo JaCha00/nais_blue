@@ -91,7 +91,7 @@ export function ImageReferenceDialog({ open, onOpenChange, imageBase64 }: ImageR
                             onClick={handleAddAsCharacter}
                             disabled={isProcessing}
                         >
-                            <User className="h-6 w-6 text-blue-500 flex-shrink-0" />
+                            <User className="h-6 w-6 text-info flex-shrink-0" />
                             <div className="text-left">
                                 <div className="font-medium">
                                     {t('imageRef.charRef', '캐릭터 레퍼런스')}
@@ -110,7 +110,7 @@ export function ImageReferenceDialog({ open, onOpenChange, imageBase64 }: ImageR
                                 onClick={handleAddAsVibe}
                                 disabled={isProcessing || hasEnabledCharacterImages}
                             >
-                                <Sparkles className="h-6 w-6 text-purple-500 flex-shrink-0" />
+                                <Sparkles className="h-6 w-6 text-primary flex-shrink-0" />
                                 <div className="text-left">
                                     <div className="font-medium">
                                         {t('imageRef.vibeTransfer', 'Vibe Transfer')}

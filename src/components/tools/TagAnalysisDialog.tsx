@@ -6,6 +6,9 @@ import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Loader2, Copy, Palette } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
+import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImageProcessingConsent'
+import { REMOTE_IMAGE_PROCESSING_POLICY_VERSION } from '@/services/privacy/remote-image-processing'
+import { useSettingsStore } from '@/stores/settings-store'
 
 interface TagAnalysisDialogProps {
     imageUrl: string | null
@@ -17,12 +20,13 @@ export function TagAnalysisDialog({ imageUrl, isOpen, onClose }: TagAnalysisDial
     const { t } = useTranslation()
     const [isLoading, setIsLoading] = useState(false)
     const [styleTags, setStyleTags] = useState<TagResult[]>([])
+    const consentVersion = useSettingsStore(state => state.remoteImageProcessingConsentVersion)
+    const consentAccepted = consentVersion >= REMOTE_IMAGE_PROCESSING_POLICY_VERSION
 
     useEffect(() => {
-        if (isOpen && imageUrl) {
-            analyze()
-        } else {
+        if (!isOpen || !imageUrl) {
             setStyleTags([])
+            setIsLoading(false)
         }
     }, [isOpen, imageUrl])
 
@@ -30,7 +34,7 @@ export function TagAnalysisDialog({ imageUrl, isOpen, onClose }: TagAnalysisDial
         if (!imageUrl) return
         setIsLoading(true)
         try {
-            const result = await smartTools.analyzeStyle(imageUrl)
+            const result = await smartTools.analyzeStyle(imageUrl, undefined, consentVersion)
             const filtered = result
                 .filter(r => r.score > 0.1)
                 .sort((a, b) => b.score - a.score)
@@ -63,6 +67,8 @@ export function TagAnalysisDialog({ imageUrl, isOpen, onClose }: TagAnalysisDial
                     </DialogDescription>
                 </DialogHeader>
 
+                <RemoteImageProcessingConsent className="mb-2 shrink-0" />
+
                 {/* Main Content: Left Image, Right Style Analysis */}
                 <div className="flex-1 flex gap-6 min-h-0 overflow-hidden">
                     {/* Left: Image Preview */}
@@ -83,7 +89,7 @@ export function TagAnalysisDialog({ imageUrl, isOpen, onClose }: TagAnalysisDial
                     {/* Right: Kaloscope Style Analysis */}
                     <div className="flex-1 flex flex-col gap-2 min-h-0">
                         <div className="flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-2 font-medium text-purple-400">
+                            <div className="flex items-center gap-2 font-medium text-primary">
                                 <Palette className="h-4 w-4" />
                                 {t('smartTools.kaloscopeStyle')}
                             </div>
@@ -104,10 +110,16 @@ export function TagAnalysisDialog({ imageUrl, isOpen, onClose }: TagAnalysisDial
                             />
                         )}
 
-                        <Button size="sm" variant="secondary" className="shrink-0 w-full" onClick={() => copyToClipboard(styleTagString)} disabled={!styleTagString}>
-                            <Copy className="h-3 w-3 mr-2" />
-                            {t('smartTools.copyStyle')}
-                        </Button>
+                        <div className="grid shrink-0 grid-cols-2 gap-2">
+                            <Button size="sm" onClick={analyze} disabled={!imageUrl || !consentAccepted || isLoading}>
+                                <Palette className="mr-2 h-3 w-3" />
+                                {t('smartTools.runStyle')}
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => copyToClipboard(styleTagString)} disabled={!styleTagString}>
+                                <Copy className="mr-2 h-3 w-3" />
+                                {t('smartTools.copyStyle')}
+                            </Button>
+                        </div>
                     </div>
                 </div>
 

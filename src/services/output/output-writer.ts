@@ -21,6 +21,7 @@ import {
 import { createRuntimeOutputPlatformAdapter } from './tauri-output-adapter'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { sha256Bytes } from '@/lib/binary-digest'
+import { eradicateImageMetadata } from '@/lib/image-metadata-purge'
 
 export type OutputWriterPhase =
     | 'resolve-destination'
@@ -420,6 +421,7 @@ export class OutputWriter {
         private readonly metadataWriter: OutputMetadataWriter = new MetadataWriter(),
         private readonly createTransactionId: () => string = randomTransactionId,
         private readonly now: () => Date = () => new Date(),
+        private readonly purgeImageMetadata: typeof eradicateImageMetadata = eradicateImageMetadata,
     ) {}
 
     private async persistJournal(journal: OutputRecoveryJournal): Promise<void> {
@@ -527,7 +529,16 @@ export class OutputWriter {
                 && (request.sourceJobId.length === 0 || request.sourceJobId.length > 256)) {
                 throw new OutputWriterError('resolve-destination', 'Source job identity is not bounded')
             }
-            const prepared = this.metadataWriter.prepare(request.imageBytes, request.metadata)
+            // Privacy modes depend on the pixel re-encoder to remove provider
+            // chunks and stealth payloads before MetadataWriter optionally adds
+            // the explicit NAIS sidecar. Centralizing here covers every workflow.
+            const stripsImageMetadata = request.metadata?.metadataMode === 'strip-and-sidecar'
+                || request.metadata?.metadataMode === 'strip-only'
+            const cleanImage = stripsImageMetadata
+                ? await this.purgeImageMetadata(request.imageDataUrl, request.destination.extension)
+                : null
+            const preparedImageDataUrl = cleanImage?.dataUrl ?? request.imageDataUrl
+            const prepared = this.metadataWriter.prepare(cleanImage?.bytes ?? request.imageBytes, request.metadata)
             // Keep the established generation/output scheduling unchanged.
             // Organizer sidecars and Queue's ArtifactRecord recovery facts are
             // explicit callers, so ordinary output writes do not pay a digest.
@@ -644,7 +655,7 @@ export class OutputWriter {
             mark('generate-thumbnail-temp')
             const thumbnailDataUrl = request.generateThumbnail === undefined
                 ? undefined
-                : await request.generateThumbnail(request.imageDataUrl)
+                : await request.generateThumbnail(preparedImageDataUrl)
             journal.thumbnailStaged = thumbnailDataUrl !== undefined
             journal.phase = 'thumbnail-staged'
             await this.persistJournal(journal)

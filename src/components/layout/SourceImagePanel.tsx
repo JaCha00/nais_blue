@@ -40,7 +40,7 @@ export function SourceImagePanel() {
         <>
             <div
                 className={cn(
-                    "mb-4 bg-gradient-to-br from-primary/10 to-purple-500/10 rounded-xl border border-primary/20 overflow-hidden transition-all duration-300",
+                    "mb-4 bg-primary/10 rounded-panel border border-primary/20 overflow-hidden transition-all duration-300",
                     isAnimating && "opacity-0 scale-95 translate-x-[-20px]"
                 )}
             >
@@ -49,12 +49,12 @@ export function SourceImagePanel() {
                     <div className="flex items-center gap-2 text-sm font-medium">
                         {isInpaint ? (
                             <>
-                                <Paintbrush className="h-4 w-4 text-pink-400" />
+                                <Paintbrush className="h-4 w-4 text-primary" />
                                 <span>{t('sourcePanel.inpaintMode', '인페인팅 모드')}</span>
                             </>
                         ) : (
                             <>
-                                <ImageIcon className="h-4 w-4 text-indigo-400" />
+                                <ImageIcon className="h-4 w-4 text-info" />
                                 <span>{t('sourcePanel.i2iMode', 'I2I 모드')}</span>
                             </>
                         )}
@@ -66,7 +66,7 @@ export function SourceImagePanel() {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 rounded-full hover:bg-pink-500/20 hover:text-pink-400"
+                                    className="h-6 w-6 rounded-full hover:bg-accent hover:text-accent-foreground"
                                     onClick={() => setInpaintDialogOpen(true)}
                                     aria-label={t('sourcePanel.editMask', '마스크 영역 편집')}
                                 >
@@ -106,7 +106,7 @@ export function SourceImagePanel() {
                                         alt="Mask"
                                         className="absolute inset-0 w-full h-full opacity-50 pointer-events-none"
                                     />
-                                    <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-pink-500/80 text-white text-[10px] rounded-md">
+                                    <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-primary/80 text-primary-foreground text-[10px] rounded-control">
                                         {t('sourcePanel.maskSet', '마스크 설정됨')}
                                     </div>
                                 </>

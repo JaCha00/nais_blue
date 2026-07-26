@@ -1565,10 +1565,8 @@ export const useSceneStore = create<SceneState>()(
                         }
                     }
                     
-                    // 씬 데이터 손실 경고
-                    if (presetCount === 1 && totalScenes === 0) {
-                        console.warn('[SceneStore] Warning: Only default preset with no scenes - possible data loss')
-                    }
+                    // One default preset with no scenes is the valid first-run state;
+                    // only an actual hydration error should be reported as data loss.
                 }
             },
         }

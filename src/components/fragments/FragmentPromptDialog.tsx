@@ -613,7 +613,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
                                         onClick={handleSave}
                                         className={cn(
                                             "gap-1 transition-all",
-                                            hasChanges && "bg-yellow-500 hover:bg-yellow-600 text-black animate-pulse shadow-lg shadow-yellow-500/50"
+                                            hasChanges && "bg-warning text-scrim hover:bg-warning/90 animate-pulse"
                                         )}
                                     >
                                         <Save className="h-4 w-4" />

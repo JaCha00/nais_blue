@@ -44,6 +44,21 @@ export interface AuthState extends LocalAuthState {
     getActiveTokens: () => ActiveTokenEntry[]
 }
 
+/**
+ * Cost previews depend on every enabled credential because generation rotates
+ * across active slots. Unknown or mixed tiers use the conservative paid path;
+ * only an all-Opus active set can safely display the free base allowance.
+ */
+export function selectActiveCredentialsAreOpus(
+    state: Pick<AuthState, 'token' | 'token2' | 'slot1Enabled' | 'slot2Enabled' | 'tier' | 'tier2'>,
+): boolean {
+    const tiers = [
+        ...(state.slot1Enabled && state.token ? [state.tier] : []),
+        ...(state.slot2Enabled && state.token2 ? [state.tier2] : []),
+    ]
+    return tiers.length > 0 && tiers.every(tier => tier === 'opus')
+}
+
 const DEFAULT_LOCAL_AUTH: LocalAuthState = {
     token: '',
     token2: '',

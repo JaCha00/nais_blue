@@ -15,6 +15,8 @@ import { writeFile, exists, mkdir } from '@tauri-apps/plugin-fs'
 import { join } from '@tauri-apps/api/path'
 import { TagAnalysisDialog } from '@/components/tools/TagAnalysisDialog'
 import { BackgroundRemovalDialog } from '@/components/tools/BackgroundRemovalDialog'
+import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImageProcessingConsent'
+import { REMOTE_IMAGE_PROCESSING_POLICY_VERSION } from '@/services/privacy/remote-image-processing'
 import { MosaicDialog } from '@/components/tools/MosaicDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import {
@@ -32,6 +34,8 @@ export default function ToolsMode() {
 
     const [processedImage, setProcessedImage] = useState<string | null>(activeImage)
     const [isLoading, setIsLoading] = useState(false)
+    const remoteImageConsentVersion = useSettingsStore(state => state.remoteImageProcessingConsentVersion)
+    const remoteImageConsentAccepted = remoteImageConsentVersion >= REMOTE_IMAGE_PROCESSING_POLICY_VERSION
 
     // Style Analysis State
     const [isAnalysisOpen, setIsAnalysisOpen] = useState(false)
@@ -136,7 +140,7 @@ export default function ToolsMode() {
         if (!processedImage) return
         setIsLoading(true)
         try {
-            const result = await smartTools.removeBackground(processedImage)
+            const result = await smartTools.removeBackground(processedImage, undefined, remoteImageConsentVersion)
             // Open comparison dialog instead of directly replacing
             setRembgOriginal(processedImage)
             setRembgResult(result)
@@ -258,15 +262,14 @@ export default function ToolsMode() {
         >
             {/* Drag overlay */}
             {isDragOver && (
-                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center rounded-xl">
+                <div className="absolute inset-0 z-50 bg-scrim/72 flex items-center justify-center rounded-panel">
                     <div className="relative">
-                        <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-primary via-purple-500 to-primary animate-pulse opacity-50 blur-xl" />
-                        <div className="relative bg-background/80 backdrop-blur-xl border border-white/20 rounded-3xl p-12 shadow-2xl">
+                        <div className="relative rounded-panel bg-popover p-12 shadow-overlay">
                             <div className="text-center space-y-4">
                                 <div className="relative mx-auto w-20 h-20">
                                     <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
-                                        <ImagePlus className="h-10 w-10 text-white" />
+                                    <div className="relative w-full h-full rounded-full bg-primary flex items-center justify-center">
+                                        <ImagePlus className="h-10 w-10 text-primary-foreground" />
                                     </div>
                                 </div>
                                 <div>
@@ -293,7 +296,7 @@ export default function ToolsMode() {
                         />
 
                         {isLoading && (
-                            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white z-10">
+                            <div className="absolute inset-0 bg-scrim/72 flex flex-col items-center justify-center text-primary-foreground z-10">
                                 <div className="relative">
                                     <div className="absolute inset-0 w-20 h-20 rounded-full bg-primary/30 animate-ping" />
                                     <div className="relative w-20 h-20 rounded-full bg-gradient-to-br from-primary to-primary/50 flex items-center justify-center shadow-xl">
@@ -303,7 +306,7 @@ export default function ToolsMode() {
                                 <div className="mt-6 text-lg font-semibold tracking-wide">
                                     {t('smartTools.processing', '처리 중...')}
                                 </div>
-                                <div className="mt-2 text-sm text-white/60">
+                                <div className="mt-2 text-sm text-primary-foreground/60">
                                     {t('smartTools.pleaseWait', '잠시만 기다려주세요')}
                                 </div>
                             </div>
@@ -337,7 +340,7 @@ export default function ToolsMode() {
 
                 {/* Image Actions (Bottom Overlay) */}
                 {processedImage && (
-                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 p-2 bg-background/80 backdrop-blur-md rounded-full shadow-lg border border-border z-20">
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 rounded-control bg-popover p-2 shadow-overlay z-20">
                         <Button size="icon" variant="ghost" className="rounded-full" onClick={() => setActiveImage(null)} aria-label={t('common.remove', '이미지 제거')}>
                             <X className="h-4 w-4" />
                         </Button>
@@ -359,18 +362,20 @@ export default function ToolsMode() {
                 </div>
 
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+                    <RemoteImageProcessingConsent />
+
                     {/* Background Removal */}
                     <ToolCard
                         icon={Eraser}
-                        color="text-rose-400"
+                        color="text-destructive"
                         title={t('smartTools.rembg', '배경 제거')}
-                        disabled={!processedImage || isLoading}
+                        disabled={!processedImage || isLoading || !remoteImageConsentAccepted}
                     >
                         <Button
                             className="w-full"
                             variant="secondary"
                             onClick={handleRemoveBackground}
-                            disabled={!processedImage || isLoading}
+                            disabled={!processedImage || isLoading || !remoteImageConsentAccepted}
                         >
                             {t('smartTools.runRembg', '배경 제거 실행')}
                         </Button>
@@ -379,15 +384,15 @@ export default function ToolsMode() {
                     {/* Style Analysis (Kaloscope) */}
                     <ToolCard
                         icon={Palette}
-                        color="text-purple-400"
+                        color="text-primary"
                         title={t('smartTools.kaloscopeStyle', '스타일 분석')}
-                        disabled={!processedImage || isLoading}
+                        disabled={!processedImage || isLoading || !remoteImageConsentAccepted}
                     >
                         <Button
                             className="w-full"
                             variant="secondary"
                             onClick={() => setIsAnalysisOpen(true)}
-                            disabled={!processedImage || isLoading}
+                            disabled={!processedImage || isLoading || !remoteImageConsentAccepted}
                         >
                             {t('smartTools.runStyle', '스타일 분석 실행')}
                         </Button>
@@ -396,7 +401,7 @@ export default function ToolsMode() {
                     {/* Image to Image */}
                     <ToolCard
                         icon={ImageIcon}
-                        color="text-indigo-400"
+                        color="text-info"
                         title={t('tools.i2i.title', 'Image to Image')}
                         disabled={!processedImage || isLoading}
                     >
@@ -419,7 +424,7 @@ export default function ToolsMode() {
                     {/* Inpainting */}
                     <ToolCard
                         icon={Paintbrush}
-                        color="text-pink-400"
+                        color="text-primary"
                         title={t('tools.inpainting.title', 'Inpainting')}
                         disabled={!processedImage || isLoading}
                     >
@@ -442,7 +447,7 @@ export default function ToolsMode() {
                     {/* Mosaic */}
                     <ToolCard
                         icon={Grid3X3}
-                        color="text-amber-400"
+                        color="text-warning"
                         title={t('smartTools.mosaic', '모자이크')}
                         disabled={!processedImage || isLoading}
                     >
@@ -459,11 +464,11 @@ export default function ToolsMode() {
                     {/* Upscale (4K) */}
                     <ToolCard
                         icon={Maximize2}
-                        color="text-purple-400"
+                        color="text-primary"
                         title={
                             <span className="flex items-center gap-2">
                                 {t('smartTools.upscale', '4K 업스케일')}
-                                <span className="text-orange-400 text-xs font-medium">-7 Anlas</span>
+                                <span className="text-warning text-xs font-medium">-7 Anlas</span>
                             </span>
                         }
                         disabled={!processedImage || isLoading}
@@ -481,7 +486,7 @@ export default function ToolsMode() {
                     {/* Line Art */}
                     <ToolCard
                         icon={PenTool}
-                        color="text-slate-400"
+                        color="text-muted-foreground"
                         title={t('smartTools.lineart', '라인아트 추출')}
                         disabled={!processedImage || isLoading}
                     >
@@ -493,7 +498,7 @@ export default function ToolsMode() {
                     {/* Sketch */}
                     <ToolCard
                         icon={Pencil}
-                        color="text-gray-400"
+                        color="text-muted-foreground"
                         title={t('smartTools.sketch', '스케치 변환')}
                         disabled={!processedImage || isLoading}
                     >
@@ -505,7 +510,7 @@ export default function ToolsMode() {
                     {/* Colorize */}
                     <ToolCard
                         icon={Droplets}
-                        color="text-cyan-400"
+                        color="text-info"
                         title={t('smartTools.colorize', '색칠하기')}
                         disabled={!processedImage || isLoading}
                     >
@@ -522,7 +527,7 @@ export default function ToolsMode() {
                     {/* Emotion */}
                     <ToolCard
                         icon={Smile}
-                        color="text-yellow-400"
+                        color="text-warning"
                         title={t('smartTools.emotion', '표정 변경')}
                         disabled={!processedImage || isLoading}
                     >
@@ -540,7 +545,7 @@ export default function ToolsMode() {
                     {/* Declutter */}
                     <ToolCard
                         icon={Sparkles}
-                        color="text-emerald-400"
+                        color="text-success"
                         title={t('smartTools.declutter', '이미지 정리')}
                         disabled={!processedImage || isLoading}
                     >

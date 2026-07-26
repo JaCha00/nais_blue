@@ -120,8 +120,8 @@ function PositionGrid({ characters, selectedId, onSelect, onPositionChange }: Po
                     <div
                         key={char.id}
                         className={cn(
-                            "absolute w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold cursor-grab active:cursor-grabbing shadow-md transition-transform",
-                            selectedId === char.id && "ring-2 ring-white ring-offset-2 ring-offset-black/50 scale-110 z-10",
+                            "absolute w-8 h-8 rounded-full flex items-center justify-center text-scrim text-sm font-bold cursor-grab active:cursor-grabbing transition-transform",
+                            selectedId === char.id && "ring-2 ring-foreground ring-offset-2 ring-offset-scrim/50 scale-110 z-10",
                             dragging === char.id && "scale-125 z-20"
                         )}
                         style={{
@@ -139,7 +139,7 @@ function PositionGrid({ characters, selectedId, onSelect, onPositionChange }: Po
 
             {/* Empty state overlay */}
             {characters.filter(c => c.enabled).length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/5 backdrop-blur-[1px]">
+                <div className="absolute inset-0 flex items-center justify-center bg-scrim/40">
                     <div className="text-muted-foreground text-xs flex flex-col items-center gap-2">
                         <MapPin className="w-8 h-8 opacity-40" />
                         <span>{t('characterPromptDialog.noCharacters', '캐릭터 추가')}</span>
@@ -343,7 +343,7 @@ function PresetCard({ preset, characters, groups, onToggle, onEdit, onDelete, on
                 />
             )}
             {isActive && (
-                <Check className="absolute top-0.5 right-0.5 w-3 h-3 text-white" />
+                <Check className="absolute top-0.5 right-0.5 w-3 h-3 text-scrim" />
             )}
         </Card>
     )
@@ -454,7 +454,7 @@ export function CharacterPromptDialog() {
 
                     {/* LEFT: Library Panel */}
                     <div className="w-[400px] border-r flex flex-col bg-muted/10">
-                        <div className="p-4 border-b space-y-3 bg-background/50 backdrop-blur-sm">
+                        <div className="p-4 border-b space-y-3 bg-background">
                             <div className="flex items-center justify-between">
                                 <h3 className="font-semibold text-sm flex items-center gap-2">
                                     <Users className="w-4 h-4" />
@@ -694,7 +694,7 @@ export function CharacterPromptDialog() {
                                                 >
                                                     {/* 1. Character Number */}
                                                     <div
-                                                        className="flex-none w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-sm"
+                                                        className="flex-none w-6 h-6 rounded-full flex items-center justify-center text-scrim text-xs font-bold"
                                                         style={{ backgroundColor: CHARACTER_COLORS[index % CHARACTER_COLORS.length] }}
                                                     >
                                                         {index + 1}

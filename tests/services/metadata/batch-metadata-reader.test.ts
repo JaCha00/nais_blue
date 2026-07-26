@@ -8,6 +8,7 @@ import {
     readMetadataBatch,
     serializeMetadataBatchCsv,
     serializeMetadataBatchJson,
+    yieldToMetadataEventLoop,
 } from '@/services/metadata/batch-metadata-reader'
 
 function file(name: string, size = 1_024, type = 'image/png'): File {
@@ -38,6 +39,16 @@ const metadata: NAIMetadata = {
 }
 
 describe('batch metadata reader', () => {
+    it('keeps yielding when animation frames are suspended in a hidden window', async () => {
+        const suspendedFrame = vi.fn(() => 1)
+        vi.stubGlobal('requestAnimationFrame', suspendedFrame)
+
+        await expect(yieldToMetadataEventLoop()).resolves.toBeUndefined()
+        expect(suspendedFrame).not.toHaveBeenCalled()
+
+        vi.unstubAllGlobals()
+    })
+
     it('reads a real NAIS blue sidecar through the production parser', async () => {
         const fixture = readFileSync(
             new URL('../../fixtures/metadata/data-hub-sample.nais-blue.json', import.meta.url),

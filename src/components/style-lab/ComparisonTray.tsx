@@ -32,7 +32,7 @@ export function ComparisonTray({
         .filter((combo): combo is StyleCombination => combo !== undefined)
 
     return (
-        <Card className="sticky bottom-3 z-20 border-primary/30 bg-card/95 shadow-lg backdrop-blur-sm">
+        <Card className="sticky bottom-3 z-20 border-primary/30 bg-card shadow-overlay">
             <CardContent className="flex min-w-0 flex-col gap-3 p-3 lg:flex-row lg:items-center">
                 <div className="flex min-w-0 flex-1 flex-wrap gap-2">
                     {selected.map(combo => (

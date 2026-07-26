@@ -198,7 +198,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
                         <Trash2 className="h-4 w-4" />
                     </Button>
                     <div className="absolute bottom-1 left-1 flex gap-1 opacity-100 transition-opacity duration-fast sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100" aria-hidden="true">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-control bg-scrim/70 text-white">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-control bg-scrim/70 text-primary-foreground">
                             {getTypeIcon(image.type)}
                         </div>
                         {image.isTemporary && (

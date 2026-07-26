@@ -30,9 +30,36 @@ jobs:
             exit 1
           }
 
-  desktop:
+  release-quality:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: release-preflight
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # A single release gate protects every desktop matrix build from shipping
+      # a tag that has not passed the same lint, test, and production build path.
+      - name: Verify release source
+        run: |
+          npm run lint -- --no-cache
+          npm run test:composition
+          npm run build
+
+  desktop:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release-preflight, release-quality]
     permissions:
       contents: write
     strategy:

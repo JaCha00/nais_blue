@@ -17,6 +17,13 @@ import { useState } from 'react'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrashStore } from '@/stores/trash-store'
 import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
+import { runtimeCapabilities } from '@/platform/capabilities'
+
+/** Native paths use Tauri fs; browser-preview imports are persisted data URLs. */
+async function readLibraryBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
+    if (!path.startsWith('data:')) return new Uint8Array(await readFile(path))
+    return new Uint8Array(await (await fetch(path)).arrayBuffer())
+}
 
 interface LibraryContextMenuProps {
     item: LibraryItem
@@ -36,7 +43,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
 
     const handleCopy = async () => {
         try {
-            const data = await readFile(item.path)
+            const data = await readLibraryBytes(item.path)
             const blob = new Blob([data], { type: 'image/png' })
             await navigator.clipboard.write([
                 new ClipboardItem({ [blob.type]: blob })
@@ -50,7 +57,17 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
 
     const handleSaveAs = async () => {
         try {
-            const data = await readFile(item.path)
+            const data = await readLibraryBytes(item.path)
+            if (!runtimeCapabilities.nativePluginRuntime.supported) {
+                const objectUrl = URL.createObjectURL(new Blob([data]))
+                const anchor = document.createElement('a')
+                anchor.href = objectUrl
+                anchor.download = item.name
+                anchor.click()
+                URL.revokeObjectURL(objectUrl)
+                toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
+                return
+            }
             const filePath = await save({
                 defaultPath: item.name,
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
@@ -67,7 +84,12 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
 
     const handleSmartTools = async () => {
         try {
-            const data = await readFile(item.path)
+            if (item.path.startsWith('data:')) {
+                setActiveImage(item.path)
+                navigate('/tools')
+                return
+            }
+            const data = await readLibraryBytes(item.path)
             let binary = ''
             const len = data.byteLength
             for (let i = 0; i < len; i++) {
@@ -84,6 +106,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
     }
 
     const handleOpenFolder = async () => {
+        if (!runtimeCapabilities.nativePluginRuntime.supported || item.path.startsWith('data:')) return
         try {
             await revealItemInDir(item.path)
         } catch (e) {
@@ -134,11 +157,14 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                     <FileSearch className="h-4 w-4 mr-2" />
                     {t('metadata.loadFromImage', '메타데이터 불러오기')}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={handleOpenFolder}>
+                <ContextMenuItem
+                    onClick={handleOpenFolder}
+                    disabled={!runtimeCapabilities.nativePluginRuntime.supported || item.path.startsWith('data:')}
+                >
                     <FolderOpen className="h-4 w-4 mr-2" />
                     {t('actions.openFolder', '폴더 열기')}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => setConfirmDeleteOpen(true)} className="text-red-500 focus:text-red-500">
+                <ContextMenuItem onClick={() => setConfirmDeleteOpen(true)} className="text-destructive focus:text-destructive">
                     <Trash2 className="h-4 w-4 mr-2" />
                     {t('actions.delete', '삭제')}
                 </ContextMenuItem>

@@ -46,9 +46,9 @@
 |------|-------------|
 | **Image to Image** | Transform images with AI |
 | **Inpainting** | Selectively edit image areas |
-| **Background Removal** | Remove image backgrounds |
+| **Background Removal** | Remove backgrounds with an external Hugging Face Space |
 | **Mosaic Effect** | Apply mosaic/blur effects |
-| **Tag Analysis** | Extract image tags |
+| **Style Analysis** | Identify likely artist and style tags with Kaloscope on Hugging Face |
 | **4K Upscale** | 4x resolution upscale |
 
 ### 📚 Additional Features
@@ -123,6 +123,8 @@ nais_blue/
 ## 🔑 API Token
 
 Your NovelAI token is stored locally only and never shared with third parties.
+
+Style analysis and background removal send the selected image to third-party Hugging Face Spaces only after explicit first-use consent. The NovelAI token is never included in that transfer.
 
 ---
 

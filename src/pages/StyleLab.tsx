@@ -1,6 +1,7 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useTranslation } from 'react-i18next'
+import { useShallow } from 'zustand/react/shallow'
 import {
     BarChart3,
     ChevronLeft,
@@ -85,7 +86,7 @@ import {
 } from '@/services/style-lab/metadata-importer'
 import { getStyleLabVault } from '@/services/style-lab/style-lab-vault'
 import { useGenerationStore } from '@/stores/generation-store'
-import { useStyleLabReadStore } from '@/stores/style-lab-read-store'
+import { selectStylePreviewAssets, useStyleLabReadStore } from '@/stores/style-lab-read-store'
 import {
     useStyleLabSessionStore,
     type StyleLabTab,
@@ -184,13 +185,13 @@ function CombinationCard({
 }: CombinationCardProps) {
     const { t } = useTranslation()
     const preference = useStyleLabReadStore(state => state.preferenceProjections[combo.id])
-    const previewAssets = useStyleLabReadStore(state => state.previewAssetsByCombo[combo.id] ?? [])
+    const previewAssets = useStyleLabReadStore(state => selectStylePreviewAssets(state, combo.id))
     const tagText = formatWeightedPromptTags(combo.tags)
     const previewSource = getPreviewSource(combo)
     const temporaryPreview = isTemporaryPreview(combo)
 
     return (
-        <Card className={cn('min-w-0 overflow-hidden border-border/60 bg-card/70', combo.favorite && 'border-yellow-500/50', combo.locked && 'ring-1 ring-primary/30')}>
+        <Card className={cn('min-w-0 overflow-hidden border-border/60 bg-card/70', combo.favorite && 'border-warning/50', combo.locked && 'ring-1 ring-primary/30')}>
             <div className={cn('relative bg-muted/30', compact ? 'aspect-[4/3]' : 'aspect-video')}>
                 {previewSource ? (
                     <img src={previewSource} alt={t('styleLab.card.previewAlt')} className="h-full w-full object-cover" />
@@ -201,18 +202,18 @@ function CombinationCard({
                     </div>
                 )}
                 {combo.isPreviewing && (
-                    <div className="absolute inset-x-3 bottom-3 rounded-full bg-black/50 p-1 backdrop-blur-sm">
+                    <div className="absolute inset-x-3 bottom-3 rounded-full bg-scrim/72 p-1">
                         <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${Math.round((combo.previewProgress || 0) * 100)}%` }} />
                     </div>
                 )}
                 <div className="absolute left-2 top-2 flex gap-1">
                     {rank !== undefined && <Badge variant="secondary">#{rank}</Badge>}
-                    <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">{t('styleLab.common.generationShort')} {combo.generation}</Badge>
+                    <Badge variant="outline" className="bg-popover/95">{t('styleLab.common.generationShort')} {combo.generation}</Badge>
                 </div>
                 <div className="absolute right-2 top-2 flex gap-1">
-                    {previewAssets.length > 0 && <Badge variant="outline" className="bg-background/80 backdrop-blur-sm">{t('styleLab.card.assetCount', { count: previewAssets.length })}</Badge>}
-                    {temporaryPreview && <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm">{t('styleLab.card.temporaryPreview')}</Badge>}
-                    {combo.favorite && <Badge className="bg-yellow-500 text-black">★</Badge>}
+                    {previewAssets.length > 0 && <Badge variant="outline" className="bg-popover/95">{t('styleLab.card.assetCount', { count: previewAssets.length })}</Badge>}
+                    {temporaryPreview && <Badge variant="secondary" className="bg-popover/95">{t('styleLab.card.temporaryPreview')}</Badge>}
+                    {combo.favorite && <Badge className="bg-warning text-scrim">★</Badge>}
                     {combo.locked && <Badge variant="secondary">{t('styleLab.card.locked')}</Badge>}
                 </div>
             </div>
@@ -329,7 +330,38 @@ export default function StyleLab() {
         cleanup,
         setCombinationLifecycle,
         setCombinationLineages,
-    } = useStyleLabStore()
+    } = useStyleLabStore(useShallow(state => ({
+        artists: state.artists,
+        combinations: state.combinations,
+        evolutionLogs: state.evolutionLogs,
+        settings: state.settings,
+        activeBattlePair: state.activeBattlePair,
+        activeEvaluationContext: state.activeEvaluationContext,
+        isPreviewQueueRunning: state.isPreviewQueueRunning,
+        previewQueueTotal: state.previewQueueTotal,
+        previewQueueDone: state.previewQueueDone,
+        addArtists: state.addArtists,
+        removeArtist: state.removeArtist,
+        resetArtistsToDefault: state.resetArtistsToDefault,
+        resetLabData: state.resetLabData,
+        updateSettings: state.updateSettings,
+        generateRandomCombinations: state.generateRandomCombinations,
+        addCombinationFromTags: state.addCombinationFromTags,
+        removeCombination: state.removeCombination,
+        toggleFavorite: state.toggleFavorite,
+        toggleLock: state.toggleLock,
+        updateNote: state.updateNote,
+        setArenaRound: state.setArenaRound,
+        reserveRandomSeed: state.reserveRandomSeed,
+        setBattleLeague: state.setBattleLeague,
+        recordBattle: state.recordBattle,
+        recordBattleTie: state.recordBattleTie,
+        clearArenaRound: state.clearArenaRound,
+        recordEvolutionResult: state.recordEvolutionResult,
+        cleanup: state.cleanup,
+        setCombinationLifecycle: state.setCombinationLifecycle,
+        setCombinationLineages: state.setCombinationLineages,
+    })))
 
     const basePrompt = useGenerationStore(state => state.basePrompt)
     const additionalPrompt = useGenerationStore(state => state.additionalPrompt)

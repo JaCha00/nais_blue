@@ -421,7 +421,7 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                         {t('common.cancel', 'Cancel')}
                     </Button>
                     <Button
-                        className="bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white"
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                         onClick={handleSaveMask}
                         disabled={!propSourceImage}
                     >

@@ -85,11 +85,11 @@ export function MarketplaceGrid({
                                 </div>
                             )}
                             <div className="absolute inset-x-2 top-2 flex items-start justify-between gap-2">
-                                <Badge variant="secondary" className="bg-background/85 backdrop-blur-sm">
+                                <Badge variant="secondary" className="bg-popover/95">
                                     {t(`styleLab.market.buckets.${item.bucket}`)}
                                 </Badge>
                                 {combo.previewContextId && (
-                                    <Badge variant="outline" className="bg-background/85 backdrop-blur-sm">
+                                    <Badge variant="outline" className="bg-popover/95">
                                         {t('styleLab.market.verified')}
                                     </Badge>
                                 )}
