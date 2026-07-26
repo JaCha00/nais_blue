@@ -41,11 +41,42 @@ const IGNORED_LEGACY_KEY_TEST_ALLOWLIST = [
     'tests/fixtures/legacy/**',
     'tests/migration/**',
 ]
+// The retired Composition catalog and the local Style-Lab discovery shelf share
+// a product word only. These paths may use "marketplace", while every remote
+// runtime term (Supabase, OAuth, deep links, and retired keys) remains forbidden.
+const STYLE_LAB_MARKETPLACE_ALLOWLIST = [
+    'docs/Style-Lab-architecture-redesign-plan.md',
+    'src/application/style-lab/',
+    'src/components/style-lab/',
+    'src/domain/style-lab/',
+    'src/services/style-lab/',
+    'src/stores/style-lab',
+    'src/pages/StyleLab.tsx',
+    'src/i18n/locales/en.json',
+    'src/i18n/locales/ja.json',
+    'src/i18n/locales/ko.json',
+    'tests/application/style-lab/',
+    'tests/domain/style-lab/',
+    'tests/services/style-lab/',
+]
 function normalize(relativePath) {
     return relativePath.replaceAll('\\', '/')
 }
 
-function isAllowlisted(relativePath) {
+function isStyleLabMarketplacePath(relativePath) {
+    return STYLE_LAB_MARKETPLACE_ALLOWLIST.some(candidate => (
+        candidate.endsWith('/')
+            ? relativePath.startsWith(candidate)
+            : relativePath === candidate || relativePath.startsWith(`${candidate}-`)
+    ))
+}
+
+function isAllowlisted(match) {
+    const relativePath = match.path
+    const isStyleLabMarketplaceOnly = match.terms.every(
+        term => term.toLowerCase() === 'marketplace',
+    ) && isStyleLabMarketplacePath(relativePath)
+
     return relativePath === gatePath
         || relativePath === 'docs/composition-v2/LEGACY_RUNTIME_ALLOWLIST.md'
         || relativePath === 'docs/composition-v2/MARKETPLACE_REMOVAL.md'
@@ -53,6 +84,7 @@ function isAllowlisted(relativePath) {
         || IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST.has(relativePath)
         || relativePath.startsWith('tests/fixtures/legacy/')
         || relativePath.startsWith('tests/migration/')
+        || isStyleLabMarketplaceOnly
 }
 
 async function runGit(args, options = {}) {
@@ -130,8 +162,8 @@ for (const relativePath of repositoryFiles.paths) {
     matches.push(...findMatches(relativePath, bytes.toString('utf8')))
 }
 
-const allowed = matches.filter(match => isAllowlisted(match.path))
-const forbidden = matches.filter(match => !isAllowlisted(match.path))
+const allowed = matches.filter(isAllowlisted)
+const forbidden = matches.filter(match => !isAllowlisted(match))
 const trackedCodexToolingFiles = [...repositoryFiles.tracked]
     .filter(relativePath => relativePath.startsWith('.codex/'))
 
@@ -149,6 +181,7 @@ console.log('Historical allowlist:', HISTORICAL_ALLOWLIST.join(', '))
 console.log('Documentation allowlist:', DOCUMENTATION_ALLOWLIST.join(', '))
 console.log('Ignored-key runtime allowlist:', [...IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST].join(', '))
 console.log('Ignored-key test/fixture allowlist:', IGNORED_LEGACY_KEY_TEST_ALLOWLIST.join(', '))
+console.log('Style-Lab marketplace-only allowlist:', STYLE_LAB_MARKETPLACE_ALLOWLIST.join(', '))
 console.log(`Tracked project-local Codex tooling files: ${trackedCodexToolingFiles.length}`)
 console.log(`Allowlisted matches: ${allowed.length}`)
 console.log(`Release frontend input: ${tauriConfig?.build?.frontendDist ?? '(missing)'}`)

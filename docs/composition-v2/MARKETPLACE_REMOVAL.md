@@ -39,6 +39,10 @@ npm run test:remote-runtime-removal
 
 CI Android `source-contract` job에서도 같은 gate를 실행한다.
 
+## Style-Lab의 동명 로컬 기능
+
+Style-Lab의 Marketplace는 Supabase, 로그인, 공유, 원격 카탈로그 또는 deep link에 의존하지 않는 로컬 취향 탐색 선반이다. 제거된 Composition 원격 Marketplace와 제품 용어만 같으므로, 검색 gate는 명시된 Style-Lab 소스·테스트·번역·설계 문서에서 `marketplace` 단어만 허용한다. 같은 경로에서도 Supabase, OAuth, deep-link, retired key 검색어는 계속 실패한다.
+
 ## Old backup compatibility
 
 Marketplace/Supabase state가 들어 있는 old backup은 전체 restore를 실패시키지 않는다. 해당 key만 ignored report에 기록하고 clean storage에는 쓰지 않으며, scenes/fragments/presets와 같은 local data는 복원한다. 이 compatibility classifier는 Marketplace runtime 재도입이 아니며 삭제 대상이 아니다.
