@@ -50,12 +50,23 @@ try {
 
     $arguments = @('--no-install', 'tauri', 'android', 'build', '--target', 'aarch64', '--split-per-abi', '--apk', '--ci')
     if ($Variant -eq 'debug') { $arguments += '--debug' }
-    if ($logAbsolute) {
-        & npx @arguments *> $logAbsolute
-    } else {
-        & npx @arguments
+    # npx/Gradle writes normal status messages to stderr. Windows PowerShell 5.1
+    # promotes redirected native stderr to ErrorRecord, so temporarily continue
+    # and use the process exit code as the single build authority for both the
+    # release script and its optional combined log.
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($logAbsolute) {
+            & npx @arguments *> $logAbsolute
+        } else {
+            & npx @arguments
+        }
+        $buildExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
     }
-    if ($LASTEXITCODE -ne 0) { throw "Android $Variant build failed with exit code $LASTEXITCODE." }
+    if ($buildExitCode -ne 0) { throw "Android $Variant build failed with exit code $buildExitCode." }
     Write-Output ('ANDROID_{0}_BUILD_OK' -f $Variant.ToUpperInvariant())
 } finally {
     Remove-Item Env:ANDROID_KEY_PASSWORD -ErrorAction SilentlyContinue

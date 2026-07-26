@@ -568,6 +568,20 @@ export default function MainMode() {
         }
         if (!isGenerating) {
             void startMainGenerationCommand()
+                .then(outcome => {
+                    if (outcome !== 'low-quality-steps') return
+                    openSupportSheet('prompt')
+                    toast({
+                        title: t('generate.lowStepsBlockedTitle', 'Steps를 먼저 확인하세요'),
+                        description: t('generate.lowStepsDescription', '{{steps}} steps는 완성 전에 종료되어 흐린 결과가 나올 수 있습니다. 일반 생성은 28 steps를 권장합니다.', { steps }),
+                        variant: 'destructive',
+                    })
+                })
+                .catch(error => toast({
+                    title: t('common.error', 'Error'),
+                    description: error instanceof Error ? error.message : t('queue.enqueueFailed', 'Queue enqueue failed'),
+                    variant: 'destructive',
+                }))
         }
     }
 
@@ -1003,7 +1017,7 @@ export default function MainMode() {
                             <ImageIcon className="h-8 w-8" />
                         </div>
                         <h1 className="text-lg font-semibold text-foreground">{t('generate.emptyState')}</h1>
-                        <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+                        <p className="mt-1 max-w-[17rem] text-sm leading-6 text-muted-foreground sm:max-w-sm">
                             {t('generate.emptyDescription')}
                         </p>
                         <Button variant="outline" className="mt-4" onClick={handleOpenPromptSheet}>

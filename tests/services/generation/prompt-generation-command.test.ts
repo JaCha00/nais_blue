@@ -20,7 +20,7 @@ const runtime = vi.hoisted(() => ({
         cancelSceneGeneration: vi.fn(),
         startNewGenerationSession: vi.fn(),
     },
-    startMain: vi.fn(async () => undefined),
+    startMain: vi.fn(async (): Promise<'started' | 'low-quality-steps'> => 'started'),
     cancelMain: vi.fn(async () => undefined),
     enqueueScene: vi.fn(async () => ({ batch: { id: 'batch:scene' } })),
     drain: vi.fn(async () => undefined),
@@ -53,6 +53,7 @@ describe('prompt route generation command adapter', () => {
         runtime.scene.isGenerating = false
         runtime.scene.isCancelling = false
         runtime.scene.getTotalQueueCount.mockReturnValue(2)
+        runtime.startMain.mockResolvedValue('started')
         vi.clearAllMocks()
     })
 
@@ -71,6 +72,14 @@ describe('prompt route generation command adapter', () => {
         await expect(executePromptGenerationCommand('main')).resolves.toBe('cancel-requested')
         expect(runtime.cancelMain).toHaveBeenCalledOnce()
         expect(runtime.main.cancelGeneration).not.toHaveBeenCalled()
+    })
+
+    it('propagates the low-step guard without claiming that Main started', async () => {
+        runtime.startMain.mockResolvedValue('low-quality-steps')
+
+        await expect(executePromptGenerationCommand('main')).resolves.toBe('low-quality-steps')
+        expect(runtime.startMain).toHaveBeenCalledOnce()
+        expect(runtime.cancelMain).not.toHaveBeenCalled()
     })
 
     it('cancels a direct Style Lab generation through its owning store under durable authority', async () => {

@@ -86,6 +86,7 @@ interface PresetState {
     loadPreset: (id: string) => void
     renamePreset: (id: string, name: string) => void
     reorderPresets: (oldIndex: number, newIndex: number) => void
+    replacePresetFromExternal: (preset: Preset) => void
     getActivePreset: () => Preset | undefined
 }
 
@@ -274,6 +275,33 @@ export const usePresetStore = create<PresetState>()(
                     newPresets.splice(newIndex, 0, removed)
                     return { presets: newPresets }
                 })
+            },
+
+            /**
+             * Agent Workspace validates the full replacement before reaching the
+             * store. Preserving identity/default metadata keeps preset persistence
+             * and the active generation draft aligned after an external edit.
+             */
+            replacePresetFromExternal: (preset) => {
+                const current = get().presets.find(entry => entry.id === preset.id)
+                if (!current) throw new Error(`Preset not found: ${preset.id}`)
+                const replacement: Preset = {
+                    ...preset,
+                    id: current.id,
+                    createdAt: current.createdAt,
+                    isDefault: current.isDefault,
+                }
+                const active = get().activePresetId === replacement.id
+                const snapshot = workingCopyFromPreset(replacement)
+                set(state => ({
+                    presets: state.presets.map(entry => entry.id === replacement.id ? replacement : entry),
+                    ...(active ? {
+                        workingCopy: snapshot,
+                        savedSnapshot: snapshot,
+                        dirty: false,
+                    } : {}),
+                }))
+                if (active) useGenerationStore.getState().applyPreset(replacement)
             },
 
             getActivePreset: () => {

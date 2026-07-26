@@ -2,6 +2,18 @@
   "schemaVersion": 1,
   "fixtures": [
     {
+      "path": "metadata/data-hub-sample.nais-blue.json",
+      "source": "Synthetic NAIS blue Metadata v2 sidecar created for the Data Hub production parser and responsive batch-reading contract.",
+      "model": "nai-diffusion-4-5-full",
+      "captureDate": "2026-07-26",
+      "captureKind": "synthetic-derived",
+      "transformed": false,
+      "sensitiveDataRemoved": true,
+      "transformations": [
+        "Uses fixed synthetic prompts, parameters, identifiers, and seed without credentials, provider responses, or image bytes."
+      ]
+    },
+    {
       "path": "payload/supported-online-matrix.json",
       "source": "Synthetic release covering matrix derived from the current selectable V4/V4.5 model registry, PNG/WebP output settings, production standard/stream transports, and Main/Scene/Style Lab/source-edit/cancel workflow contracts.",
       "model": "V4/V4.5 required; V3/Furry V3 non-blocking probes",

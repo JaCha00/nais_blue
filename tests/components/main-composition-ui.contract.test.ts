@@ -35,8 +35,10 @@ describe('Main composition UI contract', () => {
         expect(mainMode).toContain('<MobileCommandDock')
         expect(mainMode).toContain('safe-area-inset-bottom')
         expect(command).toContain("executionAuthority === 'legacy'")
-        expect(command).toContain('useGenerationStore.getState().generate()')
+        expect(command).toContain("return 'low-quality-steps'")
+        expect(command).toContain('await generation.generate()')
         expect(command).toContain('enqueueCurrentMainBatch()')
+        expect(mainMode).toContain("outcome !== 'low-quality-steps'")
     })
 
     it('moves compact module, inspector, and resolved content into focus-managed sheets', async () => {
@@ -81,6 +83,7 @@ describe('Main composition UI contract', () => {
         expect(promptPanel).toMatch(/\{isMainMode\s*&&\s*\([\s\S]*?<RecipeSelector\s*\/>[\s\S]*?<ResolvedPlanPanel\s*\/>/)
         expect(promptPanel).toContain('<PromptEditorSurface />')
         expect(promptPanel).toContain('<PromptGenerationControls isSceneMode={isSceneMode} />')
+        expect(promptPanel).toContain("t('generate.restoreRecommendedSteps'")
         expect(promptPanel).toContain('if (!isGenerating) setFragmentDialogOpen')
         expect(promptPanel).toContain('if (isGenerating) setFragmentDialogOpen(false)')
         expect(promptPanel).toMatch(/aria-label=\{t\('prompt\.fragment'\)\}[\s\S]*?disabled=\{isGenerating\}/)

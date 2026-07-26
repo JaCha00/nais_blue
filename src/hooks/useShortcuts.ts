@@ -18,7 +18,9 @@ export const SHORTCUT_EVENTS = {
 }
 
 // 메뉴 순서 정의
-const MENU_ROUTES = ['/', '/scenes', '/tools', '/queue', '/web', '/library', '/settings']
+// Keep keyboard navigation aligned with the primary rail so the Data Hub is
+// reachable without pointer input while preserving the existing route order.
+const MENU_ROUTES = ['/', '/scenes', '/tools', '/queue', '/web', '/library', '/data', '/settings']
 
 export function useShortcuts() {
     const navigate = useNavigate()

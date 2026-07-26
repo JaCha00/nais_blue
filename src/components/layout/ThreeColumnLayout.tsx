@@ -35,6 +35,7 @@ import {
     ListTodo,
     CloudUpload,
     Trash2,
+    DatabaseZap,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
@@ -186,6 +187,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/queue', icon: ListTodo, labelKey: 'nav.queue', fallbackLabel: 'Queue Center' },
         { path: '/r2', icon: CloudUpload, labelKey: 'nav.r2Upload', fallbackLabel: 'R2 Upload' },
         { path: '/trash', icon: Trash2, labelKey: 'nav.trash', fallbackLabel: '휴지통' },
+        { path: '/data', icon: DatabaseZap, labelKey: 'nav.dataHub', fallbackLabel: '데이터 허브' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },
         { path: '/library', icon: Images, labelKey: 'nav.library' },
         { path: '/settings', icon: Settings, labelKey: 'nav.settings' },
@@ -352,7 +354,16 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                             </button>
                         </Tip>
                         <div className="flex min-w-0 flex-1 items-center">
-                            <AnimatedNavBar items={navItems} />
+                            {/* Both 2xl docks reduce the center header below the icon-row
+                                width. The nav depends on those dock projections and moves
+                                secondary routes into More so neither panel toggle overlaps. */}
+                            <AnimatedNavBar
+                                items={navItems}
+                                forceCondensed={isDesktopShell
+                                    && leftSidebarVisible
+                                    && historyPanelIsDocked
+                                    && rightSidebarVisible}
+                            />
                         </div>
                         <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}>
                             <button

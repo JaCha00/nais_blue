@@ -34,6 +34,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { generateRandomSeed } from '@/lib/utils'
 import {
     Dice5,
+    AlertTriangle,
     Lock,
     Unlock,
     SlidersHorizontal,
@@ -49,6 +50,11 @@ import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { ResolvedPlanPanel } from '@/components/composition/ResolvedPlanPanel'
+import {
+    assessGenerationStepQuality,
+    LOW_STEP_CAUTION_THRESHOLD,
+    RECOMMENDED_GENERATION_STEPS,
+} from '@/services/generation/generation-quality'
 
 const SAMPLERS = [
     'k_euler',
@@ -109,6 +115,7 @@ export function PromptPanel() {
     const [characterPanelOpen, setCharacterPanelOpen] = useState(false)
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
+    const stepQuality = assessGenerationStepQuality(steps)
 
     // 전역 단축키 이벤트 수신
     useEffect(() => {
@@ -315,6 +322,34 @@ export function PromptPanel() {
                                     step={1}
                                     className={cn("w-full", steps > 28 && "[&>.relative>.bg-primary]:bg-destructive")}
                                 />
+                                {stepQuality !== 'normal' && (
+                                    // The draft store supplies the live value and the command guard
+                                    // enforces the same threshold; this alert explains why a latent
+                                    // preview would look broken and offers a one-tap safe recovery.
+                                    <div className="flex flex-col gap-3 rounded-control border border-warning/40 bg-warning/10 p-3 text-left sm:flex-row sm:items-center" role="alert">
+                                        <div className="flex min-w-0 flex-1 gap-2">
+                                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-semibold text-foreground">
+                                                    {t('generate.lowStepsTitle', '저품질 Steps 설정')}
+                                                </p>
+                                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                                    {t('generate.lowStepsDescription', '{{steps}} steps는 완성 전에 종료되어 흐린 결과가 나올 수 있습니다. 일반 생성은 28 steps를 권장합니다.', { steps })}
+                                                    {stepQuality === 'caution' && ` (${t('generate.lowStepsCautionRange', '{{threshold}} 미만은 실험용입니다.', { threshold: LOW_STEP_CAUTION_THRESHOLD })})`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="shrink-0"
+                                            onClick={() => setSteps(RECOMMENDED_GENERATION_STEPS)}
+                                        >
+                                            {t('generate.restoreRecommendedSteps', '28 steps로 복원')}
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
 
                             {/* CFG Scale */}

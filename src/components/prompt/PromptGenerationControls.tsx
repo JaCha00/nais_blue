@@ -34,6 +34,7 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
     const currentBatch = useGenerationSessionStore(state => state.currentBatch)
     const generatingMode = useGenerationSessionStore(state => state.generatingMode)
     const batchCount = useGenerationDraftStore(state => state.batchCount)
+    const steps = useGenerationDraftStore(state => state.steps)
     const setBatchCount = useGenerationDraftStore(state => state.setBatchCount)
     const sceneQueueCount = activePresetId ? getTotalQueueCount(activePresetId) : 0
     const isMainGenerating = generatingMode === 'main'
@@ -51,6 +52,14 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
                     toast({
                         title: t('credentialVault.unlockRequired', 'API 토큰 잠금 해제 필요'),
                         description: t('credentialVault.unlockRequiredForGeneration', '이미지를 생성하려면 NovelAI API 토큰 보관소를 잠금 해제하세요.'),
+                    })
+                    return
+                }
+                if (outcome === 'low-quality-steps') {
+                    toast({
+                        title: t('generate.lowStepsBlockedTitle', 'Check Steps first'),
+                        description: t('generate.lowStepsDescription', '{{steps}} steps can stop before the image is resolved. Use 28 steps for a normal generation.', { steps }),
+                        variant: 'destructive',
                     })
                     return
                 }

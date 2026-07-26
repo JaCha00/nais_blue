@@ -20,6 +20,7 @@ const StyleLab = lazy(() => import('@/pages/StyleLab'))
 const QueueCenter = lazy(() => import('@/pages/QueueCenter'))
 const R2Upload = lazy(() => import('@/pages/R2Upload'))
 const Trash = lazy(() => import('@/pages/Trash'))
+const DataHub = lazy(() => import('@/pages/DataHub'))
 
 function RouteLoadingFallback() {
     return (
@@ -63,6 +64,7 @@ function AppContent() {
                     <Route path="/queue" element={<QueueCenter />} />
                     <Route path="/r2" element={<R2Upload />} />
                     <Route path="/trash" element={<Trash />} />
+                    <Route path="/data" element={<DataHub />} />
                     <Route path="/web" element={<WebView />} />
                     <Route path="/library" element={<Library />} />
                     <Route path="/settings" element={<Settings />} />

@@ -17,6 +17,7 @@ export type PromptGenerationCommandOutcome =
     | 'rotation-stopped'
     | 'no-scene-work'
     | 'credential-required'
+    | 'low-quality-steps'
     | 'blocked-conflict'
 
 /**
@@ -40,8 +41,7 @@ export async function executePromptGenerationCommand(
             return 'cancel-requested'
         }
         if (!ensureActiveGenerationCredential()) return 'credential-required'
-        await startMainGenerationCommand()
-        return 'started'
+        return await startMainGenerationCommand()
     }
 
     const rotation = useRotationStore.getState()

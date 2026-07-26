@@ -30,6 +30,7 @@ const defaultRoutes = [
     '/web',
     '/queue',
     '/r2',
+    '/data',
     '/settings',
 ]
 // A route filter keeps focused accessibility checks fast and isolates layout

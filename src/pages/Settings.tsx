@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -88,6 +89,7 @@ const SECTIONS = [
 
 export default function Settings() {
     const { t, i18n } = useTranslation()
+    const [searchParams, setSearchParams] = useSearchParams()
     const { theme, setTheme } = useThemeStore()
     const {
         savePath,
@@ -121,7 +123,12 @@ export default function Settings() {
     const { bindings, enabled: shortcutsEnabled, setBinding, resetBinding, resetAllBindings, setEnabled: setShortcutsEnabled } = useShortcutStore()
     const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey)
 
-    const [activeSection, setActiveSection] = useState<SettingsSection>('general')
+    const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
+        const requested = searchParams.get('section')
+        return SECTIONS.some(section => section.id === requested)
+            ? requested as SettingsSection
+            : 'general'
+    })
     const [localSavePath, setLocalSavePath] = useState(savePath)
     const [isAbsolutePath, setIsAbsolutePath] = useState(useAbsolutePath)
     const [localSceneSavePath, setLocalSceneSavePath] = useState(sceneSavePath)
@@ -135,6 +142,23 @@ export default function Settings() {
     const [appVersion, setAppVersion] = useState('')
     const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
     const { pendingUpdate, isDownloading, setPendingUpdate, setIsDownloading, setDownloadProgress } = useUpdateStore()
+
+    // Deep links from the Data Hub land on the actionable settings section;
+    // mirroring selection into the URL also keeps browser back/forward useful.
+    const selectSection = (section: SettingsSection) => {
+        setActiveSection(section)
+        const next = new URLSearchParams(searchParams)
+        if (section === 'general') next.delete('section')
+        else next.set('section', section)
+        setSearchParams(next, { replace: true })
+    }
+
+    useEffect(() => {
+        const requested = searchParams.get('section')
+        if (SECTIONS.some(section => section.id === requested) && requested !== activeSection) {
+            setActiveSection(requested as SettingsSection)
+        }
+    }, [activeSection, searchParams])
 
     // 키바인드 편집 상태
     const [editingAction, setEditingAction] = useState<ShortcutAction | null>(null)
@@ -487,7 +511,7 @@ export default function Settings() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <h1 className="shrink-0 text-lg font-semibold sm:mr-auto">{t('settingsPage.title')}</h1>
                     <div className="flex min-w-0 items-center gap-2">
-                        <Select value={activeSection} onValueChange={(value) => setActiveSection(value as SettingsSection)}>
+                        <Select value={activeSection} onValueChange={(value) => selectSection(value as SettingsSection)}>
                             <SelectTrigger className="min-w-0 flex-1 sm:w-64 sm:flex-none" aria-label={t('settingsPage.title')}>
                                 <SelectValue />
                             </SelectTrigger>
@@ -510,7 +534,7 @@ export default function Settings() {
                         <button
                             key={section.id}
                             type="button"
-                            onClick={() => setActiveSection(section.id)}
+                            onClick={() => selectSection(section.id)}
                             aria-current={activeSection === section.id ? 'page' : undefined}
                             className={cn(
                                 'flex min-h-11 w-full items-center gap-3 rounded-control px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',

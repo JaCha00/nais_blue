@@ -271,11 +271,13 @@ async function runPostRenderStartupTasks(): Promise<void> {
         { useCharacterStore },
         { startStoreSnapshotScheduler },
         { initializeQueueAfterRestart },
+        { startAgentWorkspaceBridge },
     ] = await Promise.all([
         import('./stores/asset-module-store'),
         import('./stores/character-store'),
         import('./lib/store-snapshots'),
         import('./services/queue/queue-startup'),
+        import('./services/agent/agent-workspace-runtime'),
     ])
     void initializeQueueAfterRestart().then(recovery => {
         const results = [...recovery.linkedOutputs, ...recovery.orphanOutputs]
@@ -289,9 +291,18 @@ async function runPostRenderStartupTasks(): Promise<void> {
     }).catch(err => {
         reportDiagnostic(err, { operation: 'startup.output-recovery', stage: 'scan', category: 'local_io' })
     })
-    void startAssetProfileDiskSync().catch(err => {
-        reportDiagnostic(err, { operation: 'startup.asset-profile-sync', stage: 'sync', category: 'sync' })
-    })
+    // Agent Workspace depends on the desktop Asset Profile disk projection. Starting
+    // it after the initial profile load prevents a stale startup snapshot while both
+    // watchers continue to refresh their independent compatibility/read boundaries.
+    void startAssetProfileDiskSync()
+        .then(() => {
+            void startAgentWorkspaceBridge().catch(err => {
+                reportDiagnostic(err, { operation: 'startup.agent-workspace', stage: 'sync', category: 'sync' })
+            })
+        })
+        .catch(err => {
+            reportDiagnostic(err, { operation: 'startup.asset-profile-sync', stage: 'sync', category: 'sync' })
+        })
 
     startStoreSnapshotScheduler()
 

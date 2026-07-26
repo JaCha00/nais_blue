@@ -34,6 +34,7 @@ import {
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
 import { createGenerationJobSnapshot } from './job-snapshot'
+import { createSerializedProgressReporter } from './serialized-progress-reporter'
 import {
     dehydrateGenerationParams,
     getRuntimeQueueResourceMaterializer,
@@ -289,11 +290,13 @@ export async function executeSceneQueueJob(
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
     await context.updateProgress('transport', 0, Math.max(1, params.steps))
+    const progressReporter = createSerializedProgressReporter(context.updateProgress)
     const result = payload.queueExecution.streaming && !payload.queueExecution.sourceEdit
         ? await generateImageStream(context.token, params, progress => {
-            void context.updateProgress('stream', Math.min(params.steps, Math.round(params.steps * progress / 100)), params.steps)
+            progressReporter.enqueue('stream', Math.min(params.steps, Math.round(params.steps * progress / 100)), params.steps)
         }, context.signal)
         : await generateImage(context.token, params, context.signal)
+    await progressReporter.flush()
     if (!result.success || !result.imageData) {
         if (result.termination === 'cancelled') return
         if (result.termination === 'timeout') {

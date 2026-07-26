@@ -19,6 +19,7 @@ interface NavItem {
 
 interface AnimatedNavBarProps {
     items: NavItem[]
+    forceCondensed?: boolean
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
@@ -29,7 +30,7 @@ function isRouteActive(pathname: string, itemPath: string) {
         : pathname === itemPath || pathname.startsWith(`${itemPath}/`)
 }
 
-export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
+export function AnimatedNavBar({ items, forceCondensed = false }: AnimatedNavBarProps) {
     const { t } = useTranslation()
     const location = useLocation()
     const reduceMotion = useReducedMotion()
@@ -85,15 +86,24 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             {/* Full labels depend on the center workspace width shared with both
                 side docks. The 2200px threshold keeps enlarged labels away from
                 sidebar toggles; ordinary desktops retain clear icons and tooltips. */}
-            <div className="hidden min-[2200px]:flex min-w-0 items-center justify-center gap-0">
+            <div className={cn(
+                'hidden min-w-0 items-center justify-center gap-0 min-[2200px]:flex',
+                forceCondensed && '!hidden',
+            )}>
                 {items.map(item => renderItem(item, 'activeTab-desktop', true))}
             </div>
 
-            <div className="hidden min-w-0 items-center justify-center gap-1 lg:flex min-[2200px]:!hidden">
+            <div className={cn(
+                'hidden min-w-0 items-center justify-center gap-1 lg:flex min-[2200px]:!hidden',
+                forceCondensed && '!hidden',
+            )}>
                 {items.map(item => renderItem(item, 'activeTab-compact', false))}
             </div>
 
-            <div className="flex w-full max-w-[15rem] min-w-0 items-center justify-between gap-1 lg:hidden">
+            <div className={cn(
+                'w-full max-w-[15rem] min-w-0 items-center justify-between gap-1',
+                forceCondensed ? 'flex' : 'flex lg:hidden',
+            )}>
                 {primaryItems.map(item => renderItem(item, 'activeTab-condensed', false))}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

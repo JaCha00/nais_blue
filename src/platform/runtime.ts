@@ -26,6 +26,11 @@ function normalizePlatform(value: string): NaisRuntimePlatform {
 export const runtimePlatform = normalizePlatform(buildPlatform)
 export const isAndroidRuntime = runtimePlatform === 'android'
 export const isMobileRuntime = runtimePlatform === 'android' || runtimePlatform === 'ios'
+// Native-only services use this centralized build-time classification instead
+// of importing Tauri runtime probes throughout UI and service modules.
+export const isDesktopRuntime = runtimePlatform === 'windows'
+    || runtimePlatform === 'macos'
+    || runtimePlatform === 'linux'
 
 // Compatibility exports for call sites that only need a boolean. New UI should
 // consume the full capability object so unsupported reasons are visible.

@@ -12,6 +12,7 @@ describe('Primary navigation contract', () => {
             expect(app).not.toContain(`path="${route}"`)
         }
         expect(app).toContain('path="/r2"')
+        expect(app).toContain('path="/data"')
         expect(app).toContain('path="*"')
         expect(app).toContain('<Navigate to="/" replace />')
     })
@@ -19,7 +20,7 @@ describe('Primary navigation contract', () => {
     it('keeps every remaining destination in the top navigation', async () => {
         const layout = await source('src/components/layout/ThreeColumnLayout.tsx')
 
-        for (const route of ['/', '/scenes', '/tools', '/style-lab', '/queue', '/r2', '/web', '/library', '/settings']) {
+        for (const route of ['/', '/scenes', '/tools', '/style-lab', '/queue', '/r2', '/data', '/web', '/library', '/settings']) {
             expect(layout).toContain(`path: '${route}'`)
         }
         expect(layout).not.toContain("path: '/asset-modules'")
@@ -33,6 +34,7 @@ describe('Primary navigation contract', () => {
         expect(navigation).toContain("items.map(item => renderItem(item, 'activeTab-desktop', true))")
         expect(navigation).toContain('min-[2200px]:flex')
         expect(navigation).toContain('lg:hidden')
+        expect(navigation).toContain('forceCondensed')
     })
 
     it('removes Discord community shortcuts from settings', async () => {
