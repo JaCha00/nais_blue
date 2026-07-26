@@ -14,6 +14,7 @@ function check(name, pass) {
 }
 
 const files = [
+  'src/lib/nai-preset-text.ts',
   'src/services/nai/endpoints.ts',
   'src/services/nai/presets.ts',
   'src/services/nai/payload.ts',
@@ -97,7 +98,12 @@ function assertPlainObject(actual, expected) {
 }
 
 function runPayloadFixtureChecks() {
-  const presetsModule = loadTsCommonJs('src/services/nai/presets.ts')
+  // The payload fixture mirrors the runtime dependency graph: preset assembly
+  // consumes the shared quality/UC table also used by metadata import.
+  const presetTextModule = loadTsCommonJs('src/lib/nai-preset-text.ts')
+  const presetsModule = loadTsCommonJs('src/services/nai/presets.ts', {
+    '@/lib/nai-preset-text': presetTextModule,
+  })
   const payloadModule = loadTsCommonJs('src/services/nai/payload.ts', {
     '@/services/nai/presets': presetsModule,
   })
