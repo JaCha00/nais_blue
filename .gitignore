@@ -24,6 +24,8 @@ keystore.properties
 src-tauri/target/
 src-tauri/gen/android/
 src-tauri/gen/schemas/
+# Gradle creates per-project lock and checksum caches; Android builds recreate them.
+**/.gradle/
 
 # Tagger Server Build Artifacts
 src-tauri/python/build/

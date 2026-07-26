@@ -38,6 +38,10 @@ import {
 } from '@/lib/backup-projection'
 import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 import {
+    STYLE_LAB_REPOSITORY_SCHEMA_VERSION,
+    STYLE_LAB_REPOSITORY_STORE_KEY,
+} from '@/domain/style-lab/persistence'
+import {
     ASSET_PROFILE_FILE_PATH,
     loadRawAssetProfileFile,
     restoreRawAssetProfileFile,
@@ -113,6 +117,7 @@ export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedB
     'nais2-tools': { version: 2, schemaVersion: 2 },
     'nais2-update': { version: 2, schemaVersion: 2 },
     'nais2-style-lab': { version: 2, schemaVersion: 2 },
+    [STYLE_LAB_REPOSITORY_STORE_KEY]: { schemaVersion: STYLE_LAB_REPOSITORY_SCHEMA_VERSION },
     'nais2-asset-modules': { version: 2, schemaVersion: 2 },
     [COMPOSITION_REPOSITORY_STORE_KEY]: { schemaVersion: COMPOSITION_REPOSITORY_SCHEMA_VERSION },
     'nais-library-storage': { version: 2, schemaVersion: 2 },

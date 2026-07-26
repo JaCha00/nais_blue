@@ -3,6 +3,7 @@ import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
 import { executeSceneQueueJob } from './scene-queue-adapter'
 import { executeMainQueueJob } from './main-queue-adapter'
+import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-adapter'
 import { initializeQueueAfterRestart } from './queue-startup'
 
 let runtimeCoordinator: DurableQueueCoordinator | null = null
@@ -23,6 +24,10 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
                 }
                 if (job.workflow === 'main') {
                     await executeMainQueueJob(job, context)
+                    return
+                }
+                if (job.workflow === 'style-lab') {
+                    await executeStyleLabQueueJob(job, context)
                     return
                 }
                 throw new Error(`Durable executor is unavailable for ${job.workflow}`)

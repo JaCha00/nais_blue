@@ -2,11 +2,13 @@ import { getRuntimeOutputWriter, type OutputRecoveryResult } from '@/services/ou
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
 import { recoverQueueLinkedOutputs } from './queue-output-recovery'
 import { recoverQueueAfterRestart, type QueueRecoveryResult } from './recovery'
+import { reconcileStyleLabRenderReservations } from '@/services/style-lab/style-lab-queue-adapter'
 
 export interface QueueStartupRecoveryResult {
     linkedOutputs: OutputRecoveryResult[]
     orphanOutputs: OutputRecoveryResult[]
     leases: QueueRecoveryResult
+    styleLabReservations: { spent: number; released: number }
 }
 
 let startupPromise: Promise<QueueStartupRecoveryResult> | null = null
@@ -28,7 +30,10 @@ export function initializeQueueAfterRestart(): Promise<QueueStartupRecoveryResul
             // even when its wall-clock expiry is still in the future.
             includeUnexpiredLeases: true,
         })
-        return { linkedOutputs, orphanOutputs, leases }
+        // Lease recovery determines terminal Queue truth before render costs are
+        // reconciled; this releases failed/cancelled work after desktop restarts.
+        const styleLabReservations = await reconcileStyleLabRenderReservations({ queueRepository: repository })
+        return { linkedOutputs, orphanOutputs, leases, styleLabReservations }
     })()
     return startupPromise
 }

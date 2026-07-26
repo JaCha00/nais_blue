@@ -2,30 +2,52 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import {
+    STYLE_LAB_RANDOM_ALGORITHM,
+    createStyleLabRandom,
+    styleCombinationIdentity,
+    type StyleCombinationLifecycle,
+    type EvolutionLineage,
+    type StyleEvaluationContext,
+} from '@/domain/style-lab'
+import {
     DEFAULT_STYLE_LAB_ARTISTS,
     STYLE_LAB_DEFAULT_TEMPLATE,
     WeightedPromptTag,
     applyArenaBattleResult,
+    applyArenaTieResult,
     createEvolutionPlan,
     createRandomWeightedTags,
     genomeSignature,
     normalizePromptTag,
     normalizeArtistList,
     parseArtistInput,
-    pickArenaPair,
     StyleLabArenaLeague,
 } from '@/lib/style-lab'
+import {
+    STYLE_LAB_STORE_SCHEMA_VERSION,
+    STYLE_LAB_STORE_VERSION,
+    migrateStyleLabPersistedState,
+    type StyleLabRandomState,
+} from './style-lab-store-migration'
 
 export type StyleLabLeague = StyleLabArenaLeague
 
 export interface StyleCombination {
     id: string
     tags: WeightedPromptTag[]
+    semanticHash: string
+    renderHash: string
+    lifecycle: StyleCombinationLifecycle
+    lineage?: EvolutionLineage
     elo: number
+    legacyElo: number
     wins: number
     losses: number
+    ties: number
     battles: number
+    legacyBattles: number
     favorite: boolean
+    legacyFavorite: boolean
     locked: boolean
     note: string
     generation: number
@@ -36,6 +58,7 @@ export interface StyleCombination {
     previewThumbnail?: string
     previewSeed?: number
     previewPrompt?: string
+    previewContextId?: string
     previewProgress?: number
     isPreviewing?: boolean
     previewError?: string
@@ -68,11 +91,14 @@ export interface StyleLabSettings {
 }
 
 interface StyleLabState {
+    schemaVersion: typeof STYLE_LAB_STORE_SCHEMA_VERSION
     artists: string[]
     combinations: StyleCombination[]
     evolutionLogs: EvolutionLogItem[]
     settings: StyleLabSettings
     activeBattlePair: [string, string] | null
+    activeEvaluationContext: StyleEvaluationContext | null
+    randomState: StyleLabRandomState
     isPreviewQueueRunning: boolean
     previewQueueTotal: number
     previewQueueDone: number
@@ -90,20 +116,45 @@ interface StyleLabState {
     toggleLock: (id: string) => void
     updateNote: (id: string, note: string) => void
 
-    pickBattlePair: () => [string, string] | null
+    setArenaRound: (pair: [string, string], context: StyleEvaluationContext) => void
+    reserveRandomSeed: (scope: string) => number
     setBattleLeague: (league: StyleLabLeague) => void
     recordBattle: (winnerId: string, loserId: string) => void
+    recordBattleTie: (leftId: string, rightId: string) => void
+    clearArenaRound: () => void
 
     evolve: () => string[]
+    recordEvolutionResult: (input: Omit<EvolutionLogItem, 'id' | 'timestamp'>) => void
     cleanup: (minBattles: number, eloBelow: number) => number
 
     setPreviewQueueState: (running: boolean, total?: number, done?: number) => void
-    updateCombinationPreview: (id: string, patch: Partial<Pick<StyleCombination, 'previewImage' | 'previewPath' | 'previewThumbnail' | 'previewSeed' | 'previewPrompt' | 'previewProgress' | 'isPreviewing' | 'previewError'>>) => void
+    updateCombinationPreview: (id: string, patch: Partial<Pick<StyleCombination, 'previewImage' | 'previewPath' | 'previewThumbnail' | 'previewSeed' | 'previewPrompt' | 'previewContextId' | 'previewProgress' | 'isPreviewing' | 'previewError'>>) => void
+    setCombinationLifecycle: (id: string, lifecycle: StyleCombinationLifecycle) => void
+    setCombinationLineages: (lineages: readonly EvolutionLineage[]) => void
     clearPreviewRuntime: () => void
 }
 
 const now = () => Date.now()
 const makeId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+
+function createEntropySeed(): number {
+    if (typeof globalThis.crypto?.getRandomValues === 'function') {
+        return globalThis.crypto.getRandomValues(new Uint32Array(1))[0]
+    }
+    return (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0
+}
+
+function createRandomState(): StyleLabRandomState {
+    return {
+        algorithm: STYLE_LAB_RANDOM_ALGORITHM,
+        seed: createEntropySeed(),
+        sequence: 0,
+    }
+}
+
+function nextRandomState(state: StyleLabRandomState): StyleLabRandomState {
+    return { ...state, sequence: state.sequence + 1 }
+}
 
 const defaultSettings: StyleLabSettings = {
     minTags: 5,
@@ -131,14 +182,22 @@ function normalizeCombinationTags(tags: WeightedPromptTag[]): WeightedPromptTag[
 }
 
 function createCombination(tags: WeightedPromptTag[], generation = 0): StyleCombination {
+    const normalizedTags = normalizeCombinationTags(tags)
+    const identity = styleCombinationIdentity(normalizedTags)
     return {
         id: makeId('combo'),
-        tags: normalizeCombinationTags(tags),
+        tags: normalizedTags,
+        ...identity,
+        lifecycle: 'draft',
         elo: 1200,
+        legacyElo: 1200,
         wins: 0,
         losses: 0,
+        ties: 0,
         battles: 0,
+        legacyBattles: 0,
         favorite: false,
+        legacyFavorite: false,
         locked: false,
         note: '',
         generation,
@@ -151,7 +210,28 @@ function shouldTouchCombinationUpdatedAt(patch: Partial<StyleCombination>): bool
     return patch.previewPath !== undefined ||
         patch.previewThumbnail !== undefined ||
         patch.previewSeed !== undefined ||
-        patch.previewPrompt !== undefined
+        patch.previewPrompt !== undefined ||
+        patch.previewContextId !== undefined
+}
+
+/** Legacy preview fields remain a UI read model; this helper derives the durable
+ * candidate lifecycle from the asset context carried by each committed preview. */
+function applyPreviewPatch(
+    combo: StyleCombination,
+    patch: Partial<Pick<StyleCombination, 'previewImage' | 'previewPath' | 'previewThumbnail' | 'previewSeed' | 'previewPrompt' | 'previewContextId' | 'previewProgress' | 'isPreviewing' | 'previewError'>>,
+): StyleCombination {
+    const next = { ...combo, ...patch }
+    const hasPreview = Boolean(next.previewPath || next.previewThumbnail || next.previewImage)
+    const lifecycle = combo.lifecycle === 'archived'
+        ? 'archived'
+        : hasPreview && next.previewContextId && Number.isSafeInteger(next.previewSeed)
+            ? 'eligible'
+            : hasPreview ? 'previewed' : combo.lifecycle
+    return {
+        ...next,
+        lifecycle,
+        updatedAt: shouldTouchCombinationUpdatedAt(patch) ? now() : combo.updatedAt,
+    }
 }
 
 function sanitizeSettings(settings: Partial<StyleLabSettings>): StyleLabSettings {
@@ -179,11 +259,14 @@ function sanitizeSettings(settings: Partial<StyleLabSettings>): StyleLabSettings
 export const useStyleLabStore = create<StyleLabState>()(
     persist(
         (set, get) => ({
+            schemaVersion: STYLE_LAB_STORE_SCHEMA_VERSION,
             artists: DEFAULT_STYLE_LAB_ARTISTS,
             combinations: [],
             evolutionLogs: [],
             settings: defaultSettings,
             activeBattlePair: null,
+            activeEvaluationContext: null,
+            randomState: createRandomState(),
             isPreviewQueueRunning: false,
             previewQueueTotal: 0,
             previewQueueDone: 0,
@@ -214,11 +297,14 @@ export const useStyleLabStore = create<StyleLabState>()(
             resetArtistsToDefault: () => set({ artists: DEFAULT_STYLE_LAB_ARTISTS }),
 
             resetLabData: () => set({
+                schemaVersion: STYLE_LAB_STORE_SCHEMA_VERSION,
                 artists: DEFAULT_STYLE_LAB_ARTISTS,
                 combinations: [],
                 evolutionLogs: [],
                 settings: defaultSettings,
                 activeBattlePair: null,
+                activeEvaluationContext: null,
+                randomState: createRandomState(),
                 isPreviewQueueRunning: false,
                 previewQueueTotal: 0,
                 previewQueueDone: 0,
@@ -230,6 +316,10 @@ export const useStyleLabStore = create<StyleLabState>()(
 
             generateRandomCombinations: (count) => {
                 const state = get()
+                const random = createStyleLabRandom(
+                    state.randomState.seed,
+                    `blueprint:${state.randomState.sequence}`,
+                )
                 const target = count ?? state.settings.randomBatchCount
                 const signatures = new Set(state.combinations.map(combo => genomeSignature(combo.tags)))
                 const created: StyleCombination[] = []
@@ -243,6 +333,7 @@ export const useStyleLabStore = create<StyleLabState>()(
                         state.settings.maxTags,
                         state.settings.minWeight,
                         state.settings.maxWeight,
+                        () => random.nextFloat(),
                     )
                     if (tags.length === 0) break
                     const signature = genomeSignature(tags)
@@ -252,7 +343,12 @@ export const useStyleLabStore = create<StyleLabState>()(
                 }
 
                 if (created.length > 0) {
-                    set(current => ({ combinations: [...created, ...current.combinations] }))
+                    set(current => ({
+                        combinations: [...created, ...current.combinations],
+                        randomState: nextRandomState(current.randomState),
+                    }))
+                } else {
+                    set(current => ({ randomState: nextRandomState(current.randomState) }))
                 }
                 return created.length
             },
@@ -272,6 +368,9 @@ export const useStyleLabStore = create<StyleLabState>()(
             removeCombination: (id) => set(state => ({
                 combinations: state.combinations.filter(combo => combo.id !== id || combo.locked),
                 activeBattlePair: state.activeBattlePair?.includes(id) ? null : state.activeBattlePair,
+                activeEvaluationContext: state.activeBattlePair?.includes(id)
+                    ? null
+                    : state.activeEvaluationContext,
             })),
 
             toggleFavorite: (id) => set(state => ({
@@ -292,30 +391,57 @@ export const useStyleLabStore = create<StyleLabState>()(
                     : combo),
             })),
 
-            pickBattlePair: () => {
+            setArenaRound: (pair, context) => set({
+                activeBattlePair: pair,
+                activeEvaluationContext: context,
+            }),
+
+            reserveRandomSeed: (scope) => {
                 const state = get()
-                const pair = pickArenaPair(state.combinations, state.settings.battleLeague)
-                if (!pair) {
-                    set({ activeBattlePair: null })
-                    return null
-                }
-                set({ activeBattlePair: pair })
-                return pair
+                const random = createStyleLabRandom(
+                    state.randomState.seed,
+                    `${scope}:${state.randomState.sequence}`,
+                )
+                const seed = random.nextUint32()
+                set({ randomState: nextRandomState(state.randomState) })
+                return seed
             },
 
             setBattleLeague: (league) => {
-                set(state => ({ settings: { ...state.settings, battleLeague: league }, activeBattlePair: null }))
+                set(state => ({
+                    settings: { ...state.settings, battleLeague: league },
+                    activeBattlePair: null,
+                    activeEvaluationContext: null,
+                }))
             },
 
             recordBattle: (winnerId, loserId) => {
                 set(state => ({
                     combinations: applyArenaBattleResult(state.combinations, winnerId, loserId, now()),
                     activeBattlePair: null,
+                    activeEvaluationContext: null,
                 }))
             },
 
+            recordBattleTie: (leftId, rightId) => {
+                set(state => ({
+                    combinations: applyArenaTieResult(state.combinations, leftId, rightId, now()),
+                    activeBattlePair: null,
+                    activeEvaluationContext: null,
+                }))
+            },
+
+            clearArenaRound: () => set({
+                activeBattlePair: null,
+                activeEvaluationContext: null,
+            }),
+
             evolve: () => {
                 const state = get()
+                const random = createStyleLabRandom(
+                    state.randomState.seed,
+                    `evolution:${state.randomState.sequence}`,
+                )
                 const plan = createEvolutionPlan(state.combinations, {
                     artistPool: state.artists,
                     minTags: state.settings.minTags,
@@ -325,8 +451,11 @@ export const useStyleLabStore = create<StyleLabState>()(
                     parentCount: state.settings.evolutionParentCount,
                     childCount: state.settings.evolutionChildrenCount,
                     mutationRate: state.settings.mutationRate,
-                })
-                if (!plan) return []
+                }, () => random.nextFloat())
+                if (!plan) {
+                    set(current => ({ randomState: nextRandomState(current.randomState) }))
+                    return []
+                }
 
                 const children = plan.childTags.map(tags => createCombination(tags, plan.generation))
 
@@ -343,10 +472,19 @@ export const useStyleLabStore = create<StyleLabState>()(
                 set(current => ({
                     combinations: [...children, ...current.combinations],
                     evolutionLogs: [log, ...current.evolutionLogs].slice(0, 50),
+                    randomState: nextRandomState(current.randomState),
                 }))
 
                 return children.map(child => child.id)
             },
+
+            recordEvolutionResult: (input) => set(state => ({
+                evolutionLogs: [{
+                    ...input,
+                    id: makeId('evolution'),
+                    timestamp: now(),
+                }, ...state.evolutionLogs].slice(0, 50),
+            })),
 
             cleanup: (minBattles, eloBelow) => {
                 const state = get()
@@ -360,6 +498,9 @@ export const useStyleLabStore = create<StyleLabState>()(
                 set(current => ({
                     combinations: current.combinations.filter(combo => !ids.has(combo.id)),
                     activeBattlePair: current.activeBattlePair?.some(id => ids.has(id)) ? null : current.activeBattlePair,
+                    activeEvaluationContext: current.activeBattlePair?.some(id => ids.has(id))
+                        ? null
+                        : current.activeEvaluationContext,
                 }))
                 return removable.length
             },
@@ -372,9 +513,25 @@ export const useStyleLabStore = create<StyleLabState>()(
 
             updateCombinationPreview: (id, patch) => set(state => ({
                 combinations: state.combinations.map(combo => combo.id === id
-                    ? { ...combo, ...patch, updatedAt: shouldTouchCombinationUpdatedAt(patch) ? now() : combo.updatedAt }
+                    ? applyPreviewPatch(combo, patch)
                     : combo),
             })),
+
+            setCombinationLifecycle: (id, lifecycle) => set(state => ({
+                combinations: state.combinations.map(combo => combo.id === id
+                    ? { ...combo, lifecycle, updatedAt: now() }
+                    : combo),
+            })),
+
+            setCombinationLineages: (lineages) => set(state => {
+                const byChild = new Map(lineages.map(lineage => [lineage.childId, lineage]))
+                return {
+                    combinations: state.combinations.map(combo => {
+                        const lineage = byChild.get(combo.id)
+                        return lineage === undefined ? combo : { ...combo, lineage, updatedAt: now() }
+                    }),
+                }
+            }),
 
             clearPreviewRuntime: () => set(state => ({
                 combinations: state.combinations.map(combo => (
@@ -391,6 +548,7 @@ export const useStyleLabStore = create<StyleLabState>()(
             name: 'nais2-style-lab',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => ({
+                schemaVersion: state.schemaVersion,
                 artists: state.artists,
                 combinations: state.combinations.map(combo => {
                     const previewPath = isTemporaryPreviewPath(combo.previewPath) ? undefined : combo.previewPath
@@ -407,20 +565,33 @@ export const useStyleLabStore = create<StyleLabState>()(
                 }),
                 evolutionLogs: state.evolutionLogs,
                 settings: state.settings,
-                activeBattlePair: state.activeBattlePair,
+                randomState: state.randomState,
             }),
+            version: STYLE_LAB_STORE_VERSION,
+            migrate: (persistedState, persistedVersion) => (
+                migrateStyleLabPersistedState(persistedState, persistedVersion) as unknown as StyleLabState
+            ),
             onRehydrateStorage: () => (state) => {
                 if (!state) return
+                const migrated = migrateStyleLabPersistedState(state, STYLE_LAB_STORE_VERSION)
+                state.schemaVersion = STYLE_LAB_STORE_SCHEMA_VERSION
+                state.randomState = migrated.randomState as StyleLabRandomState
                 state.artists = normalizeArtistList(state.artists?.length ? state.artists : DEFAULT_STYLE_LAB_ARTISTS)
                 state.settings = sanitizeSettings(state.settings || defaultSettings)
                 state.combinations = (state.combinations || []).map(combo => ({
                     ...combo,
                     tags: normalizeCombinationTags(combo.tags || []),
+                    ...styleCombinationIdentity(normalizeCombinationTags(combo.tags || [])),
+                    lifecycle: combo.lifecycle ?? 'draft',
                     elo: combo.elo ?? 1200,
+                    legacyElo: combo.legacyElo ?? combo.elo ?? 1200,
                     wins: combo.wins ?? 0,
                     losses: combo.losses ?? 0,
+                    ties: combo.ties ?? 0,
                     battles: combo.battles ?? 0,
+                    legacyBattles: combo.legacyBattles ?? combo.battles ?? 0,
                     favorite: combo.favorite ?? false,
+                    legacyFavorite: combo.legacyFavorite ?? combo.favorite ?? false,
                     locked: combo.locked ?? false,
                     note: combo.note ?? '',
                     generation: combo.generation ?? 0,
@@ -429,11 +600,14 @@ export const useStyleLabStore = create<StyleLabState>()(
                     previewPath: isTemporaryPreviewPath(combo.previewPath) ? undefined : combo.previewPath,
                     previewImage: undefined,
                     previewThumbnail: combo.previewThumbnail,
+                    previewContextId: combo.previewContextId,
                     previewProgress: 0,
                     isPreviewing: false,
                     previewError: undefined,
                 }))
                 state.evolutionLogs = state.evolutionLogs || []
+                state.activeBattlePair = null
+                state.activeEvaluationContext = null
                 state.isPreviewQueueRunning = false
                 state.previewQueueTotal = 0
                 state.previewQueueDone = 0

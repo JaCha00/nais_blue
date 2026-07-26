@@ -1427,7 +1427,7 @@
     },
     "styleLab": {
         "title": "好みの画風研究所",
-        "description": "アーティストタグの組み合わせを生成し、Eloアリーナと遺伝的アルゴリズムで好みの画風を進化させます。",
+        "description": "アーティストタグの組み合わせを生成し、比較から学習した好みと不確実性で画風を発展させます。",
         "common": {
             "generationShort": "Gen",
             "combinationCount": "{{count}}件の組み合わせ"
@@ -1436,6 +1436,7 @@
             "previewAlt": "スタイルプレビュー",
             "noPreview": "プレビューなし",
             "temporaryPreview": "一時プレビュー",
+            "assetCount": "アセット{{count}}件",
             "locked": "ロック",
             "notePlaceholder": "メモ"
         },
@@ -1446,7 +1447,12 @@
             "tags": "タグ",
             "combinations": "組み合わせ",
             "favorites": "お気に入り",
-            "averageElo": "平均 Elo"
+            "averageElo": "平均 Elo",
+            "preference": "好みスコア",
+            "uncertainty": "不確実性",
+            "evidence": "判断根拠",
+            "evaluatedRatio": "評価済み",
+            "averageUncertainty": "平均不確実性"
         },
         "actions": {
             "copyTags": "タグのみコピー",
@@ -1478,11 +1484,20 @@
             "pngAnalyzeFailed": "PNG解析に失敗しました",
             "analysisArtistsAdded": "{{count}}名の解析作家を一覧に追加しました",
             "analysisCombinationAdded": "解析結果の組み合わせを追加しました",
+            "analysisCombinationsAdded": "画像別の組み合わせを{{count}}件追加しました",
             "analysisCombinationSkipped": "同じ組み合わせがあるかタグがありません",
+            "assetsImported": "元アセット{{count}}件をStyle Vaultに保存しました",
+            "assetsSkipped": "選択または関連付け可能なタグがない画像{{count}}件をスキップしました。",
+            "assetImportFailed": "確認済みの元画像を保存できませんでした",
             "appliedToPrompt": "現在の追加プロンプトに適用しました",
             "previewBusyTitle": "プレビュー生成は待機が必要です",
             "previewBusyDesc": "他の画像生成タスクが終了してから再試行してください。",
-            "previewFailed": "研究所プレビュー生成に失敗しました"
+            "previewFailed": "研究所プレビュー生成に失敗しました",
+            "renderBudgetExhausted": "スタイルレンダー予算を使い切りました",
+            "renderBudgetExhaustedDescription": "レンダー要求{{count}}件は無料の設計図として残しました。",
+            "preferenceSaveFailed": "嗜好記録を安全に保存できませんでした",
+            "boardSaveFailed": "好みボードを保存できませんでした"
+            ,"evolutionFailed": "MAP-Elites進化を完了できませんでした"
         },
         "preview": {
             "queueRunning": "プレビューを順次生成中",
@@ -1490,7 +1505,9 @@
             "stop": "中断"
         },
         "tabs": {
-            "arena": "Eloアリーナ",
+            "arena": "好みアリーナ",
+            "market": "探索マーケット",
+            "collection": "コレクション",
             "manage": "作家/組み合わせ",
             "evolve": "進化",
             "analyze": "PNG解析",
@@ -1498,16 +1515,71 @@
             "template": "テンプレート"
         },
         "arena": {
-            "title": "画風 Elo アリーナ",
-            "description": "現在のリーグ候補 {{count}}件・選択するとElo点数と戦績がすぐ更新されます。",
+            "title": "画風の好み比較アリーナ",
+            "description": "現在のリーグ候補 {{count}}件・学習価値の高い組み合わせを優先して比較します。",
             "allLeague": "全体リーグ",
             "favoritesLeague": "お気に入りリーグ",
             "pickBattle": "対戦を選ぶ",
             "previewPair": "2候補を順次プレビュー",
+            "renderRequired": "投票前に現在の条件で両方をレンダーしてください",
             "chooseLeft": "左を選択",
             "chooseRight": "右を選択",
+            "tie": "同じくらい",
+            "skip": "スキップ",
             "emptyTitle": "対戦する組み合わせを選んでください",
             "emptyDesc": "組み合わせが不足している場合は、作家/組み合わせタブでランダム組み合わせを先に生成してください。"
+        },
+        "boards": {
+            "defaultName": "私の好み",
+            "title": "好みボード",
+            "description": "異なる好みの方向をボード別のコレクションと推薦に分けます。",
+            "newBoard": "新しいボード",
+            "namePlaceholder": "例：幻想的な人物",
+            "create": "ボードを作成",
+            "exploration": "探索比率",
+            "delete": "現在のボードを削除"
+            ,"autoEvolution": "予算付き自動レンダー"
+            ,"autoEvolutionBudget": "1回につき上位の子を最大2件"
+        },
+        "market": {
+            "title": "好み探索マーケット",
+            "description": "好み・不確実性・新鮮さ・多様性の役割で{{count}}件の候補を交互に並べます。",
+            "refresh": "新しい棚を見る",
+            "loading": "推薦棚を構成しています...",
+            "empty": "表示する組み合わせがありません。組み合わせを作成するか、非表示項目を復元してください。",
+            "like": "いいね",
+            "collect": "現在のボードに追加",
+            "hide": "非表示",
+            "unhide": "非表示を解除",
+            "apply": "プロンプトに適用",
+            "compare": "比較トレイ",
+            "preview": "プレビュー生成",
+            "verified": "同一条件で検証済み",
+            "removeFromComparison": "比較トレイから削除",
+            "comparisonCount": "比較トレイ {{count}}/2",
+            "clearComparison": "トレイを空にする",
+            "compareNow": "アリーナで比較",
+            "buckets": {
+                "preferred": "好み一致",
+                "explore": "探索候補",
+                "fresh": "新規候補",
+                "diverse": "多様性"
+            },
+            "reasons": {
+                "taste-match": "好みに合う可能性が高い候補です",
+                "exploring": "まだ探索中の方向です",
+                "board-similar": "このボードに追加したスタイルと似ています",
+                "board-context": "このボードが学習したタグ傾向に合います",
+                "new-lineage": "新世代または未表示の候補です",
+                "diverse": "現在のボードとは異なる新しい系統です"
+            }
+        },
+        "collection": {
+            "title": "ボードコレクション",
+            "description": "このボードで発展させる候補を{{count}}件集めました。",
+            "empty": "現在のボードにはまだ組み合わせがありません。探索マーケットから気になる方向を追加してください。",
+            "hiddenTitle": "非表示の組み合わせ",
+            "hiddenDescription": "非表示ボタンをもう一度押すと推薦対象に戻ります。"
         },
         "manage": {
             "artistListTitle": "作家一覧管理",
@@ -1543,13 +1615,34 @@
             "history": "進化履歴",
             "historyNote": "上位{{parents}}件の組み合わせから{{children}}件の子を生成",
             "noHistory": "まだ進化履歴がありません。"
+            ,"mapElitesHistory": "MAP-Elitesセル{{cells}}件を保持・レンダー{{renders}}件を登録"
+            ,"archiveTitle": "MAP-Elitesアーカイブ"
+            ,"archiveDescription": "品質・多様性セル{{count}}件が埋まりました"
+            ,"elite": "エリート"
+            ,"challenger": "チャレンジャー"
+            ,"novel": "新系統"
+            ,"axes": {
+                "compact": "少ないタグ",
+                "balanced": "均衡タグ",
+                "dense": "多いタグ",
+                "flat": "平坦な重み",
+                "mixed": "混合した重み",
+                "focused": "集中した重み"
+            }
         },
         "analyze": {
             "title": "PNG作家タグ解析",
             "description": "NAI/NAIS blue PNGメタデータからartistタグと重みを抽出します。",
             "selectPng": "PNG選択",
+            "selectImages": "PNG/WebP選択",
             "addToArtists": "作家一覧に追加",
             "addAsCombination": "組み合わせとして追加",
+            "addAsCombinations": "画像別の組み合わせを追加",
+            "importReview": "インポート確認",
+            "importReviewDescription": "画像ごとに別のレシピを維持します。元のバイトを保存する前に含めるタグを確認してください。",
+            "preserveOriginals": "確認済みの元画像を保存",
+            "duplicate": "既存の元画像",
+            "noTagsForImage": "この画像から作家タグを検出できませんでした。",
             "artist": "作家",
             "frequency": "頻度",
             "avgWeight": "平均重み",
@@ -1561,6 +1654,7 @@
         "stats": {
             "totalCombinations": "全組み合わせ",
             "bestElo": "最高 Elo",
+            "needsComparison": "追加比較が必要",
             "artistUsage": "作家使用回数",
             "artistUsageStat": "{{count}}回・平均 {{average}}",
             "generationDistribution": "世代分布"
@@ -1569,7 +1663,7 @@
             "title": "自動組み合わせ整理",
             "description": "ロックされた組み合わせは削除しません。",
             "minBattles": "最小評価回数",
-            "eloBelow": "削除基準 Elo 未満",
+            "eloBelow": "削除基準の旧 Elo 未満",
             "run": "整理を実行"
         },
         "settings": {

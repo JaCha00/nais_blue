@@ -1,43 +1,61 @@
 import { calculateElo } from './elo'
+import {
+    getArenaPool as getDomainArenaPool,
+    suggestArenaPair,
+    type ArenaCandidate as DomainArenaCandidate,
+    type ArenaPairPolicyOptions,
+    type StyleLabArenaLeague as DomainStyleLabArenaLeague,
+} from '@/domain/style-lab/acquisition-policy'
 
-export type StyleLabArenaLeague = 'all' | 'favorites'
+export type StyleLabArenaLeague = DomainStyleLabArenaLeague
 
-export interface ArenaCandidate {
-    id: string
-    elo: number
-    favorite: boolean
-}
+export interface ArenaCandidate extends DomainArenaCandidate {}
 
 export interface ArenaBattleRecord extends ArenaCandidate {
     wins: number
     losses: number
+    ties?: number
     battles: number
     updatedAt: number
+}
+
+/** Legacy battle counters remain a compatibility projection while mu/sigma is authoritative. */
+export function applyArenaTieResult<T extends ArenaBattleRecord>(
+    combinations: T[],
+    leftId: string,
+    rightId: string,
+    updatedAt: number,
+): T[] {
+    if (leftId === rightId
+        || !combinations.some(combo => combo.id === leftId)
+        || !combinations.some(combo => combo.id === rightId)) {
+        return combinations
+    }
+    return combinations.map(combo => (
+        combo.id === leftId || combo.id === rightId
+            ? {
+                ...combo,
+                ties: (combo.ties ?? 0) + 1,
+                battles: combo.battles + 1,
+                updatedAt,
+            }
+            : combo
+    ))
 }
 
 export function getArenaPool<T extends ArenaCandidate>(
     combinations: T[],
     league: StyleLabArenaLeague,
 ): T[] {
-    return combinations
-        .filter(combo => league === 'all' || combo.favorite)
-        .sort((a, b) => b.elo - a.elo)
+    return getDomainArenaPool(combinations, league)
 }
 
 export function pickArenaPair<T extends ArenaCandidate>(
     combinations: T[],
     league: StyleLabArenaLeague,
+    options: ArenaPairPolicyOptions = {},
 ): [string, string] | null {
-    const pool = getArenaPool(combinations, league)
-    if (pool.length < 2) return null
-
-    const firstIndex = Math.floor(Math.random() * pool.length)
-    let secondIndex = Math.floor(Math.random() * pool.length)
-    while (secondIndex === firstIndex) {
-        secondIndex = Math.floor(Math.random() * pool.length)
-    }
-
-    return [pool[firstIndex].id, pool[secondIndex].id]
+    return suggestArenaPair(combinations, league, options)
 }
 
 export function applyArenaBattleResult<T extends ArenaBattleRecord>(

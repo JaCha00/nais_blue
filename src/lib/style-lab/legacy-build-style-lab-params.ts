@@ -17,6 +17,11 @@ export interface LegacyStyleLabGenerationBuildResult {
     sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
 }
 
+export interface LegacyStyleLabGenerationBuildOptions {
+    /** EvaluationContext supplies this seed so every Arena candidate shares it. */
+    seed?: number
+}
+
 const removeComments = (text: string): string => text
     .split('\n')
     .filter(line => !line.trimStart().startsWith('#'))
@@ -43,10 +48,22 @@ function getImageDimensions(base64: string): Promise<{ width: number; height: nu
 /** Exact rollback path for the pre-CompositionEngine Style Lab request builder. */
 export async function buildLegacyStyleLabGenerationParams(
     combo: StyleCombination,
+    options: LegacyStyleLabGenerationBuildOptions = {},
 ): Promise<LegacyStyleLabGenerationBuildResult> {
     const genState = useGenerationStore.getState()
     const styleState = useStyleLabStore.getState()
-    const fragmentSession = createWildcardResolutionSession()
+    let seed = options.seed ?? (genState.seedLocked
+        ? genState.seed
+        : Math.floor(Math.random() * 4294967295))
+    // Preserve the legacy zero-reroll only outside an explicit evaluation contract.
+    if (options.seed === undefined && seed === 0) seed = Math.floor(Math.random() * 4294967295)
+    seed = Math.trunc(seed) >>> 0
+    const fragmentSession = options.seed === undefined
+        ? createWildcardResolutionSession()
+        : createWildcardResolutionSession({
+            seed,
+            scope: 'style-lab:evaluation',
+        })
 
     const artistTags = formatWeightedPromptTags(combo.tags)
     const templatedPrompt = buildStyleLabPrompt(styleState.settings.promptTemplate, artistTags, {
@@ -56,9 +73,6 @@ export async function buildLegacyStyleLabGenerationParams(
         inpaintingPrompt: genState.i2iMode === 'inpaint' ? removeComments(genState.inpaintingPrompt) : '',
     })
     const finalPrompt = await fragmentSession.process(templatedPrompt)
-
-    let seed = genState.seedLocked ? genState.seed : Math.floor(Math.random() * 4294967295)
-    if (seed === 0) seed = Math.floor(Math.random() * 4294967295)
 
     await useCharacterStore.getState().ensureImagesLoaded()
     const characterState = useCharacterStore.getState()

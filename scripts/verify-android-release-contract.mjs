@@ -22,10 +22,10 @@ assert.equal(policy.debugApplicationIdSuffix, '')
 assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.equal(policy.updateBaseline, null)
-assert.equal(policy.firstReleaseForApplicationId, true)
-assert.equal(policy.firstReleaseVersion, pkg.version)
-assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), null)
+assert.deepEqual(policy.updateBaseline, { tag: 'v2.8.3' })
+assert.equal(policy.firstReleaseForApplicationId, false)
+assert.equal(policy.firstReleaseVersion, '2.8.3')
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v2.8.3')
 assert.throws(
     () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
     /first release of an applicationId/,

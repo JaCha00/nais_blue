@@ -283,10 +283,14 @@ function combo(id: string, tags: Array<Record<string, unknown>>) {
         id,
         tags,
         elo: 1200,
+        legacyElo: 1200,
         wins: 0,
         losses: 0,
+        ties: 0,
         battles: 0,
+        legacyBattles: 0,
         favorite: false,
+        legacyFavorite: false,
         locked: false,
         note: '',
         generation: 0,
@@ -668,6 +672,29 @@ describe('Style Lab workflow golden characterization', () => {
 })
 
 describe('Style Lab Composition v2 production caller contract', () => {
+    it('renders an Arena pair with one immutable context and shared seed', async () => {
+        runtime.useGenerationStore.setState({
+            styleLabCompositionMode: 'v2',
+            seedLocked: false,
+        })
+        const { captureCurrentStyleEvaluationContext } = await import(
+            '@/application/style-lab/capture-evaluation-context'
+        )
+        const context = captureCurrentStyleEvaluationContext([987654321], FIXED_TIME)
+
+        await runtime.generateStyleLabPreviews(
+            ['single-artist', 'multi-artist'],
+            { evaluationContext: context },
+        )
+
+        expect(runtimeCapture.styleBuilds).toHaveLength(2)
+        expect(runtimeCapture.styleBuilds.every(build => build.success && build.seed === 987654321)).toBe(true)
+        expect(runtimeCapture.params.map(params => params.seed)).toEqual([987654321, 987654321])
+        expect(runtime.useStyleLabStore.getState().combinations.map(combination => (
+            combination.previewContextId
+        ))).toEqual([context.id, context.id])
+    })
+
     it('records deterministic batch plans without changing artist competition state or ranking', async () => {
         runtime.useGenerationStore.setState({ styleLabCompositionMode: 'v2' })
         runtime.useStyleLabStore.setState(state => ({

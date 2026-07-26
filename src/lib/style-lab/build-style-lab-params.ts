@@ -149,7 +149,9 @@ export async function buildStyleLabGenerationParams(
         options.mode ?? generation.styleLabCompositionMode,
     )
     if (mode === 'legacy') {
-        const legacy = await buildLegacyStyleLabGenerationParams(combination)
+        const legacy = await buildLegacyStyleLabGenerationParams(combination, {
+            ...(options.seed === undefined ? {} : { seed: options.seed }),
+        })
         return {
             success: true,
             mode,

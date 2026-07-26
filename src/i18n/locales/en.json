@@ -1430,7 +1430,7 @@
     },
     "styleLab": {
         "title": "Personal Style Lab",
-        "description": "Generate artist-tag combinations and evolve preferred styles with an Elo arena and genetic algorithm.",
+        "description": "Generate artist-tag combinations and develop preferred styles from learned preferences and uncertainty.",
         "common": {
             "generationShort": "Gen",
             "combinationCount": "{{count}} combinations"
@@ -1439,6 +1439,7 @@
             "previewAlt": "Style preview",
             "noPreview": "No preview",
             "temporaryPreview": "Temporary preview",
+            "assetCount": "{{count}} assets",
             "locked": "Locked",
             "notePlaceholder": "Note"
         },
@@ -1449,7 +1450,12 @@
             "tags": "Tags",
             "combinations": "Combos",
             "favorites": "Favorites",
-            "averageElo": "Avg Elo"
+            "averageElo": "Avg Elo",
+            "preference": "Preference",
+            "uncertainty": "Uncertainty",
+            "evidence": "Evidence",
+            "evaluatedRatio": "Evaluated",
+            "averageUncertainty": "Avg uncertainty"
         },
         "actions": {
             "copyTags": "Copy tags only",
@@ -1481,11 +1487,20 @@
             "pngAnalyzeFailed": "PNG analysis failed",
             "analysisArtistsAdded": "Added {{count}} analyzed artists to the list",
             "analysisCombinationAdded": "Added analysis result as a combination",
+            "analysisCombinationsAdded": "Added {{count}} image-specific combinations",
             "analysisCombinationSkipped": "Duplicate combination or empty tags",
+            "assetsImported": "Preserved {{count}} original assets in the Style Vault",
+            "assetsSkipped": "Skipped {{count}} images with no selected or resolvable tags.",
+            "assetImportFailed": "Could not preserve the reviewed originals",
             "appliedToPrompt": "Applied to the current additional prompt",
             "previewBusyTitle": "Preview generation is busy",
             "previewBusyDesc": "Try again after the other image generation task finishes.",
-            "previewFailed": "Lab preview generation failed"
+            "previewFailed": "Lab preview generation failed",
+            "renderBudgetExhausted": "Style render budget is exhausted",
+            "renderBudgetExhaustedDescription": "{{count}} render requests remained as free blueprints.",
+            "preferenceSaveFailed": "Could not safely save the preference record",
+            "boardSaveFailed": "Could not save the taste board"
+            ,"evolutionFailed": "Could not complete MAP-Elites evolution"
         },
         "preview": {
             "queueRunning": "Generating previews sequentially",
@@ -1493,7 +1508,9 @@
             "stop": "Stop"
         },
         "tabs": {
-            "arena": "Elo Arena",
+            "arena": "Preference Arena",
+            "market": "Explore Market",
+            "collection": "Collection",
             "manage": "Artists/Combos",
             "evolve": "Evolve",
             "analyze": "PNG Analysis",
@@ -1501,16 +1518,71 @@
             "template": "Template"
         },
         "arena": {
-            "title": "Style Elo Arena",
-            "description": "{{count}} candidates in the current league · choosing updates Elo and records immediately.",
+            "title": "Style Preference Arena",
+            "description": "{{count}} candidates in the current league · comparisons with the highest learning value come first.",
             "allLeague": "All league",
             "favoritesLeague": "Favorites league",
             "pickBattle": "Pick match",
             "previewPair": "Preview both candidates",
+            "renderRequired": "Render both under this context before voting",
             "chooseLeft": "Choose left",
             "chooseRight": "Choose right",
+            "tie": "About equal",
+            "skip": "Skip",
             "emptyTitle": "Pick combinations for a match",
             "emptyDesc": "If there are too few combinations, create random ones in Artists/Combos first."
+        },
+        "boards": {
+            "defaultName": "My Taste",
+            "title": "Taste Boards",
+            "description": "Keep distinct taste directions separated through board-specific collections and recommendations.",
+            "newBoard": "New board",
+            "namePlaceholder": "e.g. Dreamy portraits",
+            "create": "Create board",
+            "exploration": "Exploration",
+            "delete": "Delete current board"
+            ,"autoEvolution": "Budgeted auto-render"
+            ,"autoEvolutionBudget": "Up to 2 top children per run"
+        },
+        "market": {
+            "title": "Taste Discovery Market",
+            "description": "Interleaves {{count}} candidates across preference, uncertainty, freshness, and diversity roles.",
+            "refresh": "New shelf",
+            "loading": "Building your recommendation shelf...",
+            "empty": "There are no combinations to display. Create combinations or restore hidden items.",
+            "like": "Like",
+            "collect": "Collect on this board",
+            "hide": "Hide",
+            "unhide": "Restore",
+            "apply": "Apply to prompt",
+            "compare": "Comparison tray",
+            "preview": "Generate preview",
+            "verified": "Same-context verified",
+            "removeFromComparison": "Remove from comparison tray",
+            "comparisonCount": "Comparison tray {{count}}/2",
+            "clearComparison": "Clear tray",
+            "compareNow": "Compare in Arena",
+            "buckets": {
+                "preferred": "Taste match",
+                "explore": "Exploration",
+                "fresh": "Fresh",
+                "diverse": "Diversity"
+            },
+            "reasons": {
+                "taste-match": "Likely to match your taste",
+                "exploring": "A direction you are still exploring",
+                "board-similar": "Similar to styles collected on this board",
+                "board-context": "Matches this board's learned tag pattern",
+                "new-lineage": "A new generation or unseen candidate",
+                "diverse": "A new family outside this board's current direction"
+            }
+        },
+        "collection": {
+            "title": "Board Collection",
+            "description": "{{count}} candidates are collected for development on this board.",
+            "empty": "Nothing is collected on this board yet. Add a promising direction from the Explore Market.",
+            "hiddenTitle": "Hidden combinations",
+            "hiddenDescription": "Use the hide action again to restore a candidate to recommendations."
         },
         "manage": {
             "artistListTitle": "Artist List",
@@ -1546,13 +1618,34 @@
             "history": "Evolution History",
             "historyNote": "Created {{children}} children from top {{parents}} combinations",
             "noHistory": "No evolution history yet."
+            ,"mapElitesHistory": "MAP-Elites retained {{cells}} cells and queued {{renders}} renders"
+            ,"archiveTitle": "MAP-Elites Archive"
+            ,"archiveDescription": "{{count}} occupied quality-diversity cells"
+            ,"elite": "Elite"
+            ,"challenger": "Challenger"
+            ,"novel": "Novel"
+            ,"axes": {
+                "compact": "Compact tags",
+                "balanced": "Balanced tags",
+                "dense": "Dense tags",
+                "flat": "Flat weights",
+                "mixed": "Mixed weights",
+                "focused": "Focused weights"
+            }
         },
         "analyze": {
             "title": "PNG Artist Tag Analyzer",
             "description": "Extract artist tags and weights from NAI/NAIS blue PNG metadata.",
             "selectPng": "Select PNG",
+            "selectImages": "Select PNG/WebP",
             "addToArtists": "Add to artist list",
             "addAsCombination": "Add as combination",
+            "addAsCombinations": "Add image-specific combinations",
+            "importReview": "Import review",
+            "importReviewDescription": "Each image remains a separate recipe. Review included tags before preserving its raw bytes.",
+            "preserveOriginals": "Preserve reviewed originals",
+            "duplicate": "Existing bytes",
+            "noTagsForImage": "No artist tags were detected for this image.",
             "artist": "Artist",
             "frequency": "Frequency",
             "avgWeight": "Avg weight",
@@ -1564,6 +1657,7 @@
         "stats": {
             "totalCombinations": "Total combinations",
             "bestElo": "Best Elo",
+            "needsComparison": "Needs comparison",
             "artistUsage": "Artist Usage",
             "artistUsageStat": "{{count}} uses · avg {{average}}",
             "generationDistribution": "Generation Distribution"
@@ -1572,7 +1666,7 @@
             "title": "Automatic Combination Cleanup",
             "description": "Locked combinations are not deleted.",
             "minBattles": "Minimum ratings",
-            "eloBelow": "Delete below Elo",
+            "eloBelow": "Delete below legacy Elo",
             "run": "Run cleanup"
         },
         "settings": {

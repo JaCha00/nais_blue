@@ -18,10 +18,41 @@ import {
     buildStyleLabGenerationParams,
     formatStyleLabCompositionErrors,
 } from '@/lib/style-lab/build-style-lab-params'
+import { captureCurrentStyleEvaluationContext } from '@/application/style-lab/capture-evaluation-context'
+import {
+    sameStyleEvaluationContext,
+    type StyleEvaluationContext,
+} from '@/domain/style-lab'
 
 let styleLabGenerationLock = false
 const STREAM_PREVIEW_UPDATE_INTERVAL_MS = 250
 const STREAM_PREVIEW_PROGRESS_STEP = 0.05
+
+export interface GenerateStyleLabPreviewOptions {
+    /** Arena passes its immutable contract; ordinary one-off previews may omit it. */
+    evaluationContext?: StyleEvaluationContext
+}
+
+class StyleEvaluationContextMismatchError extends Error {
+    constructor(message: string) {
+        super(message)
+        this.name = 'StyleEvaluationContextMismatchError'
+    }
+}
+
+/**
+ * Preview generation still reads live stores, so the application capture adapter
+ * must reproduce the stored context before work starts. A mismatch fails closed
+ * instead of rendering the two candidates under silently different conditions.
+ */
+function assertCurrentEvaluationContext(context: StyleEvaluationContext): void {
+    const current = captureCurrentStyleEvaluationContext(context.seedPack, context.createdAt)
+    if (!sameStyleEvaluationContext(current, context)) {
+        throw new StyleEvaluationContextMismatchError(
+            'Style-Lab evaluation settings changed; pick a new Arena pair before rendering.',
+        )
+    }
+}
 
 function isStyleLabSessionCancelled(signal: AbortSignal): boolean {
     const generationState = useGenerationStore.getState()
@@ -206,9 +237,29 @@ async function saveStyleLabImage(
     }
 }
 
-export async function generateStyleLabPreviews(combinationIds: string[]): Promise<void> {
+export async function generateStyleLabPreviews(
+    combinationIds: string[],
+    options: GenerateStyleLabPreviewOptions = {},
+): Promise<void> {
     const uniqueIds = [...new Set(combinationIds)]
     if (uniqueIds.length === 0) return
+
+    if (options.evaluationContext !== undefined) {
+        try {
+            assertCurrentEvaluationContext(options.evaluationContext)
+        } catch (error) {
+            const diagnostic = reportDiagnostic(error, {
+                operation: 'style-lab.evaluation-context',
+                stage: 'preflight',
+            })
+            toast({
+                title: i18n.t('styleLab.toast.previewFailed'),
+                description: diagnostic.userSummary,
+                variant: 'destructive',
+            })
+            return
+        }
+    }
 
     const authState = useAuthStore.getState()
     if (!authState.token || !authState.isVerified) {
@@ -261,14 +312,28 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
 
             let sequenceLease: ReturnType<typeof reserveWildcardSequenceProposal> = null
             try {
+                if (options.evaluationContext !== undefined) {
+                    assertCurrentEvaluationContext(options.evaluationContext)
+                }
                 const built = await buildStyleLabGenerationParams(combo, {
                     requestId: `style-lab:${sessionId}:${id}:${index}`,
+                    ...(options.evaluationContext === undefined
+                        ? {}
+                        : { seed: options.evaluationContext.seedPack[0] }),
                 })
                 if (isStyleLabSessionCancelled(abortController.signal)) break
                 if (!built.success) {
                     throw new Error(formatStyleLabCompositionErrors(built.errors))
                 }
                 const { params, prompt, seed, plan, sequenceCommitProposal } = built
+                if (options.evaluationContext !== undefined
+                    && (seed !== options.evaluationContext.seedPack[0]
+                        || params.model !== options.evaluationContext.model
+                        || params.sampler !== options.evaluationContext.sampler)) {
+                    throw new StyleEvaluationContextMismatchError(
+                        'Generated parameters do not match the active Style-Lab evaluation context.',
+                    )
+                }
                 sequenceLease = sequenceCommitProposal === null
                     ? null
                     : reserveWildcardSequenceProposal(sequenceCommitProposal)
@@ -333,6 +398,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                         previewThumbnail: published.thumbnail,
                         previewSeed: seed,
                         previewPrompt: prompt,
+                        previewContextId: options.evaluationContext?.id,
                         previewProgress: 1,
                         isPreviewing: false,
                     })
@@ -346,6 +412,7 @@ export async function generateStyleLabPreviews(combinationIds: string[]): Promis
                         previewThumbnail: previewBeforePublish.previewThumbnail,
                         previewSeed: previewBeforePublish.previewSeed,
                         previewPrompt: previewBeforePublish.previewPrompt,
+                        previewContextId: previewBeforePublish.previewContextId,
                         previewProgress: previewBeforePublish.previewProgress,
                         isPreviewing: previewBeforePublish.isPreviewing,
                         previewError: previewBeforePublish.previewError,

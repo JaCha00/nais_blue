@@ -10,6 +10,7 @@ import {
     type PersistenceFaultKind,
 } from '@/domain/persistence/fault'
 import { reportDiagnostic, reportPersistenceFault } from '@/services/diagnostics/error-registry'
+import { STYLE_LAB_REPOSITORY_STORE_KEY } from '@/domain/style-lab/persistence'
 // Since I cannot install packages, I will implement a minimal wrapper similar to idb-keyval logic
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
@@ -38,6 +39,7 @@ export const BACKUP_STORE_KEYS = [
     'nais2-tools',
     'nais2-update',
     'nais2-style-lab',
+    STYLE_LAB_REPOSITORY_STORE_KEY,
     'nais2-asset-modules',
     'nais2-composition-repository',
     'nais2-composition-migration-backup',
@@ -106,6 +108,7 @@ export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
     'nais2-composition-migration-backup',
     'nais2-backup-restore-journal',
     'nais2-queue-repository',
+    STYLE_LAB_REPOSITORY_STORE_KEY,
 ] as const)
 
 export function getPersistenceCriticality(name: string): PersistenceCriticality {
