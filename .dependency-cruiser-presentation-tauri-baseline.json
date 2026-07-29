@@ -9,7 +9,7 @@
   },
   {
     "file": "src/components/fragments/FragmentPromptDialog.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/layout/CustomTitleBar.tsx",
@@ -17,7 +17,7 @@
   },
   {
     "file": "src/components/layout/HistoryPanel.tsx",
-    "modules": ["@tauri-apps/api/core", "@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/api/core", "@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/layout/ThreeColumnLayout.tsx",
@@ -25,15 +25,15 @@
   },
   {
     "file": "src/components/library/LibraryContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/scene/ExportDialog.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/scene/SceneImageContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/startup/RescueScreen.tsx",
@@ -41,11 +41,11 @@
   },
   {
     "file": "src/components/tools/BackgroundRemovalDialog.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/tools/MosaicDialog.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/hooks/useUpdateChecker.tsx",
@@ -57,7 +57,7 @@
   },
   {
     "file": "src/pages/MainMode.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/SceneDetail.tsx",
@@ -65,11 +65,11 @@
   },
   {
     "file": "src/pages/SceneMode.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/Settings.tsx",
-    "modules": ["@tauri-apps/api/app", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-updater"]
+    "modules": ["@tauri-apps/api/app", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-updater"]
   },
   {
     "file": "src/pages/ToolsMode.tsx",

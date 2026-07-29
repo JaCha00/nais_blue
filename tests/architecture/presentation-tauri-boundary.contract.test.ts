@@ -47,4 +47,10 @@ describe('Presentation Tauri import baseline', () => {
 
         expect(modules).not.toContain('@tauri-apps/plugin-opener')
     })
+
+    it('keeps native file dialog imports out of presentation', async () => {
+        const modules = (await observedImports()).flatMap(entry => entry.modules)
+
+        expect(modules).not.toContain('@tauri-apps/plugin-dialog')
+    })
 })

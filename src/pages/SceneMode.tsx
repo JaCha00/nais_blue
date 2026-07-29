@@ -92,7 +92,7 @@ import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import { writeFile } from '@tauri-apps/plugin-fs'
-import { save } from '@tauri-apps/plugin-dialog'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
 import { CharacterRotationDialog } from '@/components/scene/CharacterRotationDialog'
 import { RotationStatusBar } from '@/components/scene/RotationStatusBar'
@@ -787,7 +787,7 @@ export default function SceneMode() {
         if (!activePreset) return
         try {
             const fileName = `NAIS_Preset_${activePreset.name}_${Date.now()}.json`
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: fileName,
                 filters: [{ name: 'JSON File', extensions: ['json'] }]
             })

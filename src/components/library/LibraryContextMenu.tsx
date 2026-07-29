@@ -8,7 +8,7 @@ import { LibraryItem, useLibraryStore } from '@/stores/library-store'
 import { Copy, FolderOpen, Save, Trash2, Wand2, Users, Pencil, FileSearch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
-import { save } from '@tauri-apps/plugin-dialog'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { writeFile, readFile } from '@tauri-apps/plugin-fs'
 import { revealNativeItem } from '@/platform/native-shell'
 import { useNavigate } from 'react-router'
@@ -68,7 +68,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                 toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
                 return
             }
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: item.name,
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
             })

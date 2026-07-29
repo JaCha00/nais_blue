@@ -24,7 +24,7 @@ import {
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
 import { openNativePath } from '@/platform/native-shell'
-import { save } from '@tauri-apps/plugin-dialog'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { join } from '@tauri-apps/api/path'
 import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import {
@@ -471,7 +471,7 @@ export default function MainMode() {
             const { imageFormat } = useSettingsStore.getState()
             const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
             const filterName = imageFormat === 'webp' ? 'WebP Image' : 'PNG Image'
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: `NAIS_${Date.now()}.${fileExt}`,
                 filters: [{ name: filterName, extensions: [fileExt] }],
             })

@@ -8,7 +8,7 @@ import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SceneCard } from '@/stores/scene-store'
 import JSZip from 'jszip'
-import { save } from '@tauri-apps/plugin-dialog'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { writeFile, readFile } from '@tauri-apps/plugin-fs'
 import { toast } from '@/components/ui/use-toast'
 
@@ -124,7 +124,7 @@ export function ExportDialog({ open, onOpenChange, activePresetName, scenes }: E
             if (count > 0) {
                 const zipContent = await zip.generateAsync({ type: 'uint8array' })
                 const fileName = `${activePresetName}_${format.toUpperCase()}_${Date.now()}.zip`
-                const filePath = await save({ defaultPath: fileName, filters: [{ name: 'ZIP File', extensions: ['zip'] }] })
+                const filePath = await saveNativeFileDialog({ defaultPath: fileName, filters: [{ name: 'ZIP File', extensions: ['zip'] }] })
 
                 if (filePath) {
                     await writeFile(filePath, zipContent)

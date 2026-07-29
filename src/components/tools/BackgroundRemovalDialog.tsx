@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, Layers } from "lucide-react"
-import { save } from "@tauri-apps/plugin-dialog"
+import { saveNativeFileDialog } from "@/platform/native-file-dialog"
 import { writeFile } from "@tauri-apps/plugin-fs"
 import { toast } from "@/components/ui/use-toast"
 
@@ -72,7 +72,7 @@ export function BackgroundRemovalDialog({
 
         try {
             // Open Save As dialog
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: `background_removed_${Date.now()}.png`,
                 filters: [{ name: 'PNG Image', extensions: ['png'] }]
             })

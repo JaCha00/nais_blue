@@ -15,7 +15,7 @@ import {
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
 import { revealNativeItem } from '@/platform/native-shell'
-import { save } from '@tauri-apps/plugin-dialog'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { parseMetadataFromBase64 } from '@/lib/metadata-parser'
@@ -976,7 +976,7 @@ export function HistoryPanel() {
                 data = await readFile(image.path)
             }
 
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: image.name,
                 filters: [{ name: 'PNG Image', extensions: ['png'] }],
             })
