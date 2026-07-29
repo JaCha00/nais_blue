@@ -5,7 +5,13 @@ import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { readDir, readFile, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import {
+    createNativeDirectory as mkdir,
+    nativePathExists as exists,
+    readNativeBinaryFile as readFile,
+    readNativeDirectory as readDir,
+    writeNativeBinaryFile as writeFile,
+} from '@/platform/native-file-system'
 import { isTauri } from '@tauri-apps/api/core'
 import { joinNativePath } from '@/platform/native-path'
 import { toNativeAssetUrl } from '@/platform/asset-url'

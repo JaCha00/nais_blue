@@ -13,18 +13,10 @@
   },
   {
     "file": "src/components/layout/HistoryPanel.tsx",
-    "modules": ["@tauri-apps/api/core", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/api/core"]
   },
   {
     "file": "src/components/startup/RescueScreen.tsx",
     "modules": ["@tauri-apps/api/core"]
-  },
-  {
-    "file": "src/pages/SceneDetail.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/stores/scene-store.ts",
-    "modules": ["@tauri-apps/plugin-fs"]
   }
 ]

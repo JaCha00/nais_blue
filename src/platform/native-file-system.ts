@@ -2,7 +2,9 @@ import {
     exists,
     mkdir,
     readFile,
+    readDir,
     readTextFile,
+    rename,
     writeFile,
     writeTextFile,
     type BaseDirectory,
@@ -14,6 +16,14 @@ export interface NativePathOptions {
 
 export interface NativeDirectoryCreateOptions extends NativePathOptions {
     recursive?: boolean
+}
+
+/** Directory facts consumed by Presentation scanners without exposing Tauri types. */
+export interface NativeDirectoryEntry {
+    name: string
+    isDirectory: boolean
+    isFile: boolean
+    isSymlink: boolean
 }
 
 /**
@@ -69,4 +79,23 @@ export async function createNativeDirectory(
     options?: NativeDirectoryCreateOptions,
 ): Promise<void> {
     return mkdir(path, options)
+}
+
+/**
+ * Lists a native directory within an optional base-directory scope. History
+ * and scene discovery consume structural entries while Tauri remains isolated.
+ */
+export async function readNativeDirectory(
+    path: string,
+    options?: NativePathOptions,
+): Promise<NativeDirectoryEntry[]> {
+    return readDir(path, options)
+}
+
+/**
+ * Renames or moves an absolute native path. Scene folder migration decides the
+ * source and destination, while this adapter owns the filesystem operation.
+ */
+export async function renameNativePath(oldPath: string, newPath: string): Promise<void> {
+    return rename(oldPath, newPath)
 }

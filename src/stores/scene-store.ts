@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
-import { rename, exists } from '@tauri-apps/plugin-fs'
+import {
+    nativePathExists as exists,
+    renameNativePath as rename,
+} from '@/platform/native-file-system'
 import { joinNativePath } from '@/platform/native-path'
 import { useSettingsStore } from './settings-store'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'

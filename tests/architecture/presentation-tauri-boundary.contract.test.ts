@@ -104,4 +104,10 @@ describe('Presentation Tauri import baseline', () => {
         expect(files).not.toContain('src/pages/Library.tsx')
         expect(files).not.toContain('src/pages/ToolsMode.tsx')
     })
+
+    it('keeps the native filesystem plugin out of presentation', async () => {
+        const modules = (await observedImports()).flatMap(entry => entry.modules)
+
+        expect(modules).not.toContain('@tauri-apps/plugin-fs')
+    })
 })

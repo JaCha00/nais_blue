@@ -31,7 +31,11 @@ import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { joinNativePath } from '@/platform/native-path'
 import { toNativeAssetUrl } from '@/platform/asset-url'
-import { exists, readDir, readFile } from '@tauri-apps/plugin-fs'
+import {
+    nativePathExists as exists,
+    readNativeBinaryFile as readFile,
+    readNativeDirectory as readDir,
+} from '@/platform/native-file-system'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'

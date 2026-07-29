@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const fileSystem = vi.hoisted(() => ({
     exists: vi.fn(),
     mkdir: vi.fn(),
+    readDir: vi.fn(),
     readFile: vi.fn(),
     readTextFile: vi.fn(),
+    rename: vi.fn(),
     writeFile: vi.fn(),
     writeTextFile: vi.fn(),
 }))
@@ -15,7 +17,9 @@ import {
     createNativeDirectory,
     nativePathExists,
     readNativeBinaryFile,
+    readNativeDirectory,
     readNativeTextFile,
+    renameNativePath,
     writeNativeBinaryFile,
     writeNativeTextFile,
 } from '@/platform/native-file-system'
@@ -64,5 +68,20 @@ describe('native file-system adapter', () => {
         await expect(createNativeDirectory('C:\\NAIS\\output', options)).resolves.toBeUndefined()
         expect(fileSystem.exists).toHaveBeenCalledWith('C:\\NAIS\\output', undefined)
         expect(fileSystem.mkdir).toHaveBeenCalledWith('C:\\NAIS\\output', options)
+    })
+
+    it('lists directory entries within the requested path scope', async () => {
+        const entries = [{ name: 'image.png', isDirectory: false, isFile: true, isSymlink: false }]
+        fileSystem.readDir.mockResolvedValue(entries)
+
+        await expect(readNativeDirectory('C:\\NAIS\\output')).resolves.toBe(entries)
+        expect(fileSystem.readDir).toHaveBeenCalledWith('C:\\NAIS\\output', undefined)
+    })
+
+    it('renames the requested native path', async () => {
+        fileSystem.rename.mockResolvedValue(undefined)
+
+        await expect(renameNativePath('C:\\NAIS\\old', 'C:\\NAIS\\new')).resolves.toBeUndefined()
+        expect(fileSystem.rename).toHaveBeenCalledWith('C:\\NAIS\\old', 'C:\\NAIS\\new')
     })
 })
