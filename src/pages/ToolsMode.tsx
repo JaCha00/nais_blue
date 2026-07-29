@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 import { Eraser, Palette, Grid3X3, Wand2, Upload, RefreshCw, Download, X, Maximize2, Image as ImageIcon, Paintbrush, ImagePlus, PenTool, Pencil, Droplets, Smile, Sparkles } from 'lucide-react'
 import { writeFile, exists, mkdir } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { TagAnalysisDialog } from '@/components/tools/TagAnalysisDialog'
 import { BackgroundRemovalDialog } from '@/components/tools/BackgroundRemovalDialog'
 import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImageProcessingConsent'
@@ -68,7 +68,7 @@ export default function ToolsMode() {
             if (!dirExists) {
                 await mkdir(outputDir, { recursive: true })
             }
-            const fullPath = await join(outputDir, fileName)
+            const fullPath = await joinNativePath(outputDir, fileName)
             await writeFile(fullPath, binaryData)
             return fullPath
         }
@@ -78,7 +78,7 @@ export default function ToolsMode() {
             await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         }
         await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-        return join(await getMediaStorageRoot(), outputDir, fileName)
+        return joinNativePath(await getMediaStorageRoot(), outputDir, fileName)
     }
 
     // Handle File Upload

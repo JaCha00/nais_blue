@@ -17,7 +17,7 @@
   },
   {
     "file": "src/components/layout/HistoryPanel.tsx",
-    "modules": ["@tauri-apps/api/core", "@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/api/core", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/layout/ThreeColumnLayout.tsx",
@@ -53,15 +53,15 @@
   },
   {
     "file": "src/pages/Library.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/MainMode.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/SceneDetail.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/SceneMode.tsx",
@@ -73,7 +73,7 @@
   },
   {
     "file": "src/pages/ToolsMode.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/Trash.tsx",
@@ -85,7 +85,7 @@
   },
   {
     "file": "src/stores/scene-store.ts",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/stores/update-store.ts",

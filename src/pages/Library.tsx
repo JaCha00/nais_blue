@@ -24,7 +24,7 @@ import { SortableLibraryItem } from '@/components/library/SortableLibraryItem'
 import { LibraryItem as LibraryItemComponent } from '@/components/library/LibraryItem'
 import { useTranslation } from 'react-i18next'
 import { mkdir, exists, writeFile } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { toast } from '@/components/ui/use-toast'
 import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -260,7 +260,7 @@ export default function Library() {
                 const relPath = libraryPath || 'NAIS_Library'
                 const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                     ? libraryPath
-                    : await join(mediaStorageRoot, relPath)
+                    : await joinNativePath(mediaStorageRoot, relPath)
 
                 // Ensure dir exists
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
@@ -294,7 +294,7 @@ export default function Library() {
                     // Create unique filename: originalName_xxxxxxxx.ext
                     const fileName = `${baseName}_${shortUuid}.${ext}`
 
-                    const newPath = await join(libraryDir, fileName)
+                    const newPath = await joinNativePath(libraryDir, fileName)
 
                     // Write
                     if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
@@ -451,7 +451,7 @@ export default function Library() {
             const relPath = libraryPath || 'NAIS_Library'
             const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                 ? libraryPath
-                : await join(mediaStorageRoot, relPath)
+                : await joinNativePath(mediaStorageRoot, relPath)
 
             // Ensure dir exists
             if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
@@ -473,7 +473,7 @@ export default function Library() {
                 const shortUuid = uuid.split('-')[0]
                 const baseName = file.name.replace(/\.[^.]+$/, '')
                 const fileName = `${baseName}_${shortUuid}.${ext}`
-                const newPath = await join(libraryDir, fileName)
+                const newPath = await joinNativePath(libraryDir, fileName)
 
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     await writeFile(newPath, uint8Array)

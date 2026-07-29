@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { rename, exists } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { useSettingsStore } from './settings-store'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
 import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
@@ -620,13 +620,13 @@ export const useSceneStore = create<SceneState>()(
                     let newFolderPath: string
                     
                     if (shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath) {
-                        oldFolderPath = await join(sceneSavePath, ...safePresetSegments, safeOldName)
-                        newFolderPath = await join(sceneSavePath, ...safePresetSegments, safeNewName)
+                        oldFolderPath = await joinNativePath(sceneSavePath, ...safePresetSegments, safeOldName)
+                        newFolderPath = await joinNativePath(sceneSavePath, ...safePresetSegments, safeNewName)
                     } else {
                         const baseDir = await getMediaStorageRoot()
                         const sceneRoot = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
-                        oldFolderPath = await join(baseDir, sceneRoot, ...safePresetSegments, safeOldName)
-                        newFolderPath = await join(baseDir, sceneRoot, ...safePresetSegments, safeNewName)
+                        oldFolderPath = await joinNativePath(baseDir, sceneRoot, ...safePresetSegments, safeOldName)
+                        newFolderPath = await joinNativePath(baseDir, sceneRoot, ...safePresetSegments, safeNewName)
                     }
                     
                     if (await exists(oldFolderPath) && !(await exists(newFolderPath))) {

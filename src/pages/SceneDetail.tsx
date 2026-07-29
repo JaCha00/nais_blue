@@ -29,7 +29,7 @@ import { openNativePath } from '@/platform/native-shell'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import { exists, readDir, readFile } from '@tauri-apps/plugin-fs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -90,7 +90,7 @@ const getLatestSceneImageParentPath = (images: SceneImage[]): string | null => {
 }
 
 async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: string): Promise<string | null> {
-    const directPath = await join(presetPath, safeSceneName)
+    const directPath = await joinNativePath(presetPath, safeSceneName)
     if (await exists(directPath)) return directPath
 
     if (!(await exists(presetPath))) return null
@@ -99,7 +99,7 @@ async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: str
         const characterFolders = await readDir(presetPath)
         for (const entry of characterFolders) {
             if (!entry.isDirectory) continue
-            const rotationScenePath = await join(presetPath, entry.name, safeSceneName)
+            const rotationScenePath = await joinNativePath(presetPath, entry.name, safeSceneName)
             if (await exists(rotationScenePath)) return rotationScenePath
         }
     } catch (error) {
@@ -505,8 +505,8 @@ export default function SceneDetail() {
             const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
             const sceneRootPath = shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath
                 ? sceneSavePath
-                : await join(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
-            const presetPath = await join(sceneRootPath, ...safePresetSegments)
+                : await joinNativePath(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
+            const presetPath = await joinNativePath(sceneRootPath, ...safePresetSegments)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 
             if (folderPath) {

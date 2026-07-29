@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/context-menu'
 import { openNativePath } from '@/platform/native-shell'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import {
     getMediaStorageRoot,
@@ -509,7 +509,7 @@ export default function MainMode() {
             if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
                 folderPath = finalSavePath
             } else {
-                folderPath = await join(await getMediaStorageRoot(), finalSavePath)
+                folderPath = await joinNativePath(await getMediaStorageRoot(), finalSavePath)
             }
 
             const dirExists = await exists(folderPath)

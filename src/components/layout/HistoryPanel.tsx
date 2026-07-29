@@ -7,7 +7,7 @@ import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { readDir, readFile, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import { isTauri } from '@tauri-apps/api/core'
-import { join } from '@tauri-apps/api/path'
+import { joinNativePath } from '@/platform/native-path'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import {
     getMediaStorageRoot,
@@ -424,7 +424,7 @@ export function HistoryPanel() {
 
                     for (const entry of entries) {
                         if (entry.name && (entry.name.toLowerCase().endsWith('.png') || entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.webp'))) {
-                            const fullPath = await join(picturePath, defaultOutputDir, entry.name)
+                            const fullPath = await joinNativePath(picturePath, defaultOutputDir, entry.name)
                             const match = entry.name.match(/_(\d+)\.[^.]+$/)
                             const timestamp = match ? parseInt(match[1]) : 0
                             images.push({
@@ -448,7 +448,7 @@ export function HistoryPanel() {
 
                         for (const entry of entries) {
                             if (entry.name && (entry.name.toLowerCase().endsWith('.png') || entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.webp'))) {
-                                const fullPath = await join(savePath, entry.name)
+                                const fullPath = await joinNativePath(savePath, entry.name)
 
                                 // Skip duplicates
                                 if (images.some(img => img.path === fullPath)) continue
@@ -491,7 +491,7 @@ export function HistoryPanel() {
                             try {
                                 const presetFolderPath = useBaseDir
                                     ? `${sceneBaseDir}/${presetOrSceneDir.name}`
-                                    : await join(baseDir, presetOrSceneDir.name)
+                                    : await joinNativePath(baseDir, presetOrSceneDir.name)
 
                                 const presetContents = useBaseDir
                                     ? await readDir(presetFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -502,7 +502,7 @@ export function HistoryPanel() {
                                         // This is the sceneName folder (new structure: presetName/sceneName/)
                                         const sceneFolderPath = useBaseDir
                                             ? `${presetFolderPath}/${item.name}`
-                                            : await join(presetFolderPath, item.name)
+                                            : await joinNativePath(presetFolderPath, item.name)
 
                                         const sceneFiles = useBaseDir
                                             ? await readDir(sceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -513,7 +513,7 @@ export function HistoryPanel() {
                                                 // Rotation output uses presetName/characterName/sceneName/image.
                                                 const rotationSceneFolderPath = useBaseDir
                                                     ? `${sceneFolderPath}/${file.name}`
-                                                    : await join(sceneFolderPath, file.name)
+                                                    : await joinNativePath(sceneFolderPath, file.name)
                                                 const rotationFiles = useBaseDir
                                                     ? await readDir(rotationSceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                                     : await readDir(rotationSceneFolderPath)
@@ -521,8 +521,8 @@ export function HistoryPanel() {
                                                 for (const rotationFile of rotationFiles) {
                                                     if (rotationFile.name && (rotationFile.name.toLowerCase().endsWith('.png') || rotationFile.name.toLowerCase().endsWith('.jpg') || rotationFile.name.toLowerCase().endsWith('.webp'))) {
                                                         const fullPath = useBaseDir
-                                                            ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name, rotationFile.name)
-                                                            : await join(rotationSceneFolderPath, rotationFile.name)
+                                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name, rotationFile.name)
+                                                            : await joinNativePath(rotationSceneFolderPath, rotationFile.name)
 
                                                         if (images.some(img => img.path === fullPath)) continue
 
@@ -539,8 +539,8 @@ export function HistoryPanel() {
                                                 }
                                             } else if (file.name && (file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.webp'))) {
                                                 const fullPath = useBaseDir
-                                                    ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name)
-                                                    : await join(sceneFolderPath, file.name)
+                                                    ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name)
+                                                    : await joinNativePath(sceneFolderPath, file.name)
 
                                                 if (images.some(img => img.path === fullPath)) continue
 
@@ -558,8 +558,8 @@ export function HistoryPanel() {
                                     } else if (item.name && (item.name.toLowerCase().endsWith('.png') || item.name.toLowerCase().endsWith('.jpg') || item.name.toLowerCase().endsWith('.webp'))) {
                                         // This is a direct image file (old structure: sceneName/image.png)
                                         const fullPath = useBaseDir
-                                            ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name)
-                                            : await join(presetFolderPath, item.name)
+                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name)
+                                            : await joinNativePath(presetFolderPath, item.name)
 
                                         if (images.some(img => img.path === fullPath)) continue
 
@@ -886,7 +886,7 @@ export function HistoryPanel() {
                             if (!dirExists) {
                                 await mkdir(outputDir, { recursive: true })
                             }
-                            fullPath = await join(outputDir, fileName)
+                            fullPath = await joinNativePath(outputDir, fileName)
                             await writeFile(fullPath, bytes)
                         } else {
                             // Save relative to Pictures directory
@@ -895,7 +895,7 @@ export function HistoryPanel() {
                                 await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             }
                             await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                            fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
+                            fullPath = await joinNativePath(await getMediaStorageRoot(), outputDir, fileName)
                         }
 
                         publishGeneratedArtifact({
