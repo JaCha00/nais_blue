@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 describe('durable Main sequential-fragment execution contract', () => {
     it('reserves the immutable proposal before provider transport and never retries a conflict', async () => {
         const source = await readFile(
-            resolve(process.cwd(), 'src/services/queue/main-queue-adapter.ts'),
+            resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'),
             'utf8',
         )
         const reserve = source.indexOf('reserveWildcardSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)')
@@ -19,8 +19,9 @@ describe('durable Main sequential-fragment execution contract', () => {
     })
 
     it('exposes only staged proposals and rejects an incomplete planned batch', async () => {
-        const [adapter, generationStore, plannerAdapter, useCase] = await Promise.all([
+        const [adapter, executor, generationStore, plannerAdapter, useCase] = await Promise.all([
             readFile(resolve(process.cwd(), 'src/services/queue/main-queue-adapter.ts'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'), 'utf8'),
             readFile(resolve(process.cwd(), 'src/stores/generation-store.ts'), 'utf8'),
             readFile(resolve(
                 process.cwd(),
@@ -39,11 +40,16 @@ describe('durable Main sequential-fragment execution contract', () => {
         expect(plannerAdapter).not.toContain('.generate(')
         expect(adapter).toContain('const plan = await planMainBatch({')
         expect(adapter).toContain('encodeMainJobSnapshot(prepared, dehydrated)')
-        expect(adapter).toContain('decodeMainJobSnapshot(job.snapshot)')
+        expect(executor).toContain('decodeMainJobSnapshot(job.snapshot)')
         expect(adapter).not.toContain('createGenerationJobSnapshot(')
         expect(adapter).not.toContain('parseMainQueueParameters')
+        expect(adapter).not.toContain('generateImage')
+        expect(adapter).not.toContain('getRuntimeOutputWriter')
+        expect(executor).not.toContain('planMainBatch')
+        expect(executor).not.toContain('createBatchAndEnqueue')
         expect(generationStore).not.toContain('capturePrepared')
         expect(adapter).not.toMatch(/@\/stores\//)
+        expect(executor).not.toMatch(/@\/stores\//)
         expect(useCase).toContain('prepared.length !== requestedCount')
         expect(adapter).toMatch(/completeEnqueueOperation\(operationId\)[\s\S]*?return null/)
     })

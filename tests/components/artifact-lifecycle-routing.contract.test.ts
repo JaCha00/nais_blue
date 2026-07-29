@@ -15,7 +15,7 @@ describe('Artifact lifecycle routing', () => {
             'src/pages/ToolsMode.tsx',
         ].map(source))
         const [mainQueue, history] = await Promise.all([
-            source('src/services/queue/main-queue-adapter.ts'),
+            source('src/services/queue/main-queue-executor.ts'),
             source('src/components/layout/HistoryPanel.tsx'),
         ])
 

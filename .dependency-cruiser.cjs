@@ -76,10 +76,10 @@ module.exports = {
             to: { path: '^src/(?:components|pages|presentation)/' },
         },
         {
-            name: 'main-queue-adapter-does-not-import-stores',
+            name: 'main-queue-modules-do-not-import-stores',
             comment: 'Main planning and result projection cross Application ports instead of reaching into Zustand.',
             severity: 'error',
-            from: { path: '^src/services/queue/main-queue-adapter\\.ts$' },
+            from: { path: '^src/services/queue/main-queue-(?:adapter|executor|runtime-dependencies)\\.ts$' },
             to: { path: '^src/stores/' },
         },
         {

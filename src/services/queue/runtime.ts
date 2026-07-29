@@ -2,12 +2,12 @@ import type { QueueTokenProvider } from '@/application/queue/queue-token-provide
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
 import { executeSceneQueueJob } from './scene-queue-adapter'
+import { executeMainQueueJob } from './main-queue-executor'
 import {
     configureRuntimeMainQueueDependencies,
-    executeMainQueueJob,
     resetRuntimeMainQueueDependenciesForTests,
     type RuntimeMainQueueDependencies,
-} from './main-queue-adapter'
+} from './main-queue-runtime-dependencies'
 import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-adapter'
 import { initializeQueueAfterRestart } from './queue-startup'
 
