@@ -1,8 +1,8 @@
 import type { QueueTokenProvider } from '@/application/queue/queue-token-provider'
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
-import { executeSceneQueueJob } from './scene-queue-adapter'
 import { executeMainQueueJob } from './main-queue-executor'
+import { executeSceneQueueJob } from './scene-queue-executor'
 import {
     configureRuntimeMainQueueDependencies,
     resetRuntimeMainQueueDependenciesForTests,

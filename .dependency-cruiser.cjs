@@ -83,6 +83,13 @@ module.exports = {
             to: { path: '^src/stores/' },
         },
         {
+            name: 'durable-queue-executors-do-not-import-stores',
+            comment: 'Durable execution replays snapshots and projects through workflow boundaries, not current UI state.',
+            severity: 'error',
+            from: { path: '^src/services/queue/(?:main|scene)-queue-executor\\.ts$' },
+            to: { path: '^src/stores/' },
+        },
+        {
             name: 'new-presentation-code-does-not-import-tauri',
             comment: 'New UI and store modules must use platform adapters; the exact transitional importer set is checked separately.',
             severity: 'error',

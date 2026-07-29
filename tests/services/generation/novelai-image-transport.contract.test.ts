@@ -9,7 +9,7 @@ describe('NovelAI image transport boundary', () => {
         const workflows = await Promise.all([
             'src/services/generation/main-transport-executor.ts',
             'src/services/queue/main-queue-executor.ts',
-            'src/services/queue/scene-queue-adapter.ts',
+            'src/services/queue/scene-queue-executor.ts',
             'src/services/style-lab/style-lab-queue-adapter.ts',
         ].map(source))
 
