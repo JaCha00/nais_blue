@@ -42,6 +42,10 @@ describe('Presentation Tauri import baseline', () => {
         expect(await observedImports()).toEqual(baseline)
     })
 
+    it('keeps the completed presentation boundary free of direct Tauri imports', async () => {
+        expect(await observedImports()).toEqual([])
+    })
+
     it('keeps native shell opener imports out of presentation', async () => {
         const modules = (await observedImports()).flatMap(entry => entry.modules)
 

@@ -4,10 +4,18 @@ const appApi = vi.hoisted(() => ({
     getVersion: vi.fn(),
     onBackButtonPress: vi.fn(),
 }))
+const coreApi = vi.hoisted(() => ({
+    invoke: vi.fn(),
+}))
 
 vi.mock('@tauri-apps/api/app', () => appApi)
+vi.mock('@tauri-apps/api/core', () => coreApi)
 
-import { getNativeAppVersion, registerNativeBackButton } from '@/platform/native-app'
+import {
+    exitNativeApplication,
+    getNativeAppVersion,
+    registerNativeBackButton,
+} from '@/platform/native-app'
 
 describe('native app adapter', () => {
     beforeEach(() => {
@@ -18,6 +26,12 @@ describe('native app adapter', () => {
         appApi.getVersion.mockResolvedValue('2.11.2')
 
         await expect(getNativeAppVersion()).resolves.toBe('2.11.2')
+    })
+
+    it('exits through the native application command', async () => {
+        await exitNativeApplication()
+
+        expect(coreApi.invoke).toHaveBeenCalledWith('exit_app')
     })
 
     it('registers the native Back handler and returns its listener', async () => {

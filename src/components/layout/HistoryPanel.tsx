@@ -12,7 +12,7 @@ import {
     readNativeDirectory as readDir,
     writeNativeBinaryFile as writeFile,
 } from '@/platform/native-file-system'
-import { isTauri } from '@tauri-apps/api/core'
+import { runtimeCapabilities } from '@/platform/capabilities'
 import { joinNativePath } from '@/platform/native-path'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import {
@@ -286,7 +286,7 @@ export function HistoryPanel() {
     const libraryItems = useLibraryStore(state => state.items)
     const addLibraryItem = useLibraryStore(state => state.addItem)
     const historyRefreshTrigger = useSceneStore(state => state.historyRefreshTrigger)
-    const isTauriRuntime = isTauri()
+    const isTauriRuntime = runtimeCapabilities.nativePluginRuntime.supported
     const artifactRepository = useMemo(() => getRuntimeArtifactRepository(), [])
     const outputPlatform = useMemo(() => createRuntimeOutputPlatformAdapter(), [])
     const historyRefreshId = useRef(0)

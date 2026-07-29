@@ -3,6 +3,8 @@ import { AlertTriangle, Download, FolderOpen, Power, RefreshCw } from 'lucide-re
 
 import type { DiagnosticEvent } from '@/domain/diagnostics/types'
 import { closeApplicationWithFlush } from '@/lib/indexed-db'
+import { exitNativeApplication } from '@/platform/native-app'
+import { runtimeCapabilities } from '@/platform/capabilities'
 import { downloadDiagnosticsExport } from '@/services/diagnostics/exporter'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 
@@ -12,9 +14,8 @@ interface RescueScreenProps {
 }
 
 async function exitApplication(): Promise<void> {
-    const { invoke, isTauri } = await import('@tauri-apps/api/core')
-    if (isTauri()) {
-        await invoke('exit_app')
+    if (runtimeCapabilities.nativePluginRuntime.supported) {
+        await exitNativeApplication()
         return
     }
     window.close()
