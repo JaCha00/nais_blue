@@ -1,6 +1,4 @@
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
-import type { JsonValue, PortablePathRef } from '@/domain/composition/types'
 import type { GenerationJob, QueueArtifactReference, QueueResourceRecord } from '@/domain/queue/types'
 import type { MainQueuePresentationPort } from '@/application/generation/main-queue-presentation-port'
 import {
@@ -8,7 +6,6 @@ import {
     type MainBatchPlannerPort,
 } from '@/application/generation/plan-main-batch'
 import { createThumbnail } from '@/lib/image-utils'
-import { ensureImageFileExtension } from '@/lib/generation-metadata'
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
@@ -25,38 +22,15 @@ import {
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
-import { createGenerationJobSnapshot } from './job-snapshot'
+import { decodeMainJobSnapshot, encodeMainJobSnapshot } from './main-job-snapshot-codec'
 import { createSerializedProgressReporter } from './serialized-progress-reporter'
 import {
     dehydrateGenerationParams,
     getRuntimeQueueResourceMaterializer,
     hashQueueResourceBytes,
     hydrateGenerationParams,
-    type DehydratedGenerationParameters,
     type MaterializedQueueResource,
 } from './queue-resource-materializer'
-
-interface MainQueueOutputSnapshot {
-    directory: string
-    useAbsolutePath: boolean
-    capabilityFallbackDirectory: string
-    portableDirectory?: PortablePathRef
-    fileName: string
-    collisionPolicy: 'unique' | 'overwrite' | 'error'
-}
-
-interface MainQueueWorkflowSnapshot {
-    finalPrompt: string
-    imageFormat: 'png' | 'webp'
-    metadataMode: PreparedMainGeneration['metadataMode']
-    sequenceCommitProposal: FragmentSequenceCommitProposal | null
-    output: MainQueueOutputSnapshot
-}
-
-interface MainQueueParameters extends DehydratedGenerationParameters {
-    queueExecution: { streaming: boolean; sourceEdit: boolean }
-    mainWorkflow: MainQueueWorkflowSnapshot
-}
 
 export interface RuntimeMainQueueDependencies {
     readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
@@ -87,29 +61,6 @@ export function resetRuntimeMainQueueDependenciesForTests(): void {
     runtimeMainQueueDependencies = null
 }
 
-function asJson(value: unknown): JsonValue {
-    return JSON.parse(JSON.stringify(value)) as JsonValue
-}
-
-function parseMainQueueParameters(value: JsonValue): MainQueueParameters {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new QueueExecutionError('fatal', 'Main queue snapshot parameters are invalid')
-    }
-    const candidate = value as unknown as Partial<MainQueueParameters>
-    if (candidate.generationParams === undefined
-        || !Array.isArray(candidate.resourceBindings)
-        || candidate.resourceArrayLengths === undefined
-        || candidate.queueExecution === undefined
-        || candidate.mainWorkflow === undefined
-        || typeof candidate.mainWorkflow.finalPrompt !== 'string'
-        || (candidate.mainWorkflow.imageFormat !== 'png' && candidate.mainWorkflow.imageFormat !== 'webp')
-        || typeof candidate.mainWorkflow.output?.directory !== 'string'
-        || typeof candidate.mainWorkflow.output?.fileName !== 'string') {
-        throw new QueueExecutionError('fatal', 'Main queue snapshot parameters are invalid')
-    }
-    return candidate as MainQueueParameters
-}
-
 let mainEnqueueInFlight: Promise<CreateBatchAndEnqueueResult | null> | null = null
 
 export function enqueueCurrentMainBatch(): Promise<CreateBatchAndEnqueueResult | null> {
@@ -131,48 +82,7 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
         materialize: async prepared => {
             const dehydrated = await dehydrateGenerationParams(prepared.params, materializer, resourceCache)
             for (const record of dehydrated.records) resources.set(record.id, record)
-            const fileName = prepared.output.fileName ?? ensureImageFileExtension(
-                `NAIS_${prepared.params.seed}`,
-                prepared.imageFormat,
-            ) ?? `NAIS_${prepared.params.seed}.${prepared.imageFormat}`
-            const parameters: MainQueueParameters = {
-                ...dehydrated.parameters,
-                queueExecution: { streaming: prepared.streaming, sourceEdit: prepared.sourceEdit },
-                mainWorkflow: {
-                    finalPrompt: prepared.finalPrompt,
-                    imageFormat: prepared.imageFormat,
-                    metadataMode: prepared.metadataMode,
-                    sequenceCommitProposal: prepared.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
-                    output: {
-                        directory: prepared.output.directory,
-                        useAbsolutePath: prepared.output.useAbsolutePath,
-                        capabilityFallbackDirectory: prepared.output.capabilityFallbackDirectory,
-                        ...(prepared.output.portableDirectory === undefined
-                            ? {}
-                            : { portableDirectory: prepared.output.portableDirectory }),
-                        fileName,
-                        collisionPolicy: prepared.output.collisionPolicy,
-                    },
-                },
-            }
-            const snapshot = createGenerationJobSnapshot({
-                prompt: { positive: prepared.finalPrompt, negative: prepared.params.negative_prompt },
-                parameters: asJson(parameters),
-                outputPolicy: asJson({
-                    workflow: 'main',
-                    imageFormat: prepared.imageFormat,
-                    metadataMode: prepared.metadataMode,
-                    output: parameters.mainWorkflow.output,
-                }),
-                resources: dehydrated.resources,
-                resumability: 'resumable',
-            })
-            return {
-                snapshot,
-                compositionPlanHash: prepared.params.compositionPlanHash === undefined
-                    ? null
-                    : `sha256:${prepared.params.compositionPlanHash.digest}`,
-            }
+            return encodeMainJobSnapshot(prepared, dehydrated)
         },
     })
     // Generation reports planner failures through UI diagnostics and resolves.
@@ -222,7 +132,7 @@ function decodeImageBytes(imageData: string): Uint8Array {
 
 export async function executeMainQueueJob(job: GenerationJob, context: QueueExecutorContext): Promise<void> {
     const { presentation } = getRuntimeMainQueueDependencies()
-    const payload = parseMainQueueParameters(job.snapshot.parameters)
+    const payload = decodeMainJobSnapshot(job.snapshot)
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
     // Reserve before transport so a stale immutable snapshot fails without a
