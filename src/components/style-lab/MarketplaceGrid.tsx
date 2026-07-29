@@ -1,4 +1,4 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import {
     EyeOff,
     GitCompareArrows,
@@ -38,7 +38,7 @@ interface MarketplaceGridProps {
 
 function previewSource(combo: StyleCombination): string | null {
     if (combo.previewImage) return combo.previewImage
-    if (combo.previewPath && !combo.previewPath.startsWith('memory://')) return convertFileSrc(combo.previewPath)
+    if (combo.previewPath && !combo.previewPath.startsWith('memory://')) return toNativeAssetUrl(combo.previewPath)
     return combo.previewThumbnail ?? null
 }
 

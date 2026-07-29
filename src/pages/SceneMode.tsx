@@ -90,7 +90,7 @@ import {
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import { writeFile } from '@tauri-apps/plugin-fs'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
@@ -1571,8 +1571,8 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
             setImageUrl(thumbnail)
             return
         }
-        // Use convertFileSrc for efficient native asset loading
-        setImageUrl(convertFileSrc(thumbnail))
+        // The platform adapter projects persisted paths without copying image bytes.
+        setImageUrl(toNativeAssetUrl(thumbnail))
     }, [thumbnail])
 
 

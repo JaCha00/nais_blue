@@ -2,6 +2,29 @@ import babelParser from '@babel/eslint-parser'
 import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
+const restrictedTauriCoreImports = ['error', {
+    paths: [
+        {
+            name: '@tauri-apps/api/core',
+            importNames: ['isTauri'],
+            message: 'Use src/platform/runtime or the runtime capability matrix instead of adding a raw platform branch.',
+        },
+        {
+            name: '@tauri-apps/api/core',
+            importNames: ['convertFileSrc'],
+            message: 'Use src/platform/asset-url so native asset protocol details stay in the platform layer.',
+        },
+    ],
+}]
+
+const restrictedAssetUrlImport = ['error', {
+    paths: [{
+        name: '@tauri-apps/api/core',
+        importNames: ['convertFileSrc'],
+        message: 'Use src/platform/asset-url so native asset protocol details stay in the platform layer.',
+    }],
+}]
+
 // Babel 8 uses extension-independent TypeScript parsing for ESLint, while the
 // JSX syntax plugin keeps the same parser contract for both .ts and .tsx files.
 const typescriptParserOptions = {
@@ -46,13 +69,7 @@ export default [
             // compiler-oriented rules are evaluated in a dedicated refactor.
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'off',
-            'no-restricted-imports': ['error', {
-                paths: [{
-                    name: '@tauri-apps/api/core',
-                    importNames: ['isTauri'],
-                    message: 'Use src/platform/runtime or the runtime capability matrix instead of adding a raw platform branch.',
-                }],
-            }],
+            'no-restricted-imports': restrictedTauriCoreImports,
         },
     },
     {
@@ -74,6 +91,15 @@ export default [
             'src/services/r2/native-r2-adapter.ts',
             'src/services/sync/native-lan-transport-adapter.ts',
         ],
+        rules: {
+            // These transition files may still probe isTauri, but asset URL
+            // conversion is now owned exclusively by the platform adapter.
+            'no-restricted-imports': restrictedAssetUrlImport,
+        },
+    },
+    {
+        // This adapter is the single approved owner of Tauri asset protocol conversion.
+        files: ['src/platform/asset-url.ts'],
         rules: {
             'no-restricted-imports': 'off',
         },

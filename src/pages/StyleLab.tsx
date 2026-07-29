@@ -1,5 +1,5 @@
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -122,7 +122,7 @@ interface CombinationCardProps {
 
 function getPreviewSource(combo: StyleCombination): string | null {
     if (combo.previewImage) return combo.previewImage
-    if (combo.previewPath && !combo.previewPath.startsWith('memory://')) return convertFileSrc(combo.previewPath)
+    if (combo.previewPath && !combo.previewPath.startsWith('memory://')) return toNativeAssetUrl(combo.previewPath)
     if (combo.previewThumbnail) return combo.previewThumbnail
     return null
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import { readFile } from '@tauri-apps/plugin-fs'
 import { FileImage, FolderTree, Image as ImageIcon, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ import { imageDataUrlFromBytes } from '@/services/trash/image-data-url'
 import { toast } from '@/components/ui/use-toast'
 
 function imageSource(image: TrashedImage): string {
-    return image.url.startsWith('data:') ? image.url : convertFileSrc(image.url)
+    return image.url.startsWith('data:') ? image.url : toNativeAssetUrl(image.url)
 }
 
 function firstImage(item: TrashItem): TrashedImage | undefined {

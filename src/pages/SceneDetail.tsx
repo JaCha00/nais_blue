@@ -30,7 +30,7 @@ import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { join } from '@tauri-apps/api/path'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import { exists, readDir, readFile } from '@tauri-apps/plugin-fs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -1325,7 +1325,7 @@ function SceneImageCard({
             return
         }
         // The Scene store persists native paths; Tauri's asset URL keeps gallery rendering off the JS heap.
-        setImgSrc(convertFileSrc(image.url))
+        setImgSrc(toNativeAssetUrl(image.url))
     }, [image.url])
 
     const activateImage = () => {

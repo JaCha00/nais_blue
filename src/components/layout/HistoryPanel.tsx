@@ -6,8 +6,9 @@ import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { readDir, readFile, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
-import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
+import { isTauri } from '@tauri-apps/api/core'
 import { join } from '@tauri-apps/api/path'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import {
     getMediaStorageRoot,
     MEDIA_STORAGE_BASE_DIRECTORY,
@@ -107,8 +108,8 @@ const HistoryImageItem = memo(function HistoryImageItem({
     useEffect(() => {
         if (image.isTemporary) return
         if (!localThumbnail) {
-            // Use convertFileSrc for efficient native asset loading
-            const assetUrl = convertFileSrc(image.path)
+            // The platform adapter keeps native asset loading off the JS heap.
+            const assetUrl = toNativeAssetUrl(image.path)
             setLocalThumbnail(assetUrl)
             onLoadComplete(image.path, assetUrl)
         }
@@ -313,7 +314,7 @@ export function HistoryPanel() {
     }, [])
 
     // Add new image instantly to history
-    // Memory optimization: Use convertFileSrc for file-based images, only cache Base64 for temporary (memory://) images
+    // Memory optimization: use asset URLs for files and cache Base64 only for temporary images.
     const addNewImage = useCallback((imagePath: string, imageData?: string, lineage?: SavedImageLineage) => {
         const timestamp = Date.now()
         const isTemporary = imagePath.startsWith('memory://')
@@ -353,10 +354,10 @@ export function HistoryPanel() {
             return next.slice(0, 50)
         })
 
-        // Memory optimization: Only cache Base64 for temporary images, use convertFileSrc URL for files
+        // Memory optimization: cache Base64 only for temporary images and native asset URLs for files.
         const cacheData = isTemporary || !isTauriRuntime
             ? imageData ?? ''
-            : convertFileSrc(imagePath)
+            : toNativeAssetUrl(imagePath)
         
         setImageThumbnails(prev => {
             const keys = Object.keys(prev)
@@ -627,7 +628,7 @@ export function HistoryPanel() {
                 })
 
             // NOTE: Removed pre-loading of thumbnails using readFile to prevent UI lag.
-            // Using convertFileSrc in the render loop is much more efficient as it uses native asset handling.
+            // Rendering uses platform asset URLs instead of preloading file bytes into memory.
         } catch (error) {
             console.error('Failed to load history:', error)
             setSavedImages([])
