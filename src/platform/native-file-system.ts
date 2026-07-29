@@ -1,4 +1,4 @@
-import { readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { readFile, readTextFile, writeFile, writeTextFile } from '@tauri-apps/plugin-fs'
 
 /**
  * Reads UTF-8 text through Tauri's filesystem plugin. Import and backup flows
@@ -22,4 +22,12 @@ export async function writeNativeTextFile(path: string, content: string): Promis
  */
 export async function writeNativeBinaryFile(path: string, content: Uint8Array): Promise<void> {
     return writeFile(path, content)
+}
+
+/**
+ * Reads binary content through Tauri's filesystem plugin. Image metadata,
+ * clipboard, and export flows consume the bytes without importing native I/O.
+ */
+export async function readNativeBinaryFile(path: string): Promise<Uint8Array<ArrayBuffer>> {
+    return readFile(path)
 }

@@ -16,18 +16,6 @@
     "modules": ["@tauri-apps/api/core", "@tauri-apps/plugin-fs"]
   },
   {
-    "file": "src/components/library/LibraryContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/components/scene/ExportDialog.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/components/scene/SceneImageContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
     "file": "src/components/startup/RescueScreen.tsx",
     "modules": ["@tauri-apps/api/core"]
   },
@@ -45,10 +33,6 @@
   },
   {
     "file": "src/pages/ToolsMode.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/pages/Trash.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {

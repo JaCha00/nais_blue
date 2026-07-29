@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fileSystem = vi.hoisted(() => ({
+    readFile: vi.fn(),
     readTextFile: vi.fn(),
     writeFile: vi.fn(),
     writeTextFile: vi.fn(),
@@ -9,6 +10,7 @@ const fileSystem = vi.hoisted(() => ({
 vi.mock('@tauri-apps/plugin-fs', () => fileSystem)
 
 import {
+    readNativeBinaryFile,
     readNativeTextFile,
     writeNativeBinaryFile,
     writeNativeTextFile,
@@ -39,5 +41,13 @@ describe('native file-system adapter', () => {
 
         await expect(writeNativeBinaryFile('C:\\NAIS\\image.png', bytes)).resolves.toBeUndefined()
         expect(fileSystem.writeFile).toHaveBeenCalledWith('C:\\NAIS\\image.png', bytes)
+    })
+
+    it('reads binary data from the requested native path', async () => {
+        const bytes = new Uint8Array([137, 80, 78, 71])
+        fileSystem.readFile.mockResolvedValue(bytes)
+
+        await expect(readNativeBinaryFile('C:\\NAIS\\image.png')).resolves.toBe(bytes)
+        expect(fileSystem.readFile).toHaveBeenCalledWith('C:\\NAIS\\image.png')
     })
 })

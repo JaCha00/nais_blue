@@ -9,7 +9,7 @@ import { Copy, FolderOpen, Save, Trash2, Wand2, Users, Pencil, FileSearch } from
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
-import { writeFile, readFile } from '@tauri-apps/plugin-fs'
+import { readNativeBinaryFile, writeNativeBinaryFile } from '@/platform/native-file-system'
 import { revealNativeItem } from '@/platform/native-shell'
 import { useNavigate } from 'react-router'
 import { useToolsStore } from '@/stores/tools-store'
@@ -21,7 +21,7 @@ import { runtimeCapabilities } from '@/platform/capabilities'
 
 /** Native paths use Tauri fs; browser-preview imports are persisted data URLs. */
 async function readLibraryBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
-    if (!path.startsWith('data:')) return new Uint8Array(await readFile(path))
+    if (!path.startsWith('data:')) return readNativeBinaryFile(path)
     return new Uint8Array(await (await fetch(path)).arrayBuffer())
 }
 
@@ -73,7 +73,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
             })
             if (filePath) {
-                await writeFile(filePath, data)
+                await writeNativeBinaryFile(filePath, data)
                 toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
             }
         } catch (e) {

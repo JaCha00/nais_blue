@@ -9,7 +9,7 @@ import { Copy, FolderOpen, Save, Trash2, Wand2, Users, FileSearch, Paintbrush, I
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
-import { writeFile, readFile } from '@tauri-apps/plugin-fs'
+import { readNativeBinaryFile, writeNativeBinaryFile } from '@/platform/native-file-system'
 import { revealNativeItem } from '@/platform/native-shell'
 import { useNavigate } from 'react-router'
 import { useToolsStore } from '@/stores/tools-store'
@@ -41,7 +41,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
         try {
             let blob: Blob
             if (isFile) {
-                const data = await readFile(image.url)
+                const data = await readNativeBinaryFile(image.url)
                 blob = new Blob([data], { type: 'image/png' })
             } else {
                 // Handle Base64 (Streaming/Preview)
@@ -63,7 +63,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
         try {
             let data: Uint8Array
             if (isFile) {
-                data = await readFile(image.url)
+                data = await readNativeBinaryFile(image.url)
             } else {
                 const res = await fetch(image.url)
                 const buffer = await res.arrayBuffer()
@@ -77,7 +77,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
             })
             if (filePath) {
-                await writeFile(filePath, data)
+                await writeNativeBinaryFile(filePath, data)
                 toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
             }
         } catch (e) {
@@ -90,7 +90,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
         try {
             let base64 = ''
             if (isFile) {
-                const data = await readFile(image.url)
+                const data = await readNativeBinaryFile(image.url)
                 // Convert to base64
                 let binary = ''
                 const len = data.byteLength
@@ -123,7 +123,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
     const getImageBase64 = async (): Promise<string | null> => {
         try {
             if (isFile) {
-                const data = await readFile(image.url)
+                const data = await readNativeBinaryFile(image.url)
                 let binary = ''
                 const len = data.byteLength
                 for (let i = 0; i < len; i++) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toNativeAssetUrl } from '@/platform/asset-url'
-import { readFile } from '@tauri-apps/plugin-fs'
+import { readNativeBinaryFile } from '@/platform/native-file-system'
 import { FileImage, FolderTree, Image as ImageIcon, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -94,7 +94,9 @@ export default function Trash() {
 
     const openMetadata = async (image: TrashedImage) => {
         try {
-            const dataUrl = image.url.startsWith('data:') ? image.url : imageDataUrlFromBytes(await readFile(image.url), image.url)
+            const dataUrl = image.url.startsWith('data:')
+                ? image.url
+                : imageDataUrlFromBytes(await readNativeBinaryFile(image.url), image.url)
             setMetadataImage(dataUrl)
             setMetadataOpen(true)
         } catch (error) {
