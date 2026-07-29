@@ -43,6 +43,7 @@ import {
     type MainReferenceSnapshot,
 } from '@/lib/composition/main-adapter'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
+import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { CompositionEngineIssue, CompositionEnginePlan } from '@/domain/composition/engine'
 import type { DeepReadonly } from '@/domain/composition/provenance'
@@ -1320,59 +1321,44 @@ export const useGenerationStore = create<GenerationState>()(
                                         negative: await legacyFragmentSession!.process(c.negative),
                                     })),
                                 )
-                            legacyParams = {
+                            legacyParams = buildLegacyMainGenerationParameters({
                                 prompt: legacyPrompt,
-                                negative_prompt: legacyNegative,
+                                negativePrompt: legacyNegative,
+                                originalPrompts: {
+                                    base: basePrompt,
+                                    additional: additionalPrompt,
+                                    detail: detailPrompt,
+                                    negative: negativePrompt,
+                                    inpainting: inpaintingPrompt,
+                                },
                                 model,
                                 width: finalWidth,
                                 height: finalHeight,
                                 steps,
-                                cfg_scale: cfgScale,
-                                cfg_rescale: cfgRescale,
+                                cfgScale,
+                                cfgRescale,
                                 sampler,
                                 scheduler,
                                 smea,
-                                smea_dyn: smeaDyn,
+                                smeaDyn,
                                 variety,
                                 seed: currentSeed,
-                                ...(sourceImage ? { sourceImage } : {}),
+                                sourceImage,
                                 strength,
                                 noise,
-                                ...(mask ? { mask } : {}),
-                                charImages: characterImages.map(img => img.base64),
-                                charStrength: characterImages.map(img => img.strength),
-                                charFidelity: characterImages.map(img => img.fidelity ?? 0.6),
-                                charReferenceType: characterImages.map(img => img.referenceType ?? 'character&style'),
-                                charCacheKeys: characterImages.map(img => img.cacheKey || null),
-                                vibeImages: vibeImages.map(img => img.base64),
-                                vibeInfo: vibeImages.map(img => img.informationExtracted),
-                                vibeStrength: vibeImages.map(img => img.strength),
-                                preEncodedVibes: vibeImages.map(img => img.encodedVibe || null),
+                                mask,
+                                characterImages,
+                                vibeImages,
                                 characterPrompts: processedCharacterPrompts,
-                                characterPositionEnabled: modulePromptsActive && moduleCharacterPrompts
-                                    ? true
-                                    : characterPromptState.positionEnabled,
+                                characterPositionEnabled: characterPromptState.positionEnabled,
+                                modulePromptsActive,
+                                moduleCharacterPromptsPresent: moduleCharacterPrompts !== null,
                                 imageFormat: settings.imageFormat,
                                 metadataMode: modulePlan?.output.metadataMode ?? settings.metadataMode,
-                                ...(modulePlan === null ? {} : { assetModulePlan: modulePlan }),
+                                assetModulePlan: modulePlan,
                                 qualityToggle: get().qualityToggle,
                                 ucPreset: get().ucPreset,
-                                promptParts: modulePromptsActive
-                                    ? {
-                                        base: legacyPrompt,
-                                        additional: '',
-                                        detail: '',
-                                        negative: legacyNegative,
-                                        inpainting: '',
-                                    }
-                                    : {
-                                        base: basePrompt,
-                                        additional: additionalPrompt,
-                                        detail: detailPrompt,
-                                        negative: negativePrompt,
-                                        inpainting: inpaintingPrompt,
-                                    },
-                            }
+                            })
                         }
 
                         if (resolvedPlan !== null) {
