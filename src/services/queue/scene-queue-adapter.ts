@@ -1,6 +1,4 @@
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
-import type { JsonValue } from '@/domain/composition/types'
 import type {
     GenerationJob,
     QueueArtifactReference,
@@ -12,7 +10,6 @@ import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fra
 import {
     saveSceneResult,
     type SaveSceneResultContext,
-    type SaveSceneResultOptions,
 } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
@@ -33,53 +30,20 @@ import {
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
-import { createGenerationJobSnapshot } from './job-snapshot'
+import {
+    decodeSceneJobSnapshot,
+    encodeSceneJobSnapshot,
+    type EncodedSceneJobSnapshot,
+    type SceneQueueWorkflowSnapshot,
+} from './scene-job-snapshot-codec'
 import { createSerializedProgressReporter } from './serialized-progress-reporter'
 import {
     dehydrateGenerationParams,
     getRuntimeQueueResourceMaterializer,
     hashQueueResourceBytes,
     hydrateGenerationParams,
-    type DehydratedGenerationParameters,
     type MaterializedQueueResource,
 } from './queue-resource-materializer'
-
-interface SceneQueueWorkflowSnapshot {
-    scene: { id: string; name: string }
-    finalPrompt: string
-    mimeType: string
-    saveContext: SaveSceneResultContext
-    outputContext: NonNullable<SaveSceneResultOptions['outputContext']>
-    sequenceCommitProposal: FragmentSequenceCommitProposal | null
-}
-
-interface SceneQueueParameters extends DehydratedGenerationParameters {
-    queueExecution: { streaming: boolean; sourceEdit: boolean }
-    sceneWorkflow: SceneQueueWorkflowSnapshot
-}
-
-function asJson(value: unknown): JsonValue {
-    return JSON.parse(JSON.stringify(value)) as JsonValue
-}
-
-function parseSceneQueueParameters(value: JsonValue): SceneQueueParameters {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new QueueExecutionError('fatal', 'Scene queue snapshot parameters are invalid')
-    }
-    const candidate = value as unknown as Partial<SceneQueueParameters>
-    if (candidate.generationParams === undefined
-        || !Array.isArray(candidate.resourceBindings)
-        || candidate.resourceArrayLengths === undefined
-        || candidate.queueExecution === undefined
-        || candidate.sceneWorkflow === undefined
-        || typeof candidate.sceneWorkflow.scene?.id !== 'string'
-        || typeof candidate.sceneWorkflow.scene?.name !== 'string'
-        || typeof candidate.sceneWorkflow.finalPrompt !== 'string'
-        || typeof candidate.sceneWorkflow.mimeType !== 'string') {
-        throw new QueueExecutionError('fatal', 'Scene queue snapshot parameters are invalid')
-    }
-    return candidate as SceneQueueParameters
-}
 
 let sceneEnqueueInFlight: Promise<CreateBatchAndEnqueueResult | null> | null = null
 
@@ -163,11 +127,7 @@ async function enqueueSceneQueueTargetsOnce(
     const materializer = getRuntimeQueueResourceMaterializer()
     const resourceCache = new Map<string, Promise<MaterializedQueueResource>>()
     const resources = new Map<string, QueueResourceRecord>()
-    const prepared: Array<{
-        sceneId: string
-        snapshot: ReturnType<typeof createGenerationJobSnapshot>
-        compositionPlanHash: string | null
-    }> = []
+    const prepared: EncodedSceneJobSnapshot[] = []
 
     try {
         for (const { target, preset, scene } of selected) {
@@ -208,37 +168,17 @@ async function enqueueSceneQueueTargetsOnce(
                 }
                 const dehydrated = await dehydrateGenerationParams(built.params, materializer, resourceCache)
                 for (const record of dehydrated.records) resources.set(record.id, record)
-                const parameters: SceneQueueParameters = {
-                    ...dehydrated.parameters,
-                    queueExecution: {
-                        streaming: settings.useStreaming,
-                        sourceEdit: Boolean(built.params.sourceImage || built.params.mask),
-                    },
-                    sceneWorkflow: {
-                        scene: { id: scene.id, name: scene.name },
-                        finalPrompt: built.finalPrompt,
-                        mimeType: built.mimeType,
-                        saveContext,
-                        outputContext: { ...outputContext, sceneName: scene.name },
-                        sequenceCommitProposal: built.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
-                    },
-                }
-                const snapshot = createGenerationJobSnapshot({
-                    prompt: { positive: built.finalPrompt, negative: built.params.negative_prompt },
-                    parameters: asJson(parameters),
-                    outputPolicy: asJson({
-                        workflow: 'scene',
-                        saveContext,
-                        outputContext: { ...outputContext, sceneName: scene.name },
-                    }),
-                    resources: dehydrated.resources,
-                    resumability: 'resumable',
-                })
-                prepared.push({
-                    sceneId: scene.id,
-                    snapshot,
-                    compositionPlanHash: built.planHash === null ? null : `sha256:${built.planHash.digest}`,
-                })
+                prepared.push(encodeSceneJobSnapshot({
+                    scene: { id: scene.id, name: scene.name },
+                    params: built.params,
+                    finalPrompt: built.finalPrompt,
+                    mimeType: built.mimeType,
+                    saveContext,
+                    outputContext: { ...outputContext, sceneName: scene.name },
+                    streaming: settings.useStreaming,
+                    sequenceCommitProposal: built.sequenceCommitProposal,
+                    planHash: built.planHash,
+                }, dehydrated))
             }
         }
     } finally {
@@ -286,7 +226,7 @@ export async function executeSceneQueueJob(
     job: GenerationJob,
     context: QueueExecutorContext,
 ): Promise<void> {
-    const payload = parseSceneQueueParameters(job.snapshot.parameters)
+    const payload = decodeSceneJobSnapshot(job.snapshot)
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
     await context.updateProgress('transport', 0, Math.max(1, params.steps))
