@@ -1,29 +1,22 @@
 import { type ReactNode } from 'react'
-import { useDurableQueueRuntime } from '@/hooks/useDurableQueueRuntime'
-import { useR2UploadRuntime } from '@/hooks/useR2UploadRuntime'
-import { useSceneGeneration } from '@/hooks/useSceneGeneration'
-import { useShortcuts } from '@/hooks/useShortcuts'
-import { useUpdateChecker } from '@/hooks/useUpdateChecker'
-import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
+
+import { CoreRuntimeProviders } from './CoreRuntimeProviders'
+import { FeatureRuntimeProviders } from './FeatureRuntimeProviders'
 
 interface RuntimeProvidersProps {
     children: ReactNode
 }
 
 /**
- * Route-independent runtime owner. Queue/R2/scene executors and global input
- * listeners depend on App lifetime, so this boundary keeps them mounted while
- * page components can change without restarting work or duplicating listeners.
+ * Composes the always-on core with route-activated feature runtimes. App owns
+ * this boundary, so both layers survive page changes without placing Scene or
+ * R2 implementation imports in the Main startup graph.
  */
 export function RuntimeProviders({ children }: RuntimeProvidersProps) {
-    // Scene remains the observed rollback executor until its durable coordinator
-    // reaches parity; keeping it here preserves generation across navigation.
-    useSceneGeneration()
-    useDurableQueueRuntime()
-    useR2UploadRuntime()
-    useUpdateChecker()
-    useShortcuts()
-    useWindowResizePerformanceMode()
-
-    return children
+    return (
+        <CoreRuntimeProviders>
+            <FeatureRuntimeProviders />
+            {children}
+        </CoreRuntimeProviders>
+    )
 }
