@@ -80,10 +80,6 @@
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {
-    "file": "src/pages/WebView.tsx",
-    "modules": ["@tauri-apps/plugin-store"]
-  },
-  {
     "file": "src/stores/scene-store.ts",
     "modules": ["@tauri-apps/plugin-fs"]
   },

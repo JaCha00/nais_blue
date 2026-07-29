@@ -59,4 +59,10 @@ describe('Presentation Tauri import baseline', () => {
 
         expect(modules).not.toContain('@tauri-apps/api/path')
     })
+
+    it('keeps native key-value store imports out of presentation', async () => {
+        const modules = (await observedImports()).flatMap(entry => entry.modules)
+
+        expect(modules).not.toContain('@tauri-apps/plugin-store')
+    })
 })

@@ -16,7 +16,10 @@ import {
     type BrowserOpenTarget,
 } from '@/platform/browser'
 import { runtimeCapabilities } from '@/platform/capabilities'
-import { Store } from '@tauri-apps/plugin-store'
+import {
+    loadNativeKeyValueStore,
+    type NativeKeyValueStore,
+} from '@/platform/native-key-value-store'
 import {
     Globe,
     Home,
@@ -93,7 +96,7 @@ export default function WebView() {
     const pendingResizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const lastResizeSentAtRef = useRef(0)
     const lastWebViewRectRef = useRef<WebViewRect | null>(null)
-    const storeRef = useRef<Store | null>(null)
+    const storeRef = useRef<NativeKeyValueStore | null>(null)
     const [zoomLevel, setZoomLevel] = useState(1.0)
 
     // Zoom function for buttons
@@ -140,7 +143,7 @@ export default function WebView() {
                     }
                     return
                 }
-                storeRef.current = await Store.load('webview-settings.json')
+                storeRef.current = await loadNativeKeyValueStore('webview-settings.json')
                 const savedLinks = await storeRef.current.get<QuickLink[]>(STORE_KEY)
                 if (savedLinks && savedLinks.length > 0) {
                     setQuickLinks(savedLinks)
