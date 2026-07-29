@@ -6,21 +6,26 @@ const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
 describe('Artifact lifecycle routing', () => {
     it('uses a typed transient store instead of the legacy window event', async () => {
-        const files = await Promise.all([
+        const publishers = await Promise.all([
             'src/stores/generation-store.ts',
             'src/lib/scene-generation/save-scene-result.ts',
             'src/services/style-lab-generation.ts',
-            'src/services/queue/main-queue-adapter.ts',
+            'src/presentation/queue/zustand-main-queue-presentation.ts',
             'src/pages/MainMode.tsx',
             'src/pages/ToolsMode.tsx',
-            'src/components/layout/HistoryPanel.tsx',
         ].map(source))
+        const [mainQueue, history] = await Promise.all([
+            source('src/services/queue/main-queue-adapter.ts'),
+            source('src/components/layout/HistoryPanel.tsx'),
+        ])
 
-        for (const contents of files) {
+        for (const contents of [...publishers, mainQueue, history]) {
             expect(contents).not.toContain('newImageGenerated')
         }
-        expect(files.slice(0, -1).every(contents => contents.includes('publishGeneratedArtifact'))).toBe(true)
-        expect(files.at(-1)).toContain('useArtifactLifecycleStore')
+        expect(publishers.every(contents => contents.includes('publishGeneratedArtifact'))).toBe(true)
+        expect(mainQueue).toContain('presentation.publishArtifact')
+        expect(mainQueue).not.toContain('publishGeneratedArtifact')
+        expect(history).toContain('useArtifactLifecycleStore')
     })
 
     it('retains optional queue lineage when History refreshes generated artifacts', async () => {

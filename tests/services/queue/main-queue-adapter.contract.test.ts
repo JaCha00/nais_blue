@@ -19,17 +19,25 @@ describe('durable Main sequential-fragment execution contract', () => {
     })
 
     it('exposes only staged proposals and rejects an incomplete planned batch', async () => {
-        const [adapter, generationStore] = await Promise.all([
+        const [adapter, generationStore, plannerAdapter, useCase] = await Promise.all([
             readFile(resolve(process.cwd(), 'src/services/queue/main-queue-adapter.ts'), 'utf8'),
             readFile(resolve(process.cwd(), 'src/stores/generation-store.ts'), 'utf8'),
+            readFile(resolve(
+                process.cwd(),
+                'src/presentation/generation/zustand-main-batch-planner.ts',
+            ), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/application/generation/plan-main-batch.ts'), 'utf8'),
         ])
         const stage = generationStore.indexOf('if (!batchSequencePlanner?.stage(generationSequenceProposal))')
         const capture = generationStore.indexOf('await options.capturePrepared({')
 
         expect(stage).toBeGreaterThan(-1)
         expect(capture).toBeGreaterThan(stage)
-        expect(adapter).toContain('const expectedItemCount = generation.batchCount')
-        expect(adapter).toContain('prepared.length !== expectedItemCount || prepared.length === 0')
-        expect(adapter).toMatch(/completeEnqueueOperation\('main', operationId\)[\s\S]*?return null/)
+        expect(plannerAdapter).toContain('generate({ capturePrepared: collect })')
+        expect(adapter).toContain('const plan = await planMainBatch({')
+        expect(adapter).not.toContain('generate({ capturePrepared:')
+        expect(adapter).not.toMatch(/@\/stores\//)
+        expect(useCase).toContain('items.length !== requestedCount')
+        expect(adapter).toMatch(/completeEnqueueOperation\(operationId\)[\s\S]*?return null/)
     })
 })

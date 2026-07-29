@@ -76,6 +76,13 @@ module.exports = {
             to: { path: '^src/(?:components|pages|presentation)/' },
         },
         {
+            name: 'main-queue-adapter-does-not-import-stores',
+            comment: 'Main planning and result projection cross Application ports instead of reaching into Zustand.',
+            severity: 'error',
+            from: { path: '^src/services/queue/main-queue-adapter\\.ts$' },
+            to: { path: '^src/stores/' },
+        },
+        {
             name: 'new-presentation-code-does-not-import-tauri',
             comment: 'New UI and store modules must use platform adapters; the exact transitional importer set is checked separately.',
             severity: 'error',

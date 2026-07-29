@@ -1,4 +1,6 @@
 import type { QueueTokenProvider } from '@/application/queue/queue-token-provider'
+import { createZustandMainBatchPlanner } from '@/presentation/generation/zustand-main-batch-planner'
+import { createZustandMainQueuePresentation } from '@/presentation/queue/zustand-main-queue-presentation'
 import { configureRuntimeQueueDependencies } from '@/services/queue/runtime'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -18,6 +20,12 @@ let initialized = false
 
 export function initializeCoreRuntime(): void {
     if (initialized) return
-    configureRuntimeQueueDependencies({ tokenProvider: queueTokenProvider })
+    configureRuntimeQueueDependencies({
+        tokenProvider: queueTokenProvider,
+        mainQueue: {
+            planner: createZustandMainBatchPlanner(),
+            presentation: createZustandMainQueuePresentation(),
+        },
+    })
     initialized = true
 }

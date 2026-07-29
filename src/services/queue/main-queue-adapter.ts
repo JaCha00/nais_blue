@@ -2,19 +2,17 @@ import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import type { JsonValue, PortablePathRef } from '@/domain/composition/types'
 import type { GenerationJob, QueueArtifactReference, QueueResourceRecord } from '@/domain/queue/types'
+import type { MainQueuePresentationPort } from '@/application/generation/main-queue-presentation-port'
+import {
+    planMainBatch,
+    type MainBatchPlannerPort,
+} from '@/application/generation/plan-main-batch'
 import { createThumbnail } from '@/lib/image-utils'
 import { ensureImageFileExtension } from '@/lib/generation-metadata'
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
+import type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import { generateImage, generateImageStream } from '@/services/novelai-api'
-import { useAuthStore } from '@/stores/auth-store'
-import {
-    useGenerationStore,
-    type CapturedMainGeneration,
-} from '@/stores/generation-store'
-import { useCharacterStore } from '@/stores/character-store'
-import { useQueueStore } from '@/stores/queue-store'
-import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import {
@@ -60,6 +58,35 @@ interface MainQueueParameters extends DehydratedGenerationParameters {
     mainWorkflow: MainQueueWorkflowSnapshot
 }
 
+export interface RuntimeMainQueueDependencies {
+    readonly planner: MainBatchPlannerPort<CapturedMainGeneration>
+    readonly presentation: MainQueuePresentationPort
+}
+
+let runtimeMainQueueDependencies: RuntimeMainQueueDependencies | null = null
+
+/**
+ * Composition Root supplies the legacy Planner bridge and Zustand projector.
+ * Queue code retains only Application ports, preventing Store dependencies from
+ * leaking back while the standalone Main Planner is extracted incrementally.
+ */
+export function configureRuntimeMainQueueDependencies(
+    dependencies: RuntimeMainQueueDependencies,
+): void {
+    runtimeMainQueueDependencies = dependencies
+}
+
+function getRuntimeMainQueueDependencies(): RuntimeMainQueueDependencies {
+    if (runtimeMainQueueDependencies === null) {
+        throw new Error('Main Queue dependencies are not configured')
+    }
+    return runtimeMainQueueDependencies
+}
+
+export function resetRuntimeMainQueueDependenciesForTests(): void {
+    runtimeMainQueueDependencies = null
+}
+
 function asJson(value: unknown): JsonValue {
     return JSON.parse(JSON.stringify(value)) as JsonValue
 }
@@ -93,19 +120,15 @@ export function enqueueCurrentMainBatch(): Promise<CreateBatchAndEnqueueResult |
 }
 
 async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResult | null> {
-    const operationId = useQueueStore.getState().beginEnqueueOperation('main')
-    const generation = useGenerationStore.getState()
-    const expectedItemCount = generation.batchCount
+    const dependencies = getRuntimeMainQueueDependencies()
+    const operationId = dependencies.presentation.beginEnqueueOperation()
     const materializer = getRuntimeQueueResourceMaterializer()
     const resourceCache = new Map<string, Promise<MaterializedQueueResource>>()
-    const prepared: Array<{
-        snapshot: ReturnType<typeof createGenerationJobSnapshot>
-        compositionPlanHash: string | null
-    }> = []
     const resources = new Map<string, QueueResourceRecord>()
 
-    await generation.generate({
-        capturePrepared: async capture => {
+    const plan = await planMainBatch({
+        planner: dependencies.planner,
+        materialize: async capture => {
             const dehydrated = await dehydrateGenerationParams(capture.params, materializer, resourceCache)
             for (const record of dehydrated.records) resources.set(record.id, record)
             const sourceEdit = Boolean(capture.params.sourceImage || capture.params.mask)
@@ -145,25 +168,25 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
                 resources: dehydrated.resources,
                 resumability: 'resumable',
             })
-            prepared.push({
+            return {
                 snapshot,
                 compositionPlanHash: capture.params.compositionPlanHash === undefined
                     ? null
                     : `sha256:${capture.params.compositionPlanHash.digest}`,
-            })
+            }
         },
     })
     // Generation reports planner failures through UI diagnostics and resolves.
     // The durable repository therefore requires the exact requested count before
     // its atomic write; partial snapshots are discarded and their unused ID released.
-    if (prepared.length !== expectedItemCount || prepared.length === 0) {
-        useQueueStore.getState().completeEnqueueOperation('main', operationId)
+    if (plan === null) {
+        dependencies.presentation.completeEnqueueOperation(operationId)
         return null
     }
 
     const batchId = `main-batch-${operationId}`
     const createdAt = new Date().toISOString()
-    const jobs: EnqueueGenerationJobInput[] = prepared.map((item, ordinal) => ({
+    const jobs: EnqueueGenerationJobInput[] = plan.items.map((item, ordinal) => ({
         id: `main-job-${operationId}-${ordinal}`,
         batchId,
         workflow: 'main',
@@ -188,7 +211,7 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
         jobs,
         resources: [...resources.values()],
     })
-    useQueueStore.getState().completeEnqueueOperation('main', operationId)
+    dependencies.presentation.completeEnqueueOperation(operationId)
     return result
 }
 
@@ -199,6 +222,7 @@ function decodeImageBytes(imageData: string): Uint8Array {
 }
 
 export async function executeMainQueueJob(job: GenerationJob, context: QueueExecutorContext): Promise<void> {
+    const { presentation } = getRuntimeMainQueueDependencies()
     const payload = parseMainQueueParameters(job.snapshot.parameters)
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
@@ -209,19 +233,16 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
     if (sequenceLease === null) {
         throw new QueueExecutionError('fatal', 'Fragment sequence snapshot is stale before Main transport')
     }
-    const generationStore = useGenerationStore.getState()
-    generationStore.setGeneratingMode('main')
-    generationStore.setIsGenerating(true)
-    generationStore.setStreamProgress(0)
+    presentation.beginExecution()
     try {
         await context.updateProgress('transport', 0, Math.max(1, params.steps))
         const progressReporter = createSerializedProgressReporter(context.updateProgress)
         const result = payload.queueExecution.streaming && !payload.queueExecution.sourceEdit
             ? await generateImageStream(context.token, params, (progress, partialImage) => {
-                generationStore.setStreamProgress(progress)
-                if (partialImage && context.canCommit()) {
-                    generationStore.setPreviewImage(`data:image/${payload.mainWorkflow.imageFormat};base64,${partialImage}`)
-                }
+                const previewImage = partialImage && context.canCommit()
+                    ? `data:image/${payload.mainWorkflow.imageFormat};base64,${partialImage}`
+                    : undefined
+                presentation.reportStreamProgress(progress, previewImage)
                 progressReporter.enqueue('stream', Math.min(params.steps, Math.round(params.steps * progress / 100)), params.steps)
             }, context.signal)
             : await generateImage(context.token, params, context.signal)
@@ -284,7 +305,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                     throw new Error('Fragment sequence changed before durable Main output commit')
                 }
                 artifactRegistration = await registerQueueArtifact(job, artifactReference, outputResult)
-                useGenerationStore.getState().addToHistory({
+                presentation.commitHistory({
                     id: historyId,
                     url: outputResult.thumbnailDataUrl ?? imageDataUrl,
                     prompt: payload.mainWorkflow.finalPrompt,
@@ -298,10 +319,9 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                             sourceJobId: job.id,
                             ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
                         }),
-                })
+                }, imageDataUrl)
                 historyCommitted = true
-                useGenerationStore.getState().setPreviewImage(imageDataUrl)
-                publishGeneratedArtifact({
+                presentation.publishArtifact({
                     path: outputResult.path,
                     ...(artifactRegistration === null
                         ? {}
@@ -315,10 +335,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             },
             rollbackWorkflow: async () => {
                 if (historyCommitted) {
-                    useGenerationStore.setState(state => ({
-                        history: state.history.filter(item => item.id !== historyId),
-                        previewImage: state.previewImage === imageDataUrl ? null : state.previewImage,
-                    }))
+                    presentation.rollbackHistory(historyId, imageDataUrl)
                     historyCommitted = false
                 }
                 await rollbackQueueArtifactRegistration(artifactRegistration)
@@ -332,22 +349,12 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         })
         if (output.status === 'cancelled') return
         if (result.encodedVibes && result.encodedVibes.length > 0) {
-            const { vibeImages, updateVibeImage } = useCharacterStore.getState()
-            let encodedIndex = 0
-            for (let index = 0; index < vibeImages.length && encodedIndex < result.encodedVibes.length; index += 1) {
-                if (!vibeImages[index].encodedVibe) {
-                    updateVibeImage(vibeImages[index].id, { encodedVibe: result.encodedVibes[encodedIndex] })
-                    encodedIndex += 1
-                }
-            }
+            presentation.updateEncodedVibes(result.encodedVibes)
         }
         const slot = context.tokenSlotId === 'slot-2' ? 2 : 1
-        void useAuthStore.getState().refreshAnlas(slot)
+        presentation.refreshAnlas(slot)
     } finally {
         sequenceLease.release()
-        generationStore.setStreamProgress(0)
-        generationStore.setIsGenerating(false)
-        generationStore.setGeneratingMode(null)
-        useCharacterStore.getState().releaseImageData()
+        presentation.finishExecution()
     }
 }

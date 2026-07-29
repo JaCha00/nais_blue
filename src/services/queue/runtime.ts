@@ -2,7 +2,12 @@ import type { QueueTokenProvider } from '@/application/queue/queue-token-provide
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
 import { executeSceneQueueJob } from './scene-queue-adapter'
-import { executeMainQueueJob } from './main-queue-adapter'
+import {
+    configureRuntimeMainQueueDependencies,
+    executeMainQueueJob,
+    resetRuntimeMainQueueDependenciesForTests,
+    type RuntimeMainQueueDependencies,
+} from './main-queue-adapter'
 import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-adapter'
 import { initializeQueueAfterRestart } from './queue-startup'
 
@@ -11,6 +16,7 @@ let runtimeDependencies: RuntimeQueueDependencies | null = null
 
 export interface RuntimeQueueDependencies {
     readonly tokenProvider: QueueTokenProvider
+    readonly mainQueue: RuntimeMainQueueDependencies
 }
 
 /**
@@ -22,6 +28,7 @@ export function configureRuntimeQueueDependencies(dependencies: RuntimeQueueDepe
     if (runtimeCoordinator !== null) {
         throw new Error('Queue runtime dependencies must be configured before coordinator creation')
     }
+    configureRuntimeMainQueueDependencies(dependencies.mainQueue)
     runtimeDependencies = dependencies
 }
 
@@ -59,4 +66,5 @@ export function resetRuntimeDurableQueueCoordinatorForTests(): void {
     runtimeCoordinator?.stop()
     runtimeCoordinator = null
     runtimeDependencies = null
+    resetRuntimeMainQueueDependenciesForTests()
 }

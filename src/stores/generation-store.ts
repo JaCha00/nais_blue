@@ -56,6 +56,11 @@ import {
 } from '@/platform/portable-resources'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { publishGeneratedArtifact } from './artifact-lifecycle-store'
+import type {
+    MainGenerationPreparationOptions as GenerateOptions,
+} from '@/services/generation/main-generation-plan'
+
+export type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
 
 interface Resolution {
     label: string
@@ -90,29 +95,6 @@ export interface MainCompositionShadowDifference {
         | 'uniform-comment-removal'
         | 'exact-token-dedupe'
         | 'strict-broken-reference'
-}
-
-export interface CapturedMainGeneration {
-    params: GenerationParams
-    finalPrompt: string
-    imageFormat: 'png' | 'webp'
-    metadataMode: GenerationParams['metadataMode']
-    streaming: boolean
-    sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
-    output: {
-        autoSave: boolean
-        directory: string
-        useAbsolutePath: boolean
-        capabilityFallbackDirectory: string
-        portableDirectory?: GenerationParams['portableOutputDirectory']
-        fileName?: string
-        collisionPolicy: 'unique' | 'overwrite' | 'error'
-    }
-}
-
-interface GenerateOptions {
-    /** Internal enqueue planner seam. No transport or output is performed. */
-    capturePrepared?: (capture: CapturedMainGeneration) => void | Promise<void>
 }
 
 export interface MainCompositionShadowDiff {
