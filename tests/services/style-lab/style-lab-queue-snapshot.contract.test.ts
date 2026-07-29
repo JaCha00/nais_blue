@@ -4,14 +4,18 @@ import { describe, expect, it } from 'vitest'
 
 describe('Style Lab Queue snapshot boundary', () => {
     it('delegates V1 render encoding and decoding to the Style Lab codec', async () => {
-        const adapter = await readFile(
-            resolve(process.cwd(), 'src/services/style-lab/style-lab-queue-adapter.ts'),
-            'utf8',
-        )
+        const [adapter, executor] = await Promise.all([
+            readFile(resolve(process.cwd(), 'src/services/style-lab/style-lab-queue-adapter.ts'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/services/style-lab/style-lab-queue-executor.ts'), 'utf8'),
+        ])
 
         expect(adapter).toContain('encodeStyleLabJobSnapshot({')
-        expect(adapter).toContain('decodeStyleLabJobSnapshot(job.snapshot)')
+        expect(executor).toContain('decodeStyleLabJobSnapshot(job.snapshot)')
         expect(adapter).not.toContain('createGenerationJobSnapshot(')
         expect(adapter).not.toContain('parseStyleLabQueueParameters')
+        expect(adapter).not.toContain('executeNovelAIImageTransport')
+        expect(adapter).not.toContain('getRuntimeOutputWriter')
+        expect(executor).not.toContain('createBatchAndEnqueue')
+        expect(executor).not.toContain('reconcileStyleLabRenderReservations')
     })
 })

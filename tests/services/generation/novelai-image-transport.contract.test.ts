@@ -10,7 +10,7 @@ describe('NovelAI image transport boundary', () => {
             'src/services/generation/main-transport-executor.ts',
             'src/services/queue/main-queue-executor.ts',
             'src/services/queue/scene-queue-executor.ts',
-            'src/services/style-lab/style-lab-queue-adapter.ts',
+            'src/services/style-lab/style-lab-queue-executor.ts',
         ].map(source))
 
         for (const workflow of workflows) {

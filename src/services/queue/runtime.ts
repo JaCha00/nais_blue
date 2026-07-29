@@ -8,7 +8,7 @@ import {
     resetRuntimeMainQueueDependenciesForTests,
     type RuntimeMainQueueDependencies,
 } from './main-queue-runtime-dependencies'
-import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-adapter'
+import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-executor'
 import { initializeQueueAfterRestart } from './queue-startup'
 
 let runtimeCoordinator: DurableQueueCoordinator | null = null
