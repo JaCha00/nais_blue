@@ -1,11 +1,11 @@
 /**
  * Transitional planning port. Its implementation may still read the legacy
- * draft store, but the use case depends only on an ordered preparation stream
- * and can later accept the standalone Main Draft repository unchanged.
+ * draft store, but the use case receives one complete preparation result and
+ * can later accept the standalone Main Draft repository unchanged.
  */
 export interface MainBatchPlannerPort<TPrepared> {
     getRequestedCount(): number
-    capturePrepared(collect: (prepared: TPrepared) => void | Promise<void>): Promise<void>
+    prepareBatch(): Promise<readonly TPrepared[]>
 }
 
 export interface PlannedMainBatch<TPlanned> {
@@ -20,8 +20,8 @@ export interface PlanMainBatchOptions<TPrepared, TPlanned> {
 
 /**
  * Materializes one immutable batch through an injected Planner and rejects
- * partial capture before Queue persistence. The callback is awaited in capture
- * order so Fragment sequence proposals keep the same deterministic ordinals.
+ * partial preparation before Queue persistence. Sequential awaiting preserves
+ * the deterministic ordinals of Fragment sequence proposals and resources.
  */
 export async function planMainBatch<TPrepared, TPlanned>(
     options: PlanMainBatchOptions<TPrepared, TPlanned>,
@@ -29,12 +29,13 @@ export async function planMainBatch<TPrepared, TPlanned>(
     const requestedCount = options.planner.getRequestedCount()
     if (!Number.isSafeInteger(requestedCount) || requestedCount <= 0) return null
 
-    const items: TPlanned[] = []
-    await options.planner.capturePrepared(async prepared => {
-        items.push(await options.materialize(prepared, items.length))
-    })
+    const prepared = await options.planner.prepareBatch()
+    if (prepared.length !== requestedCount) return null
 
-    if (items.length !== requestedCount) return null
+    const items: TPlanned[] = []
+    for (const value of prepared) {
+        items.push(await options.materialize(value, items.length))
+    }
     return Object.freeze({
         requestedCount,
         items: Object.freeze([...items]),

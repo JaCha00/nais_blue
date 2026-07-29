@@ -3,9 +3,9 @@ import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { GenerationParams } from '@/services/novelai-types'
 
 /**
- * Credential-free handoff emitted by the legacy Main preparation engine and
- * consumed by PlanMainBatch. Keeping the DTO outside Zustand lets Queue migrate
- * first; a standalone Draft Planner can replace the producer in a later step.
+ * Credential-free handoff emitted by Main preparation and consumed by
+ * PlanMainBatch. Keeping the DTO outside Zustand prevents Queue from invoking
+ * the execution action while a standalone Draft repository is introduced.
  */
 export interface CapturedMainGeneration {
     readonly params: GenerationParams
@@ -23,9 +23,4 @@ export interface CapturedMainGeneration {
         readonly fileName?: string
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
     }
-}
-
-export interface MainGenerationPreparationOptions {
-    /** Internal Planner adapter seam. No provider transport or output occurs. */
-    capturePrepared?: (capture: CapturedMainGeneration) => void | Promise<void>
 }

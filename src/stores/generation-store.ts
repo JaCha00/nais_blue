@@ -57,9 +57,7 @@ import {
 } from '@/platform/portable-resources'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { publishGeneratedArtifact } from './artifact-lifecycle-store'
-import type {
-    MainGenerationPreparationOptions as GenerateOptions,
-} from '@/services/generation/main-generation-plan'
+import type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
 
 export type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
 
@@ -68,6 +66,15 @@ interface Resolution {
     width: number
     height: number
 }
+
+type MainGenerationRun =
+    | { readonly kind: 'execute' }
+    | { readonly kind: 'prepare', readonly captures: CapturedMainGeneration[] }
+
+// The symbol keeps the shared orchestration runner private to this store module.
+// Public callers use generate or prepareMainBatch, preventing Queue from
+// reintroducing execution-option callbacks while both paths retain parity.
+const runMainGenerationAction = Symbol('runMainGenerationAction')
 
 interface HistoryItem {
     id: string
@@ -815,7 +822,9 @@ interface GenerationState {
         selectedResolution: Resolution
     }) => void
 
-    generate: (options?: GenerateOptions) => Promise<void>
+    generate: () => Promise<void>
+    prepareMainBatch: () => Promise<readonly CapturedMainGeneration[]>
+    [runMainGenerationAction]: (run: MainGenerationRun) => Promise<void>
     cancelGeneration: () => void
     addToHistory: (item: HistoryItem) => void
     clearHistory: () => void
@@ -976,7 +985,15 @@ export const useGenerationStore = create<GenerationState>()(
                 })
             },
 
-            generate: async (options = {}) => {
+            generate: () => get()[runMainGenerationAction]({ kind: 'execute' }),
+
+            prepareMainBatch: async () => {
+                const captures: CapturedMainGeneration[] = []
+                await get()[runMainGenerationAction]({ kind: 'prepare', captures })
+                return Object.freeze([...captures])
+            },
+
+            [runMainGenerationAction]: async (run) => {
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
                     model, steps, cfgScale, cfgRescale, sampler, scheduler, smea, smeaDyn, variety,
@@ -989,7 +1006,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const slot1Token = useAuthStore.getState().getActiveTokens().find((entry) => entry.slot === 1)
                 const token = slot1Token?.token
 
-                if (!token && options.capturePrepared === undefined) {
+                if (!token && run.kind === 'execute') {
                     useAuthStore.getState().requestTokenEntry()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
@@ -1034,9 +1051,9 @@ export const useGenerationStore = create<GenerationState>()(
                 })
                 const sourceImageDigest = mainRuntimeDigest(sourceImage)
                 const maskDigest = mainRuntimeDigest(mask)
-                const batchSequencePlanner = options.capturePrepared === undefined
-                    ? null
-                    : createMainBatchSequencePlanner()
+                const batchSequencePlanner = run.kind === 'prepare'
+                    ? createMainBatchSequencePlanner()
+                    : null
 
                 try {
                     let completedBatchCount = 0
@@ -1433,7 +1450,7 @@ export const useGenerationStore = create<GenerationState>()(
                         const autoSave = v2Output?.autoSave ?? liveAutoSave
                         const requestedAbsolutePath = v2Output?.useAbsolutePath ?? useAbsolutePath
 
-                        if (options.capturePrepared !== undefined) {
+                        if (run.kind === 'prepare') {
                             const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
                             const moduleFileName = ensureImageFileExtension(
                                 v2Output?.fileName ?? modulePlan?.output.fileName,
@@ -1445,7 +1462,7 @@ export const useGenerationStore = create<GenerationState>()(
                             if (!batchSequencePlanner?.stage(generationSequenceProposal)) {
                                 throw new Error('Sequential fragment proposal could not be staged for durable Main batch')
                             }
-                            await options.capturePrepared({
+                            run.captures.push({
                                 params: generationParams,
                                 finalPrompt,
                                 imageFormat,
@@ -1724,7 +1741,10 @@ export const useGenerationStore = create<GenerationState>()(
                     }
 
                     // Show completion toast for batch
-                    if (!get().isCancelled && batchCount > 1 && completedBatchCount === batchCount) {
+                    if (run.kind === 'execute'
+                        && !get().isCancelled
+                        && batchCount > 1
+                        && completedBatchCount === batchCount) {
                         toast({
                             title: i18n.t('toast.batchComplete.title'),
                             description: i18n.t('toast.batchComplete.desc', { count: batchCount }),

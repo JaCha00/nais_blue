@@ -653,13 +653,8 @@ describe('Main workflow golden characterization', () => {
             compositionMode: 'v2',
             batchCount: 2,
         })
-        const captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
-
-        await stores.useGenerationStore.getState().generate({
-            capturePrepared: value => {
-                captured.push(structuredClone(value))
-            },
-        })
+        const captured = (await stores.useGenerationStore.getState().prepareMainBatch())
+            .map(value => structuredClone(value))
 
         expect(captured).toHaveLength(2)
         expect(captured.map(value => value.finalPrompt)).toEqual([
@@ -699,12 +694,11 @@ describe('Main workflow golden characterization', () => {
             selectedRecipeId: 'main:direct',
             batchCount: 3,
         })
-        const captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
+        let captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
 
         try {
-            await stores.useGenerationStore.getState().generate({
-                capturePrepared: value => captured.push(structuredClone(value)),
-            })
+            captured = (await stores.useGenerationStore.getState().prepareMainBatch())
+                .map(value => structuredClone(value))
         } finally {
             loadFragment.mockRestore()
         }

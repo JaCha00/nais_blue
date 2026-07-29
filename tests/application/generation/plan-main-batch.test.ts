@@ -8,9 +8,7 @@ import {
 function plannerFor<T>(requestedCount: number, prepared: readonly T[]): MainBatchPlannerPort<T> {
     return {
         getRequestedCount: () => requestedCount,
-        capturePrepared: async collect => {
-            for (const value of prepared) await collect(value)
-        },
+        prepareBatch: async () => prepared,
     }
 }
 
@@ -36,23 +34,25 @@ describe('PlanMainBatch', () => {
     })
 
     it('rejects an incomplete capture instead of persisting a partial batch', async () => {
+        const materialize = vi.fn((value: string) => value)
         const result = await planMainBatch({
             planner: plannerFor(2, ['only']),
-            materialize: value => value,
+            materialize,
         })
 
         expect(result).toBeNull()
+        expect(materialize).not.toHaveBeenCalled()
     })
 
     it('rejects an invalid requested count without invoking the legacy planner', async () => {
-        const capturePrepared = vi.fn(async () => undefined)
+        const prepareBatch = vi.fn(async () => [] as const)
 
         const result = await planMainBatch({
-            planner: { getRequestedCount: () => 0, capturePrepared },
+            planner: { getRequestedCount: () => 0, prepareBatch },
             materialize: (value: unknown) => value,
         })
 
         expect(result).toBeNull()
-        expect(capturePrepared).not.toHaveBeenCalled()
+        expect(prepareBatch).not.toHaveBeenCalled()
     })
 })

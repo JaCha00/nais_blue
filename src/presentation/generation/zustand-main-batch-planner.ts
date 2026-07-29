@@ -10,9 +10,7 @@ import { useGenerationStore } from '@/stores/generation-store'
 export function createZustandMainBatchPlanner(): MainBatchPlannerPort<CapturedMainGeneration> {
     const planner: MainBatchPlannerPort<CapturedMainGeneration> = {
         getRequestedCount: () => useGenerationStore.getState().batchCount,
-        capturePrepared: async collect => {
-            await useGenerationStore.getState().generate({ capturePrepared: collect })
-        },
+        prepareBatch: () => useGenerationStore.getState().prepareMainBatch(),
     }
     return Object.freeze(planner)
 }
