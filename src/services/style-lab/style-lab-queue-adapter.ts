@@ -13,7 +13,7 @@ import type { StyleLabRepository } from '@/application/style-lab/style-lab-repos
 import { buildStyleLabGenerationParams, formatStyleLabCompositionErrors } from '@/lib/style-lab/build-style-lab-params'
 import { createThumbnail } from '@/lib/image-utils'
 import type { MetadataMode } from '@/lib/generation-metadata'
-import { generateImage } from '@/services/novelai-api'
+import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -313,7 +313,13 @@ export async function executeStyleLabQueueJob(
         isPreviewing: true, previewProgress: 0, previewError: undefined,
     })
     await context.updateProgress('transport', 0, Math.max(1, params.steps))
-    const generated = await generateImage(context.token, params, context.signal)
+    const generated = await executeNovelAIImageTransport({
+        token: context.token,
+        params,
+        imageFormat: workflow.output.imageFormat,
+        streaming: false,
+        signal: context.signal,
+    })
     if (!generated.success || !generated.imageData) {
         if (generated.termination === 'cancelled') return
         if (generated.termination === 'timeout') throw new QueueExecutionError('timeout', 'Style-Lab render timed out')

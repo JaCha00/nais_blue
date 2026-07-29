@@ -9,7 +9,7 @@ describe('durable Main sequential-fragment execution contract', () => {
             'utf8',
         )
         const reserve = source.indexOf('reserveWildcardSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)')
-        const transport = source.indexOf('await generateImageStream')
+        const transport = source.indexOf('await executeNovelAIImageTransport')
 
         expect(reserve).toBeGreaterThan(-1)
         expect(transport).toBeGreaterThan(reserve)

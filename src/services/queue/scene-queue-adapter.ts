@@ -15,7 +15,7 @@ import {
     type SaveSceneResultOptions,
 } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
-import { generateImage, generateImageStream } from '@/services/novelai-api'
+import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
 import { useCharacterStore } from '@/stores/character-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
@@ -291,11 +291,16 @@ export async function executeSceneQueueJob(
     params.sourceJobId = job.id
     await context.updateProgress('transport', 0, Math.max(1, params.steps))
     const progressReporter = createSerializedProgressReporter(context.updateProgress)
-    const result = payload.queueExecution.streaming && !payload.queueExecution.sourceEdit
-        ? await generateImageStream(context.token, params, progress => {
+    const result = await executeNovelAIImageTransport({
+        token: context.token,
+        params,
+        imageFormat: payload.sceneWorkflow.mimeType === 'image/webp' ? 'webp' : 'png',
+        streaming: payload.queueExecution.streaming && !payload.queueExecution.sourceEdit,
+        signal: context.signal,
+        onProgress: progress => {
             progressReporter.enqueue('stream', Math.min(params.steps, Math.round(params.steps * progress / 100)), params.steps)
-        }, context.signal)
-        : await generateImage(context.token, params, context.signal)
+        },
+    })
     await progressReporter.flush()
     if (!result.success || !result.imageData) {
         if (result.termination === 'cancelled') return

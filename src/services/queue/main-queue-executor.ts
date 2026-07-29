@@ -2,7 +2,7 @@ import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types'
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
-import { generateImage, generateImageStream } from '@/services/novelai-api'
+import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
@@ -48,19 +48,24 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
     try {
         await context.updateProgress('transport', 0, Math.max(1, params.steps))
         const progressReporter = createSerializedProgressReporter(context.updateProgress)
-        const result = payload.queueExecution.streaming && !payload.queueExecution.sourceEdit
-            ? await generateImageStream(context.token, params, (progress, partialImage) => {
-                const previewImage = partialImage && context.canCommit()
-                    ? `data:image/${payload.mainWorkflow.imageFormat};base64,${partialImage}`
-                    : undefined
-                presentation.reportStreamProgress(progress, previewImage)
+        const result = await executeNovelAIImageTransport({
+            token: context.token,
+            params,
+            imageFormat: payload.mainWorkflow.imageFormat,
+            streaming: payload.queueExecution.streaming && !payload.queueExecution.sourceEdit,
+            signal: context.signal,
+            onProgress: (progress, previewImage) => {
+                presentation.reportStreamProgress(
+                    progress,
+                    context.canCommit() ? previewImage : undefined,
+                )
                 progressReporter.enqueue(
                     'stream',
                     Math.min(params.steps, Math.round(params.steps * progress / 100)),
                     params.steps,
                 )
-            }, context.signal)
-            : await generateImage(context.token, params, context.signal)
+            },
+        })
         await progressReporter.flush()
         if (!result.success || !result.imageData) {
             if (result.termination === 'cancelled') return
