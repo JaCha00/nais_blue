@@ -79,4 +79,12 @@ describe('Presentation Tauri import baseline', () => {
         expect(files).not.toContain('src/pages/Settings.tsx')
         expect(files).not.toContain('src/components/fragments/FragmentPromptDialog.tsx')
     })
+
+    it('keeps native binary writes out of migrated presentation flows', async () => {
+        const files = (await observedImports()).map(entry => entry.file)
+
+        expect(files).not.toContain('src/pages/SceneMode.tsx')
+        expect(files).not.toContain('src/components/tools/BackgroundRemovalDialog.tsx')
+        expect(files).not.toContain('src/components/tools/MosaicDialog.tsx')
+    })
 })

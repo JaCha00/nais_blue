@@ -6,7 +6,7 @@ import { useRef, useCallback, useEffect, PointerEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, Grid3X3, Minus, Plus } from "lucide-react"
 import { saveNativeFileDialog } from "@/platform/native-file-dialog"
-import { writeFile } from "@tauri-apps/plugin-fs"
+import { writeNativeBinaryFile } from "@/platform/native-file-system"
 import { toast } from "@/components/ui/use-toast"
 import { useToolsStore } from '@/stores/tools-store'
 
@@ -205,7 +205,7 @@ export function MosaicDialog({
             const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '')
             const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
 
-            await writeFile(filePath, binaryData)
+            await writeNativeBinaryFile(filePath, binaryData)
 
             toast({ title: t('common.saved', '저장되었습니다'), variant: 'success' })
             onClose()

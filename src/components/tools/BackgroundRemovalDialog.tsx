@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, Layers } from "lucide-react"
 import { saveNativeFileDialog } from "@/platform/native-file-dialog"
-import { writeFile } from "@tauri-apps/plugin-fs"
+import { writeNativeBinaryFile } from "@/platform/native-file-system"
 import { toast } from "@/components/ui/use-toast"
 
 interface BackgroundRemovalDialogProps {
@@ -84,7 +84,7 @@ export function BackgroundRemovalDialog({
             const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
 
             // Write to file
-            await writeFile(filePath, binaryData)
+            await writeNativeBinaryFile(filePath, binaryData)
 
             toast({ title: t('common.saved', '저장되었습니다'), variant: 'success' })
             onClose()

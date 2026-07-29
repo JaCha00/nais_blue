@@ -91,7 +91,7 @@ import { useGenerationStore } from '@/stores/generation-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
 import { toNativeAssetUrl } from '@/platform/asset-url'
-import { writeFile } from '@tauri-apps/plugin-fs'
+import { writeNativeBinaryFile } from '@/platform/native-file-system'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
 import { CharacterRotationDialog } from '@/components/scene/CharacterRotationDialog'
@@ -804,7 +804,7 @@ export default function SceneMode() {
                 }
                 const content = JSON.stringify(exportData, null, 2)
                 const encoder = new TextEncoder()
-                await writeFile(filePath, encoder.encode(content))
+                await writeNativeBinaryFile(filePath, encoder.encode(content))
                 toast({ title: t('common.saved', '저장됨'), variant: 'success' })
             }
         } catch (e) {

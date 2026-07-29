@@ -32,14 +32,6 @@
     "modules": ["@tauri-apps/api/core"]
   },
   {
-    "file": "src/components/tools/BackgroundRemovalDialog.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/components/tools/MosaicDialog.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
     "file": "src/pages/Library.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
@@ -49,10 +41,6 @@
   },
   {
     "file": "src/pages/SceneDetail.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/pages/SceneMode.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {
