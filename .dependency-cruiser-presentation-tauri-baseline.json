@@ -20,10 +20,6 @@
     "modules": ["@tauri-apps/api/core", "@tauri-apps/plugin-fs"]
   },
   {
-    "file": "src/components/layout/ThreeColumnLayout.tsx",
-    "modules": ["@tauri-apps/api/app"]
-  },
-  {
     "file": "src/components/library/LibraryContextMenu.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
@@ -48,10 +44,6 @@
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {
-    "file": "src/hooks/useUpdateChecker.tsx",
-    "modules": ["@tauri-apps/api/app", "@tauri-apps/plugin-updater"]
-  },
-  {
     "file": "src/pages/Library.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
@@ -69,7 +61,7 @@
   },
   {
     "file": "src/pages/Settings.tsx",
-    "modules": ["@tauri-apps/api/app", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-updater"]
+    "modules": ["@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/ToolsMode.tsx",
@@ -82,9 +74,5 @@
   {
     "file": "src/stores/scene-store.ts",
     "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/stores/update-store.ts",
-    "modules": ["@tauri-apps/plugin-updater"]
   }
 ]

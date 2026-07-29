@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
-import { check, Update } from '@tauri-apps/plugin-updater'
-import { getVersion } from '@tauri-apps/api/app'
+import { checkForNativeUpdate, type NativeUpdate } from '@/platform/native-update'
+import { getNativeAppVersion } from '@/platform/native-app'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ export function useUpdateChecker() {
     } = useUpdateStore()
 
     // Function to download update (but not install)
-    const downloadUpdate = async (update: Update) => {
+    const downloadUpdate = async (update: NativeUpdate) => {
         setIsDownloading(true)
         try {
             toast({
@@ -120,7 +120,7 @@ export function useUpdateChecker() {
             try {
                 // First, check if pendingUpdate is outdated (already installed)
                 if (pendingUpdate) {
-                    const currentVersion = await getVersion()
+                    const currentVersion = await getNativeAppVersion()
                     if (compareVersions(currentVersion, pendingUpdate.version) >= 0) {
                         // Current version is same or newer than pending, clear it
                         console.log(`[Update] Clearing outdated pendingUpdate: ${pendingUpdate.version} (current: ${currentVersion})`)
@@ -129,7 +129,7 @@ export function useUpdateChecker() {
                     }
                 }
 
-                const update = await check()
+                const update = await checkForNativeUpdate()
                 if (update) {
                     // Check if we already have this version downloaded
                     if (pendingUpdate && pendingUpdate.version === update.version) {

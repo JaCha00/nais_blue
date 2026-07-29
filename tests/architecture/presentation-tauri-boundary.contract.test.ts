@@ -65,4 +65,11 @@ describe('Presentation Tauri import baseline', () => {
 
         expect(modules).not.toContain('@tauri-apps/plugin-store')
     })
+
+    it('keeps native updater and app APIs out of presentation', async () => {
+        const modules = (await observedImports()).flatMap(entry => entry.modules)
+
+        expect(modules).not.toContain('@tauri-apps/plugin-updater')
+        expect(modules).not.toContain('@tauri-apps/api/app')
+    })
 })

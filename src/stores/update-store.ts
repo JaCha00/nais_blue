@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
-import { Update, check } from '@tauri-apps/plugin-updater'
+import { checkForNativeUpdate, type NativeUpdate } from '@/platform/native-update'
 import { relaunchApplication } from '@/lib/app-relaunch'
 
 interface PendingUpdateInfo {
@@ -23,11 +23,11 @@ interface UpdateStore {
 }
 
 // Store the actual Update object in memory (not persisted)
-let currentUpdateObject: Update | null = null
+let currentUpdateObject: NativeUpdate | null = null
 // Track if download was completed in THIS session
 let downloadedInSession = false
 
-export const setCurrentUpdateObject = (update: Update | null, downloaded = false) => {
+export const setCurrentUpdateObject = (update: NativeUpdate | null, downloaded = false) => {
     currentUpdateObject = update
     downloadedInSession = downloaded
 }
@@ -42,7 +42,7 @@ export const installPendingUpdate = async () => {
     } else {
         // Either no Update object, or it's a fresh one from check() that wasn't downloaded
         // Use downloadAndInstall() to be safe
-        const update = currentUpdateObject || await check()
+        const update = currentUpdateObject || await checkForNativeUpdate()
         if (update) {
             await update.downloadAndInstall()
             await relaunchApplication()

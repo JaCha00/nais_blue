@@ -47,9 +47,9 @@ import { useShortcutStore, SHORTCUT_ACTIONS, formatKeyBinding, type ShortcutActi
 import { toast } from '@/components/ui/use-toast'
 import GeminiIcon from '@/assets/gemini-color.svg'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/platform/native-file-dialog'
-import { check } from '@tauri-apps/plugin-updater'
+import { checkForNativeUpdate } from '@/platform/native-update'
 import { relaunchApplication } from '@/lib/app-relaunch'
-import { getVersion } from '@tauri-apps/api/app'
+import { getNativeAppVersion } from '@/platform/native-app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
 import { importAllData, getStoreSizes } from '@/lib/indexed-db'
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
@@ -181,7 +181,7 @@ export default function Settings() {
     const [lastAutoBackupTime, setLastAutoBackupTime] = useState<string | null>(null)
 
     useEffect(() => {
-        getVersion().then(setAppVersion).catch(() => setAppVersion('dev'))
+        getNativeAppVersion().then(setAppVersion).catch(() => setAppVersion('dev'))
         // 마지막 백업 시간 로드
         const lastBackup = localStorage.getItem('nais2-last-backup-time')
         if (lastBackup) setLastBackupTime(lastBackup)
@@ -708,7 +708,7 @@ export default function Settings() {
                                                 onClick={async () => {
                                                 setIsCheckingUpdate(true)
                                                 try {
-                                                    const update = await check()
+                                                    const update = await checkForNativeUpdate()
                                                     if (update) {
                                                         // Store the update object
                                                         setCurrentUpdateObject(update)
