@@ -14,7 +14,7 @@ import {
     MEDIA_STORAGE_BASE_DIRECTORY,
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { revealNativeItem } from '@/platform/native-shell'
 import { save } from '@tauri-apps/plugin-dialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
@@ -931,7 +931,7 @@ export function HistoryPanel() {
     const handleOpenFolder = async (image: SavedImage) => {
         if (image.isTemporary) return
         try {
-            await revealItemInDir(image.path)
+            await revealNativeItem(image.path)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

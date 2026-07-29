@@ -23,7 +23,7 @@ import {
     ContextMenuTrigger,
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
-import { openPath } from '@tauri-apps/plugin-opener'
+import { openNativePath } from '@/platform/native-shell'
 import { save } from '@tauri-apps/plugin-dialog'
 import { join } from '@tauri-apps/api/path'
 import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
@@ -517,7 +517,7 @@ export default function MainMode() {
                 await mkdir(folderPath, { recursive: true })
             }
 
-            await openPath(folderPath)
+            await openNativePath(folderPath)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

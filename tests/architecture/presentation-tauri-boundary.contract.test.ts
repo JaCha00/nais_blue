@@ -41,4 +41,10 @@ describe('Presentation Tauri import baseline', () => {
         // same change; adding a file or package fails before it can become debt.
         expect(await observedImports()).toEqual(baseline)
     })
+
+    it('keeps native shell opener imports out of presentation', async () => {
+        const modules = (await observedImports()).flatMap(entry => entry.modules)
+
+        expect(modules).not.toContain('@tauri-apps/plugin-opener')
+    })
 })

@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
 import { save } from '@tauri-apps/plugin-dialog'
 import { writeFile, readFile } from '@tauri-apps/plugin-fs'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { revealNativeItem } from '@/platform/native-shell'
 import { useNavigate } from 'react-router'
 import { useToolsStore } from '@/stores/tools-store'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -113,7 +113,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
     const handleOpenFolder = async () => {
         if (!isFile) return
         try {
-            await revealItemInDir(image.url)
+            await revealNativeItem(image.url)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

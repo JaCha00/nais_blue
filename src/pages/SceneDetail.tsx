@@ -25,7 +25,7 @@ import { getScenePresetPathSegments, hasSceneCompositionOverrides, resolveSceneG
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
-import { openPath } from '@tauri-apps/plugin-opener'
+import { openNativePath } from '@/platform/native-shell'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
@@ -494,7 +494,7 @@ export default function SceneDetail() {
 
             const latestImageParent = getLatestSceneImageParentPath(scene.images)
             if (latestImageParent && await exists(latestImageParent)) {
-                await openPath(latestImageParent)
+                await openNativePath(latestImageParent)
                 return
             }
 
@@ -510,17 +510,17 @@ export default function SceneDetail() {
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 
             if (folderPath) {
-                await openPath(folderPath)
+                await openNativePath(folderPath)
                 return
             }
 
             if (await exists(presetPath)) {
-                await openPath(presetPath)
+                await openNativePath(presetPath)
                 return
             }
 
             if (await exists(sceneRootPath)) {
-                await openPath(sceneRootPath)
+                await openNativePath(sceneRootPath)
             }
         } catch (error) {
             console.error("Failed to open folder:", error)

@@ -17,7 +17,7 @@
   },
   {
     "file": "src/components/layout/HistoryPanel.tsx",
-    "modules": ["@tauri-apps/api/core", "@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-opener"]
+    "modules": ["@tauri-apps/api/core", "@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/layout/ThreeColumnLayout.tsx",
@@ -25,7 +25,7 @@
   },
   {
     "file": "src/components/library/LibraryContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-opener"]
+    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/scene/ExportDialog.tsx",
@@ -33,7 +33,7 @@
   },
   {
     "file": "src/components/scene/SceneImageContextMenu.tsx",
-    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-opener"]
+    "modules": ["@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/components/startup/RescueScreen.tsx",
@@ -52,20 +52,16 @@
     "modules": ["@tauri-apps/api/app", "@tauri-apps/plugin-updater"]
   },
   {
-    "file": "src/pages/DataHub.tsx",
-    "modules": ["@tauri-apps/plugin-opener"]
-  },
-  {
     "file": "src/pages/Library.tsx",
     "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/MainMode.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-opener"]
+    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/SceneDetail.tsx",
-    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs", "@tauri-apps/plugin-opener"]
+    "modules": ["@tauri-apps/api/path", "@tauri-apps/plugin-fs"]
   },
   {
     "file": "src/pages/SceneMode.tsx",
