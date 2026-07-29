@@ -1,4 +1,11 @@
 /** @type {import('dependency-cruiser').IConfiguration} */
+const presentationTauriBaseline = require('./.dependency-cruiser-presentation-tauri-baseline.json')
+
+const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const knownPresentationTauriImporters = `^(?:${presentationTauriBaseline
+    .map(entry => escapeRegex(entry.file))
+    .join('|')})$`
+
 module.exports = {
     // These rules depend on dependency-cruiser's resolved TypeScript graph and
     // guard the target domain/application/adapter boundaries. Existing debt is
@@ -67,6 +74,19 @@ module.exports = {
             severity: 'error',
             from: { path: '^src/services/' },
             to: { path: '^src/(?:components|pages|presentation)/' },
+        },
+        {
+            name: 'new-presentation-code-does-not-import-tauri',
+            comment: 'New UI and store modules must use platform adapters; the exact transitional importer set is checked separately.',
+            severity: 'error',
+            from: {
+                path: '^src/(?:components|hooks|pages|stores)/',
+                pathNot: knownPresentationTauriImporters,
+            },
+            to: {
+                path: '^(?:node_modules/)?@tauri-apps/',
+                dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-bundled', 'npm-no-pkg'],
+            },
         },
         {
             name: 'not-to-unresolvable',
