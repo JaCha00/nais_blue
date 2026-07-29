@@ -18,6 +18,8 @@ describe('Queue runtime composition boundary', () => {
         expect(runtime).toContain('QueueTokenProvider')
         expect(root).toContain('configureRuntimeQueueDependencies')
         expect(root).toContain('useAuthStore')
+        expect(root).toContain('createZustandStyleLabQueuePresentation')
+        expect(runtime).toContain('StyleLabQueuePresentationPort')
         expect(main).toContain('initializeCoreRuntime()')
     })
 })

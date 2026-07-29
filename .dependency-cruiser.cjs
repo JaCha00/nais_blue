@@ -86,7 +86,9 @@ module.exports = {
             name: 'durable-queue-executors-do-not-import-stores',
             comment: 'Durable execution replays snapshots and projects through workflow boundaries, not current UI state.',
             severity: 'error',
-            from: { path: '^src/services/queue/(?:main|scene)-queue-executor\\.ts$' },
+            from: {
+                path: '^src/services/(?:queue/(?:main|scene)-queue-executor|style-lab/style-lab-queue-executor)\\.ts$',
+            },
             to: { path: '^src/stores/' },
         },
         {

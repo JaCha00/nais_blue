@@ -17,5 +17,8 @@ describe('Style Lab Queue snapshot boundary', () => {
         expect(adapter).not.toContain('getRuntimeOutputWriter')
         expect(executor).not.toContain('createBatchAndEnqueue')
         expect(executor).not.toContain('reconcileStyleLabRenderReservations')
+        expect(executor).not.toMatch(/@\/stores\//)
+        expect(executor).toContain('dependencies.presentation')
+        expect(executor).toContain('presentation.clearPreview(workflow.comboId)')
     })
 })
