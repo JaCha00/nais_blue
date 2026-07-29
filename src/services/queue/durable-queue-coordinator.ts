@@ -1,6 +1,7 @@
 import { evaluateQueueRetry } from '@/domain/queue/retry-policy'
 import { isTerminalJobState } from '@/domain/queue/state-machine'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import type { QueueTokenSlot } from '@/application/queue/queue-token-provider'
 import type {
     GenerationJob,
     GenerationWorkflow,
@@ -9,12 +10,6 @@ import type {
     QueueFailureKind,
 } from '@/domain/queue/types'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
-
-export interface QueueTokenSlot {
-    slotId: string
-    /** Execution-only secret. It is never copied into a job, attempt, diagnostic, or log. */
-    token: string
-}
 
 export interface QueueExecutorContext {
     readonly tokenSlotId: string

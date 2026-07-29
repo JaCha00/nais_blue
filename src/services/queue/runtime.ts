@@ -1,4 +1,4 @@
-import { useAuthStore } from '@/stores/auth-store'
+import type { QueueTokenProvider } from '@/application/queue/queue-token-provider'
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
 import { executeSceneQueueJob } from './scene-queue-adapter'
@@ -7,15 +7,33 @@ import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-ad
 import { initializeQueueAfterRestart } from './queue-startup'
 
 let runtimeCoordinator: DurableQueueCoordinator | null = null
+let runtimeDependencies: RuntimeQueueDependencies | null = null
+
+export interface RuntimeQueueDependencies {
+    readonly tokenProvider: QueueTokenProvider
+}
+
+/**
+ * Queue runtime construction depends on application ports supplied by the
+ * composition root. Refusing late configuration prevents two coordinators from
+ * observing different credential sources during one application session.
+ */
+export function configureRuntimeQueueDependencies(dependencies: RuntimeQueueDependencies): void {
+    if (runtimeCoordinator !== null) {
+        throw new Error('Queue runtime dependencies must be configured before coordinator creation')
+    }
+    runtimeDependencies = dependencies
+}
 
 export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
+    if (runtimeDependencies === null) {
+        throw new Error('Queue runtime dependencies are not configured')
+    }
+    const dependencies = runtimeDependencies
     runtimeCoordinator ??= new DurableQueueCoordinator({
         repository: getRuntimeQueueRepository(),
         startup: initializeQueueAfterRestart,
-        tokenProvider: () => useAuthStore.getState().getActiveTokens().map(entry => ({
-            slotId: `slot-${entry.slot}`,
-            token: entry.token,
-        })),
+        tokenProvider: () => dependencies.tokenProvider.getActiveTokenSlots(),
         executor: {
             execute: async (job, context) => {
                 if (job.workflow === 'scene') {
@@ -40,4 +58,5 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
 export function resetRuntimeDurableQueueCoordinatorForTests(): void {
     runtimeCoordinator?.stop()
     runtimeCoordinator = null
+    runtimeDependencies = null
 }

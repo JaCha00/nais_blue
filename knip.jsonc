@@ -1,0 +1,6 @@
+{
+    "$schema": "./node_modules/knip/schema-jsonc.json",
+    // Cloudflare Workers exposes this runtime protocol without an installable
+    // package; all other production dependencies remain part of the Knip gate.
+    "ignoreDependencies": ["cloudflare"]
+}

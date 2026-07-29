@@ -53,6 +53,8 @@ jobs:
       # a tag that has not passed the same lint, test, and production build path.
       - name: Verify release source
         run: |
+          npm run test:architecture
+          npm run test:dependencies
           npm run lint -- --no-cache
           npm run test:composition
           npm run build

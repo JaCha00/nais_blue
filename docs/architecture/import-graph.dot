@@ -1,0 +1,245 @@
+strict digraph "dependency-cruiser output"{
+    rankdir="LR" splines="true" overlap="false" nodesep="0.16" ranksep="0.18" fontname="Helvetica-bold" fontsize="9" style="rounded,bold,filled" fillcolor="#ffffff" compound="true"
+    node [shape="box" style="rounded, filled" height="0.2" color="black" fillcolor="#ffffcc" fontcolor="black" fontname="Helvetica" fontsize="9"]
+    edge [arrowhead="normal" arrowsize="0.6" penwidth="2.0" color="#00000033" fontname="Helvetica" fontsize="9"]
+
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@dnd-kit" {label="@dnd-kit" subgraph "cluster_node_modules/@dnd-kit/core" {label="core" subgraph "cluster_node_modules/@dnd-kit/core/dist" {label="dist" "node_modules/@dnd-kit/core/dist/core.esm.js" [label=<core.esm.js> tooltip="core.esm.js" URL="https://www.npmjs.com/package/@dnd-kit/core" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@dnd-kit" {label="@dnd-kit" subgraph "cluster_node_modules/@dnd-kit/modifiers" {label="modifiers" subgraph "cluster_node_modules/@dnd-kit/modifiers/dist" {label="dist" "node_modules/@dnd-kit/modifiers/dist/modifiers.esm.js" [label=<modifiers.esm.js> tooltip="modifiers.esm.js" URL="https://www.npmjs.com/package/@dnd-kit/modifiers" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@dnd-kit" {label="@dnd-kit" subgraph "cluster_node_modules/@dnd-kit/sortable" {label="sortable" subgraph "cluster_node_modules/@dnd-kit/sortable/dist" {label="dist" "node_modules/@dnd-kit/sortable/dist/sortable.esm.js" [label=<sortable.esm.js> tooltip="sortable.esm.js" URL="https://www.npmjs.com/package/@dnd-kit/sortable" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@dnd-kit" {label="@dnd-kit" subgraph "cluster_node_modules/@dnd-kit/utilities" {label="utilities" subgraph "cluster_node_modules/@dnd-kit/utilities/dist" {label="dist" "node_modules/@dnd-kit/utilities/dist/utilities.esm.js" [label=<utilities.esm.js> tooltip="utilities.esm.js" URL="https://www.npmjs.com/package/@dnd-kit/utilities" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@gradio" {label="@gradio" subgraph "cluster_node_modules/@gradio/client" {label="client" subgraph "cluster_node_modules/@gradio/client/dist" {label="dist" "node_modules/@gradio/client/dist/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/@gradio/client" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@msgpack" {label="@msgpack" subgraph "cluster_node_modules/@msgpack/msgpack" {label="msgpack" subgraph "cluster_node_modules/@msgpack/msgpack/dist.esm" {label="dist.esm" "node_modules/@msgpack/msgpack/dist.esm/index.mjs" [label=<index.mjs> tooltip="index.mjs" URL="https://www.npmjs.com/package/@msgpack/msgpack" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-checkbox" {label="react-checkbox" subgraph "cluster_node_modules/@radix-ui/react-checkbox/dist" {label="dist" "node_modules/@radix-ui/react-checkbox/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-checkbox" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-collapsible" {label="react-collapsible" subgraph "cluster_node_modules/@radix-ui/react-collapsible/dist" {label="dist" "node_modules/@radix-ui/react-collapsible/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-collapsible" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-context-menu" {label="react-context-menu" subgraph "cluster_node_modules/@radix-ui/react-context-menu/dist" {label="dist" "node_modules/@radix-ui/react-context-menu/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-context-menu" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-dialog" {label="react-dialog" subgraph "cluster_node_modules/@radix-ui/react-dialog/dist" {label="dist" "node_modules/@radix-ui/react-dialog/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-dialog" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-dropdown-menu" {label="react-dropdown-menu" subgraph "cluster_node_modules/@radix-ui/react-dropdown-menu/dist" {label="dist" "node_modules/@radix-ui/react-dropdown-menu/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-dropdown-menu" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-popover" {label="react-popover" subgraph "cluster_node_modules/@radix-ui/react-popover/dist" {label="dist" "node_modules/@radix-ui/react-popover/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-popover" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-scroll-area" {label="react-scroll-area" subgraph "cluster_node_modules/@radix-ui/react-scroll-area/dist" {label="dist" "node_modules/@radix-ui/react-scroll-area/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-scroll-area" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-select" {label="react-select" subgraph "cluster_node_modules/@radix-ui/react-select/dist" {label="dist" "node_modules/@radix-ui/react-select/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-select" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-separator" {label="react-separator" subgraph "cluster_node_modules/@radix-ui/react-separator/dist" {label="dist" "node_modules/@radix-ui/react-separator/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-separator" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-slider" {label="react-slider" subgraph "cluster_node_modules/@radix-ui/react-slider/dist" {label="dist" "node_modules/@radix-ui/react-slider/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-slider" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-slot" {label="react-slot" subgraph "cluster_node_modules/@radix-ui/react-slot/dist" {label="dist" "node_modules/@radix-ui/react-slot/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-slot" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-tabs" {label="react-tabs" subgraph "cluster_node_modules/@radix-ui/react-tabs/dist" {label="dist" "node_modules/@radix-ui/react-tabs/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-tabs" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-toast" {label="react-toast" subgraph "cluster_node_modules/@radix-ui/react-toast/dist" {label="dist" "node_modules/@radix-ui/react-toast/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-toast" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-tooltip" {label="react-tooltip" subgraph "cluster_node_modules/@radix-ui/react-tooltip/dist" {label="dist" "node_modules/@radix-ui/react-tooltip/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-tooltip" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/api" {label="api" "node_modules/@tauri-apps/api/app.js" [label=<app.js> tooltip="app.js" URL="https://www.npmjs.com/package/@tauri-apps/api" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/api" {label="api" "node_modules/@tauri-apps/api/core.js" [label=<core.js> tooltip="core.js" URL="https://www.npmjs.com/package/@tauri-apps/api" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/api" {label="api" "node_modules/@tauri-apps/api/path.js" [label=<path.js> tooltip="path.js" URL="https://www.npmjs.com/package/@tauri-apps/api" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/api" {label="api" "node_modules/@tauri-apps/api/window.js" [label=<window.js> tooltip="window.js" URL="https://www.npmjs.com/package/@tauri-apps/api" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-dialog" {label="plugin-dialog" subgraph "cluster_node_modules/@tauri-apps/plugin-dialog/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-dialog" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-fs" {label="plugin-fs" subgraph "cluster_node_modules/@tauri-apps/plugin-fs/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-fs" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-http" {label="plugin-http" subgraph "cluster_node_modules/@tauri-apps/plugin-http/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-http/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-http" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-opener" {label="plugin-opener" subgraph "cluster_node_modules/@tauri-apps/plugin-opener/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-opener" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-process" {label="plugin-process" subgraph "cluster_node_modules/@tauri-apps/plugin-process/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-process/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-process" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-store" {label="plugin-store" subgraph "cluster_node_modules/@tauri-apps/plugin-store/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-store/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-store" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@tauri-apps" {label="@tauri-apps" subgraph "cluster_node_modules/@tauri-apps/plugin-updater" {label="plugin-updater" subgraph "cluster_node_modules/@tauri-apps/plugin-updater/dist-js" {label="dist-js" "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/@tauri-apps/plugin-updater" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/class-variance-authority" {label="class-variance-authority" subgraph "cluster_node_modules/class-variance-authority/dist" {label="dist" "node_modules/class-variance-authority/dist/index.mjs" [label=<index.mjs> tooltip="index.mjs" URL="https://www.npmjs.com/package/class-variance-authority" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/clsx" {label="clsx" "node_modules/clsx/clsx.d.mts" [label=<clsx.d.mts> tooltip="clsx.d.mts" URL="https://www.npmjs.com/package/clsx" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/framer-motion" {label="framer-motion" subgraph "cluster_node_modules/framer-motion/dist" {label="dist" "node_modules/framer-motion/dist/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/framer-motion" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/fuse.js" {label="fuse.js" subgraph "cluster_node_modules/fuse.js/dist" {label="dist" "node_modules/fuse.js/dist/fuse.d.ts" [label=<fuse.d.ts> tooltip="fuse.d.ts" URL="https://www.npmjs.com/package/fuse.js" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/i18next-browser-languagedetector" {label="i18next-browser-languagedetector" "node_modules/i18next-browser-languagedetector/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/i18next-browser-languagedetector" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/i18next" {label="i18next" "node_modules/i18next/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/i18next" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/jsqr" {label="jsqr" subgraph "cluster_node_modules/jsqr/dist" {label="dist" "node_modules/jsqr/dist/jsQR.js" [label=<jsQR.js> tooltip="jsQR.js" URL="https://www.npmjs.com/package/jsqr" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/jszip" {label="jszip" subgraph "cluster_node_modules/jszip/lib" {label="lib" "node_modules/jszip/lib/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/jszip" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/lucide-react" {label="lucide-react" subgraph "cluster_node_modules/lucide-react/dist" {label="dist" subgraph "cluster_node_modules/lucide-react/dist/esm" {label="esm" "node_modules/lucide-react/dist/esm/lucide-react.mjs" [label=<lucide-react.mjs> tooltip="lucide-react.mjs" URL="https://www.npmjs.com/package/lucide-react" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/pako" {label="pako" subgraph "cluster_node_modules/pako/dist" {label="dist" "node_modules/pako/dist/pako.d.ts" [label=<pako.d.ts> tooltip="pako.d.ts" URL="https://www.npmjs.com/package/pako" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/qrcode" {label="qrcode" subgraph "cluster_node_modules/qrcode/lib" {label="lib" "node_modules/qrcode/lib/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/qrcode" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react-dom" {label="react-dom" "node_modules/react-dom/client.js" [label=<client.js> tooltip="client.js" URL="https://www.npmjs.com/package/react-dom" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react-dom" {label="react-dom" "node_modules/react-dom/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/react-dom" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react-i18next" {label="react-i18next" "node_modules/react-i18next/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/react-i18next" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react-router" {label="react-router" subgraph "cluster_node_modules/react-router/dist" {label="dist" subgraph "cluster_node_modules/react-router/dist/production" {label="production" "node_modules/react-router/dist/production/index.d.ts" [label=<index.d.ts> tooltip="index.d.ts" URL="https://www.npmjs.com/package/react-router" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react-simple-code-editor" {label="react-simple-code-editor" subgraph "cluster_node_modules/react-simple-code-editor/lib" {label="lib" "node_modules/react-simple-code-editor/lib/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/react-simple-code-editor" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/react" {label="react" "node_modules/react/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/react" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/tailwind-merge" {label="tailwind-merge" subgraph "cluster_node_modules/tailwind-merge/dist" {label="dist" "node_modules/tailwind-merge/dist/types.d.ts" [label=<types.d.ts> tooltip="types.d.ts" URL="https://www.npmjs.com/package/tailwind-merge" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/zustand" {label="zustand" subgraph "cluster_node_modules/zustand/esm" {label="esm" "node_modules/zustand/esm/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/zustand" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/zustand" {label="zustand" subgraph "cluster_node_modules/zustand/esm" {label="esm" "node_modules/zustand/esm/middleware.d.mts" [label=<middleware.d.mts> tooltip="middleware.d.mts" URL="https://www.npmjs.com/package/zustand" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } }
+    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/zustand" {label="zustand" subgraph "cluster_node_modules/zustand/esm" {label="esm" subgraph "cluster_node_modules/zustand/esm/react" {label="react" "node_modules/zustand/esm/react/shallow.d.mts" [label=<shallow.d.mts> tooltip="shallow.d.mts" URL="https://www.npmjs.com/package/zustand" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
+    "package.json" [label=<package.json> tooltip="package.json" URL="package.json" fillcolor="#ffee44"]
+    subgraph "cluster_src" {label="src" "src/App.tsx" [label=<App.tsx> tooltip="App.tsx" URL="src/App.tsx" fillcolor="#bbfeff"] }
+    "src/App.tsx" -> "src/components"
+    "src/App.tsx" -> "src/pages" [style="dashed"]
+    "src/App.tsx" -> "src/services"
+    "src/App.tsx" -> "src/stores"
+    "src/App.tsx" -> "node_modules/react/index.js" [penwidth="1.0"]
+    "src/App.tsx" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/application" [label=<application> tooltip="application" URL="src/application" shape="box3d"] }
+    "src/application" -> "src/domain"
+    "src/application" -> "src/lib" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
+    "src/application" -> "src/stores" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
+    "src/application" -> "src/services" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
+    subgraph "cluster_src" {label="src" "src/assets" [label=<assets> tooltip="assets" URL="src/assets" shape="box3d"] }
+    subgraph "cluster_src" {label="src" "src/bootstrap.ts" [label=<bootstrap.ts> tooltip="bootstrap.ts" URL="src/bootstrap.ts" fillcolor="#ddfeff"] }
+    "src/bootstrap.ts" -> "src/main.tsx" [style="dashed"]
+    subgraph "cluster_src" {label="src" "src/components" [label=<components> tooltip="components" URL="src/components" shape="box3d"] }
+    "src/components" -> "src/lib"
+    "src/components" -> "src/stores"
+    "src/components" -> "node_modules/lucide-react/dist/esm/lucide-react.mjs" [penwidth="1.0"]
+    "src/components" -> "node_modules/react/index.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-slot/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/class-variance-authority/dist/index.mjs" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-dialog/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "src/hooks"
+    "src/components" -> "src/platform"
+    "src/components" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
+    "src/components" -> "node_modules/framer-motion/dist/index.d.ts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-dropdown-menu/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@tauri-apps/api/window.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-tooltip/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "src/services"
+    "src/components" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/components" -> "src/domain"
+    "src/components" -> "node_modules/@radix-ui/react-checkbox/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-scroll-area/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-select/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-separator/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-slider/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-context-menu/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "src/assets"
+    "src/components" -> "node_modules/@dnd-kit/core/dist/core.esm.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@dnd-kit/modifiers/dist/modifiers.esm.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@dnd-kit/sortable/dist/sortable.esm.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@dnd-kit/utilities/dist/utilities.esm.js" [penwidth="1.0"]
+    "src/components" -> "src/utils"
+    "src/components" -> "node_modules/react-dom/index.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/react-simple-code-editor/lib/index.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-tabs/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-collapsible/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-popover/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "node_modules/@radix-ui/react-toast/dist/index.d.mts" [penwidth="1.0"]
+    "src/components" -> "src/types"
+    "src/components" -> "node_modules/jszip/lib/index.js" [penwidth="1.0"]
+    "src/components" -> "node_modules/i18next/index.d.mts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/composition-root" [label=<composition-root> tooltip="composition-root" URL="src/composition-root" shape="box3d"] }
+    "src/composition-root" -> "src/application"
+    "src/composition-root" -> "src/services"
+    "src/composition-root" -> "src/stores"
+    subgraph "cluster_src" {label="src" "src/domain" [label=<domain> tooltip="domain" URL="src/domain" shape="box3d"] }
+    "src/domain" -> "src/lib" [xlabel="domain-only-depends-on-domain" tooltip="domain-only-depends-on-domain" fontcolor="red" color="red"]
+    subgraph "cluster_src" {label="src" "src/hooks" [label=<hooks> tooltip="hooks" URL="src/hooks" shape="box3d"] }
+    "src/hooks" -> "src/platform"
+    "src/hooks" -> "src/services"
+    "src/hooks" -> "src/stores"
+    "src/hooks" -> "node_modules/react/index.js" [penwidth="1.0"]
+    "src/hooks" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
+    "src/hooks" -> "src/components"
+    "src/hooks" -> "src/lib"
+    "src/hooks" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
+    "src/hooks" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
+    "src/hooks" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/hooks" -> "node_modules/lucide-react/dist/esm/lucide-react.mjs" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/i18n" [label=<i18n> tooltip="i18n" URL="src/i18n" shape="box3d"] }
+    "src/i18n" -> "node_modules/i18next/index.d.mts" [penwidth="1.0"]
+    "src/i18n" -> "node_modules/i18next-browser-languagedetector/index.d.mts" [penwidth="1.0"]
+    "src/i18n" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/lib" [label=<lib> tooltip="lib" URL="src/lib" shape="box3d"] }
+    "src/lib" -> "node_modules/clsx/clsx.d.mts" [penwidth="1.0"]
+    "src/lib" -> "node_modules/tailwind-merge/dist/types.d.ts" [penwidth="1.0"]
+    "src/lib" -> "src/domain"
+    "src/lib" -> "src/services"
+    "src/lib" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0" style="dashed"]
+    "src/lib" -> "node_modules/@tauri-apps/api/window.js" [penwidth="1.0" style="dashed"]
+    "src/lib" -> "node_modules/zustand/esm/middleware.d.mts" [penwidth="1.0"]
+    "src/lib" -> "src/types"
+    "src/lib" -> "src/stores"
+    "src/lib" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/lib" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/lib" -> "node_modules/pako/dist/pako.d.ts" [penwidth="1.0" style="dashed"]
+    "src/lib" -> "src/platform"
+    "src/lib" -> "src/assets" [style="dashed"]
+    "src/lib" -> "src/components"
+    "src/lib" -> "src/i18n"
+    "src/lib" -> "node_modules/fuse.js/dist/fuse.d.ts" [penwidth="1.0"]
+    "src/lib" -> "node_modules/@tauri-apps/plugin-process/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/lib" -> "package.json"
+    subgraph "cluster_src" {label="src" "src/main.tsx" [label=<main.tsx> tooltip="main.tsx" URL="src/main.tsx" fillcolor="#bbfeff"] }
+    "src/main.tsx" -> "src/App.tsx" [style="dashed"]
+    "src/main.tsx" -> "src/components" [style="dashed"]
+    "src/main.tsx" -> "src/composition-root" [style="dashed"]
+    "src/main.tsx" -> "src/domain"
+    "src/main.tsx" -> "src/i18n"
+    "src/main.tsx" -> "src/lib"
+    "src/main.tsx" -> "src/services" [style="dashed"]
+    "src/main.tsx" -> "src/stores" [style="dashed"]
+    "src/main.tsx" -> "src/styles"
+    "src/main.tsx" -> "node_modules/react/index.js" [penwidth="1.0"]
+    "src/main.tsx" -> "node_modules/react-dom/client.js" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/pages" [label=<pages> tooltip="pages" URL="src/pages" shape="box3d"] }
+    "src/pages" -> "src/components"
+    "src/pages" -> "src/lib"
+    "src/pages" -> "src/platform"
+    "src/pages" -> "src/services"
+    "src/pages" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/pages" -> "node_modules/jsqr/dist/jsQR.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/lucide-react/dist/esm/lucide-react.mjs" [penwidth="1.0"]
+    "src/pages" -> "node_modules/qrcode/lib/index.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/react/index.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
+    "src/pages" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
+    "src/pages" -> "src/stores"
+    "src/pages" -> "node_modules/@dnd-kit/core/dist/core.esm.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@dnd-kit/modifiers/dist/modifiers.esm.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@dnd-kit/sortable/dist/sortable.esm.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/pages" -> "src/domain"
+    "src/pages" -> "src/types"
+    "src/pages" -> "src/hooks"
+    "src/pages" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@dnd-kit/utilities/dist/utilities.esm.js" [penwidth="1.0"]
+    "src/pages" -> "src/assets"
+    "src/pages" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/pages" -> "src/application"
+    "src/pages" -> "node_modules/zustand/esm/react/shallow.d.mts" [penwidth="1.0"]
+    "src/pages" -> "node_modules/@tauri-apps/plugin-store/dist-js/index.d.ts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/platform" [label=<platform> tooltip="platform" URL="src/platform" shape="box3d"] }
+    "src/platform" -> "src/domain"
+    "src/platform" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/services" [label=<services> tooltip="services" URL="src/services" shape="box3d"] }
+    "src/services" -> "src/lib"
+    "src/services" -> "src/domain"
+    "src/services" -> "src/stores"
+    "src/services" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
+    "src/services" -> "node_modules/jszip/lib/index.js" [penwidth="1.0"]
+    "src/services" -> "node_modules/@msgpack/msgpack/dist.esm/index.mjs" [penwidth="1.0"]
+    "src/services" -> "src/platform"
+    "src/services" -> "node_modules/@tauri-apps/plugin-http/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/services" -> "src/types"
+    "src/services" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/services" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/services" -> "src/application"
+    "src/services" -> "node_modules/zustand/esm/middleware.d.mts" [penwidth="1.0"]
+    "src/services" -> "node_modules/@gradio/client/dist/index.js" [penwidth="1.0"]
+    "src/services" -> "src/components" [xlabel="services-do-not-import-components" tooltip="services-do-not-import-components" fontcolor="red" color="red"]
+    "src/services" -> "src/i18n"
+    subgraph "cluster_src" {label="src" "src/stores" [label=<stores> tooltip="stores" URL="src/stores" shape="box3d"] }
+    "src/stores" -> "src/services"
+    "src/stores" -> "node_modules/zustand/esm/index.d.mts" [penwidth="1.0"]
+    "src/stores" -> "src/domain"
+    "src/stores" -> "src/lib"
+    "src/stores" -> "node_modules/zustand/esm/middleware.d.mts" [penwidth="1.0"]
+    "src/stores" -> "src/components"
+    "src/stores" -> "src/i18n"
+    "src/stores" -> "src/platform"
+    "src/stores" -> "src/types"
+    "src/stores" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
+    "src/stores" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/stores" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/stores" -> "src/application"
+    subgraph "cluster_src" {label="src" "src/styles" [label=<styles> tooltip="styles" URL="src/styles" shape="box3d"] }
+    subgraph "cluster_src" {label="src" "src/types" [label=<types> tooltip="types" URL="src/types" shape="box3d"] }
+    subgraph "cluster_src" {label="src" "src/utils" [label=<utils> tooltip="utils" URL="src/utils" shape="box3d"] }
+    subgraph "cluster_src" {label="src" "src/vite-env.d.ts" [label=<vite-env.d.ts> tooltip="vite-env.d.ts" URL="src/vite-env.d.ts" fillcolor="#ccffcc"] }
+}

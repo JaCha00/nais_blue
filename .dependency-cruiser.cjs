@@ -1,0 +1,101 @@
+/** @type {import('dependency-cruiser').IConfiguration} */
+module.exports = {
+    // These rules depend on dependency-cruiser's resolved TypeScript graph and
+    // guard the target domain/application/adapter boundaries. Existing debt is
+    // captured in the checked-in baseline so only newly introduced edges fail CI.
+    forbidden: [
+        {
+            name: 'no-circular',
+            comment: 'Cycles hide ownership and make the planned modular-monolith cutover unsafe.',
+            severity: 'error',
+            from: {},
+            to: { circular: true },
+        },
+        {
+            name: 'domain-only-depends-on-domain',
+            comment: 'Domain rules must remain portable and may only collaborate with other domain modules.',
+            severity: 'error',
+            from: { path: '^src/domain/' },
+            to: {
+                path: '^src/(?!domain/)',
+            },
+        },
+        {
+            name: 'domain-has-no-package-dependencies',
+            comment: 'Domain code stays deterministic by avoiding runtime and UI packages.',
+            severity: 'error',
+            from: { path: '^src/domain/' },
+            to: {
+                dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'npm-bundled', 'npm-no-pkg'],
+            },
+        },
+        {
+            name: 'application-does-not-depend-on-implementation-layers',
+            comment: 'Application use cases collaborate through domain types and ports, not UI or concrete adapters.',
+            severity: 'error',
+            from: { path: '^src/application/' },
+            to: {
+                path: '^src/(?:adapters|components|hooks|lib|pages|platform|presentation|services|stores)/',
+            },
+        },
+        {
+            name: 'application-has-no-ui-runtime-packages',
+            comment: 'React, Zustand, and Tauri belong outside application use cases.',
+            severity: 'error',
+            from: { path: '^src/application/' },
+            to: {
+                path: '^(?:node_modules/)?(?:react(?:/|$)|zustand(?:/|$)|@tauri-apps/)',
+            },
+        },
+        {
+            name: 'adapters-do-not-write-ui-state',
+            comment: 'Adapters implement ports and must not reach into presentation stores or components.',
+            severity: 'error',
+            from: { path: '^src/adapters/' },
+            to: { path: '^src/(?:components|hooks|pages|presentation|stores)/' },
+        },
+        {
+            name: 'stores-do-not-import-stores',
+            comment: 'Cross-store orchestration moves to application use cases instead of hidden Zustand coupling.',
+            severity: 'error',
+            from: { path: '^src/stores/' },
+            to: { path: '^src/stores/' },
+        },
+        {
+            name: 'services-do-not-import-components',
+            comment: 'Infrastructure and legacy services must not depend on presentation modules.',
+            severity: 'error',
+            from: { path: '^src/services/' },
+            to: { path: '^src/(?:components|pages|presentation)/' },
+        },
+        {
+            name: 'not-to-unresolvable',
+            comment: 'Every import in the production graph must resolve on a clean checkout.',
+            severity: 'error',
+            from: {},
+            to: { couldNotResolve: true },
+        },
+    ],
+    options: {
+        doNotFollow: {
+            path: 'node_modules',
+        },
+        exclude: {
+            path: '^(?:legacy|dist|src-tauri)/',
+        },
+        tsConfig: {
+            fileName: 'tsconfig.json',
+        },
+        enhancedResolveOptions: {
+            extensions: ['.js', '.jsx', '.ts', '.tsx', '.d.ts', '.json'],
+            exportsFields: ['exports'],
+            conditionNames: ['import', 'node', 'default', 'types'],
+            mainFields: ['module', 'main', 'types', 'typings'],
+        },
+        reporterOptions: {
+            archi: {
+                collapsePattern: '^(?:src)/[^/]+|node_modules/(?:@[^/]+/[^/]+|[^/]+)',
+            },
+        },
+    },
+}

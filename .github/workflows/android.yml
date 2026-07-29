@@ -69,6 +69,8 @@ jobs:
 
       - name: Verify production and responsive UI contracts
         run: |
+          npm run test:architecture
+          npm run test:dependencies
           npm run lint -- --no-cache
           npm run build
           npm run test:responsive-layout

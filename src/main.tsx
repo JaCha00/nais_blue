@@ -242,7 +242,13 @@ async function checkDataIntegrity(): Promise<boolean> {
 }
 
 async function renderApp(): Promise<void> {
-    const { default: App } = await import('./App.tsx')
+    const [{ default: App }, { initializeCoreRuntime }] = await Promise.all([
+        import('./App.tsx'),
+        import('./composition-root/core-runtime'),
+    ])
+    // Runtime ports are wired after credential hydration and before any command
+    // can render, connecting stores to services without reversing layer imports.
+    initializeCoreRuntime()
     getAppRoot().render(
         <React.StrictMode>
             <App />

@@ -68,6 +68,8 @@ docs/*
 !docs/persistence-map.md
 !docs/composition-v2/
 !docs/composition-v2/**
+!docs/architecture/
+!docs/architecture/**
 
 # Claude Code
 .claude/
