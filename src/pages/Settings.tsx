@@ -52,7 +52,7 @@ import { relaunchApplication } from '@/lib/app-relaunch'
 import { getNativeAppVersion } from '@/platform/native-app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
 import { importAllData, getStoreSizes } from '@/lib/indexed-db'
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
+import { readNativeTextFile, writeNativeTextFile } from '@/platform/native-file-system'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -360,7 +360,7 @@ export default function Settings() {
             })
             
             if (filePath) {
-                await writeTextFile(filePath, JSON.stringify(backup, null, 2))
+                await writeNativeTextFile(filePath, JSON.stringify(backup, null, 2))
                 
                 // 마지막 백업 시간 저장
                 const now = new Date().toISOString()
@@ -425,7 +425,7 @@ export default function Settings() {
             
             if (!filePath || typeof filePath !== 'string') return
             
-            const content = await readTextFile(filePath)
+            const content = await readNativeTextFile(filePath)
             prepareImportedBackup(content)
         } catch (err) {
             console.error('Backup import failed:', err)

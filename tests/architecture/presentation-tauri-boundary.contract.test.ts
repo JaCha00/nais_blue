@@ -72,4 +72,11 @@ describe('Presentation Tauri import baseline', () => {
         expect(modules).not.toContain('@tauri-apps/plugin-updater')
         expect(modules).not.toContain('@tauri-apps/api/app')
     })
+
+    it('keeps native text-file I/O out of migrated presentation flows', async () => {
+        const files = (await observedImports()).map(entry => entry.file)
+
+        expect(files).not.toContain('src/pages/Settings.tsx')
+        expect(files).not.toContain('src/components/fragments/FragmentPromptDialog.tsx')
+    })
 })

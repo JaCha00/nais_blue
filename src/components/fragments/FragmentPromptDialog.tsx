@@ -48,7 +48,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/platform/native-file-dialog'
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import { readNativeTextFile, writeNativeTextFile } from '@/platform/native-file-system'
 import {
     Plus,
     Trash2,
@@ -252,7 +252,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
             let importedCount = 0
 
             for (const filePath of filePaths) {
-                const content = await readTextFile(filePath)
+                const content = await readNativeTextFile(filePath)
                 // 파일 이름에서 확장자 제거
                 const fileName = filePath.split(/[/\\]/).pop()?.replace(/\.txt$/i, '') || `import_${Date.now()}`
                 const newFile = await importFromText(fileName, content, editingFolder || '')
@@ -294,7 +294,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
 
             if (!filePath) return
 
-            await writeTextFile(filePath, content)
+            await writeNativeTextFile(filePath, content)
 
             toast({
                 title: t('fragment.exported', '내보내기 완료'),
@@ -322,7 +322,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
 
             if (!filePath) return
 
-            await writeTextFile(filePath, JSON.stringify(data, null, 2))
+            await writeNativeTextFile(filePath, JSON.stringify(data, null, 2))
 
             toast({
                 title: t('fragment.exportedAll', '전체 내보내기 완료'),
@@ -348,7 +348,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
 
             if (!selected || Array.isArray(selected)) return
 
-            const content = await readTextFile(selected)
+            const content = await readNativeTextFile(selected)
             const data = JSON.parse(content)
 
             // 데이터 유효성 검사

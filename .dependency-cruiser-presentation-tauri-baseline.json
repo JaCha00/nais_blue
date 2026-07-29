@@ -8,10 +8,6 @@
     "modules": ["@tauri-apps/api/core"]
   },
   {
-    "file": "src/components/fragments/FragmentPromptDialog.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
     "file": "src/components/layout/CustomTitleBar.tsx",
     "modules": ["@tauri-apps/api/core", "@tauri-apps/api/window"]
   },
@@ -57,10 +53,6 @@
   },
   {
     "file": "src/pages/SceneMode.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/pages/Settings.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {
