@@ -28,11 +28,13 @@ describe('durable Main sequential-fragment execution contract', () => {
             ), 'utf8'),
             readFile(resolve(process.cwd(), 'src/application/generation/plan-main-batch.ts'), 'utf8'),
         ])
-        const stage = generationStore.indexOf('if (!batchSequencePlanner?.stage(generationSequenceProposal))')
-        const capture = generationStore.indexOf('run.captures.push({')
+        const stage = generationStore.indexOf(
+            'if (!batchSequencePlanner?.stage(preparedGeneration.sequenceCommitProposal))',
+        )
+        const prepared = generationStore.indexOf('run.prepared.push(preparedGeneration)')
 
         expect(stage).toBeGreaterThan(-1)
-        expect(capture).toBeGreaterThan(stage)
+        expect(prepared).toBeGreaterThan(stage)
         expect(plannerAdapter).toContain('prepareMainBatch()')
         expect(plannerAdapter).not.toContain('.generate(')
         expect(adapter).toContain('const plan = await planMainBatch({')

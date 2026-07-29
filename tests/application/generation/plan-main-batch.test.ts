@@ -13,7 +13,7 @@ function plannerFor<T>(requestedCount: number, prepared: readonly T[]): MainBatc
 }
 
 describe('PlanMainBatch', () => {
-    it('materializes captures in deterministic ordinal order', async () => {
+    it('materializes prepared generations in deterministic ordinal order', async () => {
         const materialize = vi.fn(async (value: string, ordinal: number) => `${ordinal}:${value}`)
 
         const result = await planMainBatch({
@@ -33,7 +33,7 @@ describe('PlanMainBatch', () => {
         expect(Object.isFrozen(result?.items)).toBe(true)
     })
 
-    it('rejects an incomplete capture instead of persisting a partial batch', async () => {
+    it('rejects incomplete preparation instead of persisting a partial batch', async () => {
         const materialize = vi.fn((value: string) => value)
         const result = await planMainBatch({
             planner: plannerFor(2, ['only']),

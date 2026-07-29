@@ -10,7 +10,7 @@ import {
 import { createThumbnail } from '@/lib/image-utils'
 import { ensureImageFileExtension } from '@/lib/generation-metadata'
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
-import type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
+import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import { generateImage, generateImageStream } from '@/services/novelai-api'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
@@ -48,7 +48,7 @@ interface MainQueueOutputSnapshot {
 interface MainQueueWorkflowSnapshot {
     finalPrompt: string
     imageFormat: 'png' | 'webp'
-    metadataMode: CapturedMainGeneration['metadataMode']
+    metadataMode: PreparedMainGeneration['metadataMode']
     sequenceCommitProposal: FragmentSequenceCommitProposal | null
     output: MainQueueOutputSnapshot
 }
@@ -59,7 +59,7 @@ interface MainQueueParameters extends DehydratedGenerationParameters {
 }
 
 export interface RuntimeMainQueueDependencies {
-    readonly planner: MainBatchPlannerPort<CapturedMainGeneration>
+    readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
     readonly presentation: MainQueuePresentationPort
 }
 
@@ -128,41 +128,40 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
 
     const plan = await planMainBatch({
         planner: dependencies.planner,
-        materialize: async capture => {
-            const dehydrated = await dehydrateGenerationParams(capture.params, materializer, resourceCache)
+        materialize: async prepared => {
+            const dehydrated = await dehydrateGenerationParams(prepared.params, materializer, resourceCache)
             for (const record of dehydrated.records) resources.set(record.id, record)
-            const sourceEdit = Boolean(capture.params.sourceImage || capture.params.mask)
-            const fileName = capture.output.fileName ?? ensureImageFileExtension(
-                `NAIS_${capture.params.seed}`,
-                capture.imageFormat,
-            ) ?? `NAIS_${capture.params.seed}.${capture.imageFormat}`
+            const fileName = prepared.output.fileName ?? ensureImageFileExtension(
+                `NAIS_${prepared.params.seed}`,
+                prepared.imageFormat,
+            ) ?? `NAIS_${prepared.params.seed}.${prepared.imageFormat}`
             const parameters: MainQueueParameters = {
                 ...dehydrated.parameters,
-                queueExecution: { streaming: capture.streaming, sourceEdit },
+                queueExecution: { streaming: prepared.streaming, sourceEdit: prepared.sourceEdit },
                 mainWorkflow: {
-                    finalPrompt: capture.finalPrompt,
-                    imageFormat: capture.imageFormat,
-                    metadataMode: capture.metadataMode,
-                    sequenceCommitProposal: capture.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
+                    finalPrompt: prepared.finalPrompt,
+                    imageFormat: prepared.imageFormat,
+                    metadataMode: prepared.metadataMode,
+                    sequenceCommitProposal: prepared.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
                     output: {
-                        directory: capture.output.directory || 'NAIS_Output',
-                        useAbsolutePath: capture.output.useAbsolutePath,
-                        capabilityFallbackDirectory: capture.output.capabilityFallbackDirectory || 'NAIS_Output',
-                        ...(capture.output.portableDirectory === undefined
+                        directory: prepared.output.directory,
+                        useAbsolutePath: prepared.output.useAbsolutePath,
+                        capabilityFallbackDirectory: prepared.output.capabilityFallbackDirectory,
+                        ...(prepared.output.portableDirectory === undefined
                             ? {}
-                            : { portableDirectory: capture.output.portableDirectory }),
+                            : { portableDirectory: prepared.output.portableDirectory }),
                         fileName,
-                        collisionPolicy: capture.output.collisionPolicy,
+                        collisionPolicy: prepared.output.collisionPolicy,
                     },
                 },
             }
             const snapshot = createGenerationJobSnapshot({
-                prompt: { positive: capture.finalPrompt, negative: capture.params.negative_prompt },
+                prompt: { positive: prepared.finalPrompt, negative: prepared.params.negative_prompt },
                 parameters: asJson(parameters),
                 outputPolicy: asJson({
                     workflow: 'main',
-                    imageFormat: capture.imageFormat,
-                    metadataMode: capture.metadataMode,
+                    imageFormat: prepared.imageFormat,
+                    metadataMode: prepared.metadataMode,
                     output: parameters.mainWorkflow.output,
                 }),
                 resources: dehydrated.resources,
@@ -170,9 +169,9 @@ async function enqueueCurrentMainBatchOnce(): Promise<CreateBatchAndEnqueueResul
             })
             return {
                 snapshot,
-                compositionPlanHash: capture.params.compositionPlanHash === undefined
+                compositionPlanHash: prepared.params.compositionPlanHash === undefined
                     ? null
-                    : `sha256:${capture.params.compositionPlanHash.digest}`,
+                    : `sha256:${prepared.params.compositionPlanHash.digest}`,
             }
         },
     })
