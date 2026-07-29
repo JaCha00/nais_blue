@@ -32,6 +32,7 @@
     "qa:cloudflare-transfer:live": "node scripts/qa-cloudflare-transfer-live.mjs",
     "qa:cloudflare-transfer:rotate-live": "node scripts/rotate-cloudflare-pairing-and-qa.mjs",
     "test:release-version": "node scripts/verify-release-version.mjs",
+    "qa:windows-install-registration": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-install-registration.ps1",
     "test:android-idle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/track-android-idle.ps1",
     "smoke:nai-subscription": "node scripts/smoke-nai-subscription.mjs",
     "smoke:nai-endpoints": "node scripts/smoke-nai-endpoints.mjs",
