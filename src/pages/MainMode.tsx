@@ -26,7 +26,11 @@ import {
 import { openNativePath } from '@/platform/native-shell'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { joinNativePath } from '@/platform/native-path'
-import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import {
+    createNativeDirectory,
+    nativePathExists,
+    writeNativeBinaryFile,
+} from '@/platform/native-file-system'
 import {
     getMediaStorageRoot,
     shouldUseAbsoluteMediaPath,
@@ -484,7 +488,7 @@ export default function MainMode() {
                     bytes[i] = binaryString.charCodeAt(i)
                 }
 
-                await writeFile(filePath, bytes)
+                await writeNativeBinaryFile(filePath, bytes)
                 toast({
                     title: t('toast.saved', '저장 완료'),
                     variant: 'success',
@@ -512,9 +516,9 @@ export default function MainMode() {
                 folderPath = await joinNativePath(await getMediaStorageRoot(), finalSavePath)
             }
 
-            const dirExists = await exists(folderPath)
+            const dirExists = await nativePathExists(folderPath)
             if (!dirExists) {
-                await mkdir(folderPath, { recursive: true })
+                await createNativeDirectory(folderPath, { recursive: true })
             }
 
             await openNativePath(folderPath)

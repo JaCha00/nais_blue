@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fileSystem = vi.hoisted(() => ({
+    exists: vi.fn(),
+    mkdir: vi.fn(),
     readFile: vi.fn(),
     readTextFile: vi.fn(),
     writeFile: vi.fn(),
@@ -10,6 +12,8 @@ const fileSystem = vi.hoisted(() => ({
 vi.mock('@tauri-apps/plugin-fs', () => fileSystem)
 
 import {
+    createNativeDirectory,
+    nativePathExists,
     readNativeBinaryFile,
     readNativeTextFile,
     writeNativeBinaryFile,
@@ -40,7 +44,7 @@ describe('native file-system adapter', () => {
         fileSystem.writeFile.mockResolvedValue(undefined)
 
         await expect(writeNativeBinaryFile('C:\\NAIS\\image.png', bytes)).resolves.toBeUndefined()
-        expect(fileSystem.writeFile).toHaveBeenCalledWith('C:\\NAIS\\image.png', bytes)
+        expect(fileSystem.writeFile).toHaveBeenCalledWith('C:\\NAIS\\image.png', bytes, undefined)
     })
 
     it('reads binary data from the requested native path', async () => {
@@ -49,5 +53,16 @@ describe('native file-system adapter', () => {
 
         await expect(readNativeBinaryFile('C:\\NAIS\\image.png')).resolves.toBe(bytes)
         expect(fileSystem.readFile).toHaveBeenCalledWith('C:\\NAIS\\image.png')
+    })
+
+    it('checks paths and creates recursive directories with forwarded options', async () => {
+        const options = { recursive: true }
+        fileSystem.exists.mockResolvedValue(false)
+        fileSystem.mkdir.mockResolvedValue(undefined)
+
+        await expect(nativePathExists('C:\\NAIS\\output')).resolves.toBe(false)
+        await expect(createNativeDirectory('C:\\NAIS\\output', options)).resolves.toBeUndefined()
+        expect(fileSystem.exists).toHaveBeenCalledWith('C:\\NAIS\\output', undefined)
+        expect(fileSystem.mkdir).toHaveBeenCalledWith('C:\\NAIS\\output', options)
     })
 })

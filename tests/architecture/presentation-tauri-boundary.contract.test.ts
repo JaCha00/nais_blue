@@ -96,4 +96,12 @@ describe('Presentation Tauri import baseline', () => {
         expect(files).not.toContain('src/components/scene/ExportDialog.tsx')
         expect(files).not.toContain('src/components/scene/SceneImageContextMenu.tsx')
     })
+
+    it('keeps native directory preparation out of migrated presentation flows', async () => {
+        const files = (await observedImports()).map(entry => entry.file)
+
+        expect(files).not.toContain('src/pages/MainMode.tsx')
+        expect(files).not.toContain('src/pages/Library.tsx')
+        expect(files).not.toContain('src/pages/ToolsMode.tsx')
+    })
 })

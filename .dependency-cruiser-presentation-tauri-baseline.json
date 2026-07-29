@@ -20,19 +20,7 @@
     "modules": ["@tauri-apps/api/core"]
   },
   {
-    "file": "src/pages/Library.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/pages/MainMode.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
     "file": "src/pages/SceneDetail.tsx",
-    "modules": ["@tauri-apps/plugin-fs"]
-  },
-  {
-    "file": "src/pages/ToolsMode.tsx",
     "modules": ["@tauri-apps/plugin-fs"]
   },
   {
