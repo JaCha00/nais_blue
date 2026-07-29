@@ -13,6 +13,7 @@ import {
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
 import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
+import { useDiagnosticsStore } from '@/stores/diagnostics-store'
 
 const NOW = '2026-07-14T08:00:00.000Z'
 let databaseCounter = 0
@@ -411,17 +412,25 @@ describe('durable queue coordinator', () => {
         expect(await queue.getJob('job:1')).toMatchObject({ state: 'succeeded' })
     })
 
-    it('pauses on disk-full and never marks the item successful', async () => {
+    it('pauses on disk-full and reuses the OutputWriter diagnostic without notifying twice', async () => {
         const queue = repository('disk-full')
         await enqueue(queue, jobs(1))
+        const diagnosticEventId = 'diagnostic:output-writer-disk-full'
+        const diagnosticCount = useDiagnosticsStore.getState().events.length
         const runtime = coordinator(queue, async () => {
             const cause = Object.assign(new Error('no space left on device'), { code: 'ENOSPC' })
-            throw new OutputWriterError('atomic-commit', 'Output commit failed', { cause })
+            const error = new OutputWriterError('atomic-commit', 'Output commit failed', { cause })
+            error.diagnosticEventId = diagnosticEventId
+            throw error
         })
 
         await runtime.drain()
         expect(await queue.getBatch('batch:1')).toMatchObject({ state: 'paused', pauseReason: 'local-io' })
-        expect(await queue.getJob('job:0')).toMatchObject({ state: 'queued' })
+        expect(await queue.getJob('job:0')).toMatchObject({
+            state: 'queued',
+            lastDiagnosticEventId: diagnosticEventId,
+        })
+        expect(useDiagnosticsStore.getState().events).toHaveLength(diagnosticCount)
     })
 
     it('aborts an active item and rejects a late output commit after cancel', async () => {
