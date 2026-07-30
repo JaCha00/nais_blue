@@ -10,7 +10,6 @@ strict digraph "dependency-cruiser output"{
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@gradio" {label="@gradio" subgraph "cluster_node_modules/@gradio/client" {label="client" subgraph "cluster_node_modules/@gradio/client/dist" {label="dist" "node_modules/@gradio/client/dist/index.js" [label=<index.js> tooltip="index.js" URL="https://www.npmjs.com/package/@gradio/client" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@msgpack" {label="@msgpack" subgraph "cluster_node_modules/@msgpack/msgpack" {label="msgpack" subgraph "cluster_node_modules/@msgpack/msgpack/dist.esm" {label="dist.esm" "node_modules/@msgpack/msgpack/dist.esm/index.mjs" [label=<index.mjs> tooltip="index.mjs" URL="https://www.npmjs.com/package/@msgpack/msgpack" shape="folder" fillcolor="#c40b0a1a" fontcolor="#c40b0a"] } } } }
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-checkbox" {label="react-checkbox" subgraph "cluster_node_modules/@radix-ui/react-checkbox/dist" {label="dist" "node_modules/@radix-ui/react-checkbox/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-checkbox" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
-    subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-collapsible" {label="react-collapsible" subgraph "cluster_node_modules/@radix-ui/react-collapsible/dist" {label="dist" "node_modules/@radix-ui/react-collapsible/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-collapsible" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-context-menu" {label="react-context-menu" subgraph "cluster_node_modules/@radix-ui/react-context-menu/dist" {label="dist" "node_modules/@radix-ui/react-context-menu/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-context-menu" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-dialog" {label="react-dialog" subgraph "cluster_node_modules/@radix-ui/react-dialog/dist" {label="dist" "node_modules/@radix-ui/react-dialog/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-dialog" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
     subgraph "cluster_node_modules" {label="node_modules" subgraph "cluster_node_modules/@radix-ui" {label="@radix-ui" subgraph "cluster_node_modules/@radix-ui/react-dropdown-menu" {label="react-dropdown-menu" subgraph "cluster_node_modules/@radix-ui/react-dropdown-menu/dist" {label="dist" "node_modules/@radix-ui/react-dropdown-menu/dist/index.d.mts" [label=<index.d.mts> tooltip="index.d.mts" URL="https://www.npmjs.com/package/@radix-ui/react-dropdown-menu" fillcolor="#c40b0a1a" shape="folder" fontcolor="#c40b0a"] } } } }
@@ -65,9 +64,6 @@ strict digraph "dependency-cruiser output"{
     "src/App.tsx" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
     subgraph "cluster_src" {label="src" "src/application" [label=<application> tooltip="application" URL="src/application" shape="box3d"] }
     "src/application" -> "src/domain"
-    "src/application" -> "src/lib" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
-    "src/application" -> "src/stores" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
-    "src/application" -> "src/services" [xlabel="application-does-not-depend-on-implementation-layers" tooltip="application-does-not-depend-on-implementation-layers" fontcolor="red" color="red"]
     subgraph "cluster_src" {label="src" "src/assets" [label=<assets> tooltip="assets" URL="src/assets" shape="box3d"] }
     subgraph "cluster_src" {label="src" "src/bootstrap.ts" [label=<bootstrap.ts> tooltip="bootstrap.ts" URL="src/bootstrap.ts" fillcolor="#ddfeff"] }
     "src/bootstrap.ts" -> "src/main.tsx" [style="dashed"]
@@ -82,18 +78,11 @@ strict digraph "dependency-cruiser output"{
     "src/components" -> "node_modules/@radix-ui/react-dialog/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "src/hooks"
     "src/components" -> "src/platform"
-    "src/components" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
     "src/components" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
     "src/components" -> "node_modules/framer-motion/dist/index.d.ts" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-dropdown-menu/dist/index.d.mts" [penwidth="1.0"]
-    "src/components" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
-    "src/components" -> "node_modules/@tauri-apps/api/window.js" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-tooltip/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "src/services"
-    "src/components" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
-    "src/components" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
-    "src/components" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
-    "src/components" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
     "src/components" -> "src/domain"
     "src/components" -> "node_modules/@radix-ui/react-checkbox/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-scroll-area/dist/index.d.mts" [penwidth="1.0"]
@@ -110,7 +99,6 @@ strict digraph "dependency-cruiser output"{
     "src/components" -> "node_modules/react-dom/index.js" [penwidth="1.0"]
     "src/components" -> "node_modules/react-simple-code-editor/lib/index.js" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-tabs/dist/index.d.mts" [penwidth="1.0"]
-    "src/components" -> "node_modules/@radix-ui/react-collapsible/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-popover/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "node_modules/@radix-ui/react-toast/dist/index.d.mts" [penwidth="1.0"]
     "src/components" -> "src/types"
@@ -118,6 +106,7 @@ strict digraph "dependency-cruiser output"{
     "src/components" -> "node_modules/i18next/index.d.mts" [penwidth="1.0"]
     subgraph "cluster_src" {label="src" "src/composition-root" [label=<composition-root> tooltip="composition-root" URL="src/composition-root" shape="box3d"] }
     "src/composition-root" -> "src/application"
+    "src/composition-root" -> "src/presentation"
     "src/composition-root" -> "src/services"
     "src/composition-root" -> "src/stores"
     subgraph "cluster_src" {label="src" "src/domain" [label=<domain> tooltip="domain" URL="src/domain" shape="box3d"] }
@@ -129,11 +118,10 @@ strict digraph "dependency-cruiser output"{
     "src/hooks" -> "node_modules/react/index.js" [penwidth="1.0"]
     "src/hooks" -> "node_modules/react-router/dist/production/index.d.ts" [penwidth="1.0"]
     "src/hooks" -> "src/components"
-    "src/hooks" -> "src/lib"
-    "src/hooks" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
-    "src/hooks" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
-    "src/hooks" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
     "src/hooks" -> "node_modules/lucide-react/dist/esm/lucide-react.mjs" [penwidth="1.0"]
+    "src/hooks" -> "node_modules/react-i18next/index.d.mts" [penwidth="1.0"]
+    "src/hooks" -> "src/lib"
+    "src/hooks" -> "src/presentation"
     subgraph "cluster_src" {label="src" "src/i18n" [label=<i18n> tooltip="i18n" URL="src/i18n" shape="box3d"] }
     "src/i18n" -> "node_modules/i18next/index.d.mts" [penwidth="1.0"]
     "src/i18n" -> "node_modules/i18next-browser-languagedetector/index.d.mts" [penwidth="1.0"]
@@ -153,8 +141,7 @@ strict digraph "dependency-cruiser output"{
     "src/lib" -> "node_modules/pako/dist/pako.d.ts" [penwidth="1.0" style="dashed"]
     "src/lib" -> "src/platform"
     "src/lib" -> "src/assets" [style="dashed"]
-    "src/lib" -> "src/components"
-    "src/lib" -> "src/i18n"
+    "src/lib" -> "src/application"
     "src/lib" -> "node_modules/fuse.js/dist/fuse.d.ts" [penwidth="1.0"]
     "src/lib" -> "node_modules/@tauri-apps/plugin-process/dist-js/index.d.ts" [penwidth="1.0"]
     "src/lib" -> "package.json"
@@ -175,7 +162,6 @@ strict digraph "dependency-cruiser output"{
     "src/pages" -> "src/lib"
     "src/pages" -> "src/platform"
     "src/pages" -> "src/services"
-    "src/pages" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
     "src/pages" -> "node_modules/jsqr/dist/jsQR.js" [penwidth="1.0"]
     "src/pages" -> "node_modules/lucide-react/dist/esm/lucide-react.mjs" [penwidth="1.0"]
     "src/pages" -> "node_modules/qrcode/lib/index.js" [penwidth="1.0"]
@@ -186,27 +172,30 @@ strict digraph "dependency-cruiser output"{
     "src/pages" -> "node_modules/@dnd-kit/core/dist/core.esm.js" [penwidth="1.0"]
     "src/pages" -> "node_modules/@dnd-kit/modifiers/dist/modifiers.esm.js" [penwidth="1.0"]
     "src/pages" -> "node_modules/@dnd-kit/sortable/dist/sortable.esm.js" [penwidth="1.0"]
-    "src/pages" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
-    "src/pages" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
-    "src/pages" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
     "src/pages" -> "src/domain"
     "src/pages" -> "src/types"
     "src/pages" -> "src/hooks"
-    "src/pages" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
     "src/pages" -> "node_modules/@dnd-kit/utilities/dist/utilities.esm.js" [penwidth="1.0"]
     "src/pages" -> "src/assets"
-    "src/pages" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
-    "src/pages" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
     "src/pages" -> "src/application"
     "src/pages" -> "node_modules/zustand/esm/react/shallow.d.mts" [penwidth="1.0"]
-    "src/pages" -> "node_modules/@tauri-apps/plugin-store/dist-js/index.d.ts" [penwidth="1.0"]
     subgraph "cluster_src" {label="src" "src/platform" [label=<platform> tooltip="platform" URL="src/platform" shape="box3d"] }
+    "src/platform" -> "node_modules/@tauri-apps/api/app.js" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/api/window.js" [penwidth="1.0"]
     "src/platform" -> "src/domain"
     "src/platform" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
     "src/platform" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
     "src/platform" -> "node_modules/@tauri-apps/plugin-dialog/dist-js/index.d.ts" [penwidth="1.0"]
-    "src/platform" -> "node_modules/@tauri-apps/api/core.js" [penwidth="1.0"]
     "src/platform" -> "node_modules/@tauri-apps/plugin-opener/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
+    "src/platform" -> "node_modules/@tauri-apps/plugin-store/dist-js/index.d.ts" [penwidth="1.0"]
+    subgraph "cluster_src" {label="src" "src/presentation" [label=<presentation> tooltip="presentation" URL="src/presentation" shape="box3d"] }
+    "src/presentation" -> "src/application"
+    "src/presentation" -> "src/components"
+    "src/presentation" -> "src/i18n"
+    "src/presentation" -> "src/stores"
+    "src/presentation" -> "src/services"
     subgraph "cluster_src" {label="src" "src/services" [label=<services> tooltip="services" URL="src/services" shape="box3d"] }
     "src/services" -> "src/lib"
     "src/services" -> "src/domain"
@@ -234,9 +223,6 @@ strict digraph "dependency-cruiser output"{
     "src/stores" -> "src/i18n"
     "src/stores" -> "src/platform"
     "src/stores" -> "src/types"
-    "src/stores" -> "node_modules/@tauri-apps/api/path.js" [penwidth="1.0"]
-    "src/stores" -> "node_modules/@tauri-apps/plugin-fs/dist-js/index.d.ts" [penwidth="1.0"]
-    "src/stores" -> "node_modules/@tauri-apps/plugin-updater/dist-js/index.d.ts" [penwidth="1.0"]
     "src/stores" -> "src/application"
     subgraph "cluster_src" {label="src" "src/styles" [label=<styles> tooltip="styles" URL="src/styles" shape="box3d"] }
     subgraph "cluster_src" {label="src" "src/types" [label=<types> tooltip="types" URL="src/types" shape="box3d"] }
