@@ -70,12 +70,12 @@ const DEFAULT_LABELS: CompositionCommandBarLabels = {
 }
 
 export interface CompositionCommandBarProps {
-    mode: CompositionSelectControl
-    recipe: CompositionSelectControl
-    validation: CompositionValidationSummary
+    mode?: CompositionSelectControl
+    recipe?: CompositionSelectControl
+    validation?: CompositionValidationSummary
     cost?: CompositionCostSummary
     seed?: CompositionSeedControl
-    resolved: CompositionResolvedControl
+    resolved?: CompositionResolvedControl
     generation: CompositionGenerationControl
     labels?: Partial<CompositionCommandBarLabels>
     disabled?: boolean
@@ -136,6 +136,47 @@ export function CompositionCommandBar({
 }: CompositionCommandBarProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
     const actionDisabled = disabled || generation.disabled
+    const moduleAction = onOpenModules ? (
+        <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            disabled={disabled}
+            aria-label={labels.modules}
+            data-testid="composition-open-modules"
+            onClick={onOpenModules}
+        >
+            <Layers3 className="h-4 w-4" aria-hidden="true" />
+        </Button>
+    ) : null
+    const inspectorAction = onOpenInspector ? (
+        <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            disabled={disabled}
+            aria-label={labels.inspector}
+            data-testid="composition-open-inspector"
+            onClick={onOpenInspector}
+        >
+            <PanelRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
+    ) : null
+    const resolvedAction = resolved?.available ? (
+        <Button
+            type="button"
+            variant={resolved.open ? 'secondary' : 'outline'}
+            className={simplified ? 'min-w-28' : 'min-w-0 flex-1 px-3'}
+            aria-pressed={resolved.open}
+            disabled={disabled}
+            onClick={resolved.onOpen}
+        >
+            <Eye className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{resolved.label ?? labels.resolved}</span>
+        </Button>
+    ) : null
 
     if (simplified) {
         return (
@@ -144,8 +185,35 @@ export function CompositionCommandBar({
                 aria-label={labels.commands}
                 data-testid="composition-command-bar"
             >
+                {mode && (
+                    <CommandSelect
+                        control={{ ...mode, disabled: disabled || mode.disabled }}
+                        label={labels.mode}
+                        className="min-w-48 flex-1 sm:max-w-xs"
+                    />
+                )}
+                {recipe && (
+                    <CommandSelect
+                        control={{ ...recipe, disabled: disabled || recipe.disabled }}
+                        label={labels.recipe}
+                        className="min-w-56 flex-1 sm:max-w-sm"
+                    />
+                )}
+                {validation && (
+                    <div className="flex min-h-10 items-center px-2">
+                        <ValidationState validation={validation} />
+                    </div>
+                )}
                 {cost && (
-                    <span className="mr-auto font-mono text-xs text-muted-foreground" aria-label={`${cost.label ?? labels.cost}: ${cost.value}`}>
+                    <span
+                        className={cn(
+                            'mr-auto font-mono text-xs',
+                            cost.severity === 'warning' && 'text-warning',
+                            cost.severity === 'error' && 'text-destructive',
+                            (!cost.severity || cost.severity === 'normal') && 'text-muted-foreground',
+                        )}
+                        aria-label={`${cost.label ?? labels.cost}: ${cost.value}`}
+                    >
                         {cost.label ? `${cost.label} ` : ''}{cost.value}
                     </span>
                 )}
@@ -160,6 +228,9 @@ export function CompositionCommandBar({
                         )}
                     </label>
                 )}
+                {moduleAction}
+                {inspectorAction}
+                {resolvedAction}
                 <Button
                     type="button"
                     variant={generation.generating ? 'destructive' : 'generate'}
@@ -185,11 +256,11 @@ export function CompositionCommandBar({
             aria-label={labels.commands}
             data-testid="composition-command-bar"
         >
-            <CommandSelect control={{ ...mode, disabled: disabled || mode.disabled }} label={labels.mode} />
-            <CommandSelect control={{ ...recipe, disabled: disabled || recipe.disabled }} label={labels.recipe} />
+            {mode && <CommandSelect control={{ ...mode, disabled: disabled || mode.disabled }} label={labels.mode} />}
+            {recipe && <CommandSelect control={{ ...recipe, disabled: disabled || recipe.disabled }} label={labels.recipe} />}
 
-            <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 px-2">
-                <ValidationState validation={validation} />
+            {(validation || cost) && <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 px-2">
+                {validation && <ValidationState validation={validation} />}
                 {cost && (
                     <span
                         className={cn(
@@ -203,51 +274,15 @@ export function CompositionCommandBar({
                         {cost.value}
                     </span>
                 )}
-            </div>
+            </div>}
 
-            <div className="flex min-h-11 min-w-0 items-center gap-1">
+            {(onOpenModules || onOpenInspector || resolved?.available) && <div className="flex min-h-11 min-w-0 items-center gap-1">
                 {/* Main and Scene intentionally omit persistent desktop rails to protect canvas width.
                     Keep these controlled-sheet triggers available at every breakpoint so both panels remain reachable. */}
-                {onOpenModules && (
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0"
-                        disabled={disabled}
-                        aria-label={labels.modules}
-                        data-testid="composition-open-modules"
-                        onClick={onOpenModules}
-                    >
-                        <Layers3 className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                )}
-                {onOpenInspector && (
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="shrink-0"
-                        disabled={disabled}
-                        aria-label={labels.inspector}
-                        data-testid="composition-open-inspector"
-                        onClick={onOpenInspector}
-                    >
-                        <PanelRight className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                )}
-                <Button
-                    type="button"
-                    variant={resolved.open ? 'secondary' : 'outline'}
-                    className="min-w-0 flex-1 px-3"
-                    aria-pressed={resolved.open}
-                    disabled={disabled || !resolved.available}
-                    onClick={resolved.onOpen}
-                >
-                    <Eye className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className="truncate">{resolved.label ?? labels.resolved}</span>
-                </Button>
-            </div>
+                {moduleAction}
+                {inspectorAction}
+                {resolvedAction}
+            </div>}
 
             {seed ? (
                 <div className="flex min-h-11 min-w-0 items-center gap-1">

@@ -35,6 +35,17 @@ describe('Scene composition workspace information architecture', () => {
         expect(workspace).toMatch(/const selectModule[\s\S]*onSelectModule\(moduleId\)[\s\S]*if \(modulesOpen\) openInspector\(\)/)
     })
 
+    it('keeps rollout and diagnostic controls out of simplified Scene surfaces', async () => {
+        const workspace = await source('src/components/scene/SceneCompositionWorkspace.tsx')
+
+        expect(workspace).toContain('mode={simplified ? undefined : mode}')
+        expect(workspace).toContain('recipe={simplified ? undefined : recipe}')
+        expect(workspace).toContain('validation={simplified ? undefined : validation}')
+        expect(workspace).toContain('resolved={simplified ? undefined : {')
+        expect(workspace).toContain('onOpenModules={simplified ? undefined : openModules}')
+        expect(workspace).toContain('onOpenResolved={simplified ? undefined : openResolved}')
+    })
+
     it('keeps Scene grid, create/edit, queue and generation as first-class actions', async () => {
         const sceneMode = await source('src/pages/SceneMode.tsx')
         const compactGroup = sceneMode.indexOf('Compact grouping keeps import')

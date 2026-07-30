@@ -8,6 +8,8 @@ import {
     calculateModuleStackVirtualRange,
     CHARACTER_LAYOUT_ROW_HEIGHT,
     CharacterLayoutEditor,
+    CompositionCommandBar,
+    MobileCommandDock,
     MODULE_STACK_ROW_HEIGHT,
     ModuleStack,
     type CharacterLayoutItem,
@@ -125,6 +127,53 @@ describe('composition workspace large data contracts', () => {
     })
 })
 
+describe('composition workspace contextual commands', () => {
+    const generation = {
+        generating: false,
+        onGenerate: () => undefined,
+        onCancel: () => undefined,
+    }
+
+    it('renders only generation when compact controls have no applicable context', () => {
+        const bar = renderToStaticMarkup(createElement(CompositionCommandBar, {
+            generation,
+            simplified: true,
+        }))
+        const dock = renderToStaticMarkup(createElement(MobileCommandDock, { generation }))
+
+        for (const markup of [bar, dock]) {
+            expect(markup).toContain('Generate')
+            expect(markup).not.toContain('aria-label="Modules"')
+            expect(markup).not.toContain('aria-label="Inspector"')
+            expect(markup).not.toContain('aria-label="Resolved"')
+        }
+    })
+
+    it('renders contextual actions only when their handlers and data are provided', () => {
+        const bar = renderToStaticMarkup(createElement(CompositionCommandBar, {
+            generation,
+            simplified: true,
+            cost: { value: '5 Anlas' },
+            resolved: { available: true, onOpen: () => undefined },
+            onOpenModules: () => undefined,
+        }))
+        const dock = renderToStaticMarkup(createElement(MobileCommandDock, {
+            generation,
+            resolvedAvailable: true,
+            onOpenModules: () => undefined,
+            onOpenResolved: () => undefined,
+        }))
+
+        expect(bar).toContain('5 Anlas')
+        expect(bar).toContain('aria-label="Modules"')
+        expect(bar).toContain('Resolved')
+        expect(bar).not.toContain('aria-label="Inspector"')
+        expect(dock).toContain('aria-label="Modules"')
+        expect(dock).toContain('aria-label="Resolved"')
+        expect(dock).not.toContain('aria-label="Inspector"')
+    })
+})
+
 describe('composition workspace source contracts', () => {
     it('keeps shared components controlled and store-free', async () => {
         const files = [
@@ -182,6 +231,10 @@ describe('composition workspace source contracts', () => {
         expect(bar).not.toContain('2xl:hidden')
         expect(bar).toContain('generation.onCancel')
         expect(bar).toContain('generation.onGenerate')
+        expect(bar).toContain('mode?: CompositionSelectControl')
+        expect(bar).toContain('recipe?: CompositionSelectControl')
+        expect(bar).toContain('validation?: CompositionValidationSummary')
+        expect(bar).toContain('resolved?: CompositionResolvedControl')
         expect(dock).toContain('safe-area-inset-bottom')
         expect(dock).toContain("testId = 'composition-mobile-command-dock'")
         expect(dock).toContain('data-testid={testId}')
@@ -189,6 +242,11 @@ describe('composition workspace source contracts', () => {
         expect(dock).toContain('aria-label={labels.modules}')
         expect(dock).toContain('aria-label={labels.inspector}')
         expect(dock).toContain('aria-label={labels.resolved}')
+        expect(dock).toContain('onOpenModules?: () => void')
+        expect(dock).toContain('onOpenInspector?: () => void')
+        expect(dock).toContain('onOpenResolved?: () => void')
+        expect(dock).toContain('{onOpenModules && (')
+        expect(dock).toContain('{onOpenResolved && resolvedAvailable && (')
         expect(layout).toContain('grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]')
         expect(layout).toContain('overflow-x-hidden')
         expect(layout).not.toContain('<main')

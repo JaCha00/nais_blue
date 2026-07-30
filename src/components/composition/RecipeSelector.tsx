@@ -17,20 +17,19 @@ import {
     MAIN_DIRECT_RECIPE_ID,
     MAIN_DIRECT_SELECTION_ID,
     mainAssetRecipeSelectionId,
-    type MainCompositionMode,
 } from '@/lib/composition/main-adapter'
 
-const MODE_OPTIONS: readonly MainCompositionMode[] = ['legacy', 'shadow', 'v2']
-
-export function RecipeSelector() {
+export function RecipeSelector({
+    onChange,
+}: {
+    onChange?: (recipeId: string) => void
+}) {
     const { t } = useTranslation()
-    // Main's compact command rail and the responsive prompt sheet may render
-    // this selector together, so each label relationship needs its own DOM ID.
+    // The selector can move between the desktop command bar and mobile module
+    // sheet, so each mounted label relationship needs its own DOM ID.
     const titleId = `main-composition-recipe-title-${useId().replace(/:/g, '')}`
     const recipes = useAssetModuleStore(state => state.profile.recipes)
     const isProfileLoading = useAssetModuleStore(state => state.isLoading)
-    const compositionMode = useGenerationStore(state => state.compositionMode)
-    const setCompositionMode = useGenerationStore(state => state.setCompositionMode)
     const selectedRecipeId = useGenerationStore(state => state.selectedRecipeId)
     const setSelectedRecipeId = useGenerationStore(state => state.setSelectedRecipeId)
     const isGenerating = useGenerationStore(state => state.isGenerating)
@@ -52,7 +51,10 @@ export function RecipeSelector() {
                 : mainAssetRecipeSelectionId(selectedRecipeId)
     const selectedRecipeExists = displayedRecipeId === MAIN_DIRECT_SELECTION_ID
         || selectableRecipes.some(recipe => mainAssetRecipeSelectionId(recipe.id) === displayedRecipeId)
-    const recipeSelectionDisabled = isGenerating || isProfileLoading || compositionMode === 'legacy'
+    const recipeSelectionDisabled = isGenerating || isProfileLoading
+
+    // Keep the recovery option visible when persistence points at a deleted recipe.
+    if (recipes.length === 0 && selectedRecipeExists) return null
 
     return (
         <section
@@ -60,37 +62,17 @@ export function RecipeSelector() {
             aria-labelledby={titleId}
             data-testid="main-recipe-selector"
         >
-            <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
                 <Label id={titleId} className="flex min-w-0 items-center gap-2 text-xs font-medium">
                     <Layers3 className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <span className="truncate">{t('composition.recipe.title', 'Composition recipe')}</span>
                 </Label>
-                <Select
-                    value={compositionMode}
-                    onValueChange={value => setCompositionMode(value as MainCompositionMode)}
-                    disabled={isGenerating}
-                >
-                    <SelectTrigger
-                        className="h-11 w-28 shrink-0 rounded-control font-mono text-xs"
-                        aria-label={t('composition.mode.title', 'Main workflow mode')}
-                        data-testid="main-composition-mode"
-                    >
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {MODE_OPTIONS.map(mode => (
-                            <SelectItem key={mode} value={mode}>
-                                {mode}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
             </div>
 
             <div className="mt-2">
                 <Select
                     value={displayedRecipeId}
-                    onValueChange={setSelectedRecipeId}
+                    onValueChange={onChange ?? setSelectedRecipeId}
                     disabled={recipeSelectionDisabled}
                 >
                     <SelectTrigger
@@ -125,12 +107,6 @@ export function RecipeSelector() {
                     </SelectContent>
                 </Select>
             </div>
-
-            {compositionMode === 'legacy' && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                    {t('composition.recipe.legacyHelp', 'Legacy mode keeps the existing recipe-selection behavior.')}
-                </p>
-            )}
         </section>
     )
 }

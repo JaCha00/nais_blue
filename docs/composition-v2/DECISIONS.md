@@ -90,7 +90,7 @@ Vitest는 Node 환경의 Composition 테스트에만 사용하며 production dep
 
 상태: Accepted
 
-Main, Scene, Style Lab의 persisted workflow mode 기본값은 `v2`지만 process authority는 startup repository 검증이 `v2`를 활성화한 경우에만 engine 요청을 허용한다. fresh repository의 현재 기본 authority는 의도적으로 `legacy`이며 Vitest setup은 workflow 테스트를 위해 authority를 `v2`로 올린다. 따라서 테스트에서 v2 adapter가 통과한다는 사실만으로 production cutover가 입증되지는 않는다.
+Scene과 Style Lab의 persisted workflow mode 및 Main의 non-persisted in-memory 요청값 기본은 `v2`지만 process authority는 startup repository 검증이 `v2`를 활성화한 경우에만 engine 요청을 허용한다. Main은 이전 persisted `legacy`/`shadow` 요청값을 hydration 시 `v2`로 정규화하며 실제 rollback은 authority gate가 담당한다. fresh repository의 현재 기본 authority는 의도적으로 `legacy`이며 Vitest setup은 workflow 테스트를 위해 authority를 `v2`로 올린다. 따라서 테스트에서 v2 adapter가 통과한다는 사실만으로 production cutover가 입증되지는 않는다.
 
 다음 증거가 모두 확보되기 전에는 legacy request builder, shadow 비교, compatibility projection, authority feature flag를 제거하지 않는다.
 

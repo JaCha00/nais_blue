@@ -71,7 +71,7 @@ describe('Main composition UI contract', () => {
         expect(mainMode).not.toContain('<AutocompleteTextarea')
     })
 
-    it('mounts the composition controls only for the exact Main route', async () => {
+    it('keeps prompt authoring free of duplicated composition diagnostics', async () => {
         const [promptPanel, editor, controls, autocomplete] = await Promise.all([
             source('src/components/layout/PromptPanel.tsx'),
             source('src/components/prompt/PromptEditorSurface.tsx'),
@@ -79,8 +79,7 @@ describe('Main composition UI contract', () => {
             source('src/components/ui/AutocompleteTextarea.tsx'),
         ])
 
-        expect(promptPanel).toContain("const isMainMode = location.pathname === '/'")
-        expect(promptPanel).toMatch(/\{isMainMode\s*&&\s*\([\s\S]*?<RecipeSelector\s*\/>[\s\S]*?<ResolvedPlanPanel\s*\/>/)
+        expect(promptPanel).not.toMatch(/isMainMode|RecipeSelector|ResolvedPlanPanel|ValidationBadge/)
         expect(promptPanel).toContain('<PromptEditorSurface />')
         expect(promptPanel).toContain('<PromptGenerationControls isSceneMode={isSceneMode} />')
         expect(promptPanel).toContain("t('generate.restoreRecommendedSteps'")
@@ -135,5 +134,43 @@ describe('Main composition UI contract', () => {
         expect(recipeSelector).toContain('aria-labelledby={titleId}')
         expect(recipeSelector).toContain('<Label id={titleId}')
         expect(recipeSelector).toContain("t('composition.recipe.direct', 'Direct prompts')")
+        expect(recipeSelector).toContain('if (recipes.length === 0 && selectedRecipeExists) return null')
+        expect(recipeSelector).toContain('onValueChange={onChange ?? setSelectedRecipeId}')
+        expect(recipeSelector).not.toMatch(/compositionMode|setCompositionMode|MODE_OPTIONS/)
+    })
+
+    it('shows only contextual Main commands and uses a valid cost basis', async () => {
+        const mainMode = await source('src/pages/MainMode.tsx')
+        const commandStart = mainMode.indexOf('const commandBar =')
+        const commandEnd = mainMode.indexOf('const mobileDock =', commandStart)
+        const commandBar = mainMode.slice(commandStart, commandEnd)
+
+        expect(mainMode).toContain('const hasRecipeControls = assetProfile.recipes.length > 0')
+        expect(mainMode).toContain('displayedRecipeSelection !== MAIN_DIRECT_SELECTION_ID')
+        expect(mainMode).toContain('const hasModuleSheetContent = hasRecipeControls || hasModuleTools')
+        expect(mainMode).toContain('const hasResolvedContent = lastResolvedPlan !== null')
+        expect(commandBar).toContain('recipe={hasRecipeControls ? {')
+        expect(commandBar).toContain('cost={estimatedCost !== null && estimatedCost > 0 ? {')
+        expect(commandBar).toContain('resolved={hasResolvedContent ? {')
+        expect(commandBar).toContain('onOpenModules={hasModuleSheetContent ? handleOpenModuleStack : undefined}')
+        expect(commandBar).toContain('simplified')
+        expect(commandBar).not.toMatch(/\bmode=|validation=|\bseed=|onOpenInspector/)
+        expect(mainMode).toContain('const resolvedCostParams = lastResolvedPlan?.params')
+        expect(mainMode).toContain('const canEstimateCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID')
+        expect(mainMode).toMatch(/calculateAnlasCost\(\s*resolvedCostParams\?\.width \?\? selectedResolution\.width,\s*resolvedCostParams\?\.height \?\? selectedResolution\.height,\s*resolvedCostParams\?\.steps \?\? steps,/)
+        expect(mainMode).toContain('onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}')
+        expect(mainMode).toContain('<RecipeSelector onChange={handleRecipeSelection} />')
+    })
+
+    it('treats Main rollout mode as release authority instead of a persisted UI preference', async () => {
+        const store = await source('src/stores/generation-store.ts')
+        const partializeStart = store.indexOf('partialize:')
+        const hydrateStart = store.indexOf('onRehydrateStorage:', partializeStart)
+        const partialize = store.slice(partializeStart, hydrateStart)
+        const hydration = store.slice(hydrateStart)
+
+        expect(partialize).not.toContain('compositionMode: state.compositionMode')
+        expect(partialize).toContain('selectedRecipeId: state.selectedRecipeId')
+        expect(hydration).toContain("state.compositionMode = 'v2'")
     })
 })

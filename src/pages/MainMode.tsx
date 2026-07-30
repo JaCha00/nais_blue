@@ -51,7 +51,6 @@ import {
     MAIN_DIRECT_SELECTION_ID,
     getMainDirectRecipeId,
     mainAssetRecipeSelectionId,
-    type MainCompositionMode,
 } from '@/lib/composition/main-adapter'
 import type {
     CompositionValidationSummary,
@@ -70,14 +69,6 @@ import {
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
-
-const MAIN_MODE_OPTIONS: readonly MainCompositionMode[] = ['legacy', 'shadow', 'v2']
-
-const MAIN_MODE_LABEL_KEYS: Record<MainCompositionMode, { key: string; fallback: string }> = {
-    legacy: { key: 'composition.mode.previous', fallback: 'Previous generation engine' },
-    shadow: { key: 'composition.mode.compatibility', fallback: 'Compatibility comparison' },
-    v2: { key: 'composition.mode.current', fallback: 'Current generation engine' },
-}
 
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
@@ -114,8 +105,6 @@ export default function MainMode() {
         previewImage,
         isGenerating,
         selectedResolution,
-        seed,
-        previewSeed,
 
         lastGenerationTime,
         batchCount,
@@ -129,7 +118,6 @@ export default function MainMode() {
         compositionWarnings,
         compositionErrors,
         lastResolvedPlan,
-        setCompositionMode,
         setSelectedRecipeId,
         setSourceImage,
         setI2IMode,
@@ -297,16 +285,37 @@ export default function MainMode() {
     const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
     const enabledCharacterCount = characterImages.filter(item => item.enabled !== false).length
     const uncachedVibeCount = vibeImages.filter(item => item.enabled !== false && !item.encodedVibe).length
-    const resolvedParams = lastResolvedPlan?.params
-    const estimatedCost = calculateAnlasCost(
-        resolvedParams?.width ?? selectedResolution.width,
-        resolvedParams?.height ?? selectedResolution.height,
-        resolvedParams?.steps ?? steps,
-        batchCount,
-        resolvedParams === undefined ? enabledCharacterCount : lastResolvedPlan?.characters.length ?? enabledCharacterCount,
-        uncachedVibeCount,
-        activeCredentialsAreOpus,
-    )
+    const resolvedCostParams = lastResolvedPlan?.params
+    const canEstimateCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
+        || resolvedCostParams !== undefined
+    const estimatedCost = canEstimateCost
+        ? calculateAnlasCost(
+            resolvedCostParams?.width ?? selectedResolution.width,
+            resolvedCostParams?.height ?? selectedResolution.height,
+            resolvedCostParams?.steps ?? steps,
+            batchCount,
+            enabledCharacterCount,
+            uncachedVibeCount,
+            activeCredentialsAreOpus,
+        )
+        : null
+    const hasRecipeControls = assetProfile.recipes.length > 0
+        || displayedRecipeSelection !== MAIN_DIRECT_SELECTION_ID
+    const hasModuleTools = moduleStackItems.length > 0
+    const hasModuleSheetContent = hasRecipeControls || hasModuleTools
+    const resolvedErrorCount = compositionErrors.length + portableResolvedIssues.length
+    const resolvedWarningCount = compositionWarnings.length
+    const hasResolvedContent = lastResolvedPlan !== null
+        || resolvedErrorCount > 0
+        || resolvedWarningCount > 0
+        || profileConflict
+    const resolvedControlLabel = profileConflict
+        ? t('composition.validation.conflict', 'External edit conflict')
+        : resolvedErrorCount > 0
+            ? `${t('assetModuleStudioV2.filters.errors', 'Errors')} (${resolvedErrorCount})`
+            : resolvedWarningCount > 0
+                ? `${t('assetModuleStudioV2.filters.warnings', 'Warnings')} (${resolvedWarningCount})`
+                : t('composition.plan.resolved', 'Resolved')
 
     // Regenerate with metadata - direct API call without modifying UI
     const handleRegenerateWithMetadata = async () => {
@@ -604,11 +613,6 @@ export default function MainMode() {
         setModuleSheetOpen(true)
     }
 
-    const handleOpenInspector = () => {
-        inspectorSheetTriggerRef.current = currentTrigger()
-        setInspectorSheetOpen(true)
-    }
-
     const handleSelectModule = (moduleId: string) => {
         setSelectedModuleId(moduleId)
         // The Main workspace keeps its desktop rails disabled, so a module chosen
@@ -792,42 +796,23 @@ export default function MainMode() {
     const commandBar = (
         <div data-testid="main-command-dock">
             <CompositionCommandBar
-                mode={{
-                    value: compositionMode,
-                    options: MAIN_MODE_OPTIONS.map(value => ({
-                        value,
-                        label: t(MAIN_MODE_LABEL_KEYS[value].key, MAIN_MODE_LABEL_KEYS[value].fallback),
-                    })),
-                    onChange: value => setCompositionMode(value as MainCompositionMode),
-                    label: t('composition.mode.title', 'Mode'),
-                    disabled: isGenerating,
-                }}
-                recipe={{
+                recipe={hasRecipeControls ? {
                     value: displayedRecipeSelection,
                     options: recipeOptions,
                     onChange: handleRecipeSelection,
                     label: t('composition.recipe.title', 'Recipe'),
-                    disabled: isGenerating || profileLoading || compositionMode === 'legacy',
-                }}
-                validation={validation}
-                cost={{
+                    disabled: isGenerating || profileLoading,
+                } : undefined}
+                cost={estimatedCost !== null && estimatedCost > 0 ? {
                     value: `${estimatedCost} Anlas`,
                     label: t('composition.cost.estimated', 'Estimated cost'),
-                    severity: estimatedCost > 0 ? 'warning' : 'normal',
-                }}
-                seed={{
-                    value: previewSeed ?? seed ?? t('settings.random', 'Random'),
-                    label: t('settings.seed', 'Seed'),
-                    disabled: isGenerating,
-                    onPreviewWildcard: handleOpenResolvedPlan,
-                    wildcardPreviewLabel: t('composition.random.preview', 'Preview wildcard resolution'),
-                }}
-                resolved={{
+                } : undefined}
+                resolved={hasResolvedContent ? {
                     available: true,
-                    label: t('composition.plan.resolved', 'Resolved'),
+                    label: resolvedControlLabel,
                     open: resolvedSheetOpen,
                     onOpen: handleOpenResolvedPlan,
-                }}
+                } : undefined}
                 generation={generationControl}
                 labels={{
                     modules: t('composition.workspace.modules', 'Modules'),
@@ -835,15 +820,15 @@ export default function MainMode() {
                     generate: t('generate.button', 'Generate'),
                     cancel: t('generate.cancel', 'Cancel'),
                 }}
-                onOpenModules={handleOpenModuleStack}
-                onOpenInspector={handleOpenInspector}
+                onOpenModules={hasModuleSheetContent ? handleOpenModuleStack : undefined}
+                simplified
             />
         </div>
     )
     const mobileDock = isMobileWorkspace ? (
         <MobileCommandDock
             generation={generationControl}
-            resolvedAvailable
+            resolvedAvailable={hasResolvedContent}
             testId="main-command-dock"
             labels={{
                 modules: t('composition.workspace.modules', 'Modules'),
@@ -852,9 +837,8 @@ export default function MainMode() {
                 generate: t('generate.button', 'Generate'),
                 cancel: t('generate.cancel', 'Cancel'),
             }}
-            onOpenModules={handleOpenModuleStack}
-            onOpenInspector={handleOpenInspector}
-            onOpenResolved={handleOpenResolvedPlan}
+            onOpenModules={hasModuleSheetContent ? handleOpenModuleStack : undefined}
+            onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}
         />
     ) : null
 
@@ -1072,7 +1056,7 @@ export default function MainMode() {
                 returnFocusRef={moduleSheetTriggerRef}
             >
                 <div className="flex min-h-0 flex-col gap-3">
-                    {isMobileWorkspace && <RecipeSelector />}
+                    {isMobileWorkspace && <RecipeSelector onChange={handleRecipeSelection} />}
                     {moduleStack}
                 </div>
             </CompositionWorkspaceSheet>

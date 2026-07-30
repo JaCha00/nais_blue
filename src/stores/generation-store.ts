@@ -843,6 +843,15 @@ interface GenerationState {
     clearRuntimeData: () => void
 }
 
+function unresolvedMainCompositionState() {
+    return {
+        compositionWarnings: [],
+        compositionErrors: [],
+        lastResolvedPlan: null,
+        compositionShadowDiff: null,
+    }
+}
+
 export const useGenerationStore = create<GenerationState>()(
     persist(
         (set, get) => ({
@@ -902,17 +911,17 @@ export const useGenerationStore = create<GenerationState>()(
             styleLabCompositionMode: 'v2',
 
             // Actions
-            setBasePrompt: (prompt) => set({ basePrompt: prompt }),
-            setAdditionalPrompt: (prompt) => set({ additionalPrompt: prompt }),
-            setDetailPrompt: (prompt) => set({ detailPrompt: prompt }),
-            setNegativePrompt: (prompt) => set({ negativePrompt: prompt }),
-            setInpaintingPrompt: (prompt) => set({ inpaintingPrompt: prompt }),
+            setBasePrompt: (prompt) => set({ basePrompt: prompt, ...unresolvedMainCompositionState() }),
+            setAdditionalPrompt: (prompt) => set({ additionalPrompt: prompt, ...unresolvedMainCompositionState() }),
+            setDetailPrompt: (prompt) => set({ detailPrompt: prompt, ...unresolvedMainCompositionState() }),
+            setNegativePrompt: (prompt) => set({ negativePrompt: prompt, ...unresolvedMainCompositionState() }),
+            setInpaintingPrompt: (prompt) => set({ inpaintingPrompt: prompt, ...unresolvedMainCompositionState() }),
 
-            setModel: (model) => set({ model: normalizeSelectableGenerationModel(model) }),
-            setSteps: (steps) => set({ steps }),
-            setCfgScale: (cfgScale) => set({ cfgScale }),
-            setCfgRescale: (cfgRescale) => set({ cfgRescale }),
-            setSampler: (sampler) => set({ sampler }),
+            setModel: (model) => set({ model: normalizeSelectableGenerationModel(model), ...unresolvedMainCompositionState() }),
+            setSteps: (steps) => set({ steps, ...unresolvedMainCompositionState() }),
+            setCfgScale: (cfgScale) => set({ cfgScale, ...unresolvedMainCompositionState() }),
+            setCfgRescale: (cfgRescale) => set({ cfgRescale, ...unresolvedMainCompositionState() }),
+            setSampler: (sampler) => set({ sampler, ...unresolvedMainCompositionState() }),
 
             // Batch update - single IndexedDB write instead of 16 separate writes
             applyPreset: (preset) => set({
@@ -932,28 +941,37 @@ export const useGenerationStore = create<GenerationState>()(
                 qualityToggle: preset.qualityToggle ?? true,
                 ucPreset: preset.ucPreset ?? 0,
                 selectedResolution: preset.selectedResolution,
+                ...unresolvedMainCompositionState(),
             }),
-            setScheduler: (scheduler) => set({ scheduler }),
-            setSmea: (smea) => set({ smea }),
-            setSmeaDyn: (smeaDyn) => set({ smeaDyn }),
-            setVariety: (variety) => set({ variety }),
+            setScheduler: (scheduler) => set({ scheduler, ...unresolvedMainCompositionState() }),
+            setSmea: (smea) => set({ smea, ...unresolvedMainCompositionState() }),
+            setSmeaDyn: (smeaDyn) => set({ smeaDyn, ...unresolvedMainCompositionState() }),
+            setVariety: (variety) => set({ variety, ...unresolvedMainCompositionState() }),
 
-            setSeed: (seed) => set({ seed }),
-            setPreviewSeed: (previewSeed) => set({ previewSeed }),
-            setSeedLocked: (locked) => set({ seedLocked: locked }),
-            setSelectedResolution: (resolution) => set({ selectedResolution: resolution }),
-            setQualityToggle: (qualityToggle) => set({ qualityToggle }),
-            setUcPreset: (ucPreset) => set({ ucPreset }),
+            setSeed: (seed) => set({ seed, ...unresolvedMainCompositionState() }),
+            setPreviewSeed: (previewSeed) => set({ previewSeed, ...unresolvedMainCompositionState() }),
+            setSeedLocked: (locked) => set({ seedLocked: locked, ...unresolvedMainCompositionState() }),
+            setSelectedResolution: (resolution) => set({ selectedResolution: resolution, ...unresolvedMainCompositionState() }),
+            setQualityToggle: (qualityToggle) => set({ qualityToggle, ...unresolvedMainCompositionState() }),
+            setUcPreset: (ucPreset) => set({ ucPreset, ...unresolvedMainCompositionState() }),
 
             setBatchCount: (count) => set({ batchCount: count }),
 
-            setSourceImage: (img) => set({ sourceImage: img }),
-            setReferenceImage: (img) => set({ sourceImage: img }), // Alias for now
-            setStrength: (v) => set({ strength: v }),
-            setNoise: (v) => set({ noise: v }),
-            setMask: (mask) => set({ mask }),
-            setI2IMode: (mode) => set({ i2iMode: mode }),
-            resetI2IParams: () => set({ sourceImage: null, mask: null, strength: 0.7, noise: 0.0, inpaintingPrompt: '', i2iMode: null }),
+            setSourceImage: (img) => set({ sourceImage: img, ...unresolvedMainCompositionState() }),
+            setReferenceImage: (img) => set({ sourceImage: img, ...unresolvedMainCompositionState() }), // Alias for now
+            setStrength: (v) => set({ strength: v, ...unresolvedMainCompositionState() }),
+            setNoise: (v) => set({ noise: v, ...unresolvedMainCompositionState() }),
+            setMask: (mask) => set({ mask, ...unresolvedMainCompositionState() }),
+            setI2IMode: (mode) => set({ i2iMode: mode, ...unresolvedMainCompositionState() }),
+            resetI2IParams: () => set({
+                sourceImage: null,
+                mask: null,
+                strength: 0.7,
+                noise: 0.0,
+                inpaintingPrompt: '',
+                i2iMode: null,
+                ...unresolvedMainCompositionState(),
+            }),
 
             // Memory cleanup - release large runtime data (previewImage, sourceImage, mask)
             // Call this when leaving main mode to prevent OOM
@@ -963,7 +981,8 @@ export const useGenerationStore = create<GenerationState>()(
                     previewImage: null, 
                     sourceImage: null, 
                     mask: null,
-                    streamProgress: 0
+                    streamProgress: 0,
+                    ...unresolvedMainCompositionState(),
                 })
             },
 
@@ -980,7 +999,8 @@ export const useGenerationStore = create<GenerationState>()(
                     isCancelled: true, 
                     // isGenerating stays true - button remains locked until API response arrives
                     currentBatch: 0,
-                    ...(newSeed !== undefined && { seed: newSeed })
+                    ...(newSeed !== undefined && { seed: newSeed }),
+                    ...unresolvedMainCompositionState(),
                 })
                 toast({
                     title: i18n.t('toast.generationCancelled.title'),
@@ -1047,10 +1067,7 @@ export const useGenerationStore = create<GenerationState>()(
                     estimatedTime: lastGenerationTime ? lastGenerationTime * batchCount : null,
                     previewImage: null, // Clear previous preview to free memory
                     streamProgress: 0,  // Reset streaming progress
-                    compositionWarnings: [],
-                    compositionErrors: [],
-                    lastResolvedPlan: null,
-                    compositionShadowDiff: null,
+                    ...unresolvedMainCompositionState(),
                 })
                 const sourceImageDigest = mainRuntimeDigest(sourceImage)
                 const maskDigest = mainRuntimeDigest(mask)
@@ -1763,18 +1780,12 @@ export const useGenerationStore = create<GenerationState>()(
             setStreamProgress: (progress) => set({ streamProgress: progress }),
             setCompositionMode: (compositionMode) => set({
                 compositionMode,
-                compositionWarnings: [],
-                compositionErrors: [],
-                lastResolvedPlan: null,
-                compositionShadowDiff: null,
+                ...unresolvedMainCompositionState(),
             }),
             setStyleLabCompositionMode: (styleLabCompositionMode) => set({ styleLabCompositionMode }),
             setSelectedRecipeId: (selectedRecipeId) => set({
                 selectedRecipeId,
-                compositionWarnings: [],
-                compositionErrors: [],
-                lastResolvedPlan: null,
-                compositionShadowDiff: null,
+                ...unresolvedMainCompositionState(),
             }),
         }),
         {
@@ -1806,8 +1817,7 @@ export const useGenerationStore = create<GenerationState>()(
                 batchCount: state.batchCount,
                 // Timing (for estimated time)
                 lastGenerationTime: state.lastGenerationTime,
-                // Main Composition rollout switch and explicit recipe selection
-                compositionMode: state.compositionMode,
+                // Explicit recipe selection and the independent Style Lab rollback switch
                 styleLabCompositionMode: state.styleLabCompositionMode,
                 selectedRecipeId: state.selectedRecipeId,
                 // I2I & Inpainting state - DO NOT persist sourceImage/mask (large Base64 data, 1MB+ each)
@@ -1834,6 +1844,9 @@ export const useGenerationStore = create<GenerationState>()(
                     state.history = state.history.slice(0, 20)
                 }
                 if (state) {
+                    // Main rollout authority is release-gated, not a user preference.
+                    // Normalize older persisted legacy/shadow selections before first render.
+                    state.compositionMode = 'v2'
                     state.model = normalizeSelectableGenerationModel(state.model)
                     if (state.styleLabCompositionMode !== 'legacy'
                         && state.styleLabCompositionMode !== 'v2') {

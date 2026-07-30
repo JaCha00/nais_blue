@@ -116,9 +116,10 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 - **Sheets:** full viewport width below `640px`, bounded to `420px` for Prompt and
   `400px` for History above it. Close target is 44px, title/header reserves its
   space, and content respects top/bottom safe areas.
-- **MainMode:** current result/canvas owns the view. On compact widths a bottom
-  command dock exposes prompt, model, resolution, seed, token state, and
-  generate/cancel without duplicating generation rules.
+- **MainMode:** current result/canvas owns the view. Prompt, model, resolution,
+  seed, and token state stay in the authoring surface. On compact widths a bottom
+  command dock keeps generate/cancel and only applicable composition actions
+  reachable without duplicating generation rules.
 - **SceneMode:** title and critical create/edit controls stay visible. Import,
   rotation, queue, export, and sharing remain reachable in grouped overflow
   menus on compact widths. The preset/view row wraps without horizontal scroll.
@@ -141,11 +142,12 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 
 ### Composition workspace contract
 
-- **Composition command bar:** Main and Scene expose mode, recipe, validation,
-  estimated cost, seed, resolved-plan access, and generate/cancel in one command
-  region. At `1536px+` Main and Scene keep the Prompt rail beside the result canvas;
-  Module Stack and Inspector remain one explicit action away so nested rails do
-  not collapse the canvas. Between
+- **Composition command bar:** Generate/cancel is the only unconditional action.
+  Recipe recovery/selection, nonzero estimated cost, Module Stack, and Resolved
+  Plan appear only when their backing data exists; rollout mode and an unresolved
+  “pending” badge are not general authoring controls. At `1536px+` Main and Scene
+  keep the Prompt rail beside the result canvas; contextual tools remain one
+  explicit action away so nested rails do not collapse the canvas. Between
   `768–1535px` it wraps without horizontal scrolling and opens Module Stack and
   Inspector sheets. Generate/cancel is never placed in an overflow menu.
 - **Module Stack row anatomy:** Each fixed-height row has enable state, an
@@ -157,12 +159,14 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 - **Inspector and sheet behavior:** The Context Inspector shows selection identity,
   recipe context, typed controls, override diff, validation, and conflict status.
   Pages may use a right rail when width permits; Main and Scene use the explicit
-  Inspector sheet because the persistent Prompt rail owns the desktop authoring space. Mobile
-  Inspector is a second-level sheet opened from Modules or the command dock.
+  Inspector sheet because the persistent Prompt rail owns the desktop authoring
+  space. Main Inspector is a second-level sheet opened by selecting a module;
+  another workflow may expose a direct trigger only when it has inspector context.
   Sheets trap focus, close with Escape, restore focus to the launch control, use
   44px close targets, and apply all four `env(safe-area-inset-*)` values.
-- **Resolved Plan:** Resolved Plan is one action away on desktop and one dock tap
-  away on mobile. Its dedicated surface groups positive/negative prompts, prompt
+- **Resolved Plan:** When a plan, issue, or external conflict exists, Resolved Plan
+  is one action away on desktop and one dock tap away on mobile. Its dedicated
+  surface groups positive/negative prompts, prompt
   slots, characters and positions, winning parameter sources, output policy,
   warnings/errors, random trace, provenance, and plan hash. Dense sections may
   collapse; blocking errors and repair actions remain first in reading order.
@@ -181,8 +185,9 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   Virtual rows preserve list/listbox semantics, stable IDs, keyboard focus, and
   total scroll height for at least 500 modules.
 - **Mobile command dock:** Below `768px`, the canvas or Scene grid remains primary
-  above a fixed safe-area-aware dock. Modules, Inspector, Resolved Plan, and
-  Generate/Cancel are direct controls with accessible names. The dock never
+  above a fixed safe-area-aware dock. Generate/Cancel is always direct; Modules,
+  Inspector, and Resolved Plan occupy buttons only when the owning workflow
+  supplies an applicable action. Every icon has an accessible name. The dock never
   copies generation rules, never hides the active Cancel action, and the workspace
   reserves its height plus `env(safe-area-inset-bottom)` so content is not covered.
 

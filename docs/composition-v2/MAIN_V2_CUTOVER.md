@@ -6,7 +6,7 @@
 
 ## Rollout mode
 
-`nais2-generation` persisted store의 `compositionMode` 하나로 Main caller를 전환한다. 현재 기본값은 `v2`이며 `selectedRecipeId`도 함께 보존된다.
+Main caller의 in-memory `compositionMode` 기본값은 `v2`다. 이 rollout 요청값은 사용자 선호가 아니므로 `nais2-generation`에 저장하지 않으며, 이전 버전이 저장한 `legacy`/`shadow` 값도 hydration 시 `v2`로 정규화한다. 실제 production 활성화와 rollback은 repository 검증을 거치는 process authority가 담당한다. 명시적 `selectedRecipeId`만 사용자 선택으로 보존한다.
 
 | Mode | CompositionEngine 실행 | 실제 NAI 요청에 쓰는 계획 | 실패 동작 | Sequential fragment |
 | --- | --- | --- | --- | --- |
@@ -14,7 +14,7 @@
 | `shadow` | preview mode로 실행 | legacy 결과만 사용하며 실제 요청은 1회 | v2 error와 diff를 진단 상태에 남기고 legacy 요청 계속 | counter를 소비하거나 commit하지 않음 |
 | `v2` | generate mode로 실행 | 유효한 engine plan | blocking error이면 요청·출력·history 없이 batch 중단 | 성공한 요청의 CAS proposal만 commit |
 
-`legacy`는 즉시 rollback 경로다. Recipe selector는 legacy에서 비활성화되며 기존 Asset recipe 선택/fallback과 prompt processor가 그대로 실행된다. `shadow`는 이중 네트워크 요청을 하지 않고 동일 입력 snapshot에 대한 v2 결과를 legacy `GenerationParams`, redacted resource semantics, recipe와 output policy/materialization 요약에 비교한다. 설명되지 않은 차이는 `compositionShadowDiff`에서 숨기지 않는다.
+`legacy`는 process authority가 강제하는 즉시 rollback 경로다. 이때 기존 Asset recipe 선택/fallback과 prompt processor가 그대로 실행된다. `shadow`는 내부 진단·characterization 경로로 남으며, 이중 네트워크 요청 없이 동일 입력 snapshot의 v2 결과를 legacy `GenerationParams`, redacted resource semantics, recipe와 output policy/materialization 요약에 비교한다. 설명되지 않은 차이는 `compositionShadowDiff`에서 숨기지 않는다.
 
 ## Main adapter와 명시적 recipe 선택
 
@@ -91,15 +91,16 @@ Direct source edit의 기존 `NAIS_I2I_`/`NAIS_INPAINT_` filename prefix는 v2 f
 
 따라서 이번 전환은 새 output writer를 도입하거나 기존 writer를 공통 domain으로 옮긴 것이 아니다. Plan이 선택한 memory/filesystem destination은 resolve 시점에 고정되어 transport 중 live setting 변경으로 바뀌지 않는다. 현재 writer가 static filename 충돌 시 overwrite하므로 plan도 `collisionPolicy: 'overwrite'`로 이를 정직하게 표현하며, filesystem side effect는 engine 밖에 남는다. Cached reference secret은 embedded metadata와 sidecar용 payload summary에서 redaction한다.
 
-## 최소 진단 UI
+## Contextual composition UI
 
-기존 `PromptPanel`의 prompt field와 layout은 compatibility 기간 동안 유지한다. 정확한 Main route(`/`)에만 다음 additive UI를 표시하며 Scene·Style Lab에는 mount하지 않는다.
+`PromptPanel`은 prompt authoring만 담당하며 별도 recipe/validation/resolved 진단 블록을 중복 mount하지 않는다. Main command bar의 기본 상태에는 Generate/Cancel만 남고 다음 제어는 실제 맥락이 있을 때만 표시한다.
 
-- `RecipeSelector`: `legacy`/`shadow`/`v2` mode와 explicit Asset/direct recipe 선택
-- `ValidationBadge`: pending, legacy, valid, warning, error 상태
-- `ResolvedPlanPanel`: final positive/negative, canonical slot parts, character와 position, final params, output policy, warning/error, plan hash, provenance count/winner, shadow diff
+- Asset recipe가 있거나 삭제된 persisted recipe 선택을 복구해야 할 때만 direct/Asset recipe 선택을 표시한다.
+- direct 입력 또는 현재 resolved recipe plan으로 비용 근거가 있고 계산값이 0보다 클 때만 estimated Anlas를 표시한다. 아직 resolve하지 않은 Asset recipe의 비용은 추측하지 않는다.
+- 실제 recipe/module 데이터가 있을 때만 Module Stack 진입점을 표시하며, module 선택이 Inspector를 연다.
+- resolved plan, warning/error 또는 external conflict가 있을 때만 `ResolvedPlanView` 진입점을 표시한다.
 
-생성 중에는 recipe 변경을 막는다. 이 UI는 prompt editor나 Asset Profile editor를 대체하지 않는다.
+생성 중에는 recipe 변경을 막는다. Rollout mode와 아직 resolve하지 않았다는 pending 상태는 일반 authoring 기능으로 표시하지 않는다. Scene·Style Lab의 simplified surface에도 이 내부 제어를 전달하지 않는다.
 
 ## 승인된 parity delta
 
@@ -122,9 +123,9 @@ Shadow 비교는 source/mask 존재 여부, strength/noise, character/vibe refer
 
 ## Rollback 절차
 
-문제가 발생하면 Main 설정의 workflow mode를 `legacy`로 바꾼다. 코드 revert, Asset Profile migration rollback, NAI adapter 교체가 필요하지 않다. Persisted selection sentinel은 남아 있어도 legacy 경로에서는 engine 요청을 결정하지 않는다. Mode/recipe 변경 시 stale plan과 issue는 지워진다. 원인 분석은 `lastResolvedPlan`, `compositionWarnings`, `compositionErrors`, `compositionShadowDiff`, plan hash를 캡처한 뒤 `shadow`에서 재현할 수 있다.
+문제가 발생하면 Diagnostics의 `CompositionAuthorityPanel`에서 production authority를 `legacy`로 rollback한다. 코드 revert, Asset Profile migration rollback, NAI adapter 교체가 필요하지 않다. Persisted selection sentinel은 남아 있어도 legacy 경로에서는 engine 요청을 결정하지 않는다. Prompt, parameter, source 또는 recipe 입력이 변경되면 stale plan과 issue는 즉시 지워진다. 원인 분석은 변경 전에 `lastResolvedPlan`, `compositionWarnings`, `compositionErrors`, `compositionShadowDiff`, plan hash를 캡처한 뒤 내부 `shadow` characterization에서 재현할 수 있다.
 
-Rollback은 Main composition caller만 전환한다. 이미 기록된 output/history를 삭제하거나 fragment counter를 되감지 않으며, 실행 중 mode 변경 대신 현재 generation을 취소하고 정상 종료 후 변경해야 한다.
+Rollback authority는 Composition workflow의 effective mode를 전환한다. 이미 기록된 output/history를 삭제하거나 fragment counter를 되감지 않으며, 실행 중 변경 대신 현재 generation을 취소하고 정상 종료 후 적용해야 한다.
 
 ## 이번 단계 범위 밖
 

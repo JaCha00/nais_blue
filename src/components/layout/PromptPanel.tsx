@@ -48,8 +48,6 @@ import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
-import { RecipeSelector } from '@/components/composition/RecipeSelector'
-import { ResolvedPlanPanel } from '@/components/composition/ResolvedPlanPanel'
 import {
     assessGenerationStepQuality,
     LOW_STEP_CAUTION_THRESHOLD,
@@ -70,7 +68,6 @@ const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
 export function PromptPanel() {
     const { t } = useTranslation()
     const location = useLocation()
-    const isMainMode = location.pathname === '/'
     const isSceneMode = location.pathname.startsWith('/scenes')
 
     const additionalPrompt = useGenerationDraftStore(state => state.additionalPrompt)
@@ -163,13 +160,6 @@ export function PromptPanel() {
                 rail and generate control below remain reachable on short Android
                 viewports while every prompt field stays available. */}
             <div className="relative mb-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain pr-1">
-                {isMainMode && (
-                    <div className="flex flex-none flex-col gap-3">
-                        <RecipeSelector />
-                        <ResolvedPlanPanel />
-                    </div>
-                )}
-
                 {/* Character Prompt Panel (Accordion Style) - 프롬프트 영역 위에 오버레이 */}
                 <CharacterPromptPanel
                     open={characterPanelOpen}

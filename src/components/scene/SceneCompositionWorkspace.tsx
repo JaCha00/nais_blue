@@ -174,12 +174,12 @@ export function SceneCompositionWorkspace({
 
     const commandBar = (
         <CompositionCommandBar
-            mode={mode}
-            recipe={recipe}
-            validation={validation}
+            mode={simplified ? undefined : mode}
+            recipe={simplified ? undefined : recipe}
+            validation={simplified ? undefined : validation}
             cost={cost}
             seed={seed}
-            resolved={{
+            resolved={simplified ? undefined : {
                 available: resolvedAvailable,
                 open: resolvedOpen,
                 onOpen: openResolved,
@@ -200,8 +200,8 @@ export function SceneCompositionWorkspace({
                 unlockSeed: t('composition.random.unlockSeed', 'Unlock seed'),
             }}
             disabled={disabled}
-            onOpenModules={openModules}
-            onOpenInspector={openInspector}
+            onOpenModules={simplified ? undefined : openModules}
+            onOpenInspector={simplified ? undefined : openInspector}
             simplified={simplified}
         />
     )
@@ -226,9 +226,9 @@ export function SceneCompositionWorkspace({
                             generate: t('generate.button', 'Generate'),
                             cancel: t('generate.cancel', 'Cancel'),
                         }}
-                        onOpenModules={openModules}
-                        onOpenInspector={openInspector}
-                        onOpenResolved={openResolved}
+                        onOpenModules={simplified ? undefined : openModules}
+                        onOpenInspector={simplified ? undefined : openInspector}
+                        onOpenResolved={simplified ? undefined : openResolved}
                         simplified={simplified}
                     />
                 )}
