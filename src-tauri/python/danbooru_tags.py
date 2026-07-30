@@ -25,11 +25,26 @@ LOW_POST_COUNT_THRESHOLD = 100
 HTTP_TIMEOUT_SECONDS = 15
 REQUEST_THROTTLE_SECONDS = 0.12
 
-TagStatus = Literal["OK", "LOW", "GHOST", "ERROR", "SKIPPED"]
+TagStatus = Literal["OK", "LOW", "GHOST", "ERROR", "SKIPPED", "RENAMED"]
+
+# NovelAI uses these names because several Danbooru originals collide with
+# prompt-mixing syntax. Resolve them locally instead of asking Danbooru, which
+# still considers the incompatible originals valid.
+NAI_RENAMED_TAGS = {
+    "v": "peace sign",
+    "double_v": "double peace",
+    "|_|": "bar eyes",
+    r"\||/": r"open \m/",
+    ":|": "neutral face",
+    ";|": "neutral face",
+    "<|>_<|>": "neco-arc eyes",
+    "eyepatch_bikini": "square bikini",
+    "tachi-e": "character image",
+}
 
 _WEIGHTED_TAG_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?::(?P<tag>.*?)::$")
 _FRAGMENT_RE = re.compile(r"^<[^<>]+>$")
-_SEPARATOR_RE = re.compile(r"[,;\n]+")
+_SEPARATOR_RE = re.compile(r"(?:,|;(?!\|)|\n)+")
 _SPACE_RE = re.compile(r"\s+")
 _UNDERSCORE_RE = re.compile(r"_+")
 _BRACKET_TRANSLATION = str.maketrans("", "", "{}[]()")
@@ -53,6 +68,24 @@ class TagVerifyResult:
     status: TagStatus
     suggestions: list[Suggestion] = field(default_factory=list)
     error: str | None = None
+    recommended: str | None = None
+
+
+def recommended_nai_tag(raw: str) -> str | None:
+    """Return NovelAI's official replacement for one legacy Danbooru tag."""
+
+    tag = raw.strip().lower()
+    previous = None
+    while previous != tag:
+        previous = tag
+        match = _WEIGHTED_TAG_RE.fullmatch(tag)
+        if match:
+            tag = match.group("tag").strip()
+
+    tag = tag.translate(str.maketrans("", "", "{}[]"))
+    tag = _SPACE_RE.sub("_", tag)
+    tag = _UNDERSCORE_RE.sub("_", tag)
+    return NAI_RENAMED_TAGS.get(tag.strip("_"))
 
 
 def normalize_tag(raw: str) -> str:
@@ -103,6 +136,18 @@ def verify_tag(
             status="SKIPPED",
             suggestions=[],
             error=None,
+        )
+
+    recommended = recommended_nai_tag(raw)
+    if recommended is not None:
+        return TagVerifyResult(
+            raw=raw,
+            normalized=normalized,
+            postCount=None,
+            status="RENAMED",
+            suggestions=[],
+            error=None,
+            recommended=recommended,
         )
 
     try:

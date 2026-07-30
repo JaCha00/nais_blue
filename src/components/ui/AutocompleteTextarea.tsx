@@ -201,7 +201,7 @@ export function AutocompleteTextarea({
         // 1단계: 인덱스된 태그에서 startsWith 매칭
         for (const tag of indexedTags) {
             if (matches.length >= maxSuggestions) break
-            if (tag._lower.startsWith(lower)) {
+            if (tag._searchTerms.some(term => term.startsWith(lower))) {
                 matches.push(tag)
             }
         }
@@ -210,7 +210,10 @@ export function AutocompleteTextarea({
         if (matches.length < maxSuggestions) {
             for (const tag of tagIndex.all) {
                 if (matches.length >= maxSuggestions) break
-                if (!tag._lower.startsWith(lower) && tag._lower.includes(lower)) {
+                if (
+                    !tag._searchTerms.some(term => term.startsWith(lower))
+                    && tag._searchTerms.some(term => term.includes(lower))
+                ) {
                     matches.push(tag)
                 }
             }

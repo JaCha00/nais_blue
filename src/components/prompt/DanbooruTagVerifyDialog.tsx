@@ -24,7 +24,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import {
     verifyPromptTagsWithDanbooru,
-    type DanbooruSuggestion,
     type DanbooruTagResult,
     type DanbooruTagStatus,
 } from '@/services/danbooru-tag-verifier'
@@ -44,9 +43,10 @@ const INITIAL_SUMMARY: Summary = {
     GHOST: 0,
     ERROR: 0,
     SKIPPED: 0,
+    RENAMED: 0,
 }
 
-const STATUS_ORDER: DanbooruTagStatus[] = ['OK', 'LOW', 'GHOST', 'ERROR']
+const STATUS_ORDER: DanbooruTagStatus[] = ['OK', 'LOW', 'RENAMED', 'GHOST', 'ERROR']
 
 export function DanbooruTagVerifyDialog({
     open,
@@ -115,8 +115,8 @@ export function DanbooruTagVerifyDialog({
         }
     }
 
-    const applySuggestion = (result: DanbooruTagResult, suggestion: DanbooruSuggestion) => {
-        setEditedPrompt((current) => replacePromptToken(current, result.raw, suggestion.name))
+    const applySuggestion = (result: DanbooruTagResult, replacement: string) => {
+        setEditedPrompt((current) => replacePromptToken(current, result.raw, replacement))
     }
 
     const handleApply = () => {
@@ -256,8 +256,10 @@ function ResultRow({
     onSelectSuggestion,
 }: {
     result: DanbooruTagResult
-    onSelectSuggestion: (result: DanbooruTagResult, suggestion: DanbooruSuggestion) => void
+    onSelectSuggestion: (result: DanbooruTagResult, replacement: string) => void
 }) {
+    const recommended = result.recommended
+
     return (
         <div className={cn('rounded-lg border p-2', getStatusContainerClass(result.status))}>
             <div className="flex flex-wrap items-center gap-2">
@@ -286,7 +288,7 @@ function ResultRow({
                                 size="sm"
                                 variant="outline"
                                 className="h-auto min-h-7 gap-1 px-2 py-1 text-xs whitespace-normal"
-                                onClick={() => onSelectSuggestion(result, suggestion)}
+                                onClick={() => onSelectSuggestion(result, suggestion.name)}
                             >
                                 <span className="font-mono">{suggestion.name}</span>
                                 <span className="text-muted-foreground">
@@ -298,6 +300,18 @@ function ResultRow({
                         <span className="text-xs text-muted-foreground">No suggestions</span>
                     )}
                 </div>
+            )}
+
+            {result.status === 'RENAMED' && recommended && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 h-auto min-h-7 px-2 py-1 font-mono text-xs whitespace-normal"
+                    onClick={() => onSelectSuggestion(result, recommended)}
+                >
+                    {recommended}
+                </Button>
             )}
 
             {result.status === 'ERROR' && result.error && (
@@ -319,6 +333,8 @@ function getStatusIcon(status: DanbooruTagStatus) {
             return <AlertTriangle className="h-3.5 w-3.5" />
         case 'SKIPPED':
             return <Circle className="h-3.5 w-3.5" />
+        case 'RENAMED':
+            return <RefreshCw className="h-3.5 w-3.5" />
     }
 }
 
@@ -334,6 +350,8 @@ function getStatusTextClass(status: DanbooruTagStatus): string {
             return 'text-destructive'
         case 'SKIPPED':
             return 'text-muted-foreground'
+        case 'RENAMED':
+            return 'text-info'
     }
 }
 
@@ -349,6 +367,8 @@ function getStatusContainerClass(status: DanbooruTagStatus): string {
             return 'border-destructive/40 bg-destructive/10'
         case 'SKIPPED':
             return 'border-border/60 bg-muted/20 opacity-60'
+        case 'RENAMED':
+            return 'border-info/40 bg-info/10'
     }
 }
 

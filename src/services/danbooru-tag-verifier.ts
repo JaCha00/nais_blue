@@ -3,7 +3,7 @@ import {
     LOCAL_TAGGER_BASE_URL,
 } from '@/services/local-tagger-server'
 
-export type DanbooruTagStatus = 'OK' | 'LOW' | 'GHOST' | 'ERROR' | 'SKIPPED'
+export type DanbooruTagStatus = 'OK' | 'LOW' | 'GHOST' | 'ERROR' | 'SKIPPED' | 'RENAMED'
 
 export interface DanbooruSuggestion {
     name: string
@@ -17,6 +17,7 @@ export interface DanbooruTagResult {
     status: DanbooruTagStatus
     suggestions: DanbooruSuggestion[]
     error: string | null
+    recommended?: string | null
 }
 
 export interface DanbooruVerifyPromptResult {

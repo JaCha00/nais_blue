@@ -171,6 +171,13 @@ describe('Composition fragment grammar', () => {
         expect(result.randomTrace).toHaveLength(2)
         expect(result.randomTrace.every(trace => trace.ruleId.startsWith('fragment-inline:'))).toBe(true)
     })
+
+    it('preserves the NovelAI neco-arc eyes legacy spelling', () => {
+        const result = resolveFragments(request({ text: '1girl, <|> <|>, smile' }))
+
+        expect(result.resolvedText).toBe('1girl, <|> <|>, smile')
+        expect(result.randomTrace).toEqual([])
+    })
 })
 
 describe('Composition fragment failures', () => {
