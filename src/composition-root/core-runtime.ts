@@ -2,6 +2,7 @@ import type { QueueTokenProvider } from '@/application/queue/queue-token-provide
 import { createZustandMainBatchPlanner } from '@/presentation/generation/zustand-main-batch-planner'
 import { createZustandMainQueuePresentation } from '@/presentation/queue/zustand-main-queue-presentation'
 import { createZustandStyleLabQueuePresentation } from '@/presentation/queue/zustand-style-lab-queue-presentation'
+import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
 import { configureRuntimeQueueDependencies } from '@/services/queue/runtime'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -26,6 +27,9 @@ export function initializeCoreRuntime(): void {
         mainQueue: {
             planner: createZustandMainBatchPlanner(),
             presentation: createZustandMainQueuePresentation(),
+        },
+        sceneQueue: {
+            presentation: createZustandSceneResultPresentation(),
         },
         styleLabQueue: {
             presentation: createZustandStyleLabQueuePresentation(),

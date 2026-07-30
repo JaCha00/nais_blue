@@ -1,15 +1,14 @@
+import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
 import { createThumbnail } from '@/lib/image-utils'
 import { getRotationCharacterFolderName, sanitizePathComponent } from '@/lib/scene-output-path'
 import { type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
 import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
-import { useCharacterStore } from '@/stores/character-store'
-import { useGenerationStore } from '@/stores/generation-store'
-import { getScenePresetPathSegments, useSceneStore, type SceneCard } from '@/stores/scene-store'
-import { useSettingsStore } from '@/stores/settings-store'
-import i18n from '@/i18n'
-import { toast } from '@/components/ui/use-toast'
-import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
+
+export interface SaveSceneResultScene {
+    readonly id: string
+    readonly name: string
+}
 
 export interface SaveSceneResultContext {
     activePresetId: string
@@ -19,6 +18,7 @@ export interface SaveSceneResultContext {
 }
 
 export interface SaveSceneResultOptions {
+    presentation: SceneResultPresentationPort
     canSave?: () => boolean
     sentPayloadSummary?: string
     /**
@@ -56,18 +56,6 @@ const toDataUrl = (imageData: string, mimeType: string): string =>
 const toBase64 = (imageData: string): string =>
     imageData.replace(/^data:image\/[^;]+;base64,/, '')
 
-const getFallbackPromptParts = () => {
-    const generationState = useGenerationStore.getState()
-
-    return {
-        base: generationState.basePrompt,
-        additional: generationState.additionalPrompt,
-        detail: generationState.detailPrompt,
-        negative: generationState.negativePrompt,
-        inpainting: generationState.inpaintingPrompt,
-    }
-}
-
 function sceneOutputDirectory(params: {
     sceneSavePath: string
     useAbsoluteScenePath: boolean
@@ -98,35 +86,34 @@ function sceneOutputDirectory(params: {
     }
 }
 
-// useSceneGeneration delegates result persistence here after its session checks.
-// This file owns the coupled save side effects: disk path, scene image list,
-// artifact lifecycle publication, generation history thumbnail, and
-// encoded-vibe cache updates back into CharacterStore.
+// Both Scene runtimes delegate their output transaction here after session
+// checks. UI read-model updates cross the injected Presentation port so this
+// shared transaction never imports Zustand, components, or notifications.
 export async function saveSceneResult(
-    scene: Pick<SceneCard, 'id' | 'name'>,
+    scene: SaveSceneResultScene,
     ctx: SaveSceneResultContext,
     finalPrompt: string,
     params: GenerationParams,
     imageData: string,
     mimeType: string,
-    encodedVibes?: string[],
-    options: SaveSceneResultOptions = {},
+    encodedVibes: readonly string[] | undefined,
+    options: SaveSceneResultOptions,
 ): Promise<boolean> {
     const canSave = options.canSave ?? (() => true)
     if (!canSave()) return false
 
-    const currentPreset = useSceneStore.getState().presets.find(p => p.id === ctx.activePresetId)
+    const presentation = options.presentation
+    const outputDefaults = presentation.readOutputDefaults(ctx.activePresetId)
     const metadataParams: GenerationParams = {
         ...params,
         sentPayloadSummary: options.sentPayloadSummary,
         ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
     }
-    const liveSettings = useSettingsStore.getState()
-    const useAbsoluteScenePath = options.outputContext?.useAbsoluteScenePath ?? liveSettings.useAbsoluteScenePath
-    const metadataMode = options.outputContext?.metadataMode ?? liveSettings.metadataMode
-    const presetName = options.outputContext?.presetName ?? currentPreset?.name ?? 'Default'
+    const useAbsoluteScenePath = options.outputContext?.useAbsoluteScenePath ?? outputDefaults.useAbsoluteScenePath
+    const metadataMode = options.outputContext?.metadataMode ?? outputDefaults.metadataMode
+    const presetName = options.outputContext?.presetName ?? outputDefaults.presetName
     const presetPathSegments = options.outputContext?.presetPathSegments
-        ?? getScenePresetPathSegments(useSceneStore.getState().presets, ctx.activePresetId)
+        ?? outputDefaults.presetPathSegments
     const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
     const fallbackFileName = `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
@@ -136,7 +123,7 @@ export async function saveSceneResult(
             context: {
                 seed: params.seed,
                 scene: { id: scene.id, name: scene.name },
-                preset: { id: ctx.activePresetId, name: currentPreset?.name || 'Default' },
+                preset: { id: ctx.activePresetId, name: presetName },
             },
             fallback: fallbackFileName,
         })
@@ -209,7 +196,7 @@ export async function saveSceneResult(
                 params: metadataParams,
                 imageFormat: fileExt,
                 metadataMode: effectiveMetadataMode,
-                fallbackPromptParts: getFallbackPromptParts(),
+                fallbackPromptParts: outputDefaults.fallbackPromptParts,
                 includeWebpCompatibilitySidecar: true,
             },
             generateThumbnail: createThumbnail,
@@ -226,26 +213,16 @@ export async function saveSceneResult(
 
                 artifactLineage = await options.registerArtifact?.(outputResult) ?? null
                 committedPath = outputResult.path
-                useSceneStore.getState().addImageToScene(ctx.activePresetId, scene.id, outputResult.path)
                 historyId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`
-                useGenerationStore.getState().addToHistory({
-                    id: historyId,
-                    url: outputResult.path,
+                presentation.commitResult({
+                    historyId,
+                    presetId: ctx.activePresetId,
+                    sceneId: scene.id,
+                    path: outputResult.path,
                     thumbnail: outputResult.thumbnailDataUrl,
                     prompt: finalPrompt,
                     seed: params.seed,
-                    timestamp: new Date(),
                     sentPayloadSummary: options.sentPayloadSummary,
-                    ...(artifactLineage === null
-                        ? {}
-                        : {
-                            artifactId: artifactLineage.artifactId,
-                            sourceJobId: artifactLineage.sourceJobId,
-                            ...(artifactLineage.sourceSceneId === null ? {} : { sourceSceneId: artifactLineage.sourceSceneId }),
-                        }),
-                })
-                publishGeneratedArtifact({
-                    path: outputResult.path,
                     ...(artifactLineage === null
                         ? {}
                         : {
@@ -260,21 +237,12 @@ export async function saveSceneResult(
             rollbackWorkflow: async () => {
                 workflowCommitted = false
                 if (committedPath !== null) {
-                    useSceneStore.setState(state => ({
-                        presets: state.presets.map(preset => preset.id === ctx.activePresetId
-                            ? {
-                                ...preset,
-                                scenes: preset.scenes.map(item => item.id === scene.id
-                                    ? { ...item, images: item.images.filter(image => image.url !== committedPath) }
-                                    : item),
-                            }
-                            : preset),
-                    }))
-                }
-                if (historyId !== null) {
-                    useGenerationStore.setState(state => ({
-                        history: state.history.filter(item => item.id !== historyId),
-                    }))
+                    presentation.rollbackResult({
+                        presetId: ctx.activePresetId,
+                        sceneId: scene.id,
+                        path: committedPath,
+                        historyId,
+                    })
                 }
                 await options.rollbackArtifact?.()
                 artifactLineage = null
@@ -282,20 +250,10 @@ export async function saveSceneResult(
         })
         if (output.status === 'cancelled') return false
         if (output.result.capabilityFallbackUsed) {
-            toast({
-                title: i18n.t(
-                    'composition.outputCapabilityFallbackTitle',
-                    'Output destination changed for this platform',
-                ),
-                description: i18n.t(
-                    'composition.outputCapabilityFallbackDescription',
-                    '{{reason}} Alternative: {{alternative}}',
-                    {
-                        reason: output.result.capabilityFallbackReason ?? '',
-                        alternative: output.result.capabilityFallbackAlternative ?? '',
-                    },
-                ),
-            })
+            presentation.reportCapabilityFallback(
+                output.result.capabilityFallbackReason,
+                output.result.capabilityFallbackAlternative,
+            )
         }
     } catch (error) {
         if (sessionInvalid || finalizeRejected || !canSave()) return false
@@ -305,14 +263,7 @@ export async function saveSceneResult(
 
     try {
         if (encodedVibes && encodedVibes.length > 0) {
-            const { vibeImages, updateVibeImage } = useCharacterStore.getState()
-            let encodedIndex = 0
-            for (let vi = 0; vi < vibeImages.length && encodedIndex < encodedVibes.length; vi++) {
-                if (!vibeImages[vi].encodedVibe) {
-                    updateVibeImage(vibeImages[vi].id, { encodedVibe: encodedVibes[encodedIndex] })
-                    encodedIndex++
-                }
-            }
+            presentation.updateEncodedVibes(encodedVibes)
         }
     } catch (error) {
         console.warn('[SceneGeneration] Result was saved but encoded-vibe cache update failed.', error)

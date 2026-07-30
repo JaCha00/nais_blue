@@ -92,6 +92,13 @@ module.exports = {
             to: { path: '^src/stores/' },
         },
         {
+            name: 'scene-output-transaction-does-not-import-presentation',
+            comment: 'Scene output commits project through an Application port instead of importing UI state or notifications.',
+            severity: 'error',
+            from: { path: '^src/lib/scene-generation/save-scene-result\\.ts$' },
+            to: { path: '^src/(?:components|hooks|i18n(?:/|\\.ts$)|pages|presentation|stores)/' },
+        },
+        {
             name: 'new-presentation-code-does-not-import-tauri',
             comment: 'New UI and store modules must use platform adapters; the exact transitional importer set is checked separately.',
             severity: 'error',

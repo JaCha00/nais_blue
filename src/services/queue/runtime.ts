@@ -1,4 +1,5 @@
 import type { QueueTokenProvider } from '@/application/queue/queue-token-provider'
+import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
 import type { StyleLabQueuePresentationPort } from '@/application/style-lab/style-lab-queue-presentation-port'
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
@@ -18,6 +19,9 @@ let runtimeDependencies: RuntimeQueueDependencies | null = null
 export interface RuntimeQueueDependencies {
     readonly tokenProvider: QueueTokenProvider
     readonly mainQueue: RuntimeMainQueueDependencies
+    readonly sceneQueue: {
+        readonly presentation: SceneResultPresentationPort
+    }
     readonly styleLabQueue: {
         readonly presentation: StyleLabQueuePresentationPort
     }
@@ -48,7 +52,9 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
         executor: {
             execute: async (job, context) => {
                 if (job.workflow === 'scene') {
-                    await executeSceneQueueJob(job, context)
+                    await executeSceneQueueJob(job, context, {
+                        presentation: dependencies.sceneQueue.presentation,
+                    })
                     return
                 }
                 if (job.workflow === 'main') {

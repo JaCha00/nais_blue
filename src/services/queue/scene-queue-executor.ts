@@ -1,3 +1,4 @@
+import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types'
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
@@ -26,13 +27,14 @@ function decodeImageBytes(imageData: string): Uint8Array {
 
 /**
  * Depends on the immutable Scene snapshot, Queue lease context, shared NAI
- * transport, and the existing Scene output transaction. It owns replayable job
- * execution while target selection, composition planning, and enqueue remain in
- * scene-queue-adapter, so retries never read the current Scene UI selection.
+ * transport, output transaction, and injected result Presentation port. It owns
+ * replayable job execution while target selection, composition planning, and
+ * enqueue remain in scene-queue-adapter.
  */
 export async function executeSceneQueueJob(
     job: GenerationJob,
     context: QueueExecutorContext,
+    dependencies: { readonly presentation: SceneResultPresentationPort },
 ): Promise<void> {
     const payload = decodeSceneJobSnapshot(job.snapshot)
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
@@ -90,6 +92,7 @@ export async function executeSceneQueueJob(
             payload.sceneWorkflow.mimeType,
             result.encodedVibes,
             {
+                presentation: dependencies.presentation,
                 canSave: context.canCommit,
                 sentPayloadSummary: result.sentPayloadSummary,
                 sourceJobId: job.id,
