@@ -1,6 +1,27 @@
 # Composition Domain v2 최종 상태
 
-기준일: 2026-07-26 (Asia/Seoul)
+기준일: 2026-07-30 (Asia/Seoul)
+
+## 2026-07-30 current main update
+
+이번 작업은 공개 `v2.11.2` 이후 35개 commit이 추가된 `main @ 1e375ed2`를 기준으로 시작했다. 이번 변경까지
+포함한 tracked source는 새 공개 릴리스가 아니라 architecture migration 중간 상태다. Presentation Tauri 경계, feature runtime lazy
+loading, Main/Scene/Style Lab queue snapshot·executor·presentation port와 공통 NovelAI image transport가 분리됐다.
+Style Lab의 live-store capture와 concrete Queue coordination은 runtime service로 이동했고 board evolution은
+domain-shaped input과 injected render callback만 받는다. 이에 따라 known violation은 42개에서 26개로 줄었으며
+Architecture gate는 새 위반을 계속 차단한다. Legacy rollback caller는 유지한다.
+
+최신 main CI run `30509972211`은 production/responsive 계약과 Android x86_64 debug install/launch를 통과했다.
+퇴역한 `/organizer` route를 전제로 한 R-056의 vertical rail 조건은 현재 runtime에 존재하지 않는다. 안내와
+진단 trigger는 공통 header의 horizontal group에 있고 현재 route matrix가 통과하므로 R-056은 Mitigated로
+갱신한다. 이 증거는 legacy retirement나 Phase 12 physical transfer gate를 닫지 않는다.
+
+같은 날 Hiby M500_MIKU의 installed 2.11.1과 desktop은 각각 `192.168.0.179`/`192.168.0.100`의 같은 Private
+`/24`에서 ping 가능했고 desktop sync listener도 실제 bind됐다. 다만 Windows Security의 최초 network access
+승인 prompt를 자동화로 조작하지 않았으며, 그 상태에서 Android의 listener TCP 접속은 차단됐다. 따라서
+direct private-LAN pairing은 OS inbound 승인 후 수동 fresh code 1회가 계속 필요하다. Sync 182/182,
+Android transfer 5/5, Cloudflare transfer 4/4와 Worker TypeScript, Rust sync 13/13·NAI 5/5·R2 2/2는 통과했다.
+명시적 live NAI/Cloudflare opt-in 환경은 없었으므로 외부 요청이나 Anlas 소비는 실행하지 않았다.
 
 ## 2026-07-26 current runtime update
 

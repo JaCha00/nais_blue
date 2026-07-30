@@ -1,6 +1,8 @@
 # Composition Domain v2 implementation ledger
 
-기준 시각: 2026-07-13T16:13:51+09:00 (Asia/Seoul)
+초기 기준 시각: 2026-07-13T16:13:51+09:00 (Asia/Seoul)
+
+현재 검토 시각: 2026-07-30 (Asia/Seoul), 작업 시작 기준 `main @ 1e375ed2`
 
 이 문서는 현재 checkout에서 직접 확인한 runtime code, tests, `AGENTS.md`,
 `docs/composition-v2/**`만을 구현 근거로 사용한다. `legacy/**`와 NAIS3 자료는
@@ -2779,3 +2781,39 @@ native picker/read and executable relaunch behavior remain unchanged.
 The public release must build a signed universal APK in CI; the local physical-device artifact is intentionally arm64-only
 and therefore is not evidence for the universal four-ABI contract. Release publication and immutable target-SHA checks are
 performed after this commit is tagged. Direct Wi-Fi remains the only manual v1 completion gate.
+
+## v2.11.2 — RELEASE UX AND ARCHITECTURE CLOSURE
+
+Date: 2026-07-27 (Asia/Seoul)
+
+This patch removed retired navigation destinations, hardened keyboard and shortcut behavior, addressed the release
+architecture review, and made the NAI verifier load the same persisted preset inputs as production generation. The public
+release is the annotated `v2.11.2` tag at `3c62c4e1fa6506417ff8b27470d64633b0f18d54`.
+
+## 2026-07-30 — POST-RELEASE ARCHITECTURE MIGRATION
+
+This slice started from `main @ 1e375ed2c73822b2aa1525b77fe28ebed6ed6fcb`, 35 commits after `v2.11.2`. Those commits
+and the current documentation/Style Lab boundary change are not a new public release. They establish enforceable dependency boundaries, lazy-load feature runtimes, isolate
+presentation-side Tauri APIs, and split Main, Scene, and Style Lab queue planning, snapshots, executors, transport, and
+presentation callbacks without removing the rollback paths.
+
+### Current verification and remaining gates
+
+| Gate | Result |
+| --- | --- |
+| Git/GitHub | local `main` equals `origin/main`; working tree clean before this documentation update; open PRs/issues 0 |
+| Latest main CI | run `30509972211` PASS; production/responsive contracts and x86_64 Android debug install/launch succeeded |
+| Architecture baseline | gate PASS with 26 explicitly recorded known violations after the Style Lab boundary slice; new violations remain forbidden |
+| Release state | package remains 2.11.2; the post-release architecture migration is unreleased |
+| Legacy retirement | BLOCKED by the existing live NAI, authenticated Android, signed rollback, and observation gates |
+| Phase 12 sync | session-only preset preview remains supported; optional blob, Android LAN executor, and physical lifecycle evidence remain incomplete |
+| 2026-07-30 physical LAN preflight | M500_MIKU 2.11.1 and desktop were reachable on one Private `/24`; desktop listener bound, but the untouched Windows Security prompt blocked Android TCP ingress, so direct pairing remains unproven |
+| Transfer contracts | sync 182/182, Android transfer 5/5, Cloudflare transfer 4/4 + Worker TypeScript, Rust sync 13/13, NAI 5/5, and R2 2/2 PASS |
+
+The first bounded code slice moved Style Lab live-store capture and concrete Queue runtime coordination out of Application,
+then made board evolution accept domain-shaped data and an explicit render callback. This removed all 16 Style Lab
+Application-layer violations without changing the runtime workflow. Matrix/Data Pack work remains later scope and is not
+treated as a current runtime defect.
+
+No live NovelAI or Cloudflare request was sent in this pass: the required explicit live environment opt-ins were absent.
+The stored application credential and Anlas balance were not consumed merely to turn a preflight into release evidence.

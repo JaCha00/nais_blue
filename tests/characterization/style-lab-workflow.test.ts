@@ -678,7 +678,7 @@ describe('Style Lab Composition v2 production caller contract', () => {
             seedLocked: false,
         })
         const { captureCurrentStyleEvaluationContext } = await import(
-            '@/application/style-lab/capture-evaluation-context'
+            '@/services/style-lab/capture-evaluation-context'
         )
         const context = captureCurrentStyleEvaluationContext([987654321], FIXED_TIME)
 

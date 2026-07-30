@@ -1,6 +1,6 @@
 # Composition Domain v2 위험 등록부
 
-기준일: 2026-07-15 (Asia/Seoul)
+기준일: 2026-07-30 (Asia/Seoul)
 
 상태 값: `Open`, `Watching`, `Mitigated`. 심각도는 영향과 발생 가능성을 함께 반영한다.
 
@@ -83,13 +83,12 @@
 
 ## R-056 — Mobile guidance rail can overlap or clip route controls
 
-- Status: Open
-- Risk: the current two-button vertical guidance/diagnostic rail sits on the mobile viewport edge. At 390px, its x=0
-  placement loses 8px to a clipping ancestor. Insetting it clears that loss but overlaps an organizer slot; lowering it
-  clears the slot but clips the diagnostic target at the ancestor's bottom edge.
-- Evidence: three bounded 2026-07-16 responsive runs reproduced those three mutually shifting failures. The organizer-safe
-  vertical interval is 89px while two 44px targets plus the required 8px gap need 96px. Touch and keyboard activation passed
-  on SM-S928N and API 35 AVD, but device success does not waive the browser overlap/clipping contract.
-- Mitigation: keep the current runtime placement until a fresh session evaluates a route-specific horizontal rail for
-  `/organizer`; rerun the unchanged complete viewport/route matrix, lint/build and Android touch regression. Do not shrink
-  touch targets, remove the gap assertion, or add a route overlay without organizer CTA evidence.
+- Status: Mitigated
+- Risk: the historical two-button vertical guidance/diagnostic rail could not fit beside the retired `/organizer` controls
+  at 390px without clipping or overlap.
+- Closure evidence: `/organizer` is no longer a production route and the primary-navigation contract rejects controls or
+  deep links that restore it. `ProductGuidance` and `DiagnosticDrawer` now share a wrapping horizontal header group with
+  44px targets and an 8px gap. Main CI run `30509972211` passed the current production/responsive route matrix at
+  `1e375ed2` on 2026-07-30.
+- Reopen condition: a vertical viewport-edge rail returns, `/organizer` is restored, or a current route reproduces target
+  clipping/overlap in the unchanged touch-size contract.

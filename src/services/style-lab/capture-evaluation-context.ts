@@ -24,7 +24,7 @@ function jsonSnapshot(value: unknown): unknown {
 }
 
 /**
- * This application adapter reads the live generation, prompt, reference, recipe,
+ * This runtime adapter reads the live generation, prompt, reference, recipe,
  * and fragment stores. It excludes candidate tags, then the domain constructor
  * hashes the snapshot so both Arena candidates can be checked against one contract.
  */

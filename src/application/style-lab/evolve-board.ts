@@ -10,14 +10,29 @@ import {
     updateStyleEvolutionArchive,
     type EvolutionLineage,
     type EvolutionProposal,
+    type PreferenceCandidatePrior,
     type StyleEvolutionArchiveCell,
     type StyleEvolutionTag,
     type TasteBoard,
 } from '@/domain/style-lab'
-import type { WeightedPromptTag } from '@/lib/style-lab'
-import type { StyleCombination, StyleLabSettings } from '@/stores/style-lab-store'
 import type { StyleLabRepository } from './style-lab-repository'
-import { requestStyleLabPreviewRenders } from './request-preview-render'
+
+export interface EvolveStyleCandidate extends PreferenceCandidatePrior {
+    id: string
+    tags: readonly StyleEvolutionTag[]
+    generation: number
+    lineage?: EvolutionLineage
+    favorite: boolean
+    battles: number
+}
+
+export interface StyleEvolutionSettings {
+    minTags: number
+    maxTags: number
+    minWeight: number
+    maxWeight: number
+    evolutionChildrenCount: number
+}
 
 export interface EvolveStyleBoardResult {
     childIds: string[]
@@ -27,27 +42,31 @@ export interface EvolveStyleBoardResult {
     queuedRenderCount: number
 }
 
-function asEvolutionTags(tags: readonly WeightedPromptTag[]): StyleEvolutionTag[] {
-    return tags.map(tag => ({ ...tag }))
-}
-
 /**
  * Blueprint evolution is free and completes before rendering. Preference,
  * uncertainty, and tag-set novelty rank proposals; only an opted-in board budget
  * can enqueue the small top slice after lineage and archive persistence succeeds.
  */
 export async function evolveStyleBoard(input: {
-    candidates: readonly StyleCombination[]
+    candidates: readonly EvolveStyleCandidate[]
     board: TasteBoard
-    settings: StyleLabSettings
+    settings: StyleEvolutionSettings
     artistPool: readonly string[]
     randomSeed: number
     repository: StyleLabRepository
-    addCombination(tags: WeightedPromptTag[], generation: number): string | null
+    addCombination(tags: StyleEvolutionTag[], generation: number): string | null
     now?: number
     autoRenderLimit?: number
     autoBudgetLimit?: number
-    requestRenders?: typeof requestStyleLabPreviewRenders
+    requestRenders(
+        combinationIds: readonly string[],
+        options: {
+            budgetId: string
+            boardId: string
+            budgetLimit: number
+            priority: number
+        },
+    ): Promise<{ jobs: readonly unknown[] }>
 }): Promise<EvolveStyleBoardResult> {
     const events = await input.repository.listPreferenceEvents()
     const activeEvents = activeStylePreferenceEvents(events)
@@ -101,7 +120,7 @@ export async function evolveStyleBoard(input: {
         boardId: input.board.id,
         candidates: source.map(candidate => ({
             id: candidate.id,
-            tags: asEvolutionTags(candidate.tags),
+            tags: candidate.tags,
             generation: candidate.generation,
             predictedUtility: (projections[candidate.id]?.mu ?? 0)
                 + (predictionById[candidate.id]?.mu ?? 0) * 0.65,
@@ -140,7 +159,7 @@ export async function evolveStyleBoard(input: {
     const createdAt = input.now ?? Date.now()
     const accepted: Array<{ proposal: EvolutionProposal; childId: string }> = []
     for (const proposal of proposals) {
-        const childId = input.addCombination(proposal.tags as WeightedPromptTag[], proposal.generation)
+        const childId = input.addCombination(proposal.tags, proposal.generation)
         if (childId !== null) accepted.push({ proposal, childId })
     }
     const lineages = accepted.map(({ proposal, childId }) => createEvolutionLineage({
@@ -157,7 +176,7 @@ export async function evolveStyleBoard(input: {
 
     const familyCounts = new Map<string, number>()
     for (const candidate of input.candidates) {
-        const niche = styleEvolutionNiche(asEvolutionTags(candidate.tags))
+        const niche = styleEvolutionNiche(candidate.tags)
         familyCounts.set(niche, (familyCounts.get(niche) ?? 0) + 1)
     }
     const existing = await input.repository.listEvolutionArchive(input.board.id)
@@ -166,7 +185,7 @@ export async function evolveStyleBoard(input: {
         existing,
         candidates: [
             ...input.candidates.map(candidate => {
-                const tags = asEvolutionTags(candidate.tags)
+                const tags = candidate.tags
                 const niche = styleEvolutionNiche(tags)
                 return {
                     comboId: candidate.id,
@@ -194,7 +213,7 @@ export async function evolveStyleBoard(input: {
     const renderLimit = Math.max(0, Math.floor(input.autoRenderLimit ?? 2))
     if (input.board.autoEvolution && input.board.budgetId !== null && renderLimit > 0 && accepted.length > 0) {
         const ids = accepted.slice(0, renderLimit).map(item => item.childId)
-        const queued = await (input.requestRenders ?? requestStyleLabPreviewRenders)(ids, {
+        const queued = await input.requestRenders(ids, {
             budgetId: input.board.budgetId,
             boardId: input.board.id,
             budgetLimit: input.autoBudgetLimit ?? 20,

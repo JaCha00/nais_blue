@@ -19,7 +19,7 @@ export interface RequestStyleLabPreviewOptions {
 }
 
 /**
- * UI requests only identify candidates and policy. This use case captures the
+ * UI requests only identify candidates and policy. This runtime adapter captures the
  * current fair context, persists durable snapshots, and lets Queue Center own
  * execution/retry/cancellation after the caller returns.
  */

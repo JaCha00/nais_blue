@@ -18,7 +18,7 @@ import {
     buildStyleLabGenerationParams,
     formatStyleLabCompositionErrors,
 } from '@/lib/style-lab/build-style-lab-params'
-import { captureCurrentStyleEvaluationContext } from '@/application/style-lab/capture-evaluation-context'
+import { captureCurrentStyleEvaluationContext } from '@/services/style-lab/capture-evaluation-context'
 import {
     sameStyleEvaluationContext,
     type StyleEvaluationContext,

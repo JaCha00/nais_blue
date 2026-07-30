@@ -45,7 +45,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { captureCurrentStyleEvaluationContext } from '@/application/style-lab/capture-evaluation-context'
+import { captureCurrentStyleEvaluationContext } from '@/services/style-lab/capture-evaluation-context'
 import { buildMarketShelf } from '@/application/style-lab/build-market-shelf'
 import { exposeArenaPair } from '@/application/style-lab/expose-arena-pair'
 import {
@@ -69,7 +69,7 @@ import { suggestArenaPair } from '@/application/style-lab/suggest-arena-pair'
 import {
     requestStyleLabPreviewRenders,
     type RequestStyleLabPreviewOptions,
-} from '@/application/style-lab/request-preview-render'
+} from '@/services/style-lab/request-preview-render'
 import { evolveStyleBoard } from '@/application/style-lab/evolve-board'
 import {
     styleCombinationIdentity,
@@ -924,6 +924,7 @@ export default function StyleLab() {
                 addCombination: (tags, generation) => (
                     useStyleLabStore.getState().addCombinationFromTags(tags, generation)
                 ),
+                requestRenders: requestStyleLabPreviewRenders,
             })
             if (result.childIds.length === 0) {
                 toast({
