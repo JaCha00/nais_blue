@@ -636,10 +636,10 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
  *         https://docs.novelai.net/en/image/undesiredcontent
  */
 
-// Core phrases the prompt must end with for qualityToggle=true.
-// NAI may append a fuller variant (e.g. V4.5 Full prepends ", location, ..."),
-// so we match only the stable trailing phrases. Multiple entries allow us to
-// catch both canonical and shortened variants seen in real exports.
+// Complete comma-delimited signatures that indicate qualityToggle=true.
+// NAI may include fuller variants (e.g. V4.5 Full prepends "location, ..."),
+// so we match the stable signatures. Multiple entries cover canonical and
+// shortened variants seen in real exports.
 const QUALITY_TAG_SIGNATURES: Record<string, string[]> = {
     v45_full: [QUALITY_TAGS_SUFFIX.replace(/^,\s*/, '')],
     v45_curated: ['masterpiece, no text, -0.8::feet::, rating:general', 'rating:general'],
@@ -686,12 +686,19 @@ interface InferredNAIPresets {
     ucPrefix?: string
 }
 
-function stripTrailingPresetText(input: string, signature: string): string {
-    const withoutTrailingSeparators = input.trimEnd().replace(/[,\s]+$/, '')
-    if (!withoutTrailingSeparators.endsWith(signature)) return input
-    return withoutTrailingSeparators
-        .slice(0, -signature.length)
-        .replace(/[,\s]+$/, '')
+function stripQualityPresetText(input: string, signature: string): string | null {
+    let index = input.indexOf(signature)
+    while (index >= 0) {
+        const before = input.slice(0, index)
+        const after = input.slice(index + signature.length)
+        const beforeBoundary = before.trim().length === 0 || before.trimEnd().endsWith(',')
+        const afterBoundary = after.trim().length === 0 || after.trimStart().startsWith(',')
+        if (beforeBoundary && afterBoundary) {
+            return stripEmbeddedPresetText(input, index, signature)
+        }
+        index = input.indexOf(signature, index + 1)
+    }
+    return null
 }
 
 function stripEmbeddedPresetText(input: string, index: number, prefix: string): string {
@@ -707,20 +714,20 @@ function inferNAIPresets(
 ): InferredNAIPresets {
     const out: InferredNAIPresets = {}
 
-    // Quality Tags: check tail of prompt against known signatures.
-    // Allow trailing comma/whitespace since real NAI exports often end with them.
+    // Provider-expanded quality text may precede later user text in legacy files.
+    // Remove exactly one complete comma-delimited signature and preserve the rest.
     if (prompt) {
-        const tail = prompt.trimEnd().replace(/[,\s]+$/, '')
         // Prefer model-matched signature; fall back to other known signatures.
         const keys = modelKey
             ? [modelKey, ...Object.keys(QUALITY_TAG_SIGNATURES).filter(k => k !== modelKey)]
             : Object.keys(QUALITY_TAG_SIGNATURES)
         outer: for (const k of keys) {
             for (const sig of QUALITY_TAG_SIGNATURES[k] || []) {
-                if (tail.endsWith(sig)) {
+                const strippedPrompt = stripQualityPresetText(prompt, sig)
+                if (strippedPrompt !== null) {
                     out.qualityToggle = true
                     out.qualitySignature = sig
-                    out.prompt = stripTrailingPresetText(prompt, sig)
+                    out.prompt = strippedPrompt
                     break outer
                 }
             }
@@ -774,15 +781,23 @@ function applyInferredNAIPresets(metadata: NAIMetadata): void {
 
     if (metadata.qualityToggle === undefined && inferred.qualityToggle !== undefined) {
         metadata.qualityToggle = inferred.qualityToggle
-        if (inferred.prompt !== undefined) metadata.prompt = inferred.prompt
+    }
+    if (metadata.qualityToggle === true && inferred.prompt !== undefined) {
+        metadata.prompt = inferred.prompt
         const caption = metadata.v4_prompt?.caption
         if (caption?.base_caption && inferred.qualitySignature) {
-            metadata.v4_prompt = {
-                ...metadata.v4_prompt,
-                caption: {
-                    ...caption,
-                    base_caption: stripTrailingPresetText(caption.base_caption, inferred.qualitySignature),
-                },
+            const strippedCaption = stripQualityPresetText(
+                caption.base_caption,
+                inferred.qualitySignature,
+            )
+            if (strippedCaption !== null) {
+                metadata.v4_prompt = {
+                    ...metadata.v4_prompt,
+                    caption: {
+                        ...caption,
+                        base_caption: strippedCaption,
+                    },
+                }
             }
         }
     }
