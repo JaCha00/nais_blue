@@ -96,7 +96,7 @@ Direct source edit의 기존 `NAIS_I2I_`/`NAIS_INPAINT_` filename prefix는 v2 f
 `PromptPanel`은 prompt authoring만 담당하며 별도 recipe/validation/resolved 진단 블록을 중복 mount하지 않는다. Main command bar의 기본 상태에는 Generate/Cancel만 남고 다음 제어는 실제 맥락이 있을 때만 표시한다.
 
 - Asset recipe가 있거나 삭제된 persisted recipe 선택을 복구해야 할 때만 direct/Asset recipe 선택을 표시한다.
-- direct 입력 또는 현재 resolved recipe plan으로 비용 근거가 있고 계산값이 0보다 클 때만 estimated Anlas를 표시한다. 아직 resolve하지 않은 Asset recipe의 비용은 추측하지 않는다.
+- direct 입력에서 계산값이 0보다 클 때만 estimated Anlas를 표시한다. Asset recipe의 참조 리소스와 cache 상태는 materialization 전에는 확정할 수 없으므로 비용을 추측하지 않는다.
 - 실제 recipe/module 데이터가 있을 때만 Module Stack 진입점을 표시하며, module 선택이 Inspector를 연다.
 - resolved plan, warning/error 또는 external conflict가 있을 때만 `ResolvedPlanView` 진입점을 표시한다.
 

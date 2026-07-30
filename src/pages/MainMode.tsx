@@ -285,14 +285,11 @@ export default function MainMode() {
     const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
     const enabledCharacterCount = characterImages.filter(item => item.enabled !== false).length
     const uncachedVibeCount = vibeImages.filter(item => item.enabled !== false && !item.encodedVibe).length
-    const resolvedCostParams = lastResolvedPlan?.params
-    const canEstimateCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
-        || resolvedCostParams !== undefined
-    const estimatedCost = canEstimateCost
+    const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
         ? calculateAnlasCost(
-            resolvedCostParams?.width ?? selectedResolution.width,
-            resolvedCostParams?.height ?? selectedResolution.height,
-            resolvedCostParams?.steps ?? steps,
+            selectedResolution.width,
+            selectedResolution.height,
+            steps,
             batchCount,
             enabledCharacterCount,
             uncachedVibeCount,
