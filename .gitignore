@@ -63,9 +63,11 @@ discord_setup/
 # Copilot instructions
 .github/copilot-instructions.md
 
-# Docs (local planning; Composition Domain v2 baseline is repository guidance)
+# Docs (tracked guidance is explicit; local working material and trash stay ignored)
 docs/*
-!docs/persistence-map.md
+!docs/README.md
+!docs/archive/
+!docs/archive/**
 !docs/composition-v2/
 !docs/composition-v2/**
 !docs/architecture/
