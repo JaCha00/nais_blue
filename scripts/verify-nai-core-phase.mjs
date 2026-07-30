@@ -52,6 +52,7 @@ const sceneStore = read('src/stores/scene-store.ts')
 const sceneCancellation = read('src/lib/scene-generation/request-cancellation.ts')
 const sceneSave = read('src/lib/scene-generation/save-scene-result.ts')
 const generationStore = read('src/stores/generation-store.ts')
+const mainGenerationPlan = read('src/services/generation/main-generation-plan.ts')
 const styleLab = read('src/services/style-lab-generation.ts')
 const outputMetadataWriter = read('src/services/output/metadata-writer.ts')
 const types = read('src/services/novelai-types.ts')
@@ -278,9 +279,12 @@ check(
 )
 check(
   'main scene and stylelab force source edit requests through zip',
-  /const hasSourceEdit = Boolean\(generationParams\.sourceImage \|\| generationParams\.mask\)/.test(generationStore) &&
+  /const sourceEdit = Boolean\(options\.params\.sourceImage \|\| options\.params\.mask\)/.test(mainGenerationPlan) &&
+  /streaming: options\.streamingRequested && !sourceEdit/.test(mainGenerationPlan) &&
   /const hasSourceEdit = Boolean\(params\.sourceImage \|\| params\.mask\)/.test(sceneGeneration) &&
-  /const hasSourceEdit = Boolean\(params\.sourceImage \|\| params\.mask\)/.test(styleLab)
+  /const canUseStreaming = ctx\.streamingView && !hasSourceEdit/.test(sceneGeneration) &&
+  /const hasSourceEdit = Boolean\(params\.sourceImage \|\| params\.mask\)/.test(styleLab) &&
+  /const canUseStreaming = useStreaming && !hasSourceEdit/.test(styleLab)
 )
 check(
   'sent payload summaries reach history and sidecar metadata',

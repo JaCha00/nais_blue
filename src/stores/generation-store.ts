@@ -43,6 +43,7 @@ import {
     type MainReferenceSnapshot,
 } from '@/lib/composition/main-adapter'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
+import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { CompositionEngineIssue, CompositionEnginePlan } from '@/domain/composition/engine'
 import type { DeepReadonly } from '@/domain/composition/provenance'
@@ -56,12 +57,27 @@ import {
 } from '@/platform/portable-resources'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { publishGeneratedArtifact } from './artifact-lifecycle-store'
+import {
+    prepareMainGeneration,
+    type PreparedMainGeneration,
+} from '@/services/generation/main-generation-plan'
+
+export type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 
 interface Resolution {
     label: string
     width: number
     height: number
 }
+
+type MainGenerationRun =
+    | { readonly kind: 'execute' }
+    | { readonly kind: 'prepare', readonly prepared: PreparedMainGeneration[] }
+
+// The symbol keeps the shared orchestration runner private to this store module.
+// Public callers use generate or prepareMainBatch, preventing Queue from
+// reintroducing execution-option callbacks while both paths retain parity.
+const runMainGenerationAction = Symbol('runMainGenerationAction')
 
 interface HistoryItem {
     id: string
@@ -90,29 +106,6 @@ export interface MainCompositionShadowDifference {
         | 'uniform-comment-removal'
         | 'exact-token-dedupe'
         | 'strict-broken-reference'
-}
-
-export interface CapturedMainGeneration {
-    params: GenerationParams
-    finalPrompt: string
-    imageFormat: 'png' | 'webp'
-    metadataMode: GenerationParams['metadataMode']
-    streaming: boolean
-    sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
-    output: {
-        autoSave: boolean
-        directory: string
-        useAbsolutePath: boolean
-        capabilityFallbackDirectory: string
-        portableDirectory?: GenerationParams['portableOutputDirectory']
-        fileName?: string
-        collisionPolicy: 'unique' | 'overwrite' | 'error'
-    }
-}
-
-interface GenerateOptions {
-    /** Internal enqueue planner seam. No transport or output is performed. */
-    capturePrepared?: (capture: CapturedMainGeneration) => void | Promise<void>
 }
 
 export interface MainCompositionShadowDiff {
@@ -832,7 +825,9 @@ interface GenerationState {
         selectedResolution: Resolution
     }) => void
 
-    generate: (options?: GenerateOptions) => Promise<void>
+    generate: () => Promise<void>
+    prepareMainBatch: () => Promise<readonly PreparedMainGeneration[]>
+    [runMainGenerationAction]: (run: MainGenerationRun) => Promise<void>
     cancelGeneration: () => void
     addToHistory: (item: HistoryItem) => void
     clearHistory: () => void
@@ -993,7 +988,15 @@ export const useGenerationStore = create<GenerationState>()(
                 })
             },
 
-            generate: async (options = {}) => {
+            generate: () => get()[runMainGenerationAction]({ kind: 'execute' }),
+
+            prepareMainBatch: async () => {
+                const prepared: PreparedMainGeneration[] = []
+                await get()[runMainGenerationAction]({ kind: 'prepare', prepared })
+                return Object.freeze([...prepared])
+            },
+
+            [runMainGenerationAction]: async (run) => {
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
                     model, steps, cfgScale, cfgRescale, sampler, scheduler, smea, smeaDyn, variety,
@@ -1006,7 +1009,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const slot1Token = useAuthStore.getState().getActiveTokens().find((entry) => entry.slot === 1)
                 const token = slot1Token?.token
 
-                if (!token && options.capturePrepared === undefined) {
+                if (!token && run.kind === 'execute') {
                     useAuthStore.getState().requestTokenEntry()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
@@ -1051,9 +1054,9 @@ export const useGenerationStore = create<GenerationState>()(
                 })
                 const sourceImageDigest = mainRuntimeDigest(sourceImage)
                 const maskDigest = mainRuntimeDigest(mask)
-                const batchSequencePlanner = options.capturePrepared === undefined
-                    ? null
-                    : createMainBatchSequencePlanner()
+                const batchSequencePlanner = run.kind === 'prepare'
+                    ? createMainBatchSequencePlanner()
+                    : null
 
                 try {
                     let completedBatchCount = 0
@@ -1338,59 +1341,44 @@ export const useGenerationStore = create<GenerationState>()(
                                         negative: await legacyFragmentSession!.process(c.negative),
                                     })),
                                 )
-                            legacyParams = {
+                            legacyParams = buildLegacyMainGenerationParameters({
                                 prompt: legacyPrompt,
-                                negative_prompt: legacyNegative,
+                                negativePrompt: legacyNegative,
+                                originalPrompts: {
+                                    base: basePrompt,
+                                    additional: additionalPrompt,
+                                    detail: detailPrompt,
+                                    negative: negativePrompt,
+                                    inpainting: inpaintingPrompt,
+                                },
                                 model,
                                 width: finalWidth,
                                 height: finalHeight,
                                 steps,
-                                cfg_scale: cfgScale,
-                                cfg_rescale: cfgRescale,
+                                cfgScale,
+                                cfgRescale,
                                 sampler,
                                 scheduler,
                                 smea,
-                                smea_dyn: smeaDyn,
+                                smeaDyn,
                                 variety,
                                 seed: currentSeed,
-                                ...(sourceImage ? { sourceImage } : {}),
+                                sourceImage,
                                 strength,
                                 noise,
-                                ...(mask ? { mask } : {}),
-                                charImages: characterImages.map(img => img.base64),
-                                charStrength: characterImages.map(img => img.strength),
-                                charFidelity: characterImages.map(img => img.fidelity ?? 0.6),
-                                charReferenceType: characterImages.map(img => img.referenceType ?? 'character&style'),
-                                charCacheKeys: characterImages.map(img => img.cacheKey || null),
-                                vibeImages: vibeImages.map(img => img.base64),
-                                vibeInfo: vibeImages.map(img => img.informationExtracted),
-                                vibeStrength: vibeImages.map(img => img.strength),
-                                preEncodedVibes: vibeImages.map(img => img.encodedVibe || null),
+                                mask,
+                                characterImages,
+                                vibeImages,
                                 characterPrompts: processedCharacterPrompts,
-                                characterPositionEnabled: modulePromptsActive && moduleCharacterPrompts
-                                    ? true
-                                    : characterPromptState.positionEnabled,
+                                characterPositionEnabled: characterPromptState.positionEnabled,
+                                modulePromptsActive,
+                                moduleCharacterPromptsPresent: moduleCharacterPrompts !== null,
                                 imageFormat: settings.imageFormat,
                                 metadataMode: modulePlan?.output.metadataMode ?? settings.metadataMode,
-                                ...(modulePlan === null ? {} : { assetModulePlan: modulePlan }),
+                                assetModulePlan: modulePlan,
                                 qualityToggle: get().qualityToggle,
                                 ucPreset: get().ucPreset,
-                                promptParts: modulePromptsActive
-                                    ? {
-                                        base: legacyPrompt,
-                                        additional: '',
-                                        detail: '',
-                                        negative: legacyNegative,
-                                        inpainting: '',
-                                    }
-                                    : {
-                                        base: basePrompt,
-                                        additional: additionalPrompt,
-                                        detail: detailPrompt,
-                                        negative: negativePrompt,
-                                        inpainting: inpaintingPrompt,
-                                    },
-                            }
+                            })
                         }
 
                         if (resolvedPlan !== null) {
@@ -1442,17 +1430,9 @@ export const useGenerationStore = create<GenerationState>()(
                                 }
                             }
                         }
-                        const finalPrompt = generationParams.prompt
-                        const imageFormat = generationParams.imageFormat ?? settings.imageFormat
-                        const effectiveMetadataMode = generationParams.metadataMode ?? settings.metadataMode
                         const v2Output = compositionMode === 'v2' ? compositionOutput : null
                         // Reset progress
                         set({ streamProgress: 0 })
-
-                        // Keep source-edit requests on ZIP until stream-final
-                        // parity is fixture-proven against server-composited output.
-                        const hasSourceEdit = Boolean(generationParams.sourceImage || generationParams.mask)
-                        const canUseStreaming = settings.useStreaming && !hasSourceEdit
 
                         const generationSequenceProposal = compositionMode === 'v2'
                             ? sequenceProposal
@@ -1462,45 +1442,43 @@ export const useGenerationStore = create<GenerationState>()(
                             autoSave: liveAutoSave,
                             useAbsolutePath,
                         } = useSettingsStore.getState()
-                        const autoSave = v2Output?.autoSave ?? liveAutoSave
-                        const requestedAbsolutePath = v2Output?.useAbsolutePath ?? useAbsolutePath
+                        const preparedGeneration = prepareMainGeneration({
+                            params: generationParams,
+                            fallbackImageFormat: settings.imageFormat,
+                            fallbackMetadataMode: settings.metadataMode,
+                            streamingRequested: settings.useStreaming,
+                            sequenceCommitProposal: generationSequenceProposal,
+                            output: {
+                                autoSave: v2Output?.autoSave ?? liveAutoSave,
+                                directory: v2Output?.directory
+                                    || modulePlan?.output.directory
+                                    || savePath,
+                                useAbsolutePath: v2Output?.useAbsolutePath ?? useAbsolutePath,
+                                capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
+                                    || savePath,
+                                ...(v2Output?.portableDirectory === undefined
+                                    ? {}
+                                    : { portableDirectory: v2Output.portableDirectory }),
+                                fileName: v2Output?.fileName ?? modulePlan?.output.fileName,
+                                collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                            },
+                        })
+                        const {
+                            finalPrompt,
+                            imageFormat,
+                            metadataMode: effectiveMetadataMode,
+                            streaming: canUseStreaming,
+                            output: preparedOutput,
+                        } = preparedGeneration
 
-                        if (options.capturePrepared !== undefined) {
-                            const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
-                            const moduleFileName = ensureImageFileExtension(
-                                v2Output?.fileName ?? modulePlan?.output.fileName,
-                                fileExt,
-                            )
+                        if (run.kind === 'prepare') {
                             // The durable adapter depends on the virtual CAS accepting this
                             // proposal before it materializes a snapshot; staging first keeps
                             // rejected sequence state out of a batch that could later be stored.
-                            if (!batchSequencePlanner?.stage(generationSequenceProposal)) {
+                            if (!batchSequencePlanner?.stage(preparedGeneration.sequenceCommitProposal)) {
                                 throw new Error('Sequential fragment proposal could not be staged for durable Main batch')
                             }
-                            await options.capturePrepared({
-                                params: generationParams,
-                                finalPrompt,
-                                imageFormat,
-                                metadataMode: effectiveMetadataMode,
-                                streaming: canUseStreaming,
-                                sequenceCommitProposal: generationSequenceProposal,
-                                output: {
-                                    autoSave,
-                                    directory: v2Output?.directory
-                                        || modulePlan?.output.directory
-                                        || savePath
-                                        || 'NAIS_Output',
-                                    useAbsolutePath: requestedAbsolutePath,
-                                    capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
-                                        || savePath
-                                        || 'NAIS_Output',
-                                    ...(v2Output?.portableDirectory === undefined
-                                        ? {}
-                                        : { portableDirectory: v2Output.portableDirectory }),
-                                    ...(moduleFileName === null ? {} : { fileName: moduleFileName }),
-                                    collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
-                                },
-                            })
+                            run.prepared.push(preparedGeneration)
                             completedBatchCount += 1
                             continue
                         }
@@ -1516,7 +1494,7 @@ export const useGenerationStore = create<GenerationState>()(
                         }
                         const result = await executeMainGenerationTransport({
                             token,
-                            params: generationParams,
+                            params: preparedGeneration.params,
                             imageFormat,
                             streaming: canUseStreaming,
                             signal: abortController.signal,
@@ -1543,7 +1521,7 @@ export const useGenerationStore = create<GenerationState>()(
 
                         if (result.success && result.imageData) {
                             const resultParams: GenerationParams = {
-                                ...generationParams,
+                                ...preparedGeneration.params,
                                 sentPayloadSummary: result.sentPayloadSummary,
                             }
                             const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
@@ -1559,7 +1537,7 @@ export const useGenerationStore = create<GenerationState>()(
                             let historyId: string | null = null
                             const commitGeneratedSequence = (): boolean => {
                                 if (sequenceCommitted) return true
-                                if (commitMainFragmentSequenceProposal(generationSequenceProposal)) {
+                                if (commitMainFragmentSequenceProposal(preparedGeneration.sequenceCommitProposal)) {
                                     sequenceCommitted = true
                                     return true
                                 }
@@ -1581,7 +1559,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     id: historyId,
                                     url: thumbnail,
                                     prompt: finalPrompt,
-                                    seed: generationParams.seed,
+                                    seed: preparedGeneration.params.seed,
                                     timestamp: new Date(),
                                     sentPayloadSummary: result.sentPayloadSummary,
                                 }
@@ -1598,7 +1576,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 }
                             }
 
-                            if (autoSave) {
+                            if (preparedOutput.autoSave) {
                                 try {
                                     const binaryString = atob(result.imageData)
                                     const bytes = new Uint8Array(binaryString.length)
@@ -1614,29 +1592,20 @@ export const useGenerationStore = create<GenerationState>()(
                                         typePrefix = 'I2I_'
                                     }
                                     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    const moduleFileName = ensureImageFileExtension(
-                                        v2Output?.fileName ?? modulePlan?.output.fileName,
-                                        fileExt,
-                                    )
-                                    const fileName = moduleFileName ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
-                                    const plannedOutputDir = v2Output?.directory
-                                        || modulePlan?.output.directory
-                                        || savePath
-                                        || 'NAIS_Output'
+                                    const fileName = preparedOutput.fileName
+                                        ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
                                     const output = await getRuntimeOutputWriter().write({
                                         destination: {
-                                            ...(v2Output?.portableDirectory === undefined
+                                            ...(preparedOutput.portableDirectory === undefined
                                                 ? {}
-                                                : { portableDirectory: v2Output.portableDirectory }),
-                                            directory: plannedOutputDir,
-                                            useAbsolutePath: requestedAbsolutePath,
-                                            capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
-                                                || savePath
-                                                || 'NAIS_Output',
+                                                : { portableDirectory: preparedOutput.portableDirectory }),
+                                            directory: preparedOutput.directory,
+                                            useAbsolutePath: preparedOutput.useAbsolutePath,
+                                            capabilityFallbackDirectory: preparedOutput.capabilityFallbackDirectory,
                                             workflowDefaultDirectory: 'NAIS_Output',
                                             fileName,
                                             extension: fileExt,
-                                            collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                                            collisionPolicy: preparedOutput.collisionPolicy,
                                         },
                                         imageBytes: bytes,
                                         imageDataUrl: imageUrl,
@@ -1700,10 +1669,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 if (!commitGeneratedSequence()) break
                                 commitHistory(thumbnail)
                                 const memExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                const memoryFileName = ensureImageFileExtension(
-                                    v2Output?.fileName ?? modulePlan?.output.fileName,
-                                    memExt,
-                                ) ?? `NAIS_${Date.now()}.${memExt}`
+                                const memoryFileName = preparedOutput.fileName ?? `NAIS_${Date.now()}.${memExt}`
                                 const memoryPath = `memory://${memoryFileName}`
                                 publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
                             }
@@ -1742,7 +1708,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     : termination === 'cancelled'
                                         ? 'transport-cancelled'
                                         : canUseStreaming ? 'stream' : 'request',
-                                prompt: generationParams.prompt,
+                                prompt: preparedGeneration.params.prompt,
                                 cancelled: termination === 'cancelled',
                                 timeout: termination === 'timeout',
                             })
@@ -1756,7 +1722,10 @@ export const useGenerationStore = create<GenerationState>()(
                     }
 
                     // Show completion toast for batch
-                    if (!get().isCancelled && batchCount > 1 && completedBatchCount === batchCount) {
+                    if (run.kind === 'execute'
+                        && !get().isCancelled
+                        && batchCount > 1
+                        && completedBatchCount === batchCount) {
                         toast({
                             title: i18n.t('toast.batchComplete.title'),
                             description: i18n.t('toast.batchComplete.desc', { count: batchCount }),

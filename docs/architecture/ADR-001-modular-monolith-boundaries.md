@@ -23,6 +23,7 @@ Composition Root -> 모든 구체 구현
 2. Store와 서비스의 연결은 `src/composition-root/**`에서만 조립합니다.
 3. 기존 경계 위반은 `.dependency-cruiser-known-violations.json`에 고정하고, 새 위반만 CI에서 실패시킵니다.
 4. 기준선 파일은 부채가 해소될 때 항목을 삭제하며, 새 위반을 숨기기 위해 전체 재생성하지 않습니다.
+5. Presentation의 Tauri 직접 import는 `.dependency-cruiser-presentation-tauri-baseline.json`의 파일·패키지 쌍으로 동결합니다. 신규 UI 파일은 platform adapter 없이 Tauri를 import할 수 없고, 기존 항목을 이전하면 같은 변경에서 baseline을 줄입니다.
 
 첫 적용으로 Queue Runtime은 `QueueTokenProvider` 포트만 의존하고, Composition Root가 Auth store의 활성 토큰을 실행 슬롯으로 투영합니다. 토큰은 여전히 Job·로그·진단에 저장되지 않습니다.
 

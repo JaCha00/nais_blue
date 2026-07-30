@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { isTauri } from '@tauri-apps/api/core'
 import { relaunchApplication } from '@/lib/app-relaunch'
+import { runtimeCapabilities } from '@/platform/capabilities'
 import { AlertTriangle, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -58,7 +58,7 @@ export function RestoreDialog({ open, onOpenChange }: RestoreDialogProps) {
 
     const restartAfterRestore = async () => {
         try {
-            if (isTauri()) {
+            if (runtimeCapabilities.nativePluginRuntime.supported) {
                 await relaunchApplication()
                 return
             }

@@ -551,14 +551,15 @@ describe('OutputWriter fault containment', () => {
     it('removes committed files and invokes workflow compensation after store commit failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         const rollbackWorkflow = vi.fn()
+        const commitFailure = new Error('store commit failed')
 
         await expect(writer(adapter).write(request({
             metadata: metadataRequest(),
             commitWorkflow: () => {
-                throw new Error('store commit failed')
+                throw commitFailure
             },
             rollbackWorkflow,
-        }))).rejects.toMatchObject({ name: 'OutputWriterError' })
+        }))).rejects.toBe(commitFailure)
 
         expect(rollbackWorkflow).toHaveBeenCalledOnce()
         expectNoOutput(adapter)
@@ -662,14 +663,15 @@ describe('OutputWriter fault containment', () => {
         adapter.seed('output/result.nais-blue.artifact.json', existing)
         const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
         let attemptedFileName = ''
+        const commitFailure = new Error('store commit failed')
 
         await expect(writer(adapter).write(request({
             artifactSidecarBytes: artifactSidecar,
             commitWorkflow: result => {
                 attemptedFileName = result.fileName
-                throw new Error('store commit failed')
+                throw commitFailure
             },
-        }))).rejects.toBeInstanceOf(OutputWriterError)
+        }))).rejects.toBe(commitFailure)
 
         expect(attemptedFileName).toBe('result-2.png')
         expect(bytesEqual(adapter.file('output/result.nais-blue.artifact.json'), existing)).toBe(true)

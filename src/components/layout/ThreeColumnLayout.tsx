@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react'
-import { onBackButtonPress } from '@tauri-apps/api/app'
+import { registerNativeBackButton } from '@/platform/native-app'
 import { useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -138,7 +138,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
 
         // Tauri's Android app plugin owns the native Back dispatcher; registering only while a
         // support sheet is open lets Back close that sheet, then restores normal Activity behavior.
-        void onBackButtonPress(() => {
+        void registerNativeBackButton(() => {
             closeSupportSheet()
         }).then((listener) => {
             if (disposed) void listener.unregister()

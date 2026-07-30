@@ -8,6 +8,7 @@ import {
 import {
     copyDiagnosticEvent,
     createDiagnosticsExportJson,
+    createNativeDiagnosticLogEvent,
 } from '@/services/diagnostics/exporter'
 import { OperationMonitor } from '@/services/diagnostics/operation-monitor'
 import {
@@ -187,6 +188,44 @@ describe('diagnostic export and clipboard', () => {
         for (const canary of [TOKEN_CANARY, R2_CANARY, PROMPT_CANARY]) {
             expect(copied).not.toContain(canary)
             expect(exported).not.toContain(canary)
+        }
+    })
+
+    it('keeps the native file event below the Rust limit without stack or secret payloads', () => {
+        const event = createDiagnosticEvent({
+            category: 'local_io',
+            code: 'LOCAL_IO_FAILED',
+            severity: 'error',
+            operation: 'output.write',
+            stage: 'workflow-state-update',
+            userSummary: '로컬 파일 작업을 완료하지 못했습니다.',
+            developerMessage: `Authorization: Bearer ${TOKEN_CANARY}; ${SIGNED_URL_CANARY}; ${'한'.repeat(8_000)}`,
+        })
+        const oversized = {
+            ...event,
+            architecture: '한'.repeat(8_000),
+            redactedCauseChain: Array.from({ length: 12 }, (_, index) => ({
+                name: `Cause-${index}`,
+                message: `${HOME_PATH_CANARY} ${'원인'.repeat(2_000)}`,
+                stack: `${TOKEN_CANARY} ${'stack'.repeat(2_000)}`,
+            })),
+            recentBreadcrumbs: Array.from({ length: 30 }, (_, index) => ({
+                occurredAt: event.occurredAt,
+                operation: `output.${'단계'.repeat(500)}`,
+                stage: `stage-${index}-${'상태'.repeat(500)}`,
+                message: `${SIGNED_URL_CANARY} ${'메시지'.repeat(500)}`,
+            })),
+        }
+
+        const native = createNativeDiagnosticLogEvent(oversized)
+        const serialized = JSON.stringify(native)
+
+        expect(new TextEncoder().encode(serialized).byteLength).toBeLessThan(16 * 1_024)
+        expect(native.redactedCauseChain).toHaveLength(4)
+        expect(native.recentBreadcrumbs).toHaveLength(6)
+        expect(serialized).not.toContain('"stack"')
+        for (const canary of [TOKEN_CANARY, R2_CANARY, HOME_PATH_CANARY]) {
+            expect(serialized).not.toContain(canary)
         }
     })
 })

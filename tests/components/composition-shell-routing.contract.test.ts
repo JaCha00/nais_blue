@@ -29,17 +29,36 @@ describe('Composition workspace shell routing', () => {
         expect(layoutStore).toContain('partialize: ({ leftSidebarVisible, rightSidebarVisible })')
     })
 
-    it('keeps route-independent executors and global listeners behind one App lifetime boundary', async () => {
-        const [app, runtimeProviders] = await Promise.all([
+    it('keeps core listeners app-scoped while Scene and R2 runtimes stay lazy', async () => {
+        const [app, runtimeProviders, coreRuntime, featureRuntime, sceneRuntime, r2Runtime] = await Promise.all([
             source('src/App.tsx'),
             source('src/components/runtime/RuntimeProviders.tsx'),
+            source('src/components/runtime/CoreRuntimeProviders.tsx'),
+            source('src/components/runtime/FeatureRuntimeProviders.tsx'),
+            source('src/components/runtime/LegacySceneRuntime.tsx'),
+            source('src/components/runtime/R2FeatureRuntime.tsx'),
         ])
 
         expect(app).toContain('<RuntimeProviders>')
         expect(app).not.toContain('useSceneGeneration()')
-        expect(runtimeProviders).toContain('useSceneGeneration()')
-        expect(runtimeProviders).toContain('useDurableQueueRuntime()')
-        expect(runtimeProviders).toContain('useR2UploadRuntime()')
+        expect(runtimeProviders).toContain('<CoreRuntimeProviders>')
+        expect(runtimeProviders).toContain('<FeatureRuntimeProviders />')
+        expect(runtimeProviders).not.toContain('useSceneGeneration')
+        expect(runtimeProviders).not.toContain('useR2UploadRuntime')
+        expect(coreRuntime).toContain('useDurableQueueRuntime()')
+        expect(coreRuntime).toContain('useUpdateChecker()')
+        expect(coreRuntime).toContain('useShortcuts()')
+        expect(coreRuntime).toContain('useWindowResizePerformanceMode()')
+        expect(coreRuntime).not.toContain('useSceneGeneration')
+        expect(coreRuntime).not.toContain('useR2UploadRuntime')
+        expect(featureRuntime).toContain("lazy(() => import('./LegacySceneRuntime'))")
+        expect(featureRuntime).toContain("lazy(() => import('./R2FeatureRuntime'))")
+        expect(featureRuntime).toContain("executionAuthority === 'legacy'")
+        expect(featureRuntime).toContain('setSceneActivated(true)')
+        expect(featureRuntime).toContain('setR2Activated(true)')
+        expect(featureRuntime.match(/<Suspense fallback=\{null\}>/g)).toHaveLength(2)
+        expect(sceneRuntime).toContain('useSceneGeneration()')
+        expect(r2Runtime).toContain('useR2UploadRuntime()')
         expect(runtimeProviders).not.toContain("document.addEventListener('contextmenu'")
         expect(runtimeProviders).not.toContain('preventDefault()')
     })

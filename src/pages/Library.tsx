@@ -23,8 +23,13 @@ import { useLibraryStore, LibraryItem } from '@/stores/library-store'
 import { SortableLibraryItem } from '@/components/library/SortableLibraryItem'
 import { LibraryItem as LibraryItemComponent } from '@/components/library/LibraryItem'
 import { useTranslation } from 'react-i18next'
-import { mkdir, exists, writeFile } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
+import {
+    createNativeDirectory,
+    nativePathExists,
+    readNativeBinaryFile,
+    writeNativeBinaryFile,
+} from '@/platform/native-file-system'
+import { joinNativePath } from '@/platform/native-path'
 import { toast } from '@/components/ui/use-toast'
 import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -50,7 +55,6 @@ const dropAnimation = {
 import { LibraryRenameDialog } from '@/components/library/LibraryRenameDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
-import { readFile } from '@tauri-apps/plugin-fs'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrashStore } from '@/stores/trash-store'
 import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
@@ -159,16 +163,16 @@ export default function Library() {
                 // 1. Ensure Dir Exists
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     // Absolute path
-                    const existsDir = await exists(libraryPath)
+                    const existsDir = await nativePathExists(libraryPath)
                     if (!existsDir) {
-                        await mkdir(libraryPath, { recursive: true })
+                        await createNativeDirectory(libraryPath, { recursive: true })
                     }
                 } else {
                     // Relative to Pictures folder
                     const relPath = libraryPath || 'NAIS_Library'
-                    const existsDir = await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                    const existsDir = await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     if (!existsDir) {
-                        await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                        await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     }
                 }
 
@@ -186,7 +190,7 @@ export default function Library() {
 
                 for (const item of currentItems) {
                     try {
-                        const fileExists = await exists(item.path)
+                        const fileExists = await nativePathExists(item.path)
                         if (fileExists) {
                             validItems.push(item)
                         } else {
@@ -260,16 +264,16 @@ export default function Library() {
                 const relPath = libraryPath || 'NAIS_Library'
                 const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                     ? libraryPath
-                    : await join(mediaStorageRoot, relPath)
+                    : await joinNativePath(mediaStorageRoot, relPath)
 
                 // Ensure dir exists
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                    if (!(await exists(libraryPath))) {
-                        await mkdir(libraryPath, { recursive: true })
+                    if (!(await nativePathExists(libraryPath))) {
+                        await createNativeDirectory(libraryPath, { recursive: true })
                     }
                 } else {
-                    if (!(await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
-                        await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                    if (!(await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+                        await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     }
                 }
 
@@ -294,14 +298,16 @@ export default function Library() {
                     // Create unique filename: originalName_xxxxxxxx.ext
                     const fileName = `${baseName}_${shortUuid}.${ext}`
 
-                    const newPath = await join(libraryDir, fileName)
+                    const newPath = await joinNativePath(libraryDir, fileName)
 
                     // Write
                     if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                        await writeFile(newPath, uint8Array)
+                        await writeNativeBinaryFile(newPath, uint8Array)
                     } else {
                         const relPath = libraryPath || 'NAIS_Library'
-                        await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                        await writeNativeBinaryFile(`${relPath}/${fileName}`, uint8Array, {
+                            baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
+                        })
                     }
 
                     const newItem: LibraryItem = {
@@ -372,7 +378,7 @@ export default function Library() {
                 setImageRefDialogOpen(true)
                 return
             }
-            const data = await readFile(item.path)
+            const data = await readNativeBinaryFile(item.path)
             const base64 = arrayBufferToBase64(data)
             setSelectedImageRef(`data:image/png;base64,${base64}`)
             setImageRefDialogOpen(true)
@@ -389,7 +395,7 @@ export default function Library() {
                 setMetadataDialogOpen(true)
                 return
             }
-            const data = await readFile(item.path)
+            const data = await readNativeBinaryFile(item.path)
             const base64 = arrayBufferToBase64(data)
             setSelectedImageForMetadata(`data:image/png;base64,${base64}`)
             setMetadataDialogOpen(true)
@@ -451,16 +457,16 @@ export default function Library() {
             const relPath = libraryPath || 'NAIS_Library'
             const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                 ? libraryPath
-                : await join(mediaStorageRoot, relPath)
+                : await joinNativePath(mediaStorageRoot, relPath)
 
             // Ensure dir exists
             if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                if (!(await exists(libraryPath))) {
-                    await mkdir(libraryPath, { recursive: true })
+                if (!(await nativePathExists(libraryPath))) {
+                    await createNativeDirectory(libraryPath, { recursive: true })
                 }
             } else {
-                if (!(await exists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
-                    await mkdir(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                if (!(await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
+                    await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                 }
             }
 
@@ -473,12 +479,14 @@ export default function Library() {
                 const shortUuid = uuid.split('-')[0]
                 const baseName = file.name.replace(/\.[^.]+$/, '')
                 const fileName = `${baseName}_${shortUuid}.${ext}`
-                const newPath = await join(libraryDir, fileName)
+                const newPath = await joinNativePath(libraryDir, fileName)
 
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                    await writeFile(newPath, uint8Array)
+                    await writeNativeBinaryFile(newPath, uint8Array)
                 } else {
-                    await writeFile(`${relPath}/${fileName}`, uint8Array, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                    await writeNativeBinaryFile(`${relPath}/${fileName}`, uint8Array, {
+                        baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
+                    })
                 }
 
                 const newItem: LibraryItem = {

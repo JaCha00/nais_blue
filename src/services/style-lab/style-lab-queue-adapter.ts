@@ -1,74 +1,34 @@
 import { hashCanonicalValue, sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import type { JsonValue, PortablePathRef } from '@/domain/composition/types'
-import type { GenerationJob, QueueArtifactReference, QueueResourceRecord } from '@/domain/queue/types'
+import type { JsonValue } from '@/domain/composition/types'
+import type { GenerationJob, QueueResourceRecord } from '@/domain/queue/types'
 import {
-    createStylePreviewAsset,
     createStyleRenderBudget,
     isStyleEvaluationContext,
-    styleCombinationIdentity,
     type StyleEvaluationContext,
     type StyleRenderReservation,
 } from '@/domain/style-lab'
 import type { StyleLabRepository } from '@/application/style-lab/style-lab-repository'
 import { buildStyleLabGenerationParams, formatStyleLabCompositionErrors } from '@/lib/style-lab/build-style-lab-params'
-import { createThumbnail } from '@/lib/image-utils'
-import type { MetadataMode } from '@/lib/generation-metadata'
-import { generateImage } from '@/services/novelai-api'
-import { getRuntimeOutputWriter } from '@/services/output/output-writer'
-import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
-import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { type StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
-import type { QueueExecutorContext } from '@/services/queue/durable-queue-coordinator'
-import { QueueExecutionError } from '@/services/queue/durable-queue-coordinator'
 import {
     getRuntimeQueueRepository,
     type CreateBatchAndEnqueueResult,
     type CreateGenerationBatchInput,
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
-import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
 import {
     dehydrateGenerationParams,
     getRuntimeQueueResourceMaterializer,
-    hashQueueResourceBytes,
-    hydrateGenerationParams,
-    type DehydratedGenerationParameters,
 } from '@/services/queue/queue-resource-materializer'
 import { getStyleLabRepository } from './indexeddb-style-lab-repository'
-import { getStyleLabVault, type StyleLabVault } from './style-lab-vault'
+import {
+    encodeStyleLabJobSnapshot,
+    type StyleLabQueueOutputSnapshot,
+} from './style-lab-job-snapshot-codec'
 
 export const DEFAULT_STYLE_LAB_MANUAL_BUDGET_ID = 'style-budget:manual'
 export const DEFAULT_STYLE_LAB_MANUAL_BUDGET_LIMIT = 10_000
-
-interface StyleLabQueueOutputSnapshot {
-    directory: string
-    useAbsolutePath: boolean
-    capabilityFallbackDirectory: string
-    portableDirectory?: PortablePathRef
-    fileName: string
-    collisionPolicy: 'unique' | 'overwrite' | 'error'
-    imageFormat: 'png' | 'webp'
-    metadataMode: MetadataMode
-}
-
-interface StyleLabQueueWorkflowSnapshot {
-    comboId: string
-    tags: StyleCombination['tags']
-    semanticHash: string
-    renderHash: string
-    generation: number
-    context: StyleEvaluationContext
-    seed: number
-    requestedAt: number
-    reservationId: string
-    output: StyleLabQueueOutputSnapshot
-}
-
-interface StyleLabQueueParameters extends DehydratedGenerationParameters {
-    queueExecution: { streaming: false; sourceEdit: boolean }
-    styleLabWorkflow: StyleLabQueueWorkflowSnapshot
-}
 
 interface StyleLabQueueRepositoryPort {
     createBatchAndEnqueue(input: {
@@ -83,16 +43,6 @@ export interface EnqueueStyleLabPreviewResult {
     jobs: GenerationJob[]
     reservations: StyleRenderReservation[]
     rejected: Array<{ comboId: string; seed: number; reason: 'budget-exhausted' }>
-}
-
-function asJson(value: unknown): JsonValue {
-    return JSON.parse(JSON.stringify(value)) as JsonValue
-}
-
-function decodeImageBytes(imageData: string): Uint8Array {
-    const encoded = imageData.replace(/^data:image\/[^;]+;base64,/, '')
-    const binary = atob(encoded)
-    return Uint8Array.from(binary, character => character.charCodeAt(0))
 }
 
 function normalizedSeed(seed: number): number {
@@ -112,33 +62,6 @@ export function styleLabRenderIdempotencyKey(input: {
         seed: normalizedSeed(input.seed),
         outputPolicyHash: hashCanonicalValue(input.outputPolicy),
     })}`
-}
-
-function parseStyleLabQueueParameters(value: JsonValue): StyleLabQueueParameters {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        throw new QueueExecutionError('fatal', 'Style-Lab queue snapshot parameters are invalid')
-    }
-    const candidate = value as unknown as Partial<StyleLabQueueParameters>
-    const workflow = candidate.styleLabWorkflow
-    if (candidate.generationParams === undefined
-        || !Array.isArray(candidate.resourceBindings)
-        || candidate.resourceArrayLengths === undefined
-        || workflow === undefined
-        || typeof workflow.comboId !== 'string'
-        || typeof workflow.renderHash !== 'string'
-        || !Array.isArray(workflow.tags)
-        || !isStyleEvaluationContext(workflow.context)
-        || !Number.isSafeInteger(workflow.seed)
-        || typeof workflow.reservationId !== 'string'
-        || (workflow.output?.imageFormat !== 'png' && workflow.output?.imageFormat !== 'webp')
-        || typeof workflow.output.fileName !== 'string') {
-        throw new QueueExecutionError('fatal', 'Style-Lab queue snapshot parameters are invalid')
-    }
-    if (styleCombinationIdentity(workflow.tags).renderHash !== workflow.renderHash
-        || !workflow.context.seedPack.includes(workflow.seed)) {
-        throw new QueueExecutionError('fatal', 'Style-Lab queue snapshot identity is inconsistent')
-    }
-    return candidate as StyleLabQueueParameters
 }
 
 function outputSnapshot(combo: StyleCombination, seed: number): StyleLabQueueOutputSnapshot {
@@ -227,29 +150,17 @@ export async function enqueueStyleLabPreviewJobs(input: {
                 result.rejected.push({ comboId: combo.id, seed, reason: 'budget-exhausted' })
                 continue
             }
-            const parameters: StyleLabQueueParameters = {
-                ...dehydrated.parameters,
-                queueExecution: { streaming: false, sourceEdit: Boolean(built.params.sourceImage || built.params.mask) },
-                styleLabWorkflow: {
-                    comboId: combo.id,
-                    tags: combo.tags,
-                    semanticHash: combo.semanticHash,
-                    renderHash: combo.renderHash,
-                    generation: combo.generation,
-                    context: input.context,
-                    seed,
-                    requestedAt,
-                    reservationId: reservation.id,
-                    output,
-                },
-            }
-            const snapshot = createGenerationJobSnapshot({
-                prompt: { positive: built.prompt, negative: built.params.negative_prompt },
-                parameters: asJson(parameters),
-                outputPolicy: asJson({ workflow: 'style-lab', ...output }),
-                resources: dehydrated.resources,
-                resumability: 'resumable',
-            })
+            const encoded = encodeStyleLabJobSnapshot({
+                combination: combo,
+                context: input.context,
+                params: built.params,
+                prompt: built.prompt,
+                seed,
+                requestedAt,
+                reservationId: reservation.id,
+                output,
+                planHash: built.plan?.planHash ?? null,
+            }, dehydrated)
             const identity = idempotencyKey.slice('style-render-job:'.length)
             const batchId = `style-lab-batch-${identity}`
             const jobId = `style-lab-job-${identity}`
@@ -272,8 +183,8 @@ export async function enqueueStyleLabPreviewJobs(input: {
                         createdAt,
                         priority: input.priority ?? 0,
                         ordinal: 0,
-                        snapshot,
-                        compositionPlanHash: built.plan === null ? null : `sha256:${built.plan.planHash}`,
+                        snapshot: encoded.snapshot,
+                        compositionPlanHash: encoded.compositionPlanHash,
                         maxAttempts: 3,
                         idempotencyKey,
                     }],
@@ -289,140 +200,6 @@ export async function enqueueStyleLabPreviewJobs(input: {
         }
     }
     return result
-}
-
-export async function executeStyleLabQueueJob(
-    job: GenerationJob,
-    context: QueueExecutorContext,
-    dependencies: {
-        repository?: StyleLabRepository
-        vault?: StyleLabVault
-    } = {},
-): Promise<void> {
-    const payload = parseStyleLabQueueParameters(job.snapshot.parameters)
-    const workflow = payload.styleLabWorkflow
-    const repository = dependencies.repository ?? getStyleLabRepository()
-    const vault = dependencies.vault ?? getStyleLabVault()
-    const params = await hydrateGenerationParams(
-        payload,
-        job.snapshot.resources,
-        getRuntimeQueueResourceMaterializer(),
-    )
-    params.sourceJobId = job.id
-    useStyleLabStore.getState().updateCombinationPreview(workflow.comboId, {
-        isPreviewing: true, previewProgress: 0, previewError: undefined,
-    })
-    await context.updateProgress('transport', 0, Math.max(1, params.steps))
-    const generated = await generateImage(context.token, params, context.signal)
-    if (!generated.success || !generated.imageData) {
-        if (generated.termination === 'cancelled') return
-        if (generated.termination === 'timeout') throw new QueueExecutionError('timeout', 'Style-Lab render timed out')
-        throw new QueueExecutionError('decode', 'Style-Lab generation returned no decodable image')
-    }
-    if (!context.canCommit()) return
-
-    const bytes = decodeImageBytes(generated.imageData)
-    const digest = await hashQueueResourceBytes(bytes)
-    const imageDataUrl = `data:image/${workflow.output.imageFormat};base64,${generated.imageData.replace(/^data:image\/[^;]+;base64,/, '')}`
-    const transactionId = `queue-${sha256Utf8(job.id).slice(0, 48)}`
-    const artifactReference: QueueArtifactReference = {
-        kind: 'output-writer',
-        artifactId: `artifact:${job.id}`,
-        digest,
-        mimeType: `image/${workflow.output.imageFormat}`,
-    }
-    await context.bindOutput(transactionId, artifactReference)
-    const output = await getRuntimeOutputWriter().write({
-        transactionId,
-        sourceJobId: job.id,
-        includeFinalImageFacts: true,
-        destination: {
-            ...(workflow.output.portableDirectory === undefined ? {} : { portableDirectory: workflow.output.portableDirectory }),
-            directory: workflow.output.directory,
-            useAbsolutePath: workflow.output.useAbsolutePath,
-            capabilityFallbackDirectory: workflow.output.capabilityFallbackDirectory,
-            workflowDefaultDirectory: 'nais-style',
-            fileName: workflow.output.fileName,
-            extension: workflow.output.imageFormat,
-            collisionPolicy: workflow.output.collisionPolicy,
-        },
-        imageBytes: bytes,
-        imageDataUrl,
-        terminalWorkflowCommit: true,
-        metadata: {
-            params: { ...params, sentPayloadSummary: generated.sentPayloadSummary, sourceJobId: job.id },
-            imageFormat: workflow.output.imageFormat,
-            metadataMode: workflow.output.metadataMode,
-            includeWebpCompatibilitySidecar: true,
-        },
-        generateThumbnail: createThumbnail,
-        canCommit: context.canCommit,
-        commitWorkflow: async outputResult => {
-            if (!context.canCommit()) throw new Error('Style-Lab Queue job was cancelled before publication')
-            const vaultRecord = await vault.putOriginal(bytes, `image/${workflow.output.imageFormat}`)
-            if (vaultRecord.sha256 !== digest) throw new Error('Style-Lab Queue output changed before Vault commit')
-            const asset = createStylePreviewAsset({
-                comboId: workflow.comboId,
-                sha256: digest,
-                mimeType: vaultRecord.mimeType,
-                byteSize: bytes.byteLength,
-                source: 'generated',
-                vaultRef: vaultRecord.vaultRef,
-                thumbnail: outputResult.thumbnailDataUrl,
-                contextId: workflow.context.id,
-                seed: workflow.seed,
-                verificationState: 'context-verified',
-                rawMetadata: null,
-                normalizedMetadata: asJson({
-                    model: params.model,
-                    sampler: params.sampler,
-                    seed: workflow.seed,
-                    promptHash: workflow.context.promptHash,
-                    renderHash: workflow.renderHash,
-                    sourceJobId: job.id,
-                }),
-                createdAt: workflow.requestedAt,
-            })
-            await repository.putPreviewAsset(asset)
-            useStyleLabStore.getState().updateCombinationPreview(workflow.comboId, {
-                previewImage: undefined,
-                previewPath: outputResult.path,
-                previewThumbnail: outputResult.thumbnailDataUrl,
-                previewSeed: workflow.seed,
-                previewPrompt: job.snapshot.prompt.positive,
-                previewContextId: workflow.context.id,
-                previewProgress: 1,
-                isPreviewing: false,
-            })
-            useGenerationStore.getState().addToHistory({
-                id: `queue-history:${job.id}`,
-                url: outputResult.thumbnailDataUrl ?? outputResult.path,
-                thumbnail: outputResult.thumbnailDataUrl,
-                prompt: job.snapshot.prompt.positive,
-                seed: workflow.seed,
-                timestamp: new Date(workflow.requestedAt),
-                sentPayloadSummary: generated.sentPayloadSummary,
-                sourceJobId: job.id,
-            })
-            publishGeneratedArtifact({ path: outputResult.path, sourceJobId: job.id })
-            await repository.settleRenderReservation(workflow.reservationId, 'spent', Date.now())
-            await context.commitOutput(transactionId, artifactReference)
-        },
-        rollbackWorkflow: () => {
-            useGenerationStore.setState(state => ({
-                history: state.history.filter(item => item.id !== `queue-history:${job.id}`),
-            }))
-            useStyleLabStore.getState().updateCombinationPreview(workflow.comboId, {
-                isPreviewing: false,
-                previewProgress: 0,
-            })
-        },
-    })
-    if (output.status === 'cancelled') {
-        useStyleLabStore.getState().updateCombinationPreview(workflow.comboId, {
-            isPreviewing: false, previewProgress: 0,
-        })
-    }
 }
 
 /** Terminal Queue state is authoritative when reclaiming reservations after a crash. */

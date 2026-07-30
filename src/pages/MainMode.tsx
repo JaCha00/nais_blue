@@ -23,10 +23,14 @@ import {
     ContextMenuTrigger,
     ContextMenuSeparator,
 } from '@/components/ui/context-menu'
-import { openPath } from '@tauri-apps/plugin-opener'
-import { save } from '@tauri-apps/plugin-dialog'
-import { join } from '@tauri-apps/api/path'
-import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import { openNativePath } from '@/platform/native-shell'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
+import { joinNativePath } from '@/platform/native-path'
+import {
+    createNativeDirectory,
+    nativePathExists,
+    writeNativeBinaryFile,
+} from '@/platform/native-file-system'
 import {
     getMediaStorageRoot,
     shouldUseAbsoluteMediaPath,
@@ -471,7 +475,7 @@ export default function MainMode() {
             const { imageFormat } = useSettingsStore.getState()
             const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
             const filterName = imageFormat === 'webp' ? 'WebP Image' : 'PNG Image'
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: `NAIS_${Date.now()}.${fileExt}`,
                 filters: [{ name: filterName, extensions: [fileExt] }],
             })
@@ -484,7 +488,7 @@ export default function MainMode() {
                     bytes[i] = binaryString.charCodeAt(i)
                 }
 
-                await writeFile(filePath, bytes)
+                await writeNativeBinaryFile(filePath, bytes)
                 toast({
                     title: t('toast.saved', '저장 완료'),
                     variant: 'success',
@@ -509,15 +513,15 @@ export default function MainMode() {
             if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
                 folderPath = finalSavePath
             } else {
-                folderPath = await join(await getMediaStorageRoot(), finalSavePath)
+                folderPath = await joinNativePath(await getMediaStorageRoot(), finalSavePath)
             }
 
-            const dirExists = await exists(folderPath)
+            const dirExists = await nativePathExists(folderPath)
             if (!dirExists) {
-                await mkdir(folderPath, { recursive: true })
+                await createNativeDirectory(folderPath, { recursive: true })
             }
 
-            await openPath(folderPath)
+            await openNativePath(folderPath)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

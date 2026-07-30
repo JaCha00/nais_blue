@@ -11,8 +11,12 @@ import { smartTools } from '@/services/smart-tools'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 import { Eraser, Palette, Grid3X3, Wand2, Upload, RefreshCw, Download, X, Maximize2, Image as ImageIcon, Paintbrush, ImagePlus, PenTool, Pencil, Droplets, Smile, Sparkles } from 'lucide-react'
-import { writeFile, exists, mkdir } from '@tauri-apps/plugin-fs'
-import { join } from '@tauri-apps/api/path'
+import {
+    createNativeDirectory,
+    nativePathExists,
+    writeNativeBinaryFile,
+} from '@/platform/native-file-system'
+import { joinNativePath } from '@/platform/native-path'
 import { TagAnalysisDialog } from '@/components/tools/TagAnalysisDialog'
 import { BackgroundRemovalDialog } from '@/components/tools/BackgroundRemovalDialog'
 import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImageProcessingConsent'
@@ -64,21 +68,23 @@ export default function ToolsMode() {
         const outputDir = toolsSavePath || 'nais-tools'
 
         if (shouldUseAbsoluteMediaPath(useAbsoluteToolsPath)) {
-            const dirExists = await exists(outputDir)
+            const dirExists = await nativePathExists(outputDir)
             if (!dirExists) {
-                await mkdir(outputDir, { recursive: true })
+                await createNativeDirectory(outputDir, { recursive: true })
             }
-            const fullPath = await join(outputDir, fileName)
-            await writeFile(fullPath, binaryData)
+            const fullPath = await joinNativePath(outputDir, fileName)
+            await writeNativeBinaryFile(fullPath, binaryData)
             return fullPath
         }
 
-        const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+        const dirExists = await nativePathExists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         if (!dirExists) {
-            await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+            await createNativeDirectory(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
         }
-        await writeFile(`${outputDir}/${fileName}`, binaryData, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-        return join(await getMediaStorageRoot(), outputDir, fileName)
+        await writeNativeBinaryFile(`${outputDir}/${fileName}`, binaryData, {
+            baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
+        })
+        return joinNativePath(await getMediaStorageRoot(), outputDir, fileName)
     }
 
     // Handle File Upload

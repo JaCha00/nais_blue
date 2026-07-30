@@ -60,7 +60,7 @@ describe('removed remote catalog runtime contract', () => {
         expect(scene).toContain('importPreset(json)')
         expect(scene).toContain("import { ExportDialog } from '@/components/scene/ExportDialog'")
         expect(scene).toContain('JSON.stringify(exportData, null, 2)')
-        expect(scene).toContain('await writeFile(filePath, encoder.encode(content))')
+        expect(scene).toContain('await writeNativeBinaryFile(filePath, encoder.encode(content))')
         expect(scene).toContain('<ExportDialog')
     })
 

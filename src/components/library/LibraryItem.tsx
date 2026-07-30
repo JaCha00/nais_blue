@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { LibraryItem as LibraryItemType } from '@/stores/library-store'
-import { convertFileSrc } from '@tauri-apps/api/core'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import { LibraryContextMenu } from './LibraryContextMenu'
 import { cn } from '@/lib/utils'
 import { Check, Square, Layers } from 'lucide-react'
@@ -26,11 +26,11 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
 
     useEffect(() => {
         // Browser imports are persisted data URLs; native files still use the
-        // efficient asset protocol without copying their bytes into React state.
+            // platform asset protocol without copying their bytes into React state.
         try {
             const assetUrl = /^(data:|blob:|https?:)/i.test(item.path)
                 ? item.path
-                : convertFileSrc(item.path)
+                : toNativeAssetUrl(item.path)
             setImageUrl(assetUrl)
             setIsLoading(false)
         } catch (e) {

@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Download, Layers } from "lucide-react"
-import { save } from "@tauri-apps/plugin-dialog"
-import { writeFile } from "@tauri-apps/plugin-fs"
+import { saveNativeFileDialog } from "@/platform/native-file-dialog"
+import { writeNativeBinaryFile } from "@/platform/native-file-system"
 import { toast } from "@/components/ui/use-toast"
 
 interface BackgroundRemovalDialogProps {
@@ -72,7 +72,7 @@ export function BackgroundRemovalDialog({
 
         try {
             // Open Save As dialog
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: `background_removed_${Date.now()}.png`,
                 filters: [{ name: 'PNG Image', extensions: ['png'] }]
             })
@@ -84,7 +84,7 @@ export function BackgroundRemovalDialog({
             const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
 
             // Write to file
-            await writeFile(filePath, binaryData)
+            await writeNativeBinaryFile(filePath, binaryData)
 
             toast({ title: t('common.saved', '저장되었습니다'), variant: 'success' })
             onClose()

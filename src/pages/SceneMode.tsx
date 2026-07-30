@@ -90,9 +90,9 @@ import {
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { writeFile } from '@tauri-apps/plugin-fs'
-import { save } from '@tauri-apps/plugin-dialog'
+import { toNativeAssetUrl } from '@/platform/asset-url'
+import { writeNativeBinaryFile } from '@/platform/native-file-system'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { ExportDialog } from '@/components/scene/ExportDialog'
 import { CharacterRotationDialog } from '@/components/scene/CharacterRotationDialog'
 import { RotationStatusBar } from '@/components/scene/RotationStatusBar'
@@ -787,7 +787,7 @@ export default function SceneMode() {
         if (!activePreset) return
         try {
             const fileName = `NAIS_Preset_${activePreset.name}_${Date.now()}.json`
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: fileName,
                 filters: [{ name: 'JSON File', extensions: ['json'] }]
             })
@@ -804,7 +804,7 @@ export default function SceneMode() {
                 }
                 const content = JSON.stringify(exportData, null, 2)
                 const encoder = new TextEncoder()
-                await writeFile(filePath, encoder.encode(content))
+                await writeNativeBinaryFile(filePath, encoder.encode(content))
                 toast({ title: t('common.saved', '저장됨'), variant: 'success' })
             }
         } catch (e) {
@@ -1571,8 +1571,8 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
             setImageUrl(thumbnail)
             return
         }
-        // Use convertFileSrc for efficient native asset loading
-        setImageUrl(convertFileSrc(thumbnail))
+        // The platform adapter projects persisted paths without copying image bytes.
+        setImageUrl(toNativeAssetUrl(thumbnail))
     }, [thumbnail])
 
 

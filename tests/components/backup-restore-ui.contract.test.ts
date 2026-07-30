@@ -49,6 +49,6 @@ describe('Backup restore UI contract', () => {
         expect(settings).toContain('if (isMobileRuntime)')
         expect(settings).toContain('backupFileInputRef.current?.click()')
         expect(settings).toContain('prepareImportedBackup(await file.text())')
-        expect(settings).toContain('const content = await readTextFile(filePath)')
+        expect(settings).toContain('const content = await readNativeTextFile(filePath)')
     })
 })

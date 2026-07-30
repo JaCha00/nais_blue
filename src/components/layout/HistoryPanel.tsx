@@ -5,16 +5,23 @@ import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore, waitForApiTokenReady } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { readDir, readFile, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
-import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
-import { join } from '@tauri-apps/api/path'
+import {
+    createNativeDirectory as mkdir,
+    nativePathExists as exists,
+    readNativeBinaryFile as readFile,
+    readNativeDirectory as readDir,
+    writeNativeBinaryFile as writeFile,
+} from '@/platform/native-file-system'
+import { runtimeCapabilities } from '@/platform/capabilities'
+import { joinNativePath } from '@/platform/native-path'
+import { toNativeAssetUrl } from '@/platform/asset-url'
 import {
     getMediaStorageRoot,
     MEDIA_STORAGE_BASE_DIRECTORY,
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { save } from '@tauri-apps/plugin-dialog'
+import { revealNativeItem } from '@/platform/native-shell'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { parseMetadataFromBase64 } from '@/lib/metadata-parser'
@@ -107,8 +114,8 @@ const HistoryImageItem = memo(function HistoryImageItem({
     useEffect(() => {
         if (image.isTemporary) return
         if (!localThumbnail) {
-            // Use convertFileSrc for efficient native asset loading
-            const assetUrl = convertFileSrc(image.path)
+            // The platform adapter keeps native asset loading off the JS heap.
+            const assetUrl = toNativeAssetUrl(image.path)
             setLocalThumbnail(assetUrl)
             onLoadComplete(image.path, assetUrl)
         }
@@ -279,7 +286,7 @@ export function HistoryPanel() {
     const libraryItems = useLibraryStore(state => state.items)
     const addLibraryItem = useLibraryStore(state => state.addItem)
     const historyRefreshTrigger = useSceneStore(state => state.historyRefreshTrigger)
-    const isTauriRuntime = isTauri()
+    const isTauriRuntime = runtimeCapabilities.nativePluginRuntime.supported
     const artifactRepository = useMemo(() => getRuntimeArtifactRepository(), [])
     const outputPlatform = useMemo(() => createRuntimeOutputPlatformAdapter(), [])
     const historyRefreshId = useRef(0)
@@ -313,7 +320,7 @@ export function HistoryPanel() {
     }, [])
 
     // Add new image instantly to history
-    // Memory optimization: Use convertFileSrc for file-based images, only cache Base64 for temporary (memory://) images
+    // Memory optimization: use asset URLs for files and cache Base64 only for temporary images.
     const addNewImage = useCallback((imagePath: string, imageData?: string, lineage?: SavedImageLineage) => {
         const timestamp = Date.now()
         const isTemporary = imagePath.startsWith('memory://')
@@ -353,10 +360,10 @@ export function HistoryPanel() {
             return next.slice(0, 50)
         })
 
-        // Memory optimization: Only cache Base64 for temporary images, use convertFileSrc URL for files
+        // Memory optimization: cache Base64 only for temporary images and native asset URLs for files.
         const cacheData = isTemporary || !isTauriRuntime
             ? imageData ?? ''
-            : convertFileSrc(imagePath)
+            : toNativeAssetUrl(imagePath)
         
         setImageThumbnails(prev => {
             const keys = Object.keys(prev)
@@ -423,7 +430,7 @@ export function HistoryPanel() {
 
                     for (const entry of entries) {
                         if (entry.name && (entry.name.toLowerCase().endsWith('.png') || entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.webp'))) {
-                            const fullPath = await join(picturePath, defaultOutputDir, entry.name)
+                            const fullPath = await joinNativePath(picturePath, defaultOutputDir, entry.name)
                             const match = entry.name.match(/_(\d+)\.[^.]+$/)
                             const timestamp = match ? parseInt(match[1]) : 0
                             images.push({
@@ -447,7 +454,7 @@ export function HistoryPanel() {
 
                         for (const entry of entries) {
                             if (entry.name && (entry.name.toLowerCase().endsWith('.png') || entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.webp'))) {
-                                const fullPath = await join(savePath, entry.name)
+                                const fullPath = await joinNativePath(savePath, entry.name)
 
                                 // Skip duplicates
                                 if (images.some(img => img.path === fullPath)) continue
@@ -490,7 +497,7 @@ export function HistoryPanel() {
                             try {
                                 const presetFolderPath = useBaseDir
                                     ? `${sceneBaseDir}/${presetOrSceneDir.name}`
-                                    : await join(baseDir, presetOrSceneDir.name)
+                                    : await joinNativePath(baseDir, presetOrSceneDir.name)
 
                                 const presetContents = useBaseDir
                                     ? await readDir(presetFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -501,7 +508,7 @@ export function HistoryPanel() {
                                         // This is the sceneName folder (new structure: presetName/sceneName/)
                                         const sceneFolderPath = useBaseDir
                                             ? `${presetFolderPath}/${item.name}`
-                                            : await join(presetFolderPath, item.name)
+                                            : await joinNativePath(presetFolderPath, item.name)
 
                                         const sceneFiles = useBaseDir
                                             ? await readDir(sceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -512,7 +519,7 @@ export function HistoryPanel() {
                                                 // Rotation output uses presetName/characterName/sceneName/image.
                                                 const rotationSceneFolderPath = useBaseDir
                                                     ? `${sceneFolderPath}/${file.name}`
-                                                    : await join(sceneFolderPath, file.name)
+                                                    : await joinNativePath(sceneFolderPath, file.name)
                                                 const rotationFiles = useBaseDir
                                                     ? await readDir(rotationSceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                                     : await readDir(rotationSceneFolderPath)
@@ -520,8 +527,8 @@ export function HistoryPanel() {
                                                 for (const rotationFile of rotationFiles) {
                                                     if (rotationFile.name && (rotationFile.name.toLowerCase().endsWith('.png') || rotationFile.name.toLowerCase().endsWith('.jpg') || rotationFile.name.toLowerCase().endsWith('.webp'))) {
                                                         const fullPath = useBaseDir
-                                                            ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name, rotationFile.name)
-                                                            : await join(rotationSceneFolderPath, rotationFile.name)
+                                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name, rotationFile.name)
+                                                            : await joinNativePath(rotationSceneFolderPath, rotationFile.name)
 
                                                         if (images.some(img => img.path === fullPath)) continue
 
@@ -538,8 +545,8 @@ export function HistoryPanel() {
                                                 }
                                             } else if (file.name && (file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.webp'))) {
                                                 const fullPath = useBaseDir
-                                                    ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name)
-                                                    : await join(sceneFolderPath, file.name)
+                                                    ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name)
+                                                    : await joinNativePath(sceneFolderPath, file.name)
 
                                                 if (images.some(img => img.path === fullPath)) continue
 
@@ -557,8 +564,8 @@ export function HistoryPanel() {
                                     } else if (item.name && (item.name.toLowerCase().endsWith('.png') || item.name.toLowerCase().endsWith('.jpg') || item.name.toLowerCase().endsWith('.webp'))) {
                                         // This is a direct image file (old structure: sceneName/image.png)
                                         const fullPath = useBaseDir
-                                            ? await join(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name)
-                                            : await join(presetFolderPath, item.name)
+                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name)
+                                            : await joinNativePath(presetFolderPath, item.name)
 
                                         if (images.some(img => img.path === fullPath)) continue
 
@@ -627,7 +634,7 @@ export function HistoryPanel() {
                 })
 
             // NOTE: Removed pre-loading of thumbnails using readFile to prevent UI lag.
-            // Using convertFileSrc in the render loop is much more efficient as it uses native asset handling.
+            // Rendering uses platform asset URLs instead of preloading file bytes into memory.
         } catch (error) {
             console.error('Failed to load history:', error)
             setSavedImages([])
@@ -885,7 +892,7 @@ export function HistoryPanel() {
                             if (!dirExists) {
                                 await mkdir(outputDir, { recursive: true })
                             }
-                            fullPath = await join(outputDir, fileName)
+                            fullPath = await joinNativePath(outputDir, fileName)
                             await writeFile(fullPath, bytes)
                         } else {
                             // Save relative to Pictures directory
@@ -894,7 +901,7 @@ export function HistoryPanel() {
                                 await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             }
                             await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                            fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
+                            fullPath = await joinNativePath(await getMediaStorageRoot(), outputDir, fileName)
                         }
 
                         publishGeneratedArtifact({
@@ -930,7 +937,7 @@ export function HistoryPanel() {
     const handleOpenFolder = async (image: SavedImage) => {
         if (image.isTemporary) return
         try {
-            await revealItemInDir(image.path)
+            await revealNativeItem(image.path)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }
@@ -975,7 +982,7 @@ export function HistoryPanel() {
                 data = await readFile(image.path)
             }
 
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: image.name,
                 filters: [{ name: 'PNG Image', extensions: ['png'] }],
             })

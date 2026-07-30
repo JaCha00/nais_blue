@@ -25,13 +25,17 @@ import { getScenePresetPathSegments, hasSceneCompositionOverrides, resolveSceneG
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
-import { openPath } from '@tauri-apps/plugin-opener'
+import { openNativePath } from '@/platform/native-shell'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
-import { join } from '@tauri-apps/api/path'
-import { convertFileSrc } from '@tauri-apps/api/core'
-import { exists, readDir, readFile } from '@tauri-apps/plugin-fs'
+import { joinNativePath } from '@/platform/native-path'
+import { toNativeAssetUrl } from '@/platform/asset-url'
+import {
+    nativePathExists as exists,
+    readNativeBinaryFile as readFile,
+    readNativeDirectory as readDir,
+} from '@/platform/native-file-system'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
@@ -90,7 +94,7 @@ const getLatestSceneImageParentPath = (images: SceneImage[]): string | null => {
 }
 
 async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: string): Promise<string | null> {
-    const directPath = await join(presetPath, safeSceneName)
+    const directPath = await joinNativePath(presetPath, safeSceneName)
     if (await exists(directPath)) return directPath
 
     if (!(await exists(presetPath))) return null
@@ -99,7 +103,7 @@ async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: str
         const characterFolders = await readDir(presetPath)
         for (const entry of characterFolders) {
             if (!entry.isDirectory) continue
-            const rotationScenePath = await join(presetPath, entry.name, safeSceneName)
+            const rotationScenePath = await joinNativePath(presetPath, entry.name, safeSceneName)
             if (await exists(rotationScenePath)) return rotationScenePath
         }
     } catch (error) {
@@ -494,7 +498,7 @@ export default function SceneDetail() {
 
             const latestImageParent = getLatestSceneImageParentPath(scene.images)
             if (latestImageParent && await exists(latestImageParent)) {
-                await openPath(latestImageParent)
+                await openNativePath(latestImageParent)
                 return
             }
 
@@ -505,22 +509,22 @@ export default function SceneDetail() {
             const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
             const sceneRootPath = shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath
                 ? sceneSavePath
-                : await join(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
-            const presetPath = await join(sceneRootPath, ...safePresetSegments)
+                : await joinNativePath(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
+            const presetPath = await joinNativePath(sceneRootPath, ...safePresetSegments)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 
             if (folderPath) {
-                await openPath(folderPath)
+                await openNativePath(folderPath)
                 return
             }
 
             if (await exists(presetPath)) {
-                await openPath(presetPath)
+                await openNativePath(presetPath)
                 return
             }
 
             if (await exists(sceneRootPath)) {
-                await openPath(sceneRootPath)
+                await openNativePath(sceneRootPath)
             }
         } catch (error) {
             console.error("Failed to open folder:", error)
@@ -1325,7 +1329,7 @@ function SceneImageCard({
             return
         }
         // The Scene store persists native paths; Tauri's asset URL keeps gallery rendering off the JS heap.
-        setImgSrc(convertFileSrc(image.url))
+        setImgSrc(toNativeAssetUrl(image.url))
     }, [image.url])
 
     const activateImage = () => {

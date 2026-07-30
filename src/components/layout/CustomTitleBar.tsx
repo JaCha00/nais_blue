@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { invoke, isTauri } from '@tauri-apps/api/core'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 import { PanelLeft, PanelRight, Minus, Square, X, Maximize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { closeApplicationWithFlush } from '@/lib/indexed-db'
+import { exitNativeApplication } from '@/platform/native-app'
+import { getNativeWindowController } from '@/platform/native-window'
 import { useLayoutStore } from '@/stores/layout-store'
 import { Tip } from '@/components/ui/tooltip'
 
@@ -26,7 +26,7 @@ export function CustomTitleBar() {
     const { t } = useTranslation()
     const [isMaximized, setIsMaximized] = useState(false)
     // Browser dev smoke tests run outside Tauri; native window APIs exist only in the Tauri webview.
-    const appWindow = isTauri() ? getCurrentWindow() : null
+    const appWindow = getNativeWindowController()
 
     const {
         leftSidebarVisible,
@@ -75,7 +75,7 @@ export function CustomTitleBar() {
         // Rust to exit the app directly so close-request interception cannot
         // recursively swallow the custom titlebar close action.
         await closeApplicationWithFlush({
-            exit: () => invoke('exit_app'),
+            exit: exitNativeApplication,
         })
     }
 

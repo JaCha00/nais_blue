@@ -1,0 +1,138 @@
+import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
+import type { JsonValue } from '@/domain/composition/types'
+import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
+import { ensureImageFileExtension } from '@/services/output/filename-policy'
+import { QueueExecutionError } from './durable-queue-coordinator'
+import { createGenerationJobSnapshot } from './job-snapshot'
+import type {
+    DehydratedGenerationParameters,
+    DehydratedGenerationResult,
+} from './queue-resource-materializer'
+
+export interface MainQueueOutputSnapshot {
+    readonly directory: string
+    readonly useAbsolutePath: boolean
+    readonly capabilityFallbackDirectory: string
+    readonly portableDirectory?: PreparedMainGeneration['output']['portableDirectory']
+    readonly fileName: string
+    readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+}
+
+export interface MainQueueWorkflowSnapshot {
+    readonly finalPrompt: string
+    readonly imageFormat: 'png' | 'webp'
+    readonly metadataMode: PreparedMainGeneration['metadataMode']
+    readonly sequenceCommitProposal: FragmentSequenceCommitProposal | null
+    readonly output: MainQueueOutputSnapshot
+}
+
+export interface MainQueueSnapshotParameters extends DehydratedGenerationParameters {
+    readonly queueExecution: { readonly streaming: boolean; readonly sourceEdit: boolean }
+    readonly mainWorkflow: MainQueueWorkflowSnapshot
+}
+
+export interface EncodedMainJobSnapshot {
+    readonly snapshot: GenerationJobSnapshot
+    readonly compositionPlanHash: string | null
+}
+
+function asJson(value: unknown): JsonValue {
+    return JSON.parse(JSON.stringify(value)) as JsonValue
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function invalidSnapshot(): never {
+    throw new QueueExecutionError('fatal', 'Main queue snapshot parameters are invalid')
+}
+
+/**
+ * Depends on the credential-free Main plan and materialized resource references.
+ * It owns the V1 wire shape and deterministic Queue filename so enqueue callers
+ * cannot silently diverge from the decoder or persist raw image material.
+ */
+export function encodeMainJobSnapshot(
+    prepared: PreparedMainGeneration,
+    dehydrated: Pick<DehydratedGenerationResult, 'parameters' | 'resources'>,
+): EncodedMainJobSnapshot {
+    const fileName = prepared.output.fileName ?? ensureImageFileExtension(
+        `NAIS_${prepared.params.seed}`,
+        prepared.imageFormat,
+    ) ?? `NAIS_${prepared.params.seed}.${prepared.imageFormat}`
+    const parameters: MainQueueSnapshotParameters = {
+        ...dehydrated.parameters,
+        queueExecution: {
+            streaming: prepared.streaming,
+            sourceEdit: prepared.sourceEdit,
+        },
+        mainWorkflow: {
+            finalPrompt: prepared.finalPrompt,
+            imageFormat: prepared.imageFormat,
+            metadataMode: prepared.metadataMode,
+            sequenceCommitProposal: prepared.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
+            output: {
+                directory: prepared.output.directory,
+                useAbsolutePath: prepared.output.useAbsolutePath,
+                capabilityFallbackDirectory: prepared.output.capabilityFallbackDirectory,
+                ...(prepared.output.portableDirectory === undefined
+                    ? {}
+                    : { portableDirectory: prepared.output.portableDirectory }),
+                fileName,
+                collisionPolicy: prepared.output.collisionPolicy,
+            },
+        },
+    }
+    return {
+        snapshot: createGenerationJobSnapshot({
+            prompt: {
+                positive: prepared.finalPrompt,
+                negative: prepared.params.negative_prompt,
+            },
+            parameters: asJson(parameters),
+            outputPolicy: asJson({
+                workflow: 'main',
+                imageFormat: prepared.imageFormat,
+                metadataMode: prepared.metadataMode,
+                output: parameters.mainWorkflow.output,
+            }),
+            resources: dehydrated.resources,
+            resumability: 'resumable',
+        }),
+        compositionPlanHash: prepared.params.compositionPlanHash === undefined
+            ? null
+            : `sha256:${prepared.params.compositionPlanHash.digest}`,
+    }
+}
+
+/**
+ * Depends only on the persisted generic Job Snapshot and is consumed by the
+ * Main executor before hydration. It validates the fields execution reads and
+ * converts corrupt/foreign payloads into a stable fatal Queue classification.
+ */
+export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueueSnapshotParameters {
+    const candidate = snapshot.parameters
+    if (!isRecord(candidate)
+        || candidate.generationParams === undefined
+        || !Array.isArray(candidate.resourceBindings)
+        || !isRecord(candidate.resourceArrayLengths)
+        || !isRecord(candidate.queueExecution)
+        || typeof candidate.queueExecution.streaming !== 'boolean'
+        || typeof candidate.queueExecution.sourceEdit !== 'boolean'
+        || !isRecord(candidate.mainWorkflow)
+        || typeof candidate.mainWorkflow.finalPrompt !== 'string'
+        || (candidate.mainWorkflow.imageFormat !== 'png' && candidate.mainWorkflow.imageFormat !== 'webp')
+        || !isRecord(candidate.mainWorkflow.output)
+        || typeof candidate.mainWorkflow.output.directory !== 'string'
+        || typeof candidate.mainWorkflow.output.useAbsolutePath !== 'boolean'
+        || typeof candidate.mainWorkflow.output.capabilityFallbackDirectory !== 'string'
+        || typeof candidate.mainWorkflow.output.fileName !== 'string'
+        || !['unique', 'overwrite', 'error'].includes(
+            String(candidate.mainWorkflow.output.collisionPolicy),
+        )) {
+        return invalidSnapshot()
+    }
+    return candidate as unknown as MainQueueSnapshotParameters
+}

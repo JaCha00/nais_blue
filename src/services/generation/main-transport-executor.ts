@@ -1,9 +1,5 @@
-import {
-    generateImage,
-    generateImageStream,
-    type GenerateImageResult,
-    type GenerationParams,
-} from '@/services/novelai-api'
+import type { GenerateImageResult, GenerationParams } from '@/services/novelai-types'
+import { executeNovelAIImageTransport } from './novelai-image-transport'
 
 export interface MainGenerationTransportRequest {
     token: string
@@ -23,21 +19,15 @@ export interface MainGenerationTransportRequest {
 export async function executeMainGenerationTransport(
     request: MainGenerationTransportRequest,
 ): Promise<GenerateImageResult> {
-    if (!request.streaming) {
-        return generateImage(request.token, request.params, request.signal)
-    }
-
-    const mimeType = request.imageFormat === 'webp' ? 'image/webp' : 'image/png'
-    return generateImageStream(
-        request.token,
-        request.params,
-        (progress, partialImage) => {
+    return executeNovelAIImageTransport({
+        token: request.token,
+        params: request.params,
+        imageFormat: request.imageFormat,
+        streaming: request.streaming,
+        signal: request.signal,
+        onProgress: (progress, previewImage) => {
             if (!request.shouldPublishProgress()) return
-            request.onProgress(
-                progress,
-                partialImage ? `data:${mimeType};base64,${partialImage}` : undefined,
-            )
+            request.onProgress(progress, previewImage)
         },
-        request.signal,
-    )
+    })
 }

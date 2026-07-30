@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
-import { openPath } from '@tauri-apps/plugin-opener'
+import { openNativePath } from '@/platform/native-shell'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
 import {
@@ -392,7 +392,7 @@ function AgentWorkspacePanel() {
 
     const openWorkspace = async () => {
         try {
-            await openPath(status.workspacePath ?? await getAgentWorkspaceAbsolutePath())
+            await openNativePath(status.workspacePath ?? await getAgentWorkspaceAbsolutePath())
         } catch (error) {
             toast({
                 title: t('dataHub.agent.openFailed', '작업 폴더를 열지 못했습니다.'),

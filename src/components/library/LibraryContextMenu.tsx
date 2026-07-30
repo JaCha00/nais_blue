@@ -8,9 +8,9 @@ import { LibraryItem, useLibraryStore } from '@/stores/library-store'
 import { Copy, FolderOpen, Save, Trash2, Wand2, Users, Pencil, FileSearch } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
-import { save } from '@tauri-apps/plugin-dialog'
-import { writeFile, readFile } from '@tauri-apps/plugin-fs'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
+import { saveNativeFileDialog } from '@/platform/native-file-dialog'
+import { readNativeBinaryFile, writeNativeBinaryFile } from '@/platform/native-file-system'
+import { revealNativeItem } from '@/platform/native-shell'
 import { useNavigate } from 'react-router'
 import { useToolsStore } from '@/stores/tools-store'
 import { useState } from 'react'
@@ -21,7 +21,7 @@ import { runtimeCapabilities } from '@/platform/capabilities'
 
 /** Native paths use Tauri fs; browser-preview imports are persisted data URLs. */
 async function readLibraryBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
-    if (!path.startsWith('data:')) return new Uint8Array(await readFile(path))
+    if (!path.startsWith('data:')) return readNativeBinaryFile(path)
     return new Uint8Array(await (await fetch(path)).arrayBuffer())
 }
 
@@ -68,12 +68,12 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                 toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
                 return
             }
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 defaultPath: item.name,
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
             })
             if (filePath) {
-                await writeFile(filePath, data)
+                await writeNativeBinaryFile(filePath, data)
                 toast({ title: t('toast.saved', '저장 완료'), variant: 'success' })
             }
         } catch (e) {
@@ -108,7 +108,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
     const handleOpenFolder = async () => {
         if (!runtimeCapabilities.nativePluginRuntime.supported || item.path.startsWith('data:')) return
         try {
-            await revealItemInDir(item.path)
+            await revealNativeItem(item.path)
         } catch (e) {
             console.error('Failed to open folder:', e)
         }

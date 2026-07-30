@@ -161,6 +161,9 @@ export interface RetryRecoveryOptions {
 }
 
 export class OutputWriterError extends Error {
+    /** Queue and other outer boundaries reuse this event instead of notifying twice. */
+    diagnosticEventId?: string
+
     constructor(
         readonly phase: OutputWriterPhase,
         message: string,
@@ -486,6 +489,10 @@ export class OutputWriter {
 
         let phase: OutputWriterPhase = 'resolve-destination'
         let journal: OutputRecoveryJournal | null = null
+        // A workflow persistence failure is not a file-system failure once file
+        // compensation and journal removal finish. This flag lets the outer
+        // transaction guard preserve that original error for the Queue boundary.
+        let workflowFailureRolledBack = false
         const mark = (next: OutputWriterPhase): void => {
             phase = next
             request.onPhase?.(next)
@@ -735,6 +742,7 @@ export class OutputWriter {
                 await this.rollbackArtifacts(journal)
                 await this.platform.removeJournal(journal.transactionId)
                 journal = null
+                workflowFailureRolledBack = true
                 throw error
             }
 
@@ -754,6 +762,7 @@ export class OutputWriter {
             await this.cleanupCompleted(journal)
             return { status: 'committed', result }
         } catch (error) {
+            if (workflowFailureRolledBack) throw error
             if (journal !== null && journal.phase !== 'workflow-committed') {
                 try {
                     mark('rollback-cleanup')
@@ -765,20 +774,20 @@ export class OutputWriter {
                     const rollbackError = new OutputWriterError('rollback-cleanup', 'Output failed and rollback is pending', {
                         cause: rollbackFailureCause(error, cleanupError),
                     })
-                    reportDiagnostic(rollbackError, {
+                    rollbackError.diagnosticEventId = reportDiagnostic(rollbackError, {
                         operation: 'output.write',
                         stage: rollbackError.phase,
-                    })
+                    }).eventId
                     throw rollbackError
                 }
             }
             const diagnosticError = error instanceof OutputWriterError
                 ? error
                 : new OutputWriterError(phase, `Output transaction failed during ${phase}`, { cause: error })
-            reportDiagnostic(diagnosticError, {
+            diagnosticError.diagnosticEventId = reportDiagnostic(diagnosticError, {
                 operation: 'output.write',
                 stage: diagnosticError.phase,
-            })
+            }).eventId
             throw diagnosticError
         }
     }

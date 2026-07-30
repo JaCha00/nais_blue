@@ -18,9 +18,11 @@ import {
     type SceneRequestControllerLease,
 } from '@/lib/scene-generation/request-cancellation'
 import { useQueueStore } from '@/stores/queue-store'
+import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
 
 const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
+const sceneResultPresentation = createZustandSceneResultPresentation()
 let releasedImageDataSessionId: number | null = null
 
 type Translate = ReturnType<typeof useTranslation>['t']
@@ -220,6 +222,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         let sequenceConflict = false
         const activeSequenceLease = sequenceLease
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
+            presentation: sceneResultPresentation,
             canSave: () => isSessionAlive(ctx.sessionId),
             sentPayloadSummary: result.sentPayloadSummary,
             ...(activeSequenceLease === null

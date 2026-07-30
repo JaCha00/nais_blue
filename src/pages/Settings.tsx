@@ -46,13 +46,13 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useShortcutStore, SHORTCUT_ACTIONS, formatKeyBinding, type ShortcutAction, type KeyBinding } from '@/stores/shortcut-store'
 import { toast } from '@/components/ui/use-toast'
 import GeminiIcon from '@/assets/gemini-color.svg'
-import { open, save } from '@tauri-apps/plugin-dialog'
-import { check } from '@tauri-apps/plugin-updater'
+import { openNativeFileDialog, saveNativeFileDialog } from '@/platform/native-file-dialog'
+import { checkForNativeUpdate } from '@/platform/native-update'
 import { relaunchApplication } from '@/lib/app-relaunch'
-import { getVersion } from '@tauri-apps/api/app'
+import { getNativeAppVersion } from '@/platform/native-app'
 import { useUpdateStore, setCurrentUpdateObject, installPendingUpdate } from '@/stores/update-store'
 import { importAllData, getStoreSizes } from '@/lib/indexed-db'
-import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
+import { readNativeTextFile, writeNativeTextFile } from '@/platform/native-file-system'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -181,7 +181,7 @@ export default function Settings() {
     const [lastAutoBackupTime, setLastAutoBackupTime] = useState<string | null>(null)
 
     useEffect(() => {
-        getVersion().then(setAppVersion).catch(() => setAppVersion('dev'))
+        getNativeAppVersion().then(setAppVersion).catch(() => setAppVersion('dev'))
         // 마지막 백업 시간 로드
         const lastBackup = localStorage.getItem('nais2-last-backup-time')
         if (lastBackup) setLastBackupTime(lastBackup)
@@ -210,7 +210,7 @@ export default function Settings() {
     // Browse for folder using native dialog
     const handleBrowseFolder = async () => {
         try {
-            const selected = await open({
+            const selected = await openNativeFileDialog({
                 directory: true,
                 multiple: false,
                 title: t('settingsPage.save.selectFolder', 'Select Save Folder'),
@@ -239,7 +239,7 @@ export default function Settings() {
 
     const handleBrowseSceneFolder = async () => {
         try {
-            const selected = await open({
+            const selected = await openNativeFileDialog({
                 directory: true,
                 multiple: false,
                 title: t('settingsPage.save.outputFolders.scene.selectFolder', 'Select Scene Folder'),
@@ -267,7 +267,7 @@ export default function Settings() {
 
     const handleBrowseStyleLabFolder = async () => {
         try {
-            const selected = await open({
+            const selected = await openNativeFileDialog({
                 directory: true,
                 multiple: false,
                 title: t('settingsPage.save.outputFolders.styleLab.selectFolder', 'Select Style Lab Folder'),
@@ -295,7 +295,7 @@ export default function Settings() {
 
     const handleBrowseToolsFolder = async () => {
         try {
-            const selected = await open({
+            const selected = await openNativeFileDialog({
                 directory: true,
                 multiple: false,
                 title: t('settingsPage.save.outputFolders.tools.selectFolder', 'Select Tools Folder'),
@@ -324,7 +324,7 @@ export default function Settings() {
 
     const handleBrowseLibraryFolder = async () => {
         try {
-            const selected = await open({
+            const selected = await openNativeFileDialog({
                 directory: true,
                 multiple: false,
                 title: t('settingsPage.library.selectFolder', 'Select Library Folder'),
@@ -353,14 +353,14 @@ export default function Settings() {
             const storeCount = backup.storeManifest.storeCount
             
             // 파일 저장 다이얼로그
-            const filePath = await save({
+            const filePath = await saveNativeFileDialog({
                 title: t('settingsPage.backup.export'),
                 defaultPath: `nais2-backup-${new Date().toISOString().split('T')[0]}.json`,
                 filters: [{ name: 'JSON', extensions: ['json'] }]
             })
             
             if (filePath) {
-                await writeTextFile(filePath, JSON.stringify(backup, null, 2))
+                await writeNativeTextFile(filePath, JSON.stringify(backup, null, 2))
                 
                 // 마지막 백업 시간 저장
                 const now = new Date().toISOString()
@@ -417,7 +417,7 @@ export default function Settings() {
         setIsImporting(true)
         try {
             // 파일 선택 다이얼로그
-            const filePath = await open({
+            const filePath = await openNativeFileDialog({
                 title: t('settingsPage.backup.import'),
                 filters: [{ name: 'JSON', extensions: ['json'] }],
                 multiple: false,
@@ -425,7 +425,7 @@ export default function Settings() {
             
             if (!filePath || typeof filePath !== 'string') return
             
-            const content = await readTextFile(filePath)
+            const content = await readNativeTextFile(filePath)
             prepareImportedBackup(content)
         } catch (err) {
             console.error('Backup import failed:', err)
@@ -708,7 +708,7 @@ export default function Settings() {
                                                 onClick={async () => {
                                                 setIsCheckingUpdate(true)
                                                 try {
-                                                    const update = await check()
+                                                    const update = await checkForNativeUpdate()
                                                     if (update) {
                                                         // Store the update object
                                                         setCurrentUpdateObject(update)

@@ -240,6 +240,9 @@ $excludeDirs = @(
     '.git',
     '.omx',
     '.codex',
+    'docs\archive',
+    'docs\local',
+    'docs\_trash',
     'node_modules',
     'dist',
     'src-tauri\target',
@@ -289,9 +292,9 @@ Assert-SourceArchiveHasNoPrivateEntries -ArchivePath $sourceZip
 Remove-Item -LiteralPath $sourceStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path (Join-Path $releaseRoot 'docs'), (Join-Path $releaseRoot 'checksums') | Out-Null
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\ELO_AUDIT.md') -Destination (Join-Path $releaseRoot 'docs\ELO_AUDIT.md')
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\PATCHING_GUIDE.md') -Destination (Join-Path $releaseRoot 'docs\PATCHING_GUIDE.md')
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\PUBLIC_RELEASE.md') -Destination (Join-Path $releaseRoot 'docs\PUBLIC_RELEASE.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\ELO_AUDIT.md') -Destination (Join-Path $releaseRoot 'docs\ELO_AUDIT.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\PATCHING_GUIDE.md') -Destination (Join-Path $releaseRoot 'docs\PATCHING_GUIDE.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\PUBLIC_RELEASE.md') -Destination (Join-Path $releaseRoot 'docs\PUBLIC_RELEASE.md')
 
 $artifactFiles = Get-ChildItem -LiteralPath $releaseRoot -Recurse -File |
     Where-Object { $_.FullName -notlike '*\checksums\SHA256SUMS.txt' -and $_.FullName -notlike '*\release-manifest.json' } |
