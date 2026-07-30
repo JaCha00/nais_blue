@@ -58,6 +58,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** OutputWriter records platform failures first; its stable ID prevents a second Queue toast. */
+function recordedDiagnosticEventId(error: unknown): string | undefined {
+    if (!isRecord(error)) return undefined
+    const value = error.diagnosticEventId
+    return typeof value === 'string' && value.length > 0 && value.length <= 256
+        ? value
+        : undefined
+}
+
 function failureText(value: unknown, depth = 0, seen = new Set<object>()): string {
     if (depth > 4 || value === null || typeof value !== 'object' || seen.has(value)) return ''
     seen.add(value)
@@ -430,10 +439,11 @@ export class DurableQueueCoordinator {
                 }
                 return
             }
-            const diagnostic = reportDiagnostic(error, {
-                operation: `queue.execute.${current.workflow}`,
-                stage: 'executor',
-            })
+            const diagnosticEventId = recordedDiagnosticEventId(error)
+                ?? reportDiagnostic(error, {
+                    operation: `queue.execute.${current.workflow}`,
+                    stage: 'executor',
+                }).eventId
             const blockReason = classifyBlockReason(error)
             if (blockReason !== null) {
                 await this.repository.transitionJob({
@@ -443,7 +453,7 @@ export class DurableQueueCoordinator {
                     leaseOwner: owner,
                     leaseToken: token,
                     blockReason,
-                    lastDiagnosticEventId: diagnostic.eventId,
+                    lastDiagnosticEventId: diagnosticEventId,
                 })
                 return
             }
@@ -451,7 +461,7 @@ export class DurableQueueCoordinator {
             await this.handleFailure(current, owner, token, classified.options.diagnosticEventId === undefined
                 ? new QueueExecutionError(classified.kind, classified.message, {
                     ...classified.options,
-                    diagnosticEventId: diagnostic.eventId,
+                    diagnosticEventId,
                 })
                 : classified)
         } finally {

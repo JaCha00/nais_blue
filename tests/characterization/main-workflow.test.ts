@@ -694,7 +694,7 @@ describe('Main workflow golden characterization', () => {
             selectedRecipeId: 'main:direct',
             batchCount: 3,
         })
-        let captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
+        let captured: import('@/stores/generation-store').PreparedMainGeneration[] = []
 
         try {
             captured = (await stores.useGenerationStore.getState().prepareMainBatch())

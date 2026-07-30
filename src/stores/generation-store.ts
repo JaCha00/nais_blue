@@ -57,9 +57,12 @@ import {
 } from '@/platform/portable-resources'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { publishGeneratedArtifact } from './artifact-lifecycle-store'
-import type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
+import {
+    prepareMainGeneration,
+    type PreparedMainGeneration,
+} from '@/services/generation/main-generation-plan'
 
-export type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
+export type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 
 interface Resolution {
     label: string
@@ -69,7 +72,7 @@ interface Resolution {
 
 type MainGenerationRun =
     | { readonly kind: 'execute' }
-    | { readonly kind: 'prepare', readonly captures: CapturedMainGeneration[] }
+    | { readonly kind: 'prepare', readonly prepared: PreparedMainGeneration[] }
 
 // The symbol keeps the shared orchestration runner private to this store module.
 // Public callers use generate or prepareMainBatch, preventing Queue from
@@ -823,7 +826,7 @@ interface GenerationState {
     }) => void
 
     generate: () => Promise<void>
-    prepareMainBatch: () => Promise<readonly CapturedMainGeneration[]>
+    prepareMainBatch: () => Promise<readonly PreparedMainGeneration[]>
     [runMainGenerationAction]: (run: MainGenerationRun) => Promise<void>
     cancelGeneration: () => void
     addToHistory: (item: HistoryItem) => void
@@ -988,9 +991,9 @@ export const useGenerationStore = create<GenerationState>()(
             generate: () => get()[runMainGenerationAction]({ kind: 'execute' }),
 
             prepareMainBatch: async () => {
-                const captures: CapturedMainGeneration[] = []
-                await get()[runMainGenerationAction]({ kind: 'prepare', captures })
-                return Object.freeze([...captures])
+                const prepared: PreparedMainGeneration[] = []
+                await get()[runMainGenerationAction]({ kind: 'prepare', prepared })
+                return Object.freeze([...prepared])
             },
 
             [runMainGenerationAction]: async (run) => {
@@ -1427,17 +1430,9 @@ export const useGenerationStore = create<GenerationState>()(
                                 }
                             }
                         }
-                        const finalPrompt = generationParams.prompt
-                        const imageFormat = generationParams.imageFormat ?? settings.imageFormat
-                        const effectiveMetadataMode = generationParams.metadataMode ?? settings.metadataMode
                         const v2Output = compositionMode === 'v2' ? compositionOutput : null
                         // Reset progress
                         set({ streamProgress: 0 })
-
-                        // Keep source-edit requests on ZIP until stream-final
-                        // parity is fixture-proven against server-composited output.
-                        const hasSourceEdit = Boolean(generationParams.sourceImage || generationParams.mask)
-                        const canUseStreaming = settings.useStreaming && !hasSourceEdit
 
                         const generationSequenceProposal = compositionMode === 'v2'
                             ? sequenceProposal
@@ -1447,45 +1442,43 @@ export const useGenerationStore = create<GenerationState>()(
                             autoSave: liveAutoSave,
                             useAbsolutePath,
                         } = useSettingsStore.getState()
-                        const autoSave = v2Output?.autoSave ?? liveAutoSave
-                        const requestedAbsolutePath = v2Output?.useAbsolutePath ?? useAbsolutePath
+                        const preparedGeneration = prepareMainGeneration({
+                            params: generationParams,
+                            fallbackImageFormat: settings.imageFormat,
+                            fallbackMetadataMode: settings.metadataMode,
+                            streamingRequested: settings.useStreaming,
+                            sequenceCommitProposal: generationSequenceProposal,
+                            output: {
+                                autoSave: v2Output?.autoSave ?? liveAutoSave,
+                                directory: v2Output?.directory
+                                    || modulePlan?.output.directory
+                                    || savePath,
+                                useAbsolutePath: v2Output?.useAbsolutePath ?? useAbsolutePath,
+                                capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
+                                    || savePath,
+                                ...(v2Output?.portableDirectory === undefined
+                                    ? {}
+                                    : { portableDirectory: v2Output.portableDirectory }),
+                                fileName: v2Output?.fileName ?? modulePlan?.output.fileName,
+                                collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                            },
+                        })
+                        const {
+                            finalPrompt,
+                            imageFormat,
+                            metadataMode: effectiveMetadataMode,
+                            streaming: canUseStreaming,
+                            output: preparedOutput,
+                        } = preparedGeneration
 
                         if (run.kind === 'prepare') {
-                            const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
-                            const moduleFileName = ensureImageFileExtension(
-                                v2Output?.fileName ?? modulePlan?.output.fileName,
-                                fileExt,
-                            )
                             // The durable adapter depends on the virtual CAS accepting this
                             // proposal before it materializes a snapshot; staging first keeps
                             // rejected sequence state out of a batch that could later be stored.
-                            if (!batchSequencePlanner?.stage(generationSequenceProposal)) {
+                            if (!batchSequencePlanner?.stage(preparedGeneration.sequenceCommitProposal)) {
                                 throw new Error('Sequential fragment proposal could not be staged for durable Main batch')
                             }
-                            run.captures.push({
-                                params: generationParams,
-                                finalPrompt,
-                                imageFormat,
-                                metadataMode: effectiveMetadataMode,
-                                streaming: canUseStreaming,
-                                sequenceCommitProposal: generationSequenceProposal,
-                                output: {
-                                    autoSave,
-                                    directory: v2Output?.directory
-                                        || modulePlan?.output.directory
-                                        || savePath
-                                        || 'NAIS_Output',
-                                    useAbsolutePath: requestedAbsolutePath,
-                                    capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
-                                        || savePath
-                                        || 'NAIS_Output',
-                                    ...(v2Output?.portableDirectory === undefined
-                                        ? {}
-                                        : { portableDirectory: v2Output.portableDirectory }),
-                                    ...(moduleFileName === null ? {} : { fileName: moduleFileName }),
-                                    collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
-                                },
-                            })
+                            run.prepared.push(preparedGeneration)
                             completedBatchCount += 1
                             continue
                         }
@@ -1501,7 +1494,7 @@ export const useGenerationStore = create<GenerationState>()(
                         }
                         const result = await executeMainGenerationTransport({
                             token,
-                            params: generationParams,
+                            params: preparedGeneration.params,
                             imageFormat,
                             streaming: canUseStreaming,
                             signal: abortController.signal,
@@ -1528,7 +1521,7 @@ export const useGenerationStore = create<GenerationState>()(
 
                         if (result.success && result.imageData) {
                             const resultParams: GenerationParams = {
-                                ...generationParams,
+                                ...preparedGeneration.params,
                                 sentPayloadSummary: result.sentPayloadSummary,
                             }
                             const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
@@ -1544,7 +1537,7 @@ export const useGenerationStore = create<GenerationState>()(
                             let historyId: string | null = null
                             const commitGeneratedSequence = (): boolean => {
                                 if (sequenceCommitted) return true
-                                if (commitMainFragmentSequenceProposal(generationSequenceProposal)) {
+                                if (commitMainFragmentSequenceProposal(preparedGeneration.sequenceCommitProposal)) {
                                     sequenceCommitted = true
                                     return true
                                 }
@@ -1566,7 +1559,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     id: historyId,
                                     url: thumbnail,
                                     prompt: finalPrompt,
-                                    seed: generationParams.seed,
+                                    seed: preparedGeneration.params.seed,
                                     timestamp: new Date(),
                                     sentPayloadSummary: result.sentPayloadSummary,
                                 }
@@ -1583,7 +1576,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 }
                             }
 
-                            if (autoSave) {
+                            if (preparedOutput.autoSave) {
                                 try {
                                     const binaryString = atob(result.imageData)
                                     const bytes = new Uint8Array(binaryString.length)
@@ -1599,29 +1592,20 @@ export const useGenerationStore = create<GenerationState>()(
                                         typePrefix = 'I2I_'
                                     }
                                     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                    const moduleFileName = ensureImageFileExtension(
-                                        v2Output?.fileName ?? modulePlan?.output.fileName,
-                                        fileExt,
-                                    )
-                                    const fileName = moduleFileName ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
-                                    const plannedOutputDir = v2Output?.directory
-                                        || modulePlan?.output.directory
-                                        || savePath
-                                        || 'NAIS_Output'
+                                    const fileName = preparedOutput.fileName
+                                        ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
                                     const output = await getRuntimeOutputWriter().write({
                                         destination: {
-                                            ...(v2Output?.portableDirectory === undefined
+                                            ...(preparedOutput.portableDirectory === undefined
                                                 ? {}
-                                                : { portableDirectory: v2Output.portableDirectory }),
-                                            directory: plannedOutputDir,
-                                            useAbsolutePath: requestedAbsolutePath,
-                                            capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
-                                                || savePath
-                                                || 'NAIS_Output',
+                                                : { portableDirectory: preparedOutput.portableDirectory }),
+                                            directory: preparedOutput.directory,
+                                            useAbsolutePath: preparedOutput.useAbsolutePath,
+                                            capabilityFallbackDirectory: preparedOutput.capabilityFallbackDirectory,
                                             workflowDefaultDirectory: 'NAIS_Output',
                                             fileName,
                                             extension: fileExt,
-                                            collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                                            collisionPolicy: preparedOutput.collisionPolicy,
                                         },
                                         imageBytes: bytes,
                                         imageDataUrl: imageUrl,
@@ -1685,10 +1669,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 if (!commitGeneratedSequence()) break
                                 commitHistory(thumbnail)
                                 const memExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                const memoryFileName = ensureImageFileExtension(
-                                    v2Output?.fileName ?? modulePlan?.output.fileName,
-                                    memExt,
-                                ) ?? `NAIS_${Date.now()}.${memExt}`
+                                const memoryFileName = preparedOutput.fileName ?? `NAIS_${Date.now()}.${memExt}`
                                 const memoryPath = `memory://${memoryFileName}`
                                 publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
                             }
@@ -1727,7 +1708,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     : termination === 'cancelled'
                                         ? 'transport-cancelled'
                                         : canUseStreaming ? 'stream' : 'request',
-                                prompt: generationParams.prompt,
+                                prompt: preparedGeneration.params.prompt,
                                 cancelled: termination === 'cancelled',
                                 timeout: termination === 'timeout',
                             })

@@ -1,14 +1,16 @@
 import type { QueueTokenProvider } from '@/application/queue/queue-token-provider'
+import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
+import type { StyleLabQueuePresentationPort } from '@/application/style-lab/style-lab-queue-presentation-port'
 import { DurableQueueCoordinator } from './durable-queue-coordinator'
 import { getRuntimeQueueRepository } from './indexeddb-queue-repository'
-import { executeSceneQueueJob } from './scene-queue-adapter'
+import { executeMainQueueJob } from './main-queue-executor'
+import { executeSceneQueueJob } from './scene-queue-executor'
 import {
     configureRuntimeMainQueueDependencies,
-    executeMainQueueJob,
     resetRuntimeMainQueueDependenciesForTests,
     type RuntimeMainQueueDependencies,
-} from './main-queue-adapter'
-import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-adapter'
+} from './main-queue-runtime-dependencies'
+import { executeStyleLabQueueJob } from '@/services/style-lab/style-lab-queue-executor'
 import { initializeQueueAfterRestart } from './queue-startup'
 
 let runtimeCoordinator: DurableQueueCoordinator | null = null
@@ -17,6 +19,12 @@ let runtimeDependencies: RuntimeQueueDependencies | null = null
 export interface RuntimeQueueDependencies {
     readonly tokenProvider: QueueTokenProvider
     readonly mainQueue: RuntimeMainQueueDependencies
+    readonly sceneQueue: {
+        readonly presentation: SceneResultPresentationPort
+    }
+    readonly styleLabQueue: {
+        readonly presentation: StyleLabQueuePresentationPort
+    }
 }
 
 /**
@@ -44,7 +52,9 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
         executor: {
             execute: async (job, context) => {
                 if (job.workflow === 'scene') {
-                    await executeSceneQueueJob(job, context)
+                    await executeSceneQueueJob(job, context, {
+                        presentation: dependencies.sceneQueue.presentation,
+                    })
                     return
                 }
                 if (job.workflow === 'main') {
@@ -52,7 +62,9 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
                     return
                 }
                 if (job.workflow === 'style-lab') {
-                    await executeStyleLabQueueJob(job, context)
+                    await executeStyleLabQueueJob(job, context, {
+                        presentation: dependencies.styleLabQueue.presentation,
+                    })
                     return
                 }
                 throw new Error(`Durable executor is unavailable for ${job.workflow}`)

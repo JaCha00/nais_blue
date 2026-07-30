@@ -45,7 +45,6 @@ const IGNORED_LEGACY_KEY_TEST_ALLOWLIST = [
 // a product word only. These paths may use "marketplace", while every remote
 // runtime term (Supabase, OAuth, deep links, and retired keys) remains forbidden.
 const STYLE_LAB_MARKETPLACE_ALLOWLIST = [
-    'docs/Style-Lab-architecture-redesign-plan.md',
     'src/application/style-lab/',
     'src/components/style-lab/',
     'src/domain/style-lab/',

@@ -57,17 +57,23 @@ describe('RuntimeCapabilities', () => {
     })
 
     it('never leaves the legacy Android output fallback silent', async () => {
-        const callers = await Promise.all([
+        const [generation, sceneOutput, scenePresentation, styleLab] = await Promise.all([
             'src/stores/generation-store.ts',
             'src/lib/scene-generation/save-scene-result.ts',
+            'src/presentation/scene/zustand-scene-result-presentation.ts',
             'src/services/style-lab-generation.ts',
         ].map(path => readFile(resolve(process.cwd(), path), 'utf8')))
 
-        for (const source of callers) {
+        for (const source of [generation, styleLab]) {
             expect(source).toContain('capabilityFallbackUsed')
             expect(source).toContain('capabilityFallbackReason')
             expect(source).toContain('capabilityFallbackAlternative')
             expect(source).toContain('outputCapabilityFallbackTitle')
         }
+        expect(sceneOutput).toContain('capabilityFallbackUsed')
+        expect(sceneOutput).toContain('capabilityFallbackReason')
+        expect(sceneOutput).toContain('capabilityFallbackAlternative')
+        expect(sceneOutput).toContain('presentation.reportCapabilityFallback')
+        expect(scenePresentation).toContain('outputCapabilityFallbackTitle')
     })
 })

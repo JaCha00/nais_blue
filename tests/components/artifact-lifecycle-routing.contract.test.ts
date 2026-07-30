@@ -8,14 +8,14 @@ describe('Artifact lifecycle routing', () => {
     it('uses a typed transient store instead of the legacy window event', async () => {
         const publishers = await Promise.all([
             'src/stores/generation-store.ts',
-            'src/lib/scene-generation/save-scene-result.ts',
+            'src/presentation/scene/zustand-scene-result-presentation.ts',
             'src/services/style-lab-generation.ts',
             'src/presentation/queue/zustand-main-queue-presentation.ts',
             'src/pages/MainMode.tsx',
             'src/pages/ToolsMode.tsx',
         ].map(source))
         const [mainQueue, history] = await Promise.all([
-            source('src/services/queue/main-queue-adapter.ts'),
+            source('src/services/queue/main-queue-executor.ts'),
             source('src/components/layout/HistoryPanel.tsx'),
         ])
 

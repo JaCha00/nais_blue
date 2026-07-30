@@ -1,5 +1,5 @@
 import type { MainBatchPlannerPort } from '@/application/generation/plan-main-batch'
-import type { CapturedMainGeneration } from '@/services/generation/main-generation-plan'
+import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import { useGenerationStore } from '@/stores/generation-store'
 
 /**
@@ -7,8 +7,8 @@ import { useGenerationStore } from '@/stores/generation-store'
  * new Application Planner port. It keeps Store access in Presentation while
  * the preparation algorithm is incrementally moved out of generation-store.
  */
-export function createZustandMainBatchPlanner(): MainBatchPlannerPort<CapturedMainGeneration> {
-    const planner: MainBatchPlannerPort<CapturedMainGeneration> = {
+export function createZustandMainBatchPlanner(): MainBatchPlannerPort<PreparedMainGeneration> {
+    const planner: MainBatchPlannerPort<PreparedMainGeneration> = {
         getRequestedCount: () => useGenerationStore.getState().batchCount,
         prepareBatch: () => useGenerationStore.getState().prepareMainBatch(),
     }

@@ -1,0 +1,26 @@
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+describe('Scene Queue boundaries', () => {
+    it('delegates V1 encoding and decoding to the Scene codec', async () => {
+        const [adapter, executor, outputTransaction] = await Promise.all([
+            readFile(resolve(process.cwd(), 'src/services/queue/scene-queue-adapter.ts'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/services/queue/scene-queue-executor.ts'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/lib/scene-generation/save-scene-result.ts'), 'utf8'),
+        ])
+
+        expect(adapter).toContain('encodeSceneJobSnapshot({')
+        expect(executor).toContain('decodeSceneJobSnapshot(job.snapshot)')
+        expect(adapter).not.toContain('createGenerationJobSnapshot(')
+        expect(adapter).not.toContain('parseSceneQueueParameters')
+        expect(adapter).not.toContain('executeNovelAIImageTransport')
+        expect(executor).not.toContain('createBatchAndEnqueue')
+        expect(executor).not.toMatch(/@\/stores\//)
+        expect(executor).toContain('SceneResultPresentationPort')
+        expect(executor).toContain('presentation: dependencies.presentation')
+        expect(outputTransaction).toContain('SceneResultPresentationPort')
+        expect(outputTransaction).not.toMatch(/@\/(?:components|hooks|presentation|stores)\//)
+        expect(outputTransaction).not.toContain("from '@/i18n'")
+    })
+})

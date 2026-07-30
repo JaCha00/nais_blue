@@ -76,11 +76,27 @@ module.exports = {
             to: { path: '^src/(?:components|pages|presentation)/' },
         },
         {
-            name: 'main-queue-adapter-does-not-import-stores',
+            name: 'main-queue-modules-do-not-import-stores',
             comment: 'Main planning and result projection cross Application ports instead of reaching into Zustand.',
             severity: 'error',
-            from: { path: '^src/services/queue/main-queue-adapter\\.ts$' },
+            from: { path: '^src/services/queue/main-queue-(?:adapter|executor|runtime-dependencies)\\.ts$' },
             to: { path: '^src/stores/' },
+        },
+        {
+            name: 'durable-queue-executors-do-not-import-stores',
+            comment: 'Durable execution replays snapshots and projects through workflow boundaries, not current UI state.',
+            severity: 'error',
+            from: {
+                path: '^src/services/(?:queue/(?:main|scene)-queue-executor|style-lab/style-lab-queue-executor)\\.ts$',
+            },
+            to: { path: '^src/stores/' },
+        },
+        {
+            name: 'scene-output-transaction-does-not-import-presentation',
+            comment: 'Scene output commits project through an Application port instead of importing UI state or notifications.',
+            severity: 'error',
+            from: { path: '^src/lib/scene-generation/save-scene-result\\.ts$' },
+            to: { path: '^src/(?:components|hooks|i18n(?:/|\\.ts$)|pages|presentation|stores)/' },
         },
         {
             name: 'new-presentation-code-does-not-import-tauri',

@@ -50,12 +50,12 @@
 | C | `legacy/NAIS2-2.0.29/` | 추적 파일 196개, 소스·문서 약 30 MB(로컬 캐시 제외) | `docs/composition-v2/LEGACY_RETIREMENT_GATE.md`, `KNOWN_LIMITATIONS.md`, `MIGRATION_GUIDE.md`가 레거시 builder·reader·rollback 보존을 요구한다. production v2 authority, clean upgrade, rollback 복원이 모두 입증되기 전에는 소스 snapshot을 삭제하지 않는다. |
 | C | `legacy/NAIS2-main-source-snapshot/` | 소스 snapshot 약 29.7 MB / 203 files | 현재 런타임 참조는 찾지 못했지만 historical provenance로 보존된 snapshot이다. `legacy/NAIS2-2.0.29`와 중복 범위·복구 필요성을 비교한 뒤 archive 후 삭제한다. |
 | C | `legacy/stylelab-frontend-sources-20260628-155859/` | 12 files / 약 0.3 MB | 현재 release script가 source archive에서 의도적으로 제외하는 이전 snapshot이다. 별도 provenance가 필요 없는지 확인 후 삭제한다. |
-| C | `docs/ELO_AUDIT.md` | 2026-06-28, StyleLab Elo audit | 내용은 유효할 수 있으나 현재 문서는 Git에서 추적되지 않는다. `scripts/create-public-release.ps1`가 공개 릴리스 패키지에 이 파일을 복사하므로, 스크립트를 갱신하거나 새 문서로 대체하기 전 삭제하지 않는다. |
-| C | `docs/PATCHING_GUIDE.md` | 2026-06-28, 2.7.2 patch guide | `source/NAIS2_2.7.2-public-source.zip`와 2.7.2 경로를 설명하는 과거 가이드다. 현재 2.8.1 릴리스 절차로 대체할 때까지는 release script 참조를 먼저 제거·교체한다. |
-| C | `docs/PUBLIC_RELEASE.md` | 2026-06-28, 2.7.2 public release layout | 역시 `scripts/create-public-release.ps1`가 요구한다. 새 릴리스 layout 문서로 교체하고 script/CI를 검증한 뒤에만 삭제한다. |
+| C | `docs/archive/release-2.7.2/ELO_AUDIT.md` | 2026-06-28, StyleLab Elo audit | 현재 문서는 추적된 2.7.2 릴리스 자료로 분류되어 있다. `scripts/create-public-release.ps1`가 공개 릴리스 패키지에 이 파일을 복사하므로, 스크립트를 갱신하거나 새 문서로 대체하기 전 삭제하지 않는다. |
+| C | `docs/archive/release-2.7.2/PATCHING_GUIDE.md` | 2026-06-28, 2.7.2 patch guide | `source/NAIS2_2.7.2-public-source.zip`와 2.7.2 경로를 설명하는 과거 가이드다. 현재 릴리스 절차로 대체할 때까지는 release script 참조를 먼저 제거·교체한다. |
+| C | `docs/archive/release-2.7.2/PUBLIC_RELEASE.md` | 2026-06-28, 2.7.2 public release layout | 역시 `scripts/create-public-release.ps1`가 요구한다. 새 릴리스 layout 문서로 교체하고 script/CI를 검증한 뒤에만 삭제한다. |
 | D | `docs/composition-v2/` | 현재 추적된 canonical guidance | migration·rollback·Android·dependency 정책의 source of truth다. 오래된 날짜만으로 삭제하지 않는다. |
-| D | `docs/NAIS2_UIUX_문서_분할/` 및 2026-07-17 통합 문서 | 현재 작업의 UI/UX 기준 문서 | 이번 작업의 요구사항과 handoff 근거다. 오래된 계획 문서로 분류하지 않는다. |
-| D | `docs/HANDOFF.md` | 2026-07-17 handoff | 현재 로컬 handoff 로그다. 다음 세션이 작업을 이어가는 데 필요하므로 유지한다. |
+| D | `docs/local/reviews/ui-ux-2026-07-17/` | 현재 작업의 UI/UX 기준 문서 | 이번 작업의 요구사항과 handoff 근거다. 오래된 계획 문서로 분류하지 않는다. |
+| D | `docs/local/handoffs/HANDOFF.md` | 2026-07-26 handoff | 현재 로컬 handoff 로그다. 다음 세션이 작업을 이어가는 데 필요하므로 유지한다. |
 
 ## 보안·사용자 데이터 때문에 후보에서 제외한 항목
 
@@ -81,6 +81,7 @@
 
 ## 실행 상태 기록
 
+- 2026-07-30: 문서를 architecture/composition/local/trash 용도로 재분류하고, 현재 2.11 계열 동작과 모순되는 루트 `MOBILE_SYNC_STATUS.md`를 `docs/_trash/stale-status/`로 이동했다.
 - 2026-07-17: A 후보 중 최신 산출물을 제외한 오래된 경로를 정리했고, 저장소 내부 경계와 빌드 전용 프로세스 부재를 확인했다.
 - 삭제 완료: `legacy/NAIS2-2.0.29/node_modules/`, 레거시 `dist/`, 레거시 `src-tauri/target/`, 레거시 `src-tauri/gen/`, `src-tauri/gen/67y7/`, `.playwright-cli/`, `.wrangler/tmp/`, `src-tauri/plugins/nais-android-transfer/android/.tauri/`.
 - 정리량: 약 2.9 GB. `adb`·`node` 프로세스는 종료하거나 조사하지 않았다.
