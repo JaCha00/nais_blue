@@ -141,6 +141,51 @@ describe('Workflow Draft Main batch Planner', () => {
         })
     })
 
+    it('materializes draft-owned character prompts through the same module session', async () => {
+        const source = readyDraft()
+        const draft = reviseSingleImageDraft(source, {
+            updatedAt: '2026-08-08T00:00:01.000Z',
+            payload: {
+                ...source.payload,
+                characterPrompts: {
+                    positionEnabled: true,
+                    items: [{
+                        id: 'character:hero',
+                        name: 'Hero',
+                        prompt: '1girl, <characters/hair>',
+                        negative: 'alternate costume',
+                        enabled: true,
+                        position: { x: 0.25, y: 0.6 },
+                    }],
+                },
+            },
+        })
+        const repository: FragmentLookupRepository = {
+            findMetadataByPath: () => undefined,
+            loadDefinitionByPath: async path => path === 'characters/hair'
+                ? { id: 'fragment:hair', path, lines: ['silver hair'] }
+                : null,
+            getSequenceSnapshot: () => ({ revision: 0, counters: {} }),
+            commitSequenceProposal: () => false,
+        }
+
+        const prepared = await createWorkflowDraftMainBatchPlanner(draft, {
+            fragmentRepository: repository,
+        }).prepareBatch()
+
+        expect(prepared[0]?.params).toMatchObject({
+            characterPositionEnabled: true,
+            characterPrompts: [{
+                stableId: 'character:hero',
+                name: 'Hero',
+                prompt: '1girl, silver hair',
+                negative: 'alternate costume',
+                enabled: true,
+                position: { x: 0.25, y: 0.6 },
+            }],
+        })
+    })
+
     it('fails closed when a saved module reference no longer exists', async () => {
         const source = readyDraft()
         const draft = reviseSingleImageDraft(source, {

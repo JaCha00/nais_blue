@@ -211,7 +211,38 @@
                 "failed": "모듈을 저장하지 못했어요. 다시 시도해 주세요.",
                 "cancel": "취소",
                 "save": "모듈 저장"
+            },
+            "edit": {
+                "trigger": "내용 편집",
+                "title": "프롬프트 모듈 편집",
+                "loadFailed": "모듈 내용을 불러오지 못했어요.",
+                "locked": "순차 모듈을 사용하는 작업이 끝난 뒤 다시 편집해 주세요.",
+                "failed": "모듈을 저장하지 못했어요. 다시 시도해 주세요.",
+                "sharedNotice": "이 변경은 이 모듈을 다음에 사용하는 다른 작업에도 적용됩니다.",
+                "save": "변경 저장"
             }
+        },
+        "characters": {
+            "title": "캐릭터 프롬프트",
+            "activeCount": "활성 캐릭터 {{count}}명",
+            "emptyHelp": "인물이 여러 명일 때 외형을 따로 지정할 수 있어요.",
+            "edit": "편집",
+            "add": "추가",
+            "description": "현재 작업에만 적용할 캐릭터의 외형과 제외 요소를 정하세요.",
+            "empty": "아직 캐릭터 프롬프트가 없어요.",
+            "addFirst": "첫 캐릭터 추가",
+            "unnamed": "캐릭터 {{index}}",
+            "name": "캐릭터 이름",
+            "namePlaceholder": "캐릭터 이름 · 선택",
+            "disable": "캐릭터 비활성화",
+            "enable": "캐릭터 활성화",
+            "remove": "캐릭터 삭제",
+            "positive": "외형 프롬프트",
+            "positivePlaceholder": "예: 1girl, silver hair, blue eyes",
+            "promptRequired": "활성 캐릭터에는 외형 프롬프트가 필요해요.",
+            "negative": "제외할 요소 · 선택",
+            "negativePlaceholder": "예: alternate costume, different hairstyle",
+            "addAnother": "캐릭터 추가"
         },
         "promptImport": {
             "title": "이미지·JSON에서 프롬프트 불러오기",
@@ -497,6 +528,8 @@
                 "mode": "방식",
                 "model": "모델",
                 "prompt": "프롬프트",
+                "characters": "캐릭터",
+                "characterCount": "{{count}}명 활성",
                 "scenePrompts": "씬별 프롬프트",
                 "count": "생성 수",
                 "countValue": "{{count}}장",
@@ -508,6 +541,7 @@
                 "tokenRequired": "먼저 사용할 NovelAI API 토큰을 등록해 주세요.",
                 "enqueue": "{{count}}장을 대기열에 추가",
                 "promptModuleError": "연결한 프롬프트 모듈을 찾지 못했어요. 프롬프트 단계에서 다시 확인해 주세요.",
+                "characterPromptError": "활성 캐릭터의 외형 프롬프트를 확인해 주세요.",
                 "submitError": "대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.",
                 "footer": "실행 전 설정과 비용을 한 번 더 확인해 주세요."
             },
@@ -659,6 +693,7 @@
                 "model": "모델",
                 "prompt": "프롬프트",
                 "negative": "피할 내용",
+                "characters": "캐릭터 {{count}}명",
                 "resolution": "해상도",
                 "settings": "생성 설정",
                 "account": "계정",
@@ -684,6 +719,7 @@
                 "advanced": "고급 모드에서 열기",
                 "submitError": "대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.",
                 "promptModuleError": "저장된 프롬프트 모듈을 찾지 못했어요. 프롬프트 단계에서 다시 선택해 주세요.",
+                "characterPromptError": "활성 캐릭터의 외형 프롬프트를 확인해 주세요.",
                 "footer": "실행 전 설정과 비용을 한 번 더 확인해 주세요."
             },
             "result": {

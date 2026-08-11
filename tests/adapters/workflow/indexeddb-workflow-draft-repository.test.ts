@@ -76,6 +76,22 @@ describe('IndexedDB workflow draft repository', () => {
         await expect(repository.list()).resolves.toHaveLength(1)
     })
 
+    it('hydrates v1 drafts with an empty draft-owned character collection', async () => {
+        const persistence = new MemoryCasPersistence()
+        const current = createSingleImageDraft({ id: 'draft:v1', now: NOW, seed: 42 })
+        const { characterPrompts: _characters, ...legacyPayload } = current.payload
+        persistence.value = JSON.stringify({
+            schemaVersion: 1,
+            drafts: [{ ...current, schemaVersion: 1, payload: legacyPayload }],
+        })
+        const repository = new IndexedDbWorkflowDraftRepository(persistence)
+
+        await expect(repository.get(current.id)).resolves.toMatchObject({
+            schemaVersion: 2,
+            payload: { characterPrompts: { positionEnabled: false, items: [] } },
+        })
+    })
+
     it('keeps legacy single-image and batch-image revisions in one compatible document', async () => {
         const persistence = new MemoryCasPersistence()
         const repository = new IndexedDbWorkflowDraftRepository(persistence)

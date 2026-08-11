@@ -38,6 +38,7 @@ import {
     type SingleImageGenerationSettings,
     type SingleImageNodeId,
     type SingleImageOutputSettings,
+    type WorkflowCharacterPrompts,
 } from '@/domain/workflow/single-image-draft'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { cn } from '@/lib/utils'
@@ -45,6 +46,7 @@ import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { writeNativeBinaryFile, writeNativeTextFile } from '@/platform/native-file-system'
 import {
     createWorkflowDraftMainBatchPlanner,
+    WorkflowDraftCharacterPromptValidationError,
     WorkflowDraftPromptModuleResolutionError,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
@@ -81,12 +83,13 @@ import {
 } from '@/presentation/activity/activity-status'
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
+import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
 
 type DraftPatch = Omit<ReviseSingleImageDraftInput, 'updatedAt'>
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 type GuidedSingleImageNodeId = SingleImageNodeId | 'result'
 
-// Result is a presentation-only route so persisted schema-v1 drafts remain downgrade-safe.
+// Result is presentation-only; persisted workflow node IDs remain stable across draft migrations.
 const GUIDED_SINGLE_IMAGE_NODE_IDS = [...SINGLE_IMAGE_NODE_IDS, 'result'] as const
 
 interface GuidedResultProjection {
@@ -330,15 +333,19 @@ function ModelStep({
 function PromptStep({
     positive,
     negative,
+    characterPrompts,
     disabled,
     onPositiveChange,
     onNegativeChange,
+    onCharacterPromptsChange,
 }: {
     positive: string
     negative: string
+    characterPrompts: WorkflowCharacterPrompts
     disabled: boolean
     onPositiveChange(value: string): void
     onNegativeChange(value: string): void
+    onCharacterPromptsChange(value: WorkflowCharacterPrompts): void
 }) {
     const { t } = useTranslation()
     return (
@@ -359,6 +366,8 @@ function PromptStep({
                 <PromptModulePicker
                     disabled={disabled}
                     showManageAction={false}
+                    allowInlineManage
+                    createSourceText={positive}
                     onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
                 />
             </div>
@@ -377,6 +386,11 @@ function PromptStep({
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <p>{t('guided.single.prompt.tagHelp', '영문 태그나 영문 자연어를 쓸 수 있어요. 태그 추천의 숫자는 학습량이 아니라 참고용 태그 데이터의 게시물 수예요.')}</p>
             </div>
+            <GuidedCharacterPromptSheet
+                value={characterPrompts}
+                disabled={disabled}
+                onChange={onCharacterPromptsChange}
+            />
             <details className="border-y border-border/70 py-3">
                 <summary className="cursor-pointer text-xs font-medium">
                     {t('guided.single.prompt.negativeTitle', '피하고 싶은 내용 추가 · 선택')}
@@ -385,6 +399,8 @@ function PromptStep({
                     <PromptModulePicker
                         disabled={disabled}
                         showManageAction={false}
+                        allowInlineManage
+                        createSourceText={negative}
                         triggerLabel={t('guided.promptModules.negativeTrigger', '제외 모듈 불러오기')}
                         onSelectLine={line => onNegativeChange(appendPromptModuleLine(negative, line))}
                     />
@@ -692,6 +708,7 @@ function ReviewStep({
     const { t } = useTranslation()
     const submitted = draft.status === 'queued' || draft.status === 'completed'
     const resolution = draft.payload.resolution
+    const enabledCharacters = draft.payload.characterPrompts.items.filter(character => character.enabled)
     return (
         <div className="space-y-6">
             <dl className="grid border-t border-border/70 sm:grid-cols-2 sm:gap-x-6">
@@ -704,6 +721,14 @@ function ReviewStep({
                     {draft.payload.prompt.negative.trim().length > 0 && (
                         <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">
                             {t('guided.single.review.negative', '피할 내용')}: {draft.payload.prompt.negative}
+                        </p>
+                    )}
+                    {enabledCharacters.length > 0 && (
+                        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.review.characters', '캐릭터 {{count}}명', { count: enabledCharacters.length })}: {' '}
+                            {enabledCharacters.map((character, index) => (
+                                character.name?.trim() || t('guided.characters.unnamed', '캐릭터 {{index}}', { index: index + 1 })
+                            )).join(', ')}
                         </p>
                     )}
                 </ReviewRow>
@@ -901,6 +926,7 @@ function ResultStep({
                 sourceJobId: result.sourceJobId ?? null,
                 model: draft.payload.model,
                 prompt: { ...draft.payload.prompt, positive: result.prompt },
+                characterPrompts: draft.payload.characterPrompts,
                 resolution: draft.payload.resolution,
                 generation: draft.payload.generation,
                 output: draft.payload.output,
@@ -1052,6 +1078,10 @@ export function GuidedSingleImage() {
     const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
     const [positive, setPositive] = useState('')
     const [negative, setNegative] = useState('')
+    const [characterPrompts, setCharacterPrompts] = useState<WorkflowCharacterPrompts>({
+        positionEnabled: false,
+        items: [],
+    })
     const [consented, setConsented] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
@@ -1062,6 +1092,10 @@ export function GuidedSingleImage() {
     const promptDirtyRef = useRef(false)
     const positiveRef = useRef('')
     const negativeRef = useRef('')
+    const characterPromptsRef = useRef<WorkflowCharacterPrompts>({
+        positionEnabled: false,
+        items: [],
+    })
     const completionInFlightRef = useRef(false)
     const completionNavigatedRef = useRef(false)
 
@@ -1116,8 +1150,10 @@ export function GuidedSingleImage() {
             setDraft(found)
             positiveRef.current = found.payload.prompt.positive
             negativeRef.current = found.payload.prompt.negative
+            characterPromptsRef.current = found.payload.characterPrompts
             setPositive(found.payload.prompt.positive)
             setNegative(found.payload.prompt.negative)
+            setCharacterPrompts(found.payload.characterPrompts)
             setLoading(false)
         }).catch(() => {
             if (active) {
@@ -1220,18 +1256,23 @@ export function GuidedSingleImage() {
         if (current === null) return null
         const promptChanged = current.payload.prompt.positive !== positiveRef.current
             || current.payload.prompt.negative !== negativeRef.current
+            || JSON.stringify(current.payload.characterPrompts) !== JSON.stringify(characterPromptsRef.current)
         if (!promptChanged && (nextNodeId === undefined || current.currentNodeId === nextNodeId)) return current
         const submittedPositive = positiveRef.current
         const submittedNegative = negativeRef.current
+        const submittedCharacters = characterPromptsRef.current
         const result = await commitMutation(latest => ({
             currentNodeId: nextNodeId,
             ...(nextNodeId === 'review' ? { status: 'review' as const } : {}),
             payload: {
                 ...latest.payload,
                 prompt: { positive: submittedPositive, negative: submittedNegative },
+                characterPrompts: submittedCharacters,
             },
         }))
-        if (positiveRef.current === submittedPositive && negativeRef.current === submittedNegative) {
+        if (positiveRef.current === submittedPositive
+            && negativeRef.current === submittedNegative
+            && characterPromptsRef.current === submittedCharacters) {
             promptDirtyRef.current = false
         }
         return result
@@ -1289,6 +1330,7 @@ export function GuidedSingleImage() {
             payload: {
                 ...draft.payload,
                 prompt: { positive, negative },
+                characterPrompts,
             },
         })
         return draft.status === 'queued' || (draft.status === 'completed' && resultProjection !== null)
@@ -1362,7 +1404,9 @@ export function GuidedSingleImage() {
         } catch (error) {
             setSubmitError(error instanceof WorkflowDraftPromptModuleResolutionError
                 ? t('guided.single.review.promptModuleError', '저장된 프롬프트 모듈을 찾지 못했어요. 프롬프트 단계에서 다시 선택해 주세요.')
-                : t('guided.single.review.submitError', '대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.'))
+                : error instanceof WorkflowDraftCharacterPromptValidationError
+                    ? t('guided.single.review.characterPromptError', '활성 캐릭터의 외형 프롬프트를 확인해 주세요.')
+                    : t('guided.single.review.submitError', '대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.'))
         } finally {
             setSubmitting(false)
         }
@@ -1459,6 +1503,7 @@ export function GuidedSingleImage() {
                 <PromptStep
                     positive={positive}
                     negative={negative}
+                    characterPrompts={characterPrompts}
                     disabled={locked}
                     onPositiveChange={value => {
                         setConsented(false)
@@ -1470,6 +1515,12 @@ export function GuidedSingleImage() {
                         setConsented(false)
                         negativeRef.current = value
                         setNegative(value)
+                        schedulePromptSave()
+                    }}
+                    onCharacterPromptsChange={value => {
+                        setConsented(false)
+                        characterPromptsRef.current = value
+                        setCharacterPrompts(value)
                         schedulePromptSave()
                     }}
                 />

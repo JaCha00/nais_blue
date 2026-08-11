@@ -1,6 +1,8 @@
 export const WORKFLOW_DRAFT_STORE_KEY = 'nais2-workflow-drafts'
-export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 1 as const
-export const BATCH_IMAGE_DRAFT_SCHEMA_VERSION = 1 as const
+export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
+export const BATCH_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
+
+const LEGACY_WORKFLOW_DRAFT_SCHEMA_VERSION = 1 as const
 
 export const SINGLE_IMAGE_NODE_IDS = [
     'model',
@@ -42,6 +44,20 @@ export interface SingleImageOutputSettings {
     readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
 }
 
+export interface WorkflowCharacterPrompt {
+    readonly id: string
+    readonly name?: string
+    readonly prompt: string
+    readonly negative: string
+    readonly enabled: boolean
+    readonly position: { readonly x: number; readonly y: number }
+}
+
+export interface WorkflowCharacterPrompts {
+    readonly positionEnabled: boolean
+    readonly items: readonly WorkflowCharacterPrompt[]
+}
+
 export interface SingleImageDraftPayload {
     readonly mode: 'text-to-image'
     readonly model: string | null
@@ -49,6 +65,7 @@ export interface SingleImageDraftPayload {
         readonly positive: string
         readonly negative: string
     }
+    readonly characterPrompts: WorkflowCharacterPrompts
     readonly resolution: {
         readonly width: number
         readonly height: number
@@ -117,6 +134,7 @@ export type WorkflowDraft = SingleImageDraft | BatchImageDraft
 export type SingleImageDraftIssueCode =
     | 'model-required'
     | 'prompt-required'
+    | 'character-prompt-invalid'
     | 'resolution-required'
     | 'resolution-invalid'
     | 'generation-settings-invalid'
@@ -232,6 +250,38 @@ function isCredentialPolicy(value: unknown): value is CredentialDispatchPolicy {
     return value.kind === 'pinned' && isBoundedId(value.credentialId)
 }
 
+function isWorkflowCharacterPrompt(value: unknown): value is WorkflowCharacterPrompt {
+    if (!isRecord(value) || !isRecord(value.position)) return false
+    return isBoundedId(value.id)
+        && (value.name === undefined || (typeof value.name === 'string' && value.name.length <= 256))
+        && typeof value.prompt === 'string'
+        && typeof value.negative === 'string'
+        && typeof value.enabled === 'boolean'
+        && typeof value.position.x === 'number'
+        && Number.isFinite(value.position.x)
+        && value.position.x >= 0
+        && value.position.x <= 1
+        && typeof value.position.y === 'number'
+        && Number.isFinite(value.position.y)
+        && value.position.y >= 0
+        && value.position.y <= 1
+}
+
+function isWorkflowCharacterPrompts(value: unknown): value is WorkflowCharacterPrompts {
+    if (!isRecord(value)
+        || typeof value.positionEnabled !== 'boolean'
+        || !Array.isArray(value.items)
+        || !value.items.every(isWorkflowCharacterPrompt)) return false
+    return new Set(value.items.map(character => character.id)).size === value.items.length
+}
+
+function hasUsablePromptText(value: string): boolean {
+    return value.split(/\r?\n/).some(line => {
+        const trimmed = line.trim()
+        return trimmed.length > 0 && !trimmed.startsWith('#')
+    })
+}
+
 function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDraftPayload {
     const output: SingleImageOutputSettings = {
         autoSave: input.output?.autoSave ?? true,
@@ -247,6 +297,10 @@ function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDr
         mode: 'text-to-image',
         model: input.model ?? null,
         prompt: Object.freeze({ positive: '', negative: '' }),
+        characterPrompts: Object.freeze({
+            positionEnabled: false,
+            items: Object.freeze([]),
+        }),
         resolution: null,
         generation: Object.freeze({
             steps: 28,
@@ -312,6 +366,9 @@ export function listSingleImageDraftIssues(draft: SingleImageDraft): SingleImage
     const issues: SingleImageDraftIssueCode[] = []
     if (draft.payload.model === null || draft.payload.model.trim().length === 0) issues.push('model-required')
     if (draft.payload.prompt.positive.trim().length === 0) issues.push('prompt-required')
+    if (draft.payload.characterPrompts.items.some(character => (
+        character.enabled && !hasUsablePromptText(character.prompt)
+    ))) issues.push('character-prompt-invalid')
     if (draft.payload.resolution === null) issues.push('resolution-required')
     else if (!isResolution(draft.payload.resolution)) issues.push('resolution-invalid')
     if (!isGenerationSettings(draft.payload.generation)) issues.push('generation-settings-invalid')
@@ -376,6 +433,7 @@ function isImagePayload(value: unknown): value is SingleImageDraftPayload {
         && isRecord(value.prompt)
         && typeof value.prompt.positive === 'string'
         && typeof value.prompt.negative === 'string'
+        && isWorkflowCharacterPrompts(value.characterPrompts)
         && (value.resolution === null || isResolution(value.resolution))
         && isGenerationSettings(value.generation)
         && isCredentialPolicy(value.credentialPolicy)
@@ -478,4 +536,25 @@ export function isBatchImageDraft(value: unknown): value is BatchImageDraft {
 
 export function isWorkflowDraft(value: unknown): value is WorkflowDraft {
     return isSingleImageDraft(value) || isBatchImageDraft(value)
+}
+
+/** Adds the v2 draft-owned character collection without reading mutable expert stores. */
+export function migrateWorkflowDraft(value: unknown): unknown {
+    if (!isRecord(value)
+        || value.schemaVersion !== LEGACY_WORKFLOW_DRAFT_SCHEMA_VERSION
+        || (value.kind !== 'single-image' && value.kind !== 'batch-image')
+        || !isRecord(value.payload)) return value
+    return {
+        ...value,
+        schemaVersion: value.kind === 'single-image'
+            ? SINGLE_IMAGE_DRAFT_SCHEMA_VERSION
+            : BATCH_IMAGE_DRAFT_SCHEMA_VERSION,
+        payload: {
+            ...value.payload,
+            characterPrompts: {
+                positionEnabled: false,
+                items: [],
+            },
+        },
+    }
 }

@@ -113,14 +113,34 @@ describe('Guided single-image production contract', () => {
     it('keeps all Guided single-image copy aligned across locales', () => {
         expect(leafKeys(ko.guided.single)).toEqual(leafKeys(en.guided.single))
         expect(leafKeys(ja.guided.single)).toEqual(leafKeys(en.guided.single))
+        expect(leafKeys(ko.guided.characters)).toEqual(leafKeys(en.guided.characters))
+        expect(leafKeys(ja.guided.characters)).toEqual(leafKeys(en.guided.characters))
+    })
+
+    it('keeps character prompts inside each Guided draft and behind one compact sheet', async () => {
+        const [single, batch, sheet] = await Promise.all([
+            source('src/presentation/workflow/GuidedSingleImage.tsx'),
+            source('src/presentation/workflow/GuidedBatchImages.tsx'),
+            source('src/presentation/workflow/GuidedCharacterPromptSheet.tsx'),
+        ])
+
+        expect(single).toContain('<GuidedCharacterPromptSheet')
+        expect(single).toContain('characterPromptsRef.current = value')
+        expect(batch).toContain('<GuidedCharacterPromptSheet')
+        expect(batch).toContain('editableRef.current = { ...editableRef.current, characterPrompts: value }')
+        expect(sheet).toContain('side="right"')
+        expect(sheet).toContain('<details className="mt-4 border-t border-border/55 pt-3">')
+        expect(sheet).not.toContain('DndContext')
     })
 
     it('reuses one foldered prompt-module picker across single, batch, and scene editors', async () => {
-        const [single, advanced, scene, picker] = await Promise.all([
+        const [single, advanced, scene, picker, creator, editor] = await Promise.all([
             source('src/presentation/workflow/GuidedSingleImage.tsx'),
             source('src/components/prompt/PromptEditorSurface.tsx'),
             source('src/components/scene/ScenePromptEditor.tsx'),
             source('src/components/fragments/PromptModulePicker.tsx'),
+            source('src/components/fragments/PromptModuleCreator.tsx'),
+            source('src/components/fragments/PromptModuleContentEditor.tsx'),
         ])
 
         expect(single.match(/<PromptModulePicker/g)).toHaveLength(2)
@@ -128,8 +148,15 @@ describe('Guided single-image production contract', () => {
         expect(scene).toContain('<PromptModulePicker')
         expect(picker).toContain('useFragmentStore(state => state.files)')
         expect(picker).toContain('onSelectLine(line)')
+        expect(picker).toContain('<PromptModuleCreator')
+        expect(picker).toContain('<PromptModuleContentEditor')
         expect(picker).not.toContain('addFile(')
         expect(picker).not.toContain('updateFile(')
+        expect(creator).toContain('setContent(promptModuleSourceLine(sourceText))')
+        expect(creator).toContain('}, [open, sourceText, suggestedName])')
+        expect(editor).toContain('updateFile(file.id, { content: lines })')
+        expect(editor).toContain('onSaved?.(lines)')
+        expect(editor).not.toContain('normalizeFragmentPath')
     })
 
     it('keeps prompt-module copy aligned across locales', () => {

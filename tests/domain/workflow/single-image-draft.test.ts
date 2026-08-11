@@ -23,7 +23,7 @@ describe('single-image workflow draft', () => {
         const draft = createSingleImageDraft({ id: 'draft:1', now: NOW, seed: 42 })
 
         expect(draft).toMatchObject({
-            schemaVersion: 1,
+            schemaVersion: 2,
             kind: 'single-image',
             revision: 0,
             currentNodeId: 'model',
@@ -37,6 +37,7 @@ describe('single-image workflow draft', () => {
                     seed: 42,
                 },
                 credentialPolicy: { kind: 'auto' },
+                characterPrompts: { positionEnabled: false, items: [] },
                 output: {
                     directory: 'NAIS_Output',
                     imageFormat: 'png',
@@ -84,6 +85,33 @@ describe('single-image workflow draft', () => {
         expect(() => reviseSingleImageDraft(draft, {
             updatedAt: '2026-08-07T23:59:59.000Z',
         })).toThrow('updatedAt must be monotonic')
+    })
+
+    it('persists incomplete character editing but blocks an enabled blank character', () => {
+        const created = createSingleImageDraft({ id: 'draft:characters', now: NOW, seed: 42 })
+        const draft = reviseSingleImageDraft(created, {
+            updatedAt: LATER,
+            payload: {
+                ...created.payload,
+                model: 'nai-diffusion-4-5-full',
+                prompt: { positive: 'portrait', negative: '' },
+                resolution: { width: 832, height: 1216 },
+                characterPrompts: {
+                    positionEnabled: false,
+                    items: [{
+                        id: 'character:1',
+                        prompt: '# comment only',
+                        negative: '',
+                        enabled: true,
+                        position: { x: 0.5, y: 0.5 },
+                    }],
+                },
+            },
+        })
+
+        expect(isSingleImageDraft(draft)).toBe(true)
+        expect(listSingleImageDraftIssues(draft)).toContain('character-prompt-invalid')
+        expect(isSingleImageDraftReady(draft)).toBe(false)
     })
 })
 

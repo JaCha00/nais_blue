@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FolderPlus, LoaderCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
+    FragmentSequenceMutationLockedError,
     getFragmentCanonicalPath,
     normalizeFragmentPath,
     useFragmentStore,
@@ -24,6 +25,9 @@ export interface PromptModuleCreatorProps {
     suggestedName?: string
     triggerLabel?: string
     disabled?: boolean
+    open?: boolean
+    onOpenChange?(open: boolean): void
+    hideTrigger?: boolean
     onCreated?(canonicalPath: string): void
 }
 
@@ -52,25 +56,33 @@ export function PromptModuleCreator({
     suggestedName,
     triggerLabel,
     disabled = false,
+    open: controlledOpen,
+    onOpenChange,
+    hideTrigger = false,
     onCreated,
 }: PromptModuleCreatorProps) {
     const { t } = useTranslation()
     const addFile = useFragmentStore(state => state.addFile)
-    const [open, setOpen] = useState(false)
+    const [internalOpen, setInternalOpen] = useState(false)
     const [name, setName] = useState('')
     const [folder, setFolder] = useState('')
     const [content, setContent] = useState('')
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
+    const open = controlledOpen ?? internalOpen
     const handleOpenChange = (nextOpen: boolean) => {
-        setOpen(nextOpen)
-        if (!nextOpen) return
+        setInternalOpen(nextOpen)
+        onOpenChange?.(nextOpen)
+    }
+
+    useEffect(() => {
+        if (!open) return
         setName(safeSuggestedName(suggestedName))
         setFolder('')
         setContent(promptModuleSourceLine(sourceText))
         setError(null)
-    }
+    }, [open, sourceText, suggestedName])
 
     const save = async () => {
         const normalizedName = name.trim()
@@ -98,9 +110,11 @@ export function PromptModuleCreator({
         try {
             const created = await addFile(normalizedName, normalizedFolder, lines)
             onCreated?.(getFragmentCanonicalPath(created))
-            setOpen(false)
-        } catch {
-            setError(t('guided.promptModules.create.failed', '모듈을 저장하지 못했어요. 다시 시도해 주세요.'))
+            handleOpenChange(false)
+        } catch (saveError) {
+            setError(saveError instanceof FragmentSequenceMutationLockedError
+                ? t('guided.promptModules.edit.locked', '순차 모듈을 사용하는 작업이 끝난 뒤 다시 편집해 주세요.')
+                : t('guided.promptModules.create.failed', '모듈을 저장하지 못했어요. 다시 시도해 주세요.'))
         } finally {
             setSaving(false)
         }
@@ -108,12 +122,14 @@ export function PromptModuleCreator({
 
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" disabled={disabled} className="gap-2 rounded-none border-b border-border/70 px-1 text-sm text-muted-foreground hover:border-primary hover:bg-primary/[0.045] hover:text-foreground">
-                    <FolderPlus className="h-4 w-4" aria-hidden="true" />
-                    {triggerLabel ?? t('guided.promptModules.create.trigger', '새 모듈 만들기')}
-                </Button>
-            </DialogTrigger>
+            {!hideTrigger && (
+                <DialogTrigger asChild>
+                    <Button type="button" variant="ghost" size="sm" disabled={disabled} className="gap-2 rounded-none border-b border-border/70 px-1 text-sm text-muted-foreground hover:border-primary hover:bg-primary/[0.045] hover:text-foreground">
+                        <FolderPlus className="h-4 w-4" aria-hidden="true" />
+                        {triggerLabel ?? t('guided.promptModules.create.trigger', '새 모듈 만들기')}
+                    </Button>
+                </DialogTrigger>
+            )}
             <DialogContent className="max-w-xl p-4 sm:p-6">
                 <DialogHeader className="pr-10 text-left">
                     <DialogTitle className="text-xl">{t('guided.promptModules.create.title', '프롬프트 모듈 만들기')}</DialogTitle>
@@ -137,7 +153,7 @@ export function PromptModuleCreator({
                 </div>
                 {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
                 <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" onClick={() => setOpen(false)}>{t('guided.promptModules.create.cancel', '취소')}</Button>
+                    <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>{t('guided.promptModules.create.cancel', '취소')}</Button>
                     <Button type="button" onClick={() => void save()} disabled={saving}>
                         {saving && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                         {t('guided.promptModules.create.save', '모듈 저장')}

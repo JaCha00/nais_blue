@@ -211,7 +211,38 @@
                 "failed": "We couldn't save the module. Please try again.",
                 "cancel": "Cancel",
                 "save": "Save module"
+            },
+            "edit": {
+                "trigger": "Edit content",
+                "title": "Edit prompt module",
+                "loadFailed": "We couldn't load the module content.",
+                "locked": "Try again after the job using this sequential module finishes.",
+                "failed": "We couldn't save the module. Please try again.",
+                "sharedNotice": "This change also applies to other tasks the next time they use this module.",
+                "save": "Save changes"
             }
+        },
+        "characters": {
+            "title": "Character prompts",
+            "activeCount": "{{count}} active characters",
+            "emptyHelp": "Give each person a separate appearance when an image has multiple characters.",
+            "edit": "Edit",
+            "add": "Add",
+            "description": "Set the appearance and exclusions for characters used only in this task.",
+            "empty": "There are no character prompts yet.",
+            "addFirst": "Add first character",
+            "unnamed": "Character {{index}}",
+            "name": "Character name",
+            "namePlaceholder": "Character name · Optional",
+            "disable": "Disable character",
+            "enable": "Enable character",
+            "remove": "Remove character",
+            "positive": "Appearance prompt",
+            "positivePlaceholder": "For example: 1girl, silver hair, blue eyes",
+            "promptRequired": "An active character needs an appearance prompt.",
+            "negative": "Exclude · Optional",
+            "negativePlaceholder": "For example: alternate costume, different hairstyle",
+            "addAnother": "Add character"
         },
         "promptImport": {
             "title": "Load a prompt from an image or JSON",
@@ -489,6 +520,8 @@
                 "mode": "Method",
                 "model": "Model",
                 "prompt": "Prompt",
+                "characters": "Characters",
+                "characterCount": "{{count}} active",
                 "scenePrompts": "Prompts by scene",
                 "count": "Image count",
                 "countValue": "{{count}} images",
@@ -500,6 +533,7 @@
                 "tokenRequired": "Register the NovelAI API token you want to use first.",
                 "enqueue": "Add {{count}} images to the queue",
                 "promptModuleError": "A connected prompt module is missing. Check it again in the prompt step.",
+                "characterPromptError": "Check the appearance prompt for every active character.",
                 "submitError": "We couldn't add the batch. Check your account and cost settings.",
                 "footer": "Check the settings and cost once more before running."
             },
@@ -651,6 +685,7 @@
                 "model": "Model",
                 "prompt": "Prompt",
                 "negative": "Content to avoid",
+                "characters": "{{count}} characters",
                 "resolution": "Resolution",
                 "settings": "Generation settings",
                 "account": "Account",
@@ -676,6 +711,7 @@
                 "advanced": "Open in Advanced mode",
                 "submitError": "We couldn't add this to the queue. Check the account and cost settings.",
                 "promptModuleError": "A saved prompt module is no longer available. Return to the prompt step and choose it again.",
+                "characterPromptError": "Check the appearance prompt for every active character.",
                 "footer": "Please check the settings and cost once more before execution."
             },
             "result": {

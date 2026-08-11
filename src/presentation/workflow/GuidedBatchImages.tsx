@@ -47,6 +47,7 @@ import {
     type ReviseBatchImageDraftInput,
     type SingleImageGenerationSettings,
     type SingleImageOutputSettings,
+    type WorkflowCharacterPrompts,
 } from '@/domain/workflow/single-image-draft'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { cn } from '@/lib/utils'
@@ -60,6 +61,7 @@ import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-stor
 import { getFragmentCanonicalPath, useFragmentStore } from '@/stores/fragment-store'
 import {
     createWorkflowDraftMainBatchPlanner,
+    WorkflowDraftCharacterPromptValidationError,
     WorkflowDraftPromptModuleResolutionError,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
 import { listGuidedBatchResultJobs } from './guided-batch-results'
@@ -69,6 +71,7 @@ import {
 } from './guided-draft-events'
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
+import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
 
 export type GuidedBatchOptionId = 'sameSettings' | 'variations' | 'scenes' | 'queue'
 
@@ -350,13 +353,15 @@ function ModuleReferencePicker({ order, disabled, onSelect }: {
     )
 }
 
-function PromptStep({ draft, positive, negative, disabled, onPositive, onNegative, onOrder }: {
+function PromptStep({ draft, positive, negative, characterPrompts, disabled, onPositive, onNegative, onCharacterPrompts, onOrder }: {
     draft: BatchImageDraft
     positive: string
     negative: string
+    characterPrompts: WorkflowCharacterPrompts
     disabled: boolean
     onPositive(value: string): void
     onNegative(value: string): void
+    onCharacterPrompts(value: WorkflowCharacterPrompts): void
     onOrder(value: 'random' | 'sequential'): void
 }) {
     const { t } = useTranslation()
@@ -390,6 +395,8 @@ function PromptStep({ draft, positive, negative, disabled, onPositive, onNegativ
                     <PromptModulePicker
                         disabled={disabled}
                         showManageAction={false}
+                        allowInlineManage
+                        createSourceText={positive}
                         triggerLabel={t('guided.batch.prompt.fixedModule', '고정 문구 한 줄 불러오기')}
                         onSelectLine={line => onPositive(appendPromptModuleLine(positive, line))}
                     />
@@ -444,10 +451,15 @@ function PromptStep({ draft, positive, negative, disabled, onPositive, onNegativ
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <p>{t('guided.batch.prompt.help', '영문 태그나 영문 문장을 쓸 수 있어요. 모듈 연결 표시는 실행 직전에 엄격하게 확인합니다.')}</p>
             </div>
+            <GuidedCharacterPromptSheet
+                value={characterPrompts}
+                disabled={disabled}
+                onChange={onCharacterPrompts}
+            />
             <details className="border-y border-border/70 py-3">
                 <summary className="cursor-pointer text-sm font-medium">{t('guided.batch.prompt.negativeTitle', '공통으로 피할 내용 · 선택')}</summary>
                 <div className="mt-3 flex justify-end">
-                    <PromptModulePicker disabled={disabled} showManageAction={false} triggerLabel={t('guided.batch.prompt.negativeModule', '제외 모듈 불러오기')} onSelectLine={line => onNegative(appendPromptModuleLine(negative, line))} />
+                    <PromptModulePicker disabled={disabled} showManageAction={false} allowInlineManage createSourceText={negative} triggerLabel={t('guided.batch.prompt.negativeModule', '제외 모듈 불러오기')} onSelectLine={line => onNegative(appendPromptModuleLine(negative, line))} />
                 </div>
                 <Textarea value={negative} onChange={event => onNegative(event.target.value)} disabled={disabled} className="mt-3 min-h-28 bg-card text-base" />
             </details>
@@ -681,6 +693,13 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
         { label: t('guided.batch.review.mode', '방식'), value: draft.payload.batchMode, node: 'model' as const },
         { label: t('guided.batch.review.model', '모델'), value: MODEL_OPTIONS.find(item => item.id === draft.payload.model)?.name ?? '—', node: 'model' as const },
         { label: t('guided.batch.review.prompt', '프롬프트'), value: draft.payload.prompt.positive || t('guided.batch.review.scenePrompts', '씬별 프롬프트'), node: 'prompt' as const },
+        ...(draft.payload.characterPrompts.items.some(character => character.enabled) ? [{
+            label: t('guided.batch.review.characters', '캐릭터'),
+            value: t('guided.batch.review.characterCount', '{{count}}명 활성', {
+                count: draft.payload.characterPrompts.items.filter(character => character.enabled).length,
+            }),
+            node: 'prompt' as const,
+        }] : []),
         { label: t('guided.batch.review.count', '생성 수'), value: t('guided.batch.review.countValue', '{{count}}장', { count: requestedCount(draft) }), node: draft.payload.batchMode === 'scenes' ? 'scenes' as const : 'count' as const },
         { label: t('guided.batch.review.settings', '설정'), value: `${draft.payload.resolution?.width ?? '—'} × ${draft.payload.resolution?.height ?? '—'} · ${draft.payload.generation.steps} Steps`, node: 'settings' as const },
         { label: t('guided.batch.review.output', '저장'), value: `${draft.payload.output.directory} · ${draft.payload.output.imageFormat.toUpperCase()}`, node: 'settings' as const },
@@ -1087,6 +1106,10 @@ export function GuidedBatchImages() {
     const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
     const [positive, setPositive] = useState('')
     const [negative, setNegative] = useState('')
+    const [characterPrompts, setCharacterPrompts] = useState<WorkflowCharacterPrompts>({
+        positionEnabled: false,
+        items: [],
+    })
     const [scenes, setScenes] = useState<readonly BatchImageScene[]>([])
     const [consented, setConsented] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -1099,7 +1122,17 @@ export function GuidedBatchImages() {
     const draftRef = useRef<BatchImageDraft | null>(null)
     const saveChainRef = useRef<Promise<void>>(Promise.resolve())
     const editableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const editableRef = useRef({ positive: '', negative: '', scenes: [] as readonly BatchImageScene[] })
+    const editableRef = useRef<{
+        positive: string
+        negative: string
+        scenes: readonly BatchImageScene[]
+        characterPrompts: WorkflowCharacterPrompts
+    }>({
+        positive: '',
+        negative: '',
+        scenes: [],
+        characterPrompts: { positionEnabled: false, items: [] },
+    })
     const completingRef = useRef(false)
 
     const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
@@ -1149,12 +1182,14 @@ export function GuidedBatchImages() {
         const values = editableRef.current
         if (current.payload.prompt.positive === values.positive
             && current.payload.prompt.negative === values.negative
-            && JSON.stringify(current.payload.scenes) === JSON.stringify(values.scenes)) return current
+            && JSON.stringify(current.payload.scenes) === JSON.stringify(values.scenes)
+            && JSON.stringify(current.payload.characterPrompts) === JSON.stringify(values.characterPrompts)) return current
         return commitMutation(latest => ({
             payload: {
                 ...latest.payload,
                 prompt: { positive: values.positive, negative: values.negative },
                 scenes: values.scenes,
+                characterPrompts: values.characterPrompts,
             },
         }))
     }, [commitMutation])
@@ -1175,10 +1210,16 @@ export function GuidedBatchImages() {
             if (!isBatchImageDraft(found)) { navigate('/guided-preview', { replace: true }); return }
             draftRef.current = found
             setDraft(found)
-            editableRef.current = { positive: found.payload.prompt.positive, negative: found.payload.prompt.negative, scenes: found.payload.scenes }
+            editableRef.current = {
+                positive: found.payload.prompt.positive,
+                negative: found.payload.prompt.negative,
+                scenes: found.payload.scenes,
+                characterPrompts: found.payload.characterPrompts,
+            }
             setPositive(found.payload.prompt.positive)
             setNegative(found.payload.prompt.negative)
             setScenes(found.payload.scenes)
+            setCharacterPrompts(found.payload.characterPrompts)
             setLoading(false)
         }).catch(() => { if (active) { setLoadError(true); setLoading(false) } })
         return () => { active = false }
@@ -1264,7 +1305,7 @@ export function GuidedBatchImages() {
         if (target === 'settings') return draft.payload.batchMode === 'scenes' ? sceneReady : positive.trim().length > 0 && total > 0
         if (target === 'review') return isBatchImageDraftReady({
             ...draft,
-            payload: { ...draft.payload, prompt: { positive, negative }, scenes },
+            payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts },
         })
         return draft.lastSnapshotId !== null
     }
@@ -1312,7 +1353,9 @@ export function GuidedBatchImages() {
         } catch (error) {
             setSubmitError(error instanceof WorkflowDraftPromptModuleResolutionError
                 ? t('guided.batch.review.promptModuleError', '연결한 프롬프트 모듈을 찾지 못했어요. 프롬프트 단계에서 다시 확인해 주세요.')
-                : t('guided.batch.review.submitError', '대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.'))
+                : error instanceof WorkflowDraftCharacterPromptValidationError
+                    ? t('guided.batch.review.characterPromptError', '활성 캐릭터의 외형 프롬프트를 확인해 주세요.')
+                    : t('guided.batch.review.submitError', '대기열에 추가하지 못했어요. 계정과 비용 설정을 확인해 주세요.'))
         } finally { setSubmitting(false) }
     }
     const reviseResult = async (target: BatchImageNodeId, newSeed: boolean) => {
@@ -1342,11 +1385,11 @@ export function GuidedBatchImages() {
     return (
         <BatchStepFrame draft={draft} nodeId={nodeId} saveStatus={saveStatus} title={copy[0]} description={copy[1]} canVisit={canVisit} onVisit={target => void goTo(target)} onBack={back} footer={footer}>
             {nodeId === 'model' && <ModelStep draft={draft} disabled={locked} onSelect={model => { void patchPayload({ model }).catch(() => undefined) }} />}
-            {nodeId === 'prompt' && <PromptStep draft={draft} positive={positive} negative={negative} disabled={locked} onPositive={value => { editableRef.current = { ...editableRef.current, positive: value }; setPositive(value); scheduleEditableSave() }} onNegative={value => { editableRef.current = { ...editableRef.current, negative: value }; setNegative(value); scheduleEditableSave() }} onOrder={variationOrder => { void patchPayload({ variationOrder }).catch(() => undefined) }} />}
+            {nodeId === 'prompt' && <PromptStep draft={draft} positive={positive} negative={negative} characterPrompts={characterPrompts} disabled={locked} onPositive={value => { editableRef.current = { ...editableRef.current, positive: value }; setPositive(value); scheduleEditableSave() }} onNegative={value => { editableRef.current = { ...editableRef.current, negative: value }; setNegative(value); scheduleEditableSave() }} onCharacterPrompts={value => { editableRef.current = { ...editableRef.current, characterPrompts: value }; setCharacterPrompts(value); scheduleEditableSave() }} onOrder={variationOrder => { void patchPayload({ variationOrder }).catch(() => undefined) }} />}
             {nodeId === 'count' && <CountStep count={draft.payload.count} disabled={locked} onChange={count => { void patchPayload({ count }).catch(() => undefined) }} />}
             {nodeId === 'scenes' && <ScenesStep scenes={scenes} disabled={locked} onChange={value => { editableRef.current = { ...editableRef.current, scenes: value }; setScenes(value); scheduleEditableSave() }} />}
             {nodeId === 'settings' && <SettingsStep draft={draft} disabled={locked} imageCount={total} estimatedAnlas={estimatedAnlas} pricingBasis={activeCredentialsAreOpus ? 'all-active-opus' : 'paid'} onResolution={(width, height) => { setConsented(false); void patchPayload({ resolution: { width, height } }).catch(() => undefined) }} onGeneration={patch => { setConsented(false); void commitMutation(current => ({ payload: { ...current.payload, generation: { ...current.payload.generation, ...patch } } })).catch(() => undefined) }} onOutput={patch => { void commitMutation(current => ({ payload: { ...current.payload, output: { ...current.payload.output, ...patch } } })).catch(() => undefined) }} />}
-            {nodeId === 'review' && <ReviewStep draft={{ ...draft, payload: { ...draft.payload, prompt: { positive, negative }, scenes } }} activeTokenCount={activeTokenCount} estimatedAnlas={estimatedAnlas} consented={consented} submitting={submitting} submitError={submitError} onConsent={setConsented} onEdit={target => void goTo(target)} onSubmit={() => void submit()} />}
+            {nodeId === 'review' && <ReviewStep draft={{ ...draft, payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts } }} activeTokenCount={activeTokenCount} estimatedAnlas={estimatedAnlas} consented={consented} submitting={submitting} submitError={submitError} onConsent={setConsented} onEdit={target => void goTo(target)} onSubmit={() => void submit()} />}
             {nodeId === 'result' && <ResultGallery draft={draft} summary={summary} jobs={resultJobs} hasMore={resultHasMore} loadingMore={resultLoading} onLoadMore={() => setResultLimit(current => current + 48)} onEdit={() => void reviseResult('prompt', false)} onRetry={() => void reviseResult('review', true)} />}
         </BatchStepFrame>
     )

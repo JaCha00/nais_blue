@@ -211,7 +211,38 @@
                 "failed": "モジュールを保存できませんでした。もう一度お試しください。",
                 "cancel": "キャンセル",
                 "save": "モジュールを保存"
+            },
+            "edit": {
+                "trigger": "内容を編集",
+                "title": "プロンプトモジュールを編集",
+                "loadFailed": "モジュールの内容を読み込めませんでした。",
+                "locked": "順次モジュールを使用中の作業が終わってから、もう一度編集してください。",
+                "failed": "モジュールを保存できませんでした。もう一度お試しください。",
+                "sharedNotice": "この変更は、次回このモジュールを使う他の作業にも適用されます。",
+                "save": "変更を保存"
             }
+        },
+        "characters": {
+            "title": "キャラクタープロンプト",
+            "activeCount": "有効なキャラクター {{count}}人",
+            "emptyHelp": "複数の人物がいる画像で、それぞれの外見を指定できます。",
+            "edit": "編集",
+            "add": "追加",
+            "description": "現在の作業だけに適用するキャラクターの外見と除外要素を設定します。",
+            "empty": "キャラクタープロンプトはまだありません。",
+            "addFirst": "最初のキャラクターを追加",
+            "unnamed": "キャラクター {{index}}",
+            "name": "キャラクター名",
+            "namePlaceholder": "キャラクター名 · 任意",
+            "disable": "キャラクターを無効化",
+            "enable": "キャラクターを有効化",
+            "remove": "キャラクターを削除",
+            "positive": "外見プロンプト",
+            "positivePlaceholder": "例: 1girl, silver hair, blue eyes",
+            "promptRequired": "有効なキャラクターには外見プロンプトが必要です。",
+            "negative": "除外要素 · 任意",
+            "negativePlaceholder": "例: alternate costume, different hairstyle",
+            "addAnother": "キャラクターを追加"
         },
         "promptImport": {
             "title": "画像・JSONからプロンプトを読み込む",
@@ -489,6 +520,8 @@
                 "mode": "方式",
                 "model": "モデル",
                 "prompt": "プロンプト",
+                "characters": "キャラクター",
+                "characterCount": "{{count}}人有効",
                 "scenePrompts": "シーン別プロンプト",
                 "count": "生成枚数",
                 "countValue": "{{count}}枚",
@@ -500,6 +533,7 @@
                 "tokenRequired": "先に使用するNovelAI APIトークンを登録してください。",
                 "enqueue": "{{count}}枚をキューへ追加",
                 "promptModuleError": "接続したプロンプトモジュールが見つかりません。プロンプトのステップで確認してください。",
+                "characterPromptError": "有効なキャラクターの外見プロンプトを確認してください。",
                 "submitError": "キューへ追加できませんでした。アカウントと料金設定を確認してください。",
                 "footer": "実行前に設定と料金をもう一度確認してください。"
             },
@@ -651,6 +685,7 @@
                 "model": "モデル",
                 "prompt": "プロンプト",
                 "negative": "避けたい内容",
+                "characters": "キャラクター {{count}}人",
                 "resolution": "解像度",
                 "settings": "生成設定",
                 "account": "アカウント",
@@ -676,6 +711,7 @@
                 "advanced": "上級モードで開く",
                 "submitError": "キューに追加できませんでした。アカウントとコスト設定をご確認ください。",
                 "promptModuleError": "保存済みのプロンプトモジュールが見つかりません。プロンプト手順に戻って選び直してください。",
+                "characterPromptError": "有効なキャラクターの外見プロンプトを確認してください。",
                 "footer": "実行前に設定とコストをもう一度ご確認ください。"
             },
             "result": {

@@ -309,6 +309,8 @@ function FourSlotPromptEditor({ values, onChange }: {
             <div className="flex min-h-12 items-center justify-end border-b border-border/45 px-2">
                 <PromptModulePicker
                     showManageAction={false}
+                    allowInlineManage
+                    createSourceText={values[active]}
                     onSelectLine={line => onChange(active, appendPromptModuleLine(values[active], line))}
                 />
             </div>

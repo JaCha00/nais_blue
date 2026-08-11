@@ -8,6 +8,7 @@ import {
     SINGLE_IMAGE_DRAFT_SCHEMA_VERSION,
     WORKFLOW_DRAFT_STORE_KEY,
     isWorkflowDraft,
+    migrateWorkflowDraft,
     type WorkflowDraft,
 } from '@/domain/workflow/single-image-draft'
 import {
@@ -44,17 +45,20 @@ function parseDocument(serialized: string | null): WorkflowDraftDocument {
         throw new TypeError('Workflow draft repository document is invalid')
     }
     const value = parsed as { schemaVersion?: unknown; drafts?: unknown }
+    const drafts = Array.isArray(value.drafts)
+        ? value.drafts.map(migrateWorkflowDraft)
+        : []
     if (value.schemaVersion !== WORKFLOW_DRAFT_DOCUMENT_SCHEMA_VERSION
         || !Array.isArray(value.drafts)
-        || !value.drafts.every(isWorkflowDraft)
-        || new Set(value.drafts.map(draft => draft.id)).size !== value.drafts.length) {
+        || !drafts.every(isWorkflowDraft)
+        || new Set(drafts.map(draft => draft.id)).size !== drafts.length) {
         throw new TypeError(
             `Unsupported workflow draft repository schema; single-image v${SINGLE_IMAGE_DRAFT_SCHEMA_VERSION} or batch-image v${BATCH_IMAGE_DRAFT_SCHEMA_VERSION} required`,
         )
     }
     return {
         schemaVersion: WORKFLOW_DRAFT_DOCUMENT_SCHEMA_VERSION,
-        drafts: [...value.drafts],
+        drafts: [...drafts],
     }
 }
 

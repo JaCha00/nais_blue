@@ -67,6 +67,7 @@ describe('Guided prompt-module handoff boundary', () => {
             expect(pickers, path).toHaveLength(expectedCount)
             for (const picker of pickers) {
                 expect(picker, path).toContain('showManageAction={false}')
+                expect(picker, path).toContain('allowInlineManage')
             }
         }
     })

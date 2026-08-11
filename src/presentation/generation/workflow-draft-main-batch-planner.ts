@@ -42,6 +42,13 @@ export class WorkflowDraftPromptModuleResolutionError extends Error {
     }
 }
 
+export class WorkflowDraftCharacterPromptValidationError extends Error {
+    constructor() {
+        super('An enabled Guided character prompt resolved to empty text')
+        this.name = 'WorkflowDraftCharacterPromptValidationError'
+    }
+}
+
 function requestedCount(draft: MainWorkflowDraft): number {
     if (draft.kind === 'single-image') return 1
     if (draft.payload.batchMode !== 'scenes') return draft.payload.count
@@ -154,9 +161,26 @@ export function createWorkflowDraftMainBatchPlanner(
                 })
                 let positive: string
                 let negative: string
+                const characterPrompts: NonNullable<GenerationParams['characterPrompts']> = []
                 try {
                     positive = (await fragments.process(removeComments(input.positive))).trim()
                     negative = (await fragments.process(removeComments(input.negative))).trim()
+                    for (const character of captured.payload.characterPrompts.items) {
+                        if (!character.enabled) continue
+                        const prompt = (await fragments.process(removeComments(character.prompt))).trim()
+                        const characterNegative = (
+                            await fragments.process(removeComments(character.negative))
+                        ).trim()
+                        if (!prompt) throw new WorkflowDraftCharacterPromptValidationError()
+                        characterPrompts.push({
+                            stableId: character.id,
+                            ...(character.name === undefined ? {} : { name: character.name }),
+                            prompt,
+                            negative: characterNegative,
+                            enabled: true,
+                            position: { ...character.position },
+                        })
+                    }
                 } catch (error) {
                     fragments.discard()
                     throw error
@@ -198,8 +222,8 @@ export function createWorkflowDraftMainBatchPlanner(
                 mask: null,
                 characterImages: [],
                 vibeImages: [],
-                characterPrompts: [],
-                characterPositionEnabled: false,
+                characterPrompts,
+                characterPositionEnabled: captured.payload.characterPrompts.positionEnabled,
                 modulePromptsActive: false,
                 moduleCharacterPromptsPresent: false,
                 imageFormat: output.imageFormat,
