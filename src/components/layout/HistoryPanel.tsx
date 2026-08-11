@@ -95,6 +95,7 @@ interface HistoryImageItemProps {
     onLoadMetadata: (image: SavedImage) => void
     onAddToLibrary: (image: SavedImage) => void
     onLoadComplete: (path: string, data: string) => void
+    guided: boolean
 }
 
 const HistoryImageItem = memo(function HistoryImageItem({
@@ -102,7 +103,8 @@ const HistoryImageItem = memo(function HistoryImageItem({
     onImageClick, onDelete, onSaveAs, onCopy, onRegenerate,
     onOpenSmartTools, onAddAsReference, onInpaint, onI2I, onOpenFolder, onLoadMetadata,
     onAddToLibrary,
-    onLoadComplete
+    onLoadComplete,
+    guided,
 }: HistoryImageItemProps) {
     const { t } = useTranslation()
     const [localThumbnail, setLocalThumbnail] = useState<string | undefined>(thumbnail)
@@ -229,28 +231,32 @@ const HistoryImageItem = memo(function HistoryImageItem({
                     <Images className="mr-2 h-4 w-4" />
                     {t('history.addToLibrary', 'Add to library')}
                 </ContextMenuItem>
-                <ContextMenuItem onClick={() => onRegenerate(image)}>
-                    <RotateCcw className="h-4 w-4 mr-2" />
-                    {t('actions.regenerate', '재생성')}
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => onOpenSmartTools(image)}>
-                    <Wand2 className="h-4 w-4 mr-2" />
-                    {t('smartTools.title', '스마트 툴')}
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => onInpaint(image)}>
-                    <Paintbrush className="h-4 w-4 mr-2" />
-                    {t('tools.inpainting.title', '인페인팅')}
-                </ContextMenuItem>
-                <ContextMenuItem onClick={() => onI2I(image)}>
-                    <ImageIcon className="h-4 w-4 mr-2" />
-                    {t('tools.i2i.title', 'Image to Image')}
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => onAddAsReference(image)}>
-                    <Users className="h-4 w-4 mr-2" />
-                    {t('actions.addAsRef', '이미지 참조')}
-                </ContextMenuItem>
+                {!guided && (
+                    <>
+                        <ContextMenuItem onClick={() => onRegenerate(image)}>
+                            <RotateCcw className="h-4 w-4 mr-2" />
+                            {t('actions.regenerate', '재생성')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => onOpenSmartTools(image)}>
+                            <Wand2 className="h-4 w-4 mr-2" />
+                            {t('smartTools.title', '스마트 툴')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onClick={() => onInpaint(image)}>
+                            <Paintbrush className="h-4 w-4 mr-2" />
+                            {t('tools.inpainting.title', '인페인팅')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => onI2I(image)}>
+                            <ImageIcon className="h-4 w-4 mr-2" />
+                            {t('tools.i2i.title', 'Image to Image')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onClick={() => onAddAsReference(image)}>
+                            <Users className="h-4 w-4 mr-2" />
+                            {t('actions.addAsRef', '이미지 참조')}
+                        </ContextMenuItem>
+                    </>
+                )}
                 <ContextMenuItem onClick={() => onOpenFolder(image)} disabled={image.isTemporary}>
                     <FolderOpen className="h-4 w-4 mr-2" />
                     {t('actions.openFolder', '폴더 열기')}
@@ -264,7 +270,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
     )
 })
 
-export function HistoryPanel() {
+export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
     const { t } = useTranslation()
     const { setPreviewImage, isGenerating, setIsGenerating, setSourceImage, setI2IMode } = useGenerationStore()
     const { savePath, useAbsolutePath, sceneSavePath, useAbsoluteScenePath } = useSettingsStore()
@@ -280,6 +286,7 @@ export function HistoryPanel() {
     const [inpaintDialogOpen, setInpaintDialogOpen] = useState(false)
     const [selectedImageForInpaint, setSelectedImageForInpaint] = useState<string | null>(null)
     const [pendingDeleteImage, setPendingDeleteImage] = useState<SavedImage | null>(null)
+    const [guidedSelection, setGuidedSelection] = useState<{ image: SavedImage; dataUrl: string } | null>(null)
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
     const addToTrash = useTrashStore(state => state.add)
@@ -686,6 +693,11 @@ export function HistoryPanel() {
             }
         }
 
+        if (guided) {
+            if (finalDataUrl) setGuidedSelection({ image, dataUrl: finalDataUrl })
+            return
+        }
+
         // Set preview
         setPreviewImage(finalDataUrl)
 
@@ -708,7 +720,7 @@ export function HistoryPanel() {
             useGenerationStore.getState().setPreviewSeed(null)
         }
 
-        navigate('/') // Navigate to main mode to show the image
+        navigate('/advanced') // Navigate to main mode to show the image
     }
 
     const requestDeleteImage = (image: SavedImage, e?: React.MouseEvent) => {
@@ -734,6 +746,7 @@ export function HistoryPanel() {
             }, 'history', image.name, { historyPath: image.path })
             addToTrash(trashItem)
             setSavedImages(prev => prev.filter(img => img.path !== image.path))
+            setGuidedSelection(current => current?.image.path === image.path ? null : current)
             setImageThumbnails(prev => {
                 const next = { ...prev }
                 delete next[image.path]
@@ -944,6 +957,7 @@ export function HistoryPanel() {
     }
 
     const handleOpenSmartTools = async (image: SavedImage) => {
+        if (guided) return
         setIsLoading(true)
         try {
             let base64 = imageThumbnails[image.path]
@@ -1045,6 +1059,7 @@ export function HistoryPanel() {
 
     // I2I: Set source and navigate to main mode
     const handleI2I = async (image: SavedImage) => {
+        if (guided) return
         setSourceEditPreparing(true)
         try {
             if (!await waitForApiTokenReady()) return
@@ -1061,14 +1076,14 @@ export function HistoryPanel() {
 
             setSourceImage(imageData)
             setI2IMode('i2i')
-            navigate('/')
+            navigate('/advanced')
         } finally {
             setSourceEditPreparing(false)
         }
     }
 
     return (
-        <div className="relative flex h-full min-h-0 flex-col">
+        <div className={`relative flex min-h-0 flex-col ${guided ? 'min-h-full' : 'h-full'}`} data-guided-history={guided || undefined}>
             {sourceEditPreparing && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-scrim/70" role="status" aria-live="polite">
                     <div className="flex items-center gap-2 rounded-control bg-popover px-4 py-3 text-sm text-popover-foreground shadow-overlay">
@@ -1103,7 +1118,44 @@ export function HistoryPanel() {
 
             {/* The indexed queue summary stays lightweight; Queue Center remains
                 the sole owner of detailed projections, retries, and job controls. */}
-            <QueueActivityLink />
+            {!guided && <QueueActivityLink />}
+
+            {guidedSelection && (
+                <section className="grid gap-5 border-y border-border/60 p-4 sm:p-5 lg:grid-cols-[minmax(16rem,0.9fr)_minmax(18rem,1.1fr)]" aria-label={t('history.preview', '선택한 이미지 미리보기')}>
+                    <div className="flex min-h-64 items-center justify-center overflow-hidden bg-muted/30">
+                        <img
+                            src={guidedSelection.dataUrl}
+                            alt={guidedSelection.image.name}
+                            className="max-h-[34rem] max-w-full object-contain"
+                        />
+                    </div>
+                    <div className="flex min-w-0 flex-col justify-center">
+                        <p className="text-sm font-semibold text-primary">{t('history.selected', '선택한 이미지')}</p>
+                        <h2 className="mt-2 break-words text-xl font-semibold">{guidedSelection.image.name}</h2>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                            {t('history.guidedActions', '메타데이터를 확인하거나, 라이브러리에 보관하고, 다른 이름으로 저장할 수 있어요.')}
+                        </p>
+                        <div className="mt-5 flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={() => void handleLoadMetadata(guidedSelection.image)}>
+                                <FileSearch className="mr-2 h-4 w-4" />
+                                {t('metadata.loadFromImage', '메타데이터 보기')}
+                            </Button>
+                            <Button variant="outline" onClick={() => handleAddToLibrary(guidedSelection.image)}>
+                                <Images className="mr-2 h-4 w-4" />
+                                {t('history.addToLibrary', '라이브러리에 추가')}
+                            </Button>
+                            <Button variant="outline" onClick={() => void handleSaveAs(guidedSelection.image)}>
+                                <Save className="mr-2 h-4 w-4" />
+                                {t('actions.saveAs', '다른 이름으로 저장')}
+                            </Button>
+                            <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => requestDeleteImage(guidedSelection.image)}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                {t('trash.move', '휴지통으로 이동')}
+                            </Button>
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* History Grid */}
             <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pt-2">
@@ -1120,7 +1172,9 @@ export function HistoryPanel() {
                         )}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-3 2xl:grid-cols-1">
+                    <div className={guided
+                        ? 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'
+                        : 'grid grid-cols-2 gap-3 2xl:grid-cols-1'}>
                         {savedImages.map((image, index) => (
                             <HistoryImageItem
                                 key={image.path}
@@ -1141,6 +1195,7 @@ export function HistoryPanel() {
                                 onOpenFolder={handleOpenFolder}
                                 onLoadMetadata={handleLoadMetadata}
                                 onAddToLibrary={handleAddToLibrary}
+                                guided={guided}
                             />
                         ))}
                     </div>

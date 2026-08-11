@@ -17,12 +17,13 @@ const VIEWPORTS = [
     { width: 1920, height: 1080, minCenterWidth: 980 },
 ]
 
-const WIDE_COMPOSITION_ROUTES = ['/', '/scenes', '/queue', '/r2']
+const WIDE_COMPOSITION_ROUTES = ['/advanced', '/scenes', '/queue', '/r2']
 
 // These routes represent each responsive information architecture used by the
 // production shell: command canvas, split editor, dense grids, and settings.
 const defaultRoutes = [
-    '/',
+    '/advanced',
+    '/guided-preview',
     '/style-lab',
     '/scenes',
     '/tools',
@@ -53,7 +54,7 @@ if (evidenceDir) {
 }
 
 function routeSlug(route) {
-    return route === '/' ? 'main' : route.slice(1).replaceAll('/', '-')
+    return route === '/advanced' ? 'main' : route.slice(1).replaceAll('/', '-')
 }
 
 function quoteWindowsArg(arg) {
@@ -302,7 +303,7 @@ async function collectCompositionShellReport(page, route) {
             }
             return null
         }
-        const actionSelector = currentRoute === '/'
+        const actionSelector = currentRoute === '/advanced'
             ? '[data-testid="main-generate-action"]'
             : '[data-testid="scene-generate-action"], [data-testid="scene-cancel-action"]'
         const shellActions = new Set(document.querySelectorAll([
@@ -367,20 +368,20 @@ function assertCompositionShell(report, route, viewport) {
     assert.ok(report.commandBar, `${context} must show the composition command bar`)
 
     if (viewport.width >= 1536) {
-        if (route === '/') {
+        if (route === '/advanced') {
             assert.ok(report.promptDock, `${context} must keep the Prompt rail visible`)
             assert.equal(report.moduleStack, null, `${context} keeps Module Stack behind its explicit action to preserve canvas width`)
             assert.equal(report.inspector, null, `${context} keeps Context Inspector behind its explicit action to preserve canvas width`)
-            assert.ok(report.moduleTrigger, `${context} must keep the Module Stack action reachable when its rail is hidden`)
-            assert.ok(report.inspectorTrigger, `${context} must keep the Context Inspector action reachable when its rail is hidden`)
-            assert.ok(
-                report.moduleTrigger.width >= 44 && report.moduleTrigger.height >= 44,
-                `${context} Module Stack action is below 44px (${report.moduleTrigger.width}x${report.moduleTrigger.height})`,
-            )
-            assert.ok(
-                report.inspectorTrigger.width >= 44 && report.inspectorTrigger.height >= 44,
-                `${context} Context Inspector action is below 44px (${report.inspectorTrigger.width}x${report.inspectorTrigger.height})`,
-            )
+            // Direct mode has no recipe/module action. Once module content exists,
+            // the single Module Stack action is the entry point and selecting an
+            // item advances to the Inspector sheet.
+            if (report.moduleTrigger) {
+                assert.ok(
+                    report.moduleTrigger.width >= 44 && report.moduleTrigger.height >= 44,
+                    `${context} Module Stack action is below 44px (${report.moduleTrigger.width}x${report.moduleTrigger.height})`,
+                )
+            }
+            assert.equal(report.inspectorTrigger, null, `${context} must keep the simplified command bar free of a duplicate Inspector action`)
             assert.ok(report.canvas, `${context} must show the center canvas/grid`)
             assert.ok(report.promptDock.right <= report.canvas.left + 24, `${context} must preserve Prompt rail → canvas ordering`)
             return
@@ -497,8 +498,8 @@ async function collectR2ReadabilityReport(page, enlargedText) {
 
 function assertR2Readability(report, context) {
     assert.equal(report.missingRoot, false, `${context} is missing the R2 setup root`)
-    assert.equal(report.stepCount, 10, `${context} must keep all ten R2 workflow steps`)
-    assert.equal(report.guideCount, 10, `${context} must keep one guide beside each R2 step`)
+    assert.equal(report.stepCount, 2, `${context} must show exactly the current two R2 workflow steps`)
+    assert.equal(report.guideCount, 2, `${context} must keep one guide beside each visible R2 step`)
     assert.deepEqual(report.pathologicalTextColumns, [], `${context} collapses text into a vertical column: ${JSON.stringify(report.pathologicalTextColumns)}`)
     assert.deepEqual(report.actionOverflow, [], `${context} has action text outside its button: ${JSON.stringify(report.actionOverflow)}`)
     for (const tracked of report.trackedText) {
@@ -637,9 +638,14 @@ function assertCompositionQuality(report, context) {
 
 async function assertCompositionSheetFocusReturn(page, route, viewport) {
     const dock = page.locator('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]')
-    const trigger = dock.locator('button').first()
-    const sheetTestId = route === '/' ? 'main-module-stack-sheet' : 'scene-modules-sheet'
+    const trigger = dock.locator('[data-testid="composition-open-modules"]')
+    const sheetTestId = route === '/advanced' ? 'main-module-stack-sheet' : 'scene-modules-sheet'
     const sheet = page.locator(`[data-testid="${sheetTestId}"]`)
+
+    // Direct mode intentionally omits the module action until a recipe or
+    // module exists. Exercise the focus contract when the action is available
+    // without mistaking the primary Generate button for it.
+    if (await trigger.count() === 0 || !await trigger.isVisible()) return
 
     await trigger.focus()
     assert.equal(await trigger.evaluate(element => element === document.activeElement), true, `${route} module trigger did not receive focus`)
@@ -672,7 +678,7 @@ async function assertCompositionSheetFocusReturn(page, route, viewport) {
 }
 
 async function assertWideCompositionPanelAccess(page, route, viewport) {
-    const panels = route === '/'
+    const panels = route === '/advanced'
         ? [
             { triggerId: 'composition-open-modules', sheetId: 'main-module-stack-sheet', name: 'Module Stack' },
             { triggerId: 'composition-open-inspector', sheetId: 'main-composition-inspector-sheet', name: 'Context Inspector' },
@@ -685,6 +691,7 @@ async function assertWideCompositionPanelAccess(page, route, viewport) {
     for (const panel of panels) {
         const trigger = page.locator(`[data-testid="composition-command-bar"] [data-testid="${panel.triggerId}"]`)
         const sheet = page.locator(`[data-testid="${panel.sheetId}"]`)
+        if (await trigger.count() === 0 || !await trigger.isVisible()) continue
         await trigger.focus()
         await trigger.click()
         await sheet.waitFor({ state: 'visible' })
@@ -708,7 +715,7 @@ async function assertWideCompositionCoreLoop(page, route, viewport) {
     const context = `${route} core loop @ ${viewport.width}x${viewport.height}`
     const promptDock = page.locator('#nais2-prompt-dock')
     const promptEditor = promptDock.locator('[data-testid="prompt-editor-surface"] textarea')
-    const workspaceSelector = route === '/'
+    const workspaceSelector = route === '/advanced'
         ? '[data-testid="main-result-canvas"]'
         : '[data-testid="scene-grid-workspace"]'
     const workspace = page.locator(workspaceSelector)
@@ -935,12 +942,16 @@ async function main() {
                     assert.ok(report.mainWithinViewport, `${route} @ ${viewport.width}px main region leaves the viewport`)
                     assertVisibleCtaLayout(ctaReport, `${route} @ ${viewport.width}px`)
 
-                    assert.ok(report.navTargets.length >= 5, `${route} @ ${viewport.width}px should expose primary navigation`)
-                    for (const [index, target] of report.navTargets.entries()) {
-                        assert.ok(
-                            target.width >= 40 && target.height >= 40,
-                            `${route} @ ${viewport.width}px nav target ${index} is too small (${target.width}x${target.height})`,
-                        )
+                    // Guided has a task chooser only after the credential gate;
+                    // expert routes always expose the five-destination primary nav.
+                    if (route !== '/guided-preview') {
+                        assert.ok(report.navTargets.length >= 5, `${route} @ ${viewport.width}px should expose primary navigation`)
+                        for (const [index, target] of report.navTargets.entries()) {
+                            assert.ok(
+                                target.width >= 40 && target.height >= 40,
+                                `${route} @ ${viewport.width}px nav target ${index} is too small (${target.width}x${target.height})`,
+                            )
+                        }
                     }
 
                     if (viewport.sidebars === 'hidden') {
@@ -951,8 +962,8 @@ async function main() {
                         )
                     }
 
-                    if (route === '/' || route === '/scenes') {
-                        const compositionActionSelector = route === '/'
+                    if (route === '/advanced' || route === '/scenes') {
+                        const compositionActionSelector = route === '/advanced'
                             ? '[data-testid="main-generate-action"]'
                             : '[data-testid="scene-generate-action"], [data-testid="scene-cancel-action"]'
                         await page.waitForFunction(selector => Array.from(document.querySelectorAll(selector)).some(element => {
@@ -980,14 +991,29 @@ async function main() {
                             text200Report.mainScrollWidth <= text200Report.mainClientWidth + 1,
                             `${route} @ ${viewport.width}px creates main overflow at 200% text`,
                         )
-                        // Scene workspaces intentionally use the simplified dock, which owns
-                        // generation only; the main workspace still exposes the module sheet.
-                        if (viewport.width === 390 && route === '/') {
+                        // Optional composition panels are checked when the current recipe
+                        // exposes their triggers; direct mode may correctly show Generate only.
+                        if (viewport.width === 390 && route === '/advanced') {
                             await assertCompositionSheetFocusReturn(page, route, viewport)
                         }
                         if (viewport.width === 1536) {
                             await assertWideCompositionCoreLoop(page, route, viewport)
-                            if (route === '/') await assertWideCompositionPanelAccess(page, route, viewport)
+                            if (route === '/advanced') {
+                                await assertWideCompositionPanelAccess(page, route, viewport)
+                                const promptSurfaceGeometry = await page.locator('[data-testid="prompt-editor-surface"]').first().evaluate((surface) => {
+                                    const editor = surface.querySelector('.prompt-editor-wrapper')
+                                    const surfaceRect = surface.getBoundingClientRect()
+                                    const editorRect = editor?.getBoundingClientRect()
+                                    return {
+                                        surfaceBottom: surfaceRect.bottom,
+                                        editorBottom: editorRect?.bottom ?? Number.POSITIVE_INFINITY,
+                                    }
+                                })
+                                assert.ok(
+                                    promptSurfaceGeometry.editorBottom <= promptSurfaceGeometry.surfaceBottom + 1,
+                                    'Wide prompt editor escapes its surface vertically',
+                                )
+                            }
                         }
                     }
 
@@ -1039,7 +1065,7 @@ async function main() {
                         })
                     }
 
-                    if (route === '/') {
+                    if (route === '/advanced') {
                         assert.ok(report.mainDock, `/ @ ${viewport.width}px should expose the compact generation dock`)
                         assert.ok(report.mainDock.bottom <= viewport.height + 1, `/ @ ${viewport.width}px command dock leaves the viewport`)
                         assert.ok(report.mainDock.actionHeight >= 44, `/ @ ${viewport.width}px generate action is below 44px`)
@@ -1050,17 +1076,24 @@ async function main() {
                             await promptSheet.waitFor({ state: 'visible' })
                             const promptReport = await promptSheet.evaluate((sheet) => {
                                 const action = sheet.querySelector('[data-testid="prompt-generate-action"]')
+                                const surface = sheet.querySelector('[data-testid="prompt-editor-surface"]')
+                                const editor = surface?.querySelector('.prompt-editor-wrapper')
                                 const actionRect = action?.getBoundingClientRect()
+                                const surfaceRect = surface?.getBoundingClientRect()
+                                const editorRect = editor?.getBoundingClientRect()
                                 return {
                                     scrollWidth: sheet.scrollWidth,
                                     clientWidth: sheet.clientWidth,
                                     actionHeight: actionRect?.height ?? 0,
                                     actionBottom: actionRect?.bottom ?? Number.POSITIVE_INFINITY,
+                                    surfaceBottom: surfaceRect?.bottom ?? 0,
+                                    editorBottom: editorRect?.bottom ?? Number.POSITIVE_INFINITY,
                                 }
                             })
                             assert.ok(promptReport.scrollWidth <= promptReport.clientWidth + 1, 'Prompt Sheet has horizontal overflow')
                             assert.ok(promptReport.actionHeight >= 44, 'Prompt Sheet generate action is below 44px')
                             assert.ok(promptReport.actionBottom <= viewport.height + 1, 'Prompt Sheet generate action is not reachable in the viewport')
+                            assert.ok(promptReport.editorBottom <= promptReport.surfaceBottom + 1, 'Prompt editor escapes its surface vertically')
                             if (evidenceDir) {
                                 await page.screenshot({ path: path.join(evidenceDir, 'prompt-sheet-390.png'), animations: 'disabled' })
                             }

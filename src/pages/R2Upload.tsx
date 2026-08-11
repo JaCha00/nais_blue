@@ -30,7 +30,7 @@ export default function R2Upload() {
     return (
         <div className="mx-auto min-w-0 w-full max-w-7xl space-y-5 overflow-x-hidden p-2 sm:p-4">
             <header className="flex items-start gap-3">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control bg-primary/10 text-primary">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center border-b border-primary/55 text-primary">
                     <CloudUpload className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -41,10 +41,8 @@ export default function R2Upload() {
                 </div>
             </header>
 
-            {/* This card is the horizontal scroll boundary for NativeR2SetupPanel.
-                It links the global large-type mode to long credential/path inputs,
-                keeping their intrinsic scroll inside controls instead of widening main. */}
-            <section className="min-w-0 overflow-x-hidden rounded-panel bg-card p-4 sm:p-5 lg:p-6">
+            {/* This section is the horizontal scroll boundary for long credential/path inputs. */}
+            <section className="min-w-0 overflow-x-hidden border-y border-border/70 px-1 py-4 sm:px-3 sm:py-5 lg:px-5 lg:py-6">
                 <NativeR2SetupPanel
                     assetProfile={profile}
                     localRoot={localRoot}

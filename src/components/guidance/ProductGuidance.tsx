@@ -85,6 +85,7 @@ export function ProductGuidance() {
         queueVisited: false,
     })
     const status = (id: GuidanceStepId) => guidance.steps.find(step => step.id === id)?.status ?? 'available'
+    const triggerLabel = t('productGuidance.trigger')
 
     useEffect(() => {
         const handleOpen = (event: Event) => {
@@ -122,13 +123,13 @@ export function ProductGuidance() {
                     setOpen(true)
                 }}
                 aria-haspopup="dialog"
-                aria-label={t('productGuidance.trigger')}
+                aria-label={triggerLabel}
                 aria-expanded={open}
                 aria-controls="product-guidance-sheet"
                 data-onboarding-pending={guidance.showOnboardingCue}
             >
                 <CircleHelp className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden xl:inline">{t('productGuidance.trigger')}</span>
+                <span className="hidden xl:inline">{triggerLabel}</span>
                 {guidance.showOnboardingCue && (
                     <>
                         <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
@@ -159,7 +160,7 @@ export function ProductGuidance() {
                     </GuideSection>
                     <GuideSection id="validation" title={t('productGuidance.steps.validation.title')} description={t('productGuidance.steps.validation.description')} status={status('validation')} active={activeSection === 'validation'}>
                         <p>{t('productGuidance.steps.validation.safe')}</p>
-                        <Button variant="outline" className="min-h-11" onClick={() => closeThen(() => navigate('/'))}>{t('productGuidance.steps.validation.action')}</Button>
+                        <Button variant="outline" className="min-h-11" onClick={() => closeThen(() => navigate('/advanced'))}>{t('productGuidance.steps.validation.action')}</Button>
                     </GuideSection>
                     <GuideSection id="output" title={t('productGuidance.steps.output.title')} description={t('productGuidance.steps.output.description')} status={status('output')} active={activeSection === 'output'}>
                         <label className="grid gap-1 text-xs">

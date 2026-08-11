@@ -1,5 +1,10 @@
 import { hashCanonicalValue, sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { JsonValue } from '@/domain/composition/types'
+import {
+    assertAnlasCostConsentAllows,
+    type AnlasCostConsentSnapshot,
+    type AnlasPricingBasis,
+} from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJob, QueueResourceRecord } from '@/domain/queue/types'
 import {
     createStyleRenderBudget,
@@ -8,7 +13,9 @@ import {
     type StyleRenderReservation,
 } from '@/domain/style-lab'
 import type { StyleLabRepository } from '@/application/style-lab/style-lab-repository'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { buildStyleLabGenerationParams, formatStyleLabCompositionErrors } from '@/lib/style-lab/build-style-lab-params'
+import type { GenerationParams } from '@/services/novelai-types'
 import { useSettingsStore } from '@/stores/settings-store'
 import { type StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
 import {
@@ -43,6 +50,38 @@ export interface EnqueueStyleLabPreviewResult {
     jobs: GenerationJob[]
     reservations: StyleRenderReservation[]
     rejected: Array<{ comboId: string; seed: number; reason: 'budget-exhausted' }>
+}
+
+export type StyleLabPreviewSubmissionPolicy =
+    | { readonly kind: 'advanced' }
+    | { readonly kind: 'guided'; readonly costConsent: AnlasCostConsentSnapshot }
+
+export function estimateStyleLabPreviewAnlas(
+    params: readonly Pick<GenerationParams, 'width' | 'height' | 'steps'>[],
+    pricingBasis: AnlasPricingBasis,
+): number {
+    return params.reduce((total, item) => total + calculateAnlasCost({
+        width: item.width,
+        height: item.height,
+        steps: item.steps,
+        imageCount: 1,
+        pricingBasis,
+    }), 0)
+}
+
+export function authorizeStyleLabPreviewAnlas(
+    params: readonly Pick<GenerationParams, 'width' | 'height' | 'steps'>[],
+    submissionPolicy: StyleLabPreviewSubmissionPolicy,
+): AnlasCostConsentSnapshot | undefined {
+    if (submissionPolicy.kind === 'advanced') return undefined
+    if (submissionPolicy.kind !== 'guided') {
+        throw new TypeError('Style-Lab enqueue submission policy is invalid')
+    }
+    const consent = submissionPolicy.costConsent
+    if (consent === undefined || consent === null) assertAnlasCostConsentAllows(consent, 0)
+    const estimatedAnlas = estimateStyleLabPreviewAnlas(params, consent.pricingBasis)
+    assertAnlasCostConsentAllows(consent, estimatedAnlas)
+    return consent
 }
 
 function normalizedSeed(seed: number): number {
@@ -101,11 +140,32 @@ export async function enqueueStyleLabPreviewJobs(input: {
     boardId?: string | null
     budgetLimit?: number
     priority?: number
+    submissionPolicy?: StyleLabPreviewSubmissionPolicy
     now?: number
     styleRepository?: StyleLabRepository
     queueRepository?: StyleLabQueueRepositoryPort
 }): Promise<EnqueueStyleLabPreviewResult> {
     if (!isStyleEvaluationContext(input.context)) throw new TypeError('Invalid Style-Lab render context')
+    const submissionPolicy = input.submissionPolicy ?? { kind: 'advanced' as const }
+    type BuiltPreview = Extract<Awaited<ReturnType<typeof buildStyleLabGenerationParams>>, { success: true }>
+    const planned: Array<{ combo: StyleCombination; seed: number; built: BuiltPreview }> = []
+    for (const combo of input.combinations) {
+        for (const seed of input.context.seedPack) {
+            const built = await buildStyleLabGenerationParams(combo, {
+                seed,
+                requestId: `style-lab-queue:${combo.id}:${input.context.id}:${seed}`,
+            })
+            if (!built.success) throw new Error(formatStyleLabCompositionErrors(built.errors))
+            if (built.params.model !== input.context.model || built.params.sampler !== input.context.sampler) {
+                throw new Error('Style-Lab Queue parameters no longer match the evaluation context')
+            }
+            planned.push({ combo, seed, built })
+        }
+    }
+    const costConsent = authorizeStyleLabPreviewAnlas(
+        planned.map(item => item.built.params),
+        submissionPolicy,
+    )
     const styleRepository = input.styleRepository ?? getStyleLabRepository()
     const queueRepository = input.queueRepository ?? getRuntimeQueueRepository()
     const budgetId = input.budgetId ?? DEFAULT_STYLE_LAB_MANUAL_BUDGET_ID
@@ -122,81 +182,72 @@ export async function enqueueStyleLabPreviewJobs(input: {
     const result: EnqueueStyleLabPreviewResult = { jobs: [], reservations: [], rejected: [] }
     const materializer = getRuntimeQueueResourceMaterializer()
     const resourceCache = new Map()
-    for (const combo of input.combinations) {
-        for (const seed of input.context.seedPack) {
-            const built = await buildStyleLabGenerationParams(combo, {
-                seed,
-                requestId: `style-lab-queue:${combo.id}:${input.context.id}:${seed}`,
+    for (const { combo, seed, built } of planned) {
+        const dehydrated = await dehydrateGenerationParams(built.params, materializer, resourceCache)
+        const output = outputSnapshot(combo, seed)
+        const idempotencyKey = styleLabRenderIdempotencyKey({
+            renderHash: combo.renderHash,
+            contextId: input.context.id,
+            seed,
+            outputPolicy: output,
+        })
+        const reservation = await styleRepository.reserveRenderBudget({
+            budgetId,
+            units: 1,
+            idempotencyKey,
+            createdAt: requestedAt,
+        })
+        if (reservation === null) {
+            result.rejected.push({ comboId: combo.id, seed, reason: 'budget-exhausted' })
+            continue
+        }
+        const encoded = encodeStyleLabJobSnapshot({
+            combination: combo,
+            context: input.context,
+            params: built.params,
+            prompt: built.prompt,
+            seed,
+            requestedAt,
+            reservationId: reservation.id,
+            output,
+            planHash: built.plan?.planHash ?? null,
+            costConsent,
+        }, dehydrated)
+        const identity = idempotencyKey.slice('style-render-job:'.length)
+        const batchId = `style-lab-batch-${identity}`
+        const jobId = `style-lab-job-${identity}`
+        const createdAt = new Date(requestedAt).toISOString()
+        try {
+            const queued = await queueRepository.createBatchAndEnqueue({
+                batch: {
+                    id: batchId,
+                    workflow: 'style-lab',
+                    createdAt,
+                    failurePolicy: 'continue',
+                    origin: 'fresh',
+                    idempotencyKey: batchId,
+                },
+                jobs: [{
+                    id: jobId,
+                    batchId,
+                    workflow: 'style-lab',
+                    sceneId: null,
+                    createdAt,
+                    priority: input.priority ?? 0,
+                    ordinal: 0,
+                    snapshot: encoded.snapshot,
+                    compositionPlanHash: encoded.compositionPlanHash,
+                    maxAttempts: 3,
+                    idempotencyKey,
+                }],
+                resources: dehydrated.records,
             })
-            if (!built.success) throw new Error(formatStyleLabCompositionErrors(built.errors))
-            if (built.params.model !== input.context.model || built.params.sampler !== input.context.sampler) {
-                throw new Error('Style-Lab Queue parameters no longer match the evaluation context')
-            }
-            const dehydrated = await dehydrateGenerationParams(built.params, materializer, resourceCache)
-            const output = outputSnapshot(combo, seed)
-            const idempotencyKey = styleLabRenderIdempotencyKey({
-                renderHash: combo.renderHash,
-                contextId: input.context.id,
-                seed,
-                outputPolicy: output,
-            })
-            const reservation = await styleRepository.reserveRenderBudget({
-                budgetId,
-                units: 1,
-                idempotencyKey,
-                createdAt: requestedAt,
-            })
-            if (reservation === null) {
-                result.rejected.push({ comboId: combo.id, seed, reason: 'budget-exhausted' })
-                continue
-            }
-            const encoded = encodeStyleLabJobSnapshot({
-                combination: combo,
-                context: input.context,
-                params: built.params,
-                prompt: built.prompt,
-                seed,
-                requestedAt,
-                reservationId: reservation.id,
-                output,
-                planHash: built.plan?.planHash ?? null,
-            }, dehydrated)
-            const identity = idempotencyKey.slice('style-render-job:'.length)
-            const batchId = `style-lab-batch-${identity}`
-            const jobId = `style-lab-job-${identity}`
-            const createdAt = new Date(requestedAt).toISOString()
-            try {
-                const queued = await queueRepository.createBatchAndEnqueue({
-                    batch: {
-                        id: batchId,
-                        workflow: 'style-lab',
-                        createdAt,
-                        failurePolicy: 'continue',
-                        origin: 'fresh',
-                        idempotencyKey: batchId,
-                    },
-                    jobs: [{
-                        id: jobId,
-                        batchId,
-                        workflow: 'style-lab',
-                        sceneId: null,
-                        createdAt,
-                        priority: input.priority ?? 0,
-                        ordinal: 0,
-                        snapshot: encoded.snapshot,
-                        compositionPlanHash: encoded.compositionPlanHash,
-                        maxAttempts: 3,
-                        idempotencyKey,
-                    }],
-                    resources: dehydrated.records,
-                })
-                await styleRepository.bindRenderReservationJob(reservation.id, queued.jobs[0].id)
-                result.jobs.push(queued.jobs[0])
-                result.reservations.push(reservation)
-            } catch (error) {
-                await styleRepository.settleRenderReservation(reservation.id, 'released', Date.now()).catch(() => undefined)
-                throw error
-            }
+            await styleRepository.bindRenderReservationJob(reservation.id, queued.jobs[0].id)
+            result.jobs.push(queued.jobs[0])
+            result.reservations.push(reservation)
+        } catch (error) {
+            await styleRepository.settleRenderReservation(reservation.id, 'released', Date.now()).catch(() => undefined)
+            throw error
         }
     }
     return result

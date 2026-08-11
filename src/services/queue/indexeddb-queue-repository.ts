@@ -38,7 +38,7 @@ import {
 } from './job-snapshot'
 
 export const QUEUE_DATABASE_NAME = 'nais2-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 4
+export const QUEUE_DATABASE_VERSION = 5
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
@@ -66,7 +66,7 @@ export class QueueRepositoryError extends Error {
 }
 
 interface StoredJobRecord {
-    recordSchemaVersion: 3
+    recordSchemaVersion: 4
     id: string
     batchId: string
     workflow: GenerationWorkflow
@@ -75,6 +75,8 @@ interface StoredJobRecord {
     createdAt: string
     updatedAt: string
     priority: number
+    /** Denormalized batch order required by IndexedDB's join-free global index. */
+    queueSequence: number
     ordinal: number
     snapshotSchemaVersion: number
     snapshot: GenerationJobSnapshot
@@ -316,6 +318,9 @@ function parseBatch(value: unknown): GenerationBatch {
     }
     assertBatchOrigin(value.origin)
     assertIdentifier(value.idempotencyKey, 'batch idempotency key')
+    if (!Number.isSafeInteger(value.queueSequence) || (value.queueSequence as number) < 1) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch queue sequence is invalid')
+    }
     if (!Number.isSafeInteger(value.version) || (value.version as number) < 1) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch version is invalid')
     }
@@ -330,7 +335,7 @@ function parseBatch(value: unknown): GenerationBatch {
     } as unknown as GenerationBatch
 }
 
-function batchFromInput(input: CreateGenerationBatchInput): GenerationBatch {
+function batchFromInput(input: CreateGenerationBatchInput, queueSequence: number): GenerationBatch {
     assertIdentifier(input.id, 'batch id')
     assertWorkflow(input.workflow)
     assertTimestamp(input.createdAt, 'batch createdAt')
@@ -340,9 +345,13 @@ function batchFromInput(input: CreateGenerationBatchInput): GenerationBatch {
     assertFailurePolicy(failurePolicy)
     assertBatchOrigin(origin)
     assertIdentifier(idempotencyKey, 'batch idempotency key')
+    if (!Number.isSafeInteger(queueSequence) || queueSequence < 1) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch queue sequence is invalid')
+    }
     return {
         id: input.id,
         workflow: input.workflow,
+        queueSequence,
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
         state: 'active',
@@ -433,18 +442,28 @@ function snapshotFromRecord(value: unknown, expectedHash: unknown): GenerationJo
     return snapshot
 }
 
-function orderKeys(input: Pick<StoredJobRecord, 'batchId' | 'state' | 'priority' | 'ordinal' | 'createdAt' | 'id'>) {
-    const suffix: IDBValidKey[] = [-input.priority, input.ordinal, input.createdAt, input.id]
+function orderKeys(input: Pick<
+    StoredJobRecord,
+    'batchId' | 'state' | 'priority' | 'queueSequence' | 'ordinal' | 'createdAt' | 'id'
+>) {
+    const globalSuffix: IDBValidKey[] = [
+        -input.priority,
+        input.queueSequence,
+        input.ordinal,
+        input.createdAt,
+        input.id,
+    ]
+    const batchSuffix: IDBValidKey[] = [-input.priority, input.ordinal, input.createdAt, input.id]
     return {
-        globalOrderKey: suffix,
-        batchOrderKey: [input.batchId, ...suffix],
-        batchStateOrderKey: [input.batchId, input.state, ...suffix],
-        stateOrderKey: [input.state, ...suffix],
+        globalOrderKey: globalSuffix,
+        batchOrderKey: [input.batchId, ...batchSuffix],
+        batchStateOrderKey: [input.batchId, input.state, ...batchSuffix],
+        stateOrderKey: [input.state, ...globalSuffix],
     }
 }
 
 function parseStoredJob(value: unknown): StoredJobRecord {
-    if (!isRecord(value) || value.recordSchemaVersion !== 3) {
+    if (!isRecord(value) || value.recordSchemaVersion !== 4) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job record schema is invalid')
     }
     assertIdentifier(value.id, 'job id')
@@ -460,6 +479,7 @@ function parseStoredJob(value: unknown): StoredJobRecord {
     assertTimestamp(value.updatedAt, 'updatedAt')
     const numericFields: Record<string, unknown> = {
         priority: value.priority,
+        queueSequence: value.queueSequence,
         ordinal: value.ordinal,
         snapshotSchemaVersion: value.snapshotSchemaVersion,
         attemptCount: value.attemptCount,
@@ -471,9 +491,10 @@ function parseStoredJob(value: unknown): StoredJobRecord {
             throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', `${field} is invalid`)
         }
     }
-    if ((value.maxAttempts as number) < 1
+    if ((value.queueSequence as number) < 1
+        || (value.maxAttempts as number) < 1
         || (value.attemptCount as number) > (value.maxAttempts as number)) {
-        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'attempt budget is invalid')
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job queue sequence or attempt budget is invalid')
     }
     assertIdentifier(value.idempotencyKey, 'idempotency key')
     assertProgress(value.progress)
@@ -549,7 +570,7 @@ function aggregateJob(stored: StoredJobRecord, lease: LeaseRecord | null): Gener
     }
 }
 
-function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
+function storedJobFromInput(input: EnqueueGenerationJobInput, queueSequence: number): StoredJobRecord {
     assertIdentifier(input.id, 'job id')
     assertIdentifier(input.batchId, 'batch id')
     assertWorkflow(input.workflow)
@@ -564,12 +585,14 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
         || !Number.isSafeInteger(input.ordinal)
         || input.ordinal < 0
         || !Number.isSafeInteger(input.maxAttempts)
-        || input.maxAttempts < 1) {
+        || input.maxAttempts < 1
+        || !Number.isSafeInteger(queueSequence)
+        || queueSequence < 1) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job ordering or attempt budget is invalid')
     }
     assertGenerationJobSnapshotSafe(input.snapshot)
     const base = {
-        recordSchemaVersion: 3 as const,
+        recordSchemaVersion: 4 as const,
         id: input.id,
         batchId: input.batchId,
         workflow: input.workflow,
@@ -578,6 +601,7 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
         createdAt: input.createdAt,
         updatedAt: input.createdAt,
         priority: input.priority,
+        queueSequence,
         ordinal: input.ordinal,
         snapshotSchemaVersion: input.snapshot.schemaVersion,
         snapshot: input.snapshot,
@@ -601,18 +625,26 @@ function storedJobFromInput(input: EnqueueGenerationJobInput): StoredJobRecord {
     return { ...base, ...orderKeys(base) }
 }
 
-function migrateLegacyJob(value: unknown): { job: StoredJobRecord; lease: LeaseRecord | null } {
-    if (!isRecord(value) || (value.recordSchemaVersion !== 1 && value.recordSchemaVersion !== 2)) {
+function migrateLegacyJob(
+    value: unknown,
+    queueSequence: number,
+): { job: StoredJobRecord; lease: LeaseRecord | null } {
+    if (!isRecord(value)
+        || (value.recordSchemaVersion !== 1
+            && value.recordSchemaVersion !== 2
+            && value.recordSchemaVersion !== 3)) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy queue job is invalid')
     }
+    const preservesV3RuntimeFields = value.recordSchemaVersion === 3
     const candidate: Record<string, unknown> = {
         ...value,
-        recordSchemaVersion: 3,
+        recordSchemaVersion: 4,
+        queueSequence,
         readyAt: typeof value.readyAt === 'string' ? value.readyAt : value.createdAt,
-        cancelRequestedAt: null,
-        cancelReason: null,
-        retryOfJobId: null,
-        rootJobId: value.id,
+        cancelRequestedAt: preservesV3RuntimeFields ? value.cancelRequestedAt : null,
+        cancelReason: preservesV3RuntimeFields ? value.cancelReason : null,
+        retryOfJobId: preservesV3RuntimeFields ? value.retryOfJobId : null,
+        rootJobId: preservesV3RuntimeFields ? value.rootJobId : value.id,
     }
     delete candidate.leaseOwner
     delete candidate.leaseToken
@@ -649,7 +681,7 @@ function migrateLegacyJob(value: unknown): { job: StoredJobRecord; lease: LeaseR
     }
 }
 
-function migrateLegacyBatch(value: unknown): GenerationBatch {
+function migrateLegacyBatch(value: unknown, queueSequence: number): GenerationBatch {
     if (!isRecord(value)) throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy batch is invalid')
     return parseBatch({
         ...value,
@@ -659,6 +691,7 @@ function migrateLegacyBatch(value: unknown): GenerationBatch {
         origin: value.origin ?? 'fresh',
         idempotencyKey: value.idempotencyKey ?? `batch:${String(value.id ?? '')}`,
         version: value.version ?? 1,
+        queueSequence,
     })
 }
 
@@ -683,6 +716,7 @@ function ensureCurrentIndexes(transaction: IDBTransaction): void {
     const batches = transaction.objectStore('batches')
     ensureIndex(batches, 'by-created-at', 'createdAt')
     ensureIndex(batches, 'by-idempotency-key', 'idempotencyKey', { unique: true })
+    ensureIndex(batches, 'by-queue-sequence', 'queueSequence', { unique: true })
 }
 
 function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction, oldVersion: number): void {
@@ -701,58 +735,92 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
     }
     ensureCurrentIndexes(transaction)
 
-    if (oldVersion < 4) {
+    if (oldVersion < 5) {
+        const batches = transaction.objectStore('batches')
         const jobs = transaction.objectStore('jobs')
         const leases = transaction.objectStore('leases')
+        const batchSequenceById = new Map<string, number>()
         const summaries = new Map<string, GenerationBatchSummary>()
-        const cursorRequest = jobs.openCursor()
-        cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result
-            if (cursor === null) {
-                const batches = transaction.objectStore('batches')
-                const batchCursorRequest = batches.openCursor()
-                batchCursorRequest.onsuccess = () => {
-                    const batchCursor = batchCursorRequest.result
-                    if (batchCursor === null) return
+        const batchRequest = batches.getAll()
+        batchRequest.onsuccess = () => {
+            try {
+                const orderedBatches = (batchRequest.result as unknown[])
+                    .map(value => {
+                        if (!isRecord(value)) {
+                            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy batch is invalid')
+                        }
+                        assertIdentifier(value.id, 'batch id')
+                        assertTimestamp(value.createdAt, 'batch createdAt')
+                        return value
+                    })
+                    .sort((left, right) => (
+                        String(left.createdAt).localeCompare(String(right.createdAt))
+                        || String(left.id).localeCompare(String(right.id))
+                    ))
+                orderedBatches.forEach((value, index) => {
+                    const batch = migrateLegacyBatch(value, index + 1)
+                    batchSequenceById.set(batch.id, batch.queueSequence)
+                    batches.put(batch)
+                })
+
+                const jobCursorRequest = jobs.openCursor()
+                jobCursorRequest.onsuccess = () => {
+                    const cursor = jobCursorRequest.result
+                    if (cursor === null) {
+                        if (oldVersion >= 4) return
+                        const summaryCursorRequest = batches.openCursor()
+                        summaryCursorRequest.onsuccess = () => {
+                            const batchCursor = summaryCursorRequest.result
+                            if (batchCursor === null) return
+                            try {
+                                const batch = parseBatch(batchCursor.value)
+                                const summary = summaries.get(batch.id)
+                                    ?? createEmptyGenerationBatchSummary(batch.id)
+                                batchCursor.update({
+                                    ...batch,
+                                    projectionRevision: summary.total > 0 ? 1 : 0,
+                                    projectionSummary: summary,
+                                })
+                                batchCursor.continue()
+                            } catch {
+                                transaction.abort()
+                            }
+                        }
+                        summaryCursorRequest.onerror = () => transaction.abort()
+                        return
+                    }
                     try {
-                        const batch = oldVersion < 3
-                            ? migrateLegacyBatch(batchCursor.value)
-                            : parseBatch(batchCursor.value)
-                        const summary = summaries.get(batch.id) ?? createEmptyGenerationBatchSummary(batch.id)
-                        batchCursor.update({
-                            ...batch,
-                            projectionRevision: summary.total > 0 ? 1 : 0,
-                            projectionSummary: summary,
-                        })
-                        batchCursor.continue()
+                        const value = cursor.value as unknown
+                        if (!isRecord(value) || typeof value.batchId !== 'string') {
+                            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy queue job is invalid')
+                        }
+                        const queueSequence = batchSequenceById.get(value.batchId)
+                        if (queueSequence === undefined) {
+                            throw new QueueRepositoryError(
+                                'E_QUEUE_BATCH_NOT_FOUND',
+                                'Legacy queue job references a missing batch',
+                            )
+                        }
+                        const migrated = migrateLegacyJob(value, queueSequence)
+                        const current = summaries.get(migrated.job.batchId)
+                            ?? createEmptyGenerationBatchSummary(migrated.job.batchId)
+                        summaries.set(
+                            migrated.job.batchId,
+                            applyGenerationJobProjectionDelta(current, null, projectStoredJob(migrated.job)),
+                        )
+                        cursor.update(migrated.job)
+                        if (migrated.lease !== null) leases.put(migrated.lease)
+                        cursor.continue()
                     } catch {
                         transaction.abort()
                     }
                 }
-                batchCursorRequest.onerror = () => transaction.abort()
-                return
-            }
-            try {
-                const migrated = oldVersion < 3
-                    ? migrateLegacyJob(cursor.value)
-                    : { job: parseStoredJob({
-                        ...(cursor.value as Record<string, unknown>),
-                        ...orderKeys(cursor.value as StoredJobRecord),
-                    }), lease: null }
-                const current = summaries.get(migrated.job.batchId)
-                    ?? createEmptyGenerationBatchSummary(migrated.job.batchId)
-                summaries.set(
-                    migrated.job.batchId,
-                    applyGenerationJobProjectionDelta(current, null, projectStoredJob(migrated.job)),
-                )
-                cursor.update(migrated.job)
-                if (migrated.lease !== null) leases.put(migrated.lease)
-                cursor.continue()
+                jobCursorRequest.onerror = () => transaction.abort()
             } catch {
                 transaction.abort()
             }
         }
-        cursorRequest.onerror = () => transaction.abort()
+        batchRequest.onerror = () => transaction.abort()
     }
 }
 
@@ -761,6 +829,16 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
         request.onsuccess = () => resolve(request.result)
         request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'))
     })
+}
+
+async function allocateQueueSequence(store: IDBObjectStore): Promise<number> {
+    const cursor = await requestResult(store.index('by-queue-sequence').openCursor(null, 'prev'))
+    if (cursor === null) return 1
+    const next = parseBatch(cursor.value).queueSequence + 1
+    if (!Number.isSafeInteger(next)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Queue sequence space is exhausted')
+    }
+    return next
 }
 
 function transactionDone(transaction: IDBTransaction): Promise<void> {
@@ -932,22 +1010,23 @@ export class IndexedDBQueueRepository {
     }
 
     async createBatch(input: CreateGenerationBatchInput): Promise<GenerationBatch> {
-        const batch = batchFromInput(input)
+        const identity = batchFromInput(input, 1)
         const selected = await this.runTransaction(['batches'], 'readwrite', async transaction => {
             const store = transaction.objectStore('batches')
-            const existingValue = await requestResult(store.get(batch.id))
+            const existingValue = await requestResult(store.get(identity.id))
             const existing = existingValue === undefined ? undefined : parseBatch(existingValue)
-            if (existing !== undefined && !hasSameBatchIdentity(existing, batch)) {
+            if (existing !== undefined && !hasSameBatchIdentity(existing, identity)) {
                 throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Batch identity already has different content')
             }
             if (existing === undefined) {
+                const batch = batchFromInput(input, await allocateQueueSequence(store))
                 await requestResult(store.add(batch))
                 return batch
             }
             return existing
         })
         const readback = await this.runTransaction(['batches'], 'readonly', transaction => (
-            requestResult(transaction.objectStore('batches').get(batch.id))
+            requestResult(transaction.objectStore('batches').get(identity.id))
         ))
         if (readback === undefined
             || canonicalSerialize(parseBatch(readback)) !== canonicalSerialize(selected)) {
@@ -1050,21 +1129,21 @@ export class IndexedDBQueueRepository {
     }
 
     async createBatchAndEnqueue(input: CreateBatchAndEnqueueInput): Promise<CreateBatchAndEnqueueResult> {
-        const batch = batchFromInput(input.batch)
-        const candidates = input.jobs.map(storedJobFromInput)
+        const batchIdentity = batchFromInput(input.batch, 1)
+        const validatedCandidates = input.jobs.map(job => storedJobFromInput(job, 1))
         const resources = [...(input.resources ?? [])]
-        if (candidates.length === 0) {
+        if (validatedCandidates.length === 0) {
             throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'A durable batch must contain at least one job')
         }
-        if (new Set(candidates.map(job => job.id)).size !== candidates.length
-            || new Set(candidates.map(job => job.idempotencyKey)).size !== candidates.length) {
+        if (new Set(validatedCandidates.map(job => job.id)).size !== validatedCandidates.length
+            || new Set(validatedCandidates.map(job => job.idempotencyKey)).size !== validatedCandidates.length) {
             throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate identity')
         }
         if (new Set(resources.map(resource => resource.id)).size !== resources.length) {
             throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate resources')
         }
-        for (const candidate of candidates) {
-            if (candidate.batchId !== batch.id || candidate.workflow !== batch.workflow) {
+        for (const candidate of validatedCandidates) {
+            if (candidate.batchId !== batchIdentity.id || candidate.workflow !== batchIdentity.workflow) {
                 throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Job does not match its atomic batch')
             }
         }
@@ -1082,19 +1161,19 @@ export class IndexedDBQueueRepository {
                 const batches = transaction.objectStore('batches')
                 const jobs = transaction.objectStore('jobs')
                 const resourceStore = transaction.objectStore('resources')
-                const existingBatchValue = await requestResult(batches.get(batch.id))
+                const existingBatchValue = await requestResult(batches.get(batchIdentity.id))
                 const existingByBatchKey = await requestResult(
-                    batches.index('by-idempotency-key').get(batch.idempotencyKey),
+                    batches.index('by-idempotency-key').get(batchIdentity.idempotencyKey),
                 )
                 if (existingByBatchKey !== undefined
-                    && parseBatch(existingByBatchKey).id !== batch.id) {
+                    && parseBatch(existingByBatchKey).id !== batchIdentity.id) {
                     throw new QueueRepositoryError(
                         'E_QUEUE_IDEMPOTENCY_CONFLICT',
                         'Batch idempotency key already represents different work',
                     )
                 }
                 if (existingBatchValue !== undefined
-                    && !hasSameBatchIdentity(parseBatch(existingBatchValue), batch)) {
+                    && !hasSameBatchIdentity(parseBatch(existingBatchValue), batchIdentity)) {
                     throw new QueueRepositoryError(
                         'E_QUEUE_IDEMPOTENCY_CONFLICT',
                         'Batch identity already represents different work',
@@ -1103,6 +1182,9 @@ export class IndexedDBQueueRepository {
                 const existingBatch = existingBatchValue === undefined
                     ? undefined
                     : parseBatch(existingBatchValue)
+                const selectedBatch = existingBatch
+                    ?? batchFromInput(input.batch, await allocateQueueSequence(batches))
+                const candidates = input.jobs.map(job => storedJobFromInput(job, selectedBatch.queueSequence))
 
                 const existingResources = new Map<string, QueueResourceRecord>()
                 for (const resource of resources) {
@@ -1172,20 +1254,20 @@ export class IndexedDBQueueRepository {
                 }
                 await Promise.all(additions.map(candidate => requestResult(jobs.add(candidate))))
                 if (additions.length > 0) {
-                    const projected = withBatchProjectionAdditions(existingBatch ?? batch, additions)
+                    const projected = withBatchProjectionAdditions(selectedBatch, additions)
                     if (existingBatch === undefined) await requestResult(batches.add(projected))
                     else await requestResult(batches.put(projected))
                 } else if (existingBatch === undefined) {
                     // A replay cannot normally create an empty batch because this
                     // method requires jobs, but preserving this branch keeps the
                     // immutable batch identity valid if all candidates dedupe.
-                    await requestResult(batches.add(batch))
+                    await requestResult(batches.add(selectedBatch))
                 }
                 return result
             },
         )
         const [readbackBatch, readbackJobs] = await Promise.all([
-            this.getBatch(batch.id),
+            this.getBatch(batchIdentity.id),
             this.getJobsByIds(selected.map(job => job.id)),
         ])
         if (readbackBatch === null || readbackJobs.some(job => job === null)) {
@@ -1200,9 +1282,9 @@ export class IndexedDBQueueRepository {
 
     async enqueueMany(inputs: readonly EnqueueGenerationJobInput[]): Promise<GenerationJob[]> {
         if (inputs.length === 0) return []
-        const candidates = inputs.map(storedJobFromInput)
-        if (new Set(candidates.map(job => job.id)).size !== candidates.length
-            || new Set(candidates.map(job => job.idempotencyKey)).size !== candidates.length) {
+        const validatedCandidates = inputs.map(input => storedJobFromInput(input, 1))
+        if (new Set(validatedCandidates.map(job => job.id)).size !== validatedCandidates.length
+            || new Set(validatedCandidates.map(job => job.idempotencyKey)).size !== validatedCandidates.length) {
             throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate identity')
         }
 
@@ -1210,12 +1292,19 @@ export class IndexedDBQueueRepository {
             const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const idempotency = jobs.index('by-idempotency-key')
-            const batchIds = [...new Set(candidates.map(job => job.batchId))]
+            const batchIds = [...new Set(validatedCandidates.map(job => job.batchId))]
             const batchValues = await Promise.all(batchIds.map(id => requestResult(batches.get(id))))
             const batchById = new Map(batchIds.map((id, index) => [
                 id,
                 batchValues[index] === undefined ? undefined : parseBatch(batchValues[index]),
             ]))
+            const candidates = inputs.map((input, index) => {
+                const batch = batchById.get(validatedCandidates[index].batchId)
+                if (batch === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+                }
+                return storedJobFromInput(input, batch.queueSequence)
+            })
             for (const candidate of candidates) {
                 const batch = batchById.get(candidate.batchId)
                 if (batch === undefined) {

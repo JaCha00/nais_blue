@@ -116,6 +116,8 @@ export interface GenerationJob {
 export interface GenerationBatch {
     readonly id: string
     readonly workflow: GenerationWorkflow
+    /** Monotonic enqueue order shared by every job in this immutable batch. */
+    readonly queueSequence: number
     readonly createdAt: string
     readonly updatedAt: string
     readonly state: GenerationBatchState

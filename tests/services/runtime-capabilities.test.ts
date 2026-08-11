@@ -12,6 +12,7 @@ describe('RuntimeCapabilities', () => {
 
         expect(capabilities.platform).toBe('windows')
         expect(capabilities.nativePluginRuntime.supported).toBe(true)
+        expect(capabilities.novelAiCredentialVault.supported).toBe(true)
         expect(capabilities.absoluteOutputPath.supported).toBe(true)
         expect(capabilities.externalProfileFileWatch.supported).toBe(true)
         expect(capabilities.localTaggerSidecar.supported).toBe(true)
@@ -22,12 +23,21 @@ describe('RuntimeCapabilities', () => {
         expect(capabilities.embeddedPngMetadataWrite.supported).toBe(true)
         expect(capabilities.supportedImageFormats).toEqual(['png', 'webp'])
         expect(createRuntimeCapabilities('web').nativePluginRuntime.supported).toBe(false)
+        expect(createRuntimeCapabilities('web').novelAiCredentialVault.supported).toBe(false)
         expect(createRuntimeCapabilities('web').embeddedBrowser.supported).toBe(false)
+    })
+
+    it('requires the runtime Tauri signal before trusting a native build target in a browser', async () => {
+        const source = await readFile(resolve(process.cwd(), 'src/platform/capabilities.ts'), 'utf8')
+
+        expect(source).toContain("Reflect.get(globalThis, 'isTauri') === true")
+        expect(source).toContain("if (typeof window !== 'undefined') return 'web'")
     })
 
     it('provides a reason and alternative for every unsupported Android capability', () => {
         const capabilities = createRuntimeCapabilities('android')
         const unsupported = [
+            capabilities.novelAiCredentialVault,
             capabilities.absoluteOutputPath,
             capabilities.externalProfileFileWatch,
             capabilities.localTaggerSidecar,
@@ -46,6 +56,7 @@ describe('RuntimeCapabilities', () => {
         expect(capabilities.secureLanSyncTransport.supported).toBe(true)
         expect(capabilities.embeddedPngMetadataWrite.supported).toBe(true)
         expect(capabilities.supportedImageFormats).toEqual(['png', 'webp'])
+        expect(capabilities.novelAiCredentialVault.alternative).toContain('session')
     })
 
     it('carries actionable details in unsupported errors', () => {

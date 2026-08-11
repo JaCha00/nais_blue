@@ -13,9 +13,17 @@ interface I2IDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     sourceImage: string | null
+    navigateOnComplete?: boolean
+    onGenerated?: (image: string | null) => void
 }
 
-export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: I2IDialogProps) {
+export function I2IDialog({
+    open,
+    onOpenChange,
+    sourceImage: propSourceImage,
+    navigateOnComplete = true,
+    onGenerated,
+}: I2IDialogProps) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const {
@@ -41,8 +49,9 @@ export function I2IDialog({ open, onOpenChange, sourceImage: propSourceImage }: 
     const handleGenerate = async () => {
         if (!propSourceImage) return
         await generate()
+        onGenerated?.(useGenerationStore.getState().previewImage)
         onOpenChange(false)
-        navigate('/')
+        if (navigateOnComplete) navigate('/advanced')
     }
 
     return (

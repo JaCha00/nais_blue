@@ -48,7 +48,8 @@ describe('Scene composition minimal UI contract', () => {
         const editor = await source('src/components/scene/ScenePromptEditor.tsx')
         const autocomplete = await source('src/components/ui/AutocompleteTextarea.tsx')
 
-        expect(editor).toContain("'h-24 min-h-24 resize-y rounded-control'")
+        expect(editor).toContain('<PromptSlotTabs')
+        expect(editor).toContain("'h-32 min-h-32 resize-y rounded-none")
         expect(autocomplete).toContain('.prompt-editor-wrapper textarea::placeholder')
         expect(autocomplete).toContain('-webkit-text-fill-color: oklch(var(--muted-foreground))')
     })

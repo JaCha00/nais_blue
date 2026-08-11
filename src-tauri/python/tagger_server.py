@@ -8,6 +8,14 @@ import asyncio
 import os
 import sys
 import argparse
+
+# PyInstaller's windowed bootloader intentionally leaves these streams unset.
+# Uvicorn still initializes stream log handlers, so give it a silent sink.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 import uvicorn
 import threading
 from typing import NamedTuple

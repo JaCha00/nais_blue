@@ -1,6 +1,7 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { createEmptyGenerationBatchSummary } from '@/domain/queue/summary'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import {
     IndexedDBQueueRepository,
@@ -168,6 +169,120 @@ async function createV3Database(factory: IDBFactory, name: string): Promise<void
     })
 }
 
+async function createV4Database(factory: IDBFactory, name: string): Promise<string> {
+    await createV3Database(factory, name)
+    const fixedSnapshot = snapshot()
+    const snapshotHash = hashGenerationJobSnapshot(fixedSnapshot)
+    await new Promise<void>((resolve, reject) => {
+        const request = factory.open(name, 4)
+        request.onupgradeneeded = () => {
+            const jobs = request.transaction?.objectStore('jobs')
+            if (jobs !== undefined && !jobs.indexNames.contains('by-batch-state-order')) {
+                jobs.createIndex('by-batch-state-order', 'batchStateOrderKey')
+            }
+        }
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+            const database = request.result
+            const transaction = database.transaction(['attempts', 'batches', 'jobs', 'leases'], 'readwrite')
+            const emptyFirst = createEmptyGenerationBatchSummary('batch:0')
+            const emptySecond = createEmptyGenerationBatchSummary('batch:1')
+            transaction.objectStore('batches').put({
+                id: 'batch:0',
+                workflow: 'main',
+                createdAt: NOW,
+                updatedAt: NOW,
+                state: 'active',
+                failurePolicy: 'continue',
+                pauseReason: null,
+                origin: 'fresh',
+                idempotencyKey: 'batch:0',
+                version: 3,
+                projectionRevision: 9,
+                projectionSummary: emptyFirst,
+            })
+            transaction.objectStore('batches').put({
+                id: 'batch:1',
+                workflow: 'main',
+                createdAt: NOW,
+                updatedAt: NOW,
+                state: 'active',
+                failurePolicy: 'continue',
+                pauseReason: null,
+                origin: 'fresh',
+                idempotencyKey: 'batch:1',
+                version: 4,
+                projectionRevision: 7,
+                projectionSummary: {
+                    ...emptySecond,
+                    total: 1,
+                    progressCurrent: 1 / 3,
+                    progressTotal: 1,
+                    states: { ...emptySecond.states, running: 1 },
+                },
+            })
+            transaction.objectStore('jobs').put({
+                recordSchemaVersion: 3,
+                id: 'job:1',
+                batchId: 'batch:1',
+                workflow: 'main',
+                sceneId: null,
+                state: 'running',
+                createdAt: NOW,
+                updatedAt: NOW,
+                priority: 0,
+                ordinal: 0,
+                snapshotSchemaVersion: fixedSnapshot.schemaVersion,
+                snapshot: fixedSnapshot,
+                snapshotHash,
+                compositionPlanHash: null,
+                attemptCount: 1,
+                maxAttempts: 3,
+                idempotencyKey: 'idempotency:1',
+                progress: { stage: 'request', current: 1, total: 3 },
+                lastDiagnosticEventId: 'diagnostic:v4',
+                outputTransactionId: null,
+                artifactReference: null,
+                blockReason: null,
+                readyAt: NOW,
+                cancelRequestedAt: null,
+                cancelReason: null,
+                retryOfJobId: 'job:source',
+                rootJobId: 'job:source',
+                version: 5,
+                globalOrderKey: [0, 0, NOW, 'job:1'],
+                batchOrderKey: ['batch:1', 0, 0, NOW, 'job:1'],
+                batchStateOrderKey: ['batch:1', 'running', 0, 0, NOW, 'job:1'],
+                stateOrderKey: ['running', 0, 0, NOW, 'job:1'],
+            })
+            transaction.objectStore('attempts').put({
+                id: 'job:1:1',
+                jobId: 'job:1',
+                attemptNumber: 1,
+                startedAt: NOW,
+                finishedAt: null,
+                outcome: 'running',
+                diagnosticEventId: null,
+                jobAttemptKey: ['job:1', 1],
+            })
+            transaction.objectStore('leases').put({
+                jobId: 'job:1',
+                owner: 'worker:v4',
+                token: 'lease:v4',
+                expiresAt: LATER,
+                heartbeatAt: NOW,
+            })
+            transaction.oncomplete = () => {
+                database.close()
+                resolve()
+            }
+            transaction.onerror = () => reject(transaction.error)
+            transaction.onabort = () => reject(transaction.error ?? new Error('v4 fixture aborted'))
+        }
+    })
+    return snapshotHash
+}
+
 async function readRawJob(factory: IDBFactory, name: string, version: number): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const request = factory.open(name, version)
@@ -195,7 +310,7 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
 
         const schema = await queue.inspectSchema()
-        expect(schema.version).toBe(4)
+        expect(schema.version).toBe(5)
         expect(schema.stores).toEqual(['attempts', 'batches', 'jobs', 'leases', 'resources'])
         expect(schema.indexes.jobs).toEqual([
             'by-batch-order',
@@ -206,7 +321,99 @@ describe('normalized IndexedDB durable queue repository', () => {
             'by-state-order',
         ])
         expect(schema.indexes.leases).toContain('by-expires-at')
+        expect(schema.indexes.batches).toContain('by-queue-sequence')
         queue.close()
+    })
+
+    it('orders the oldest batch before a newer batch ordinal while preserving priority', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('cross-batch-order'))
+        const oldBatchId = 'batch:z-old'
+        const newBatchId = 'batch:a-new'
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: oldBatchId, workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: oldBatchId,
+            },
+            jobs: [0, 1].map(ordinal => jobInput({
+                id: `job:old:${ordinal}`,
+                batchId: oldBatchId,
+                ordinal,
+                idempotencyKey: `job:old:${ordinal}`,
+            })),
+        })
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: newBatchId, workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: newBatchId,
+            },
+            jobs: [
+                jobInput({
+                    id: 'job:new:normal', batchId: newBatchId, priority: 0, ordinal: 0,
+                    idempotencyKey: 'job:new:normal',
+                }),
+                jobInput({
+                    id: 'job:new:urgent', batchId: newBatchId, priority: 1, ordinal: 1,
+                    idempotencyKey: 'job:new:urgent',
+                }),
+            ],
+        })
+
+        expect(await queue.getBatch(oldBatchId)).toMatchObject({ queueSequence: 1 })
+        expect(await queue.getBatch(newBatchId)).toMatchObject({ queueSequence: 2 })
+        expect((await queue.listJobs({ states: ['queued'] })).items.map(job => job.id)).toEqual([
+            'job:new:urgent',
+            'job:old:0',
+            'job:old:1',
+            'job:new:normal',
+        ])
+    })
+
+    it('allocates unique monotonic batch sequences across repository instances', async () => {
+        const factory = new IDBFactory()
+        const name = databaseName('sequence-race')
+        const first = repository(factory, name)
+        const second = repository(factory, name)
+        await Promise.all([first.initialize(), second.initialize()])
+
+        const batches = await Promise.all([
+            first.createBatch({ id: 'batch:a', workflow: 'main', createdAt: NOW }),
+            second.createBatch({ id: 'batch:b', workflow: 'main', createdAt: NOW }),
+        ])
+        expect(batches.map(batch => batch.queueSequence).sort((left, right) => left - right)).toEqual([1, 2])
+    })
+
+    it('migrates v4 order deterministically without rewriting snapshot or runtime records', async () => {
+        const factory = new IDBFactory()
+        const name = databaseName('v5-order-upgrade')
+        const snapshotHash = await createV4Database(factory, name)
+        const queue = repository(factory, name)
+        await queue.initialize()
+
+        expect(await queue.getBatch('batch:0')).toMatchObject({
+            queueSequence: 1,
+            version: 3,
+            projectionRevision: 9,
+        })
+        expect(await queue.getBatch('batch:1')).toMatchObject({
+            queueSequence: 2,
+            version: 4,
+            projectionRevision: 7,
+            projectionSummary: { total: 1, states: { running: 1 } },
+        })
+        expect(await queue.getJob('job:1')).toMatchObject({
+            state: 'running',
+            snapshotSchemaVersion: 1,
+            snapshotHash,
+            leaseOwner: 'worker:v4',
+            attemptCount: 1,
+            retryOfJobId: 'job:source',
+            rootJobId: 'job:source',
+            version: 5,
+        })
+        expect(await queue.listAttempts('job:1')).toEqual([
+            expect.objectContaining({ attemptNumber: 1, outcome: 'running', finishedAt: null }),
+        ])
     })
 
     it('deduplicates the same idempotency key and rejects conflicting content', async () => {

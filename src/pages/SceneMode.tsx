@@ -455,15 +455,13 @@ export default function SceneMode() {
                     : { severity: 'valid' }
     const estimatedCost = scenes.reduce((sum, scene) => {
         if (scene.queueCount <= 0) return sum
-        return sum + calculateAnlasCost(
-            scene.width ?? 832,
-            scene.height ?? 1216,
-            resolveSceneGeneration(scene).steps,
-            1,
-            0,
-            0,
-            activeCredentialsAreOpus,
-        ) * scene.queueCount
+        return sum + calculateAnlasCost({
+            width: scene.width ?? 832,
+            height: scene.height ?? 1216,
+            steps: resolveSceneGeneration(scene).steps,
+            imageCount: 1,
+            pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+        }) * scene.queueCount
     }, 0)
     const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')
     const conflict: CompositionConflictSummary | null = assetHasConflict

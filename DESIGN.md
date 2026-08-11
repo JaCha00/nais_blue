@@ -8,13 +8,15 @@ capabilities are presented.
 
 ## 1. Atmosphere / Signature
 
-**Cobalt Instrument** is a matte graphite image-production cockpit. Boundaries
+**Cobalt Editorial Instrument** is a matte graphite image-production cockpit. Boundaries
 disappear into three deliberate tones (`background -> canvas -> card`) so prompts
 and generated images remain the visual priority. One restrained cobalt marks
 selection, focus, and the next meaningful action. Borders are reserved for form
 fields, focus treatment, and data-row dividers; decorative cards, glow, blur, and
-gradient chrome are absent. `DESIGN_VARIANCE = 3`, `MOTION_INTENSITY = 2`, and
-`VISUAL_DENSITY = 6`.
+gradient chrome are absent. The Guided welcome surface is the sole exception: it
+may use one low-opacity cobalt ambient gradient behind content. Text, controls,
+cards, and every Advanced surface remain flat. `DESIGN_VARIANCE = 3`,
+`MOTION_INTENSITY = 2`, and `VISUAL_DENSITY = 6`.
 
 ## 2. Color
 
@@ -49,6 +51,7 @@ tokens move lighter in dark mode so text, icons, and focus states remain legible
 | `--warning` | `0.700 0.140 75` | `0.780 0.140 75` | Cost and caution |
 | `--info` | `0.520 0.160 250` | `0.720 0.150 250` | Informational state |
 | `--scrim` | `0.100 0.010 262` | `0.080 0.008 262` | Modal overlay at 72% alpha |
+| `--welcome-ambient` | `0.540 0.190 263.65` | `0.600 0.170 263.65` | Guided welcome background only |
 
 Charts use `--chart-1` through `--chart-5`; their OKLCH values are defined in
 `globals.css`. No raw hex, named Tailwind hue, or feature-specific accent may be
@@ -64,6 +67,8 @@ token with alpha.
 - Mono stack: `JetBrains Mono`, `D2Coding`, `Consolas`, `monospace`, reserved for
   seeds, balances, paths, dimensions, and job timing.
 - Page title: mobile `20px / 650 / 1.25`; desktop `24px / 650 / 1.25`.
+- Guided display: `clamp(32px, 4vw, 56px) / 700 / 1.08`, `-0.035em` tracking.
+- Guided question: mobile `26–30px`; desktop `30–36px`; at most `32ch`.
 - Section title: `16px / 600 / 1.35`.
 - Control/body: `14px / 450 / 1.5`.
 - Label: `12px / 550 / 1.35`.
@@ -83,6 +88,9 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 - Shell inset: `8px` at 390, `12px` from 640, plus Android
   `env(safe-area-inset-*)` at the outer shell and fixed overlays.
 - Shell gap: `8px` mobile, `12px` desktop.
+- Guided content max: `72rem`; question max: `45rem`; review max: `57.5rem`.
+- Guided activity rail: `22rem`, docked only from an `80rem` shell width;
+  otherwise it becomes a Sheet so the question surface never clips.
 - Control padding: `8px 12px`; dense icon controls keep a 44px hit box and a
   `16–20px` icon.
 - Panel padding: `20px` standard, `24px` dialog/desktop settings. Dense `12px`
@@ -139,6 +147,14 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   actions with 44px touch targets and visible keyboard focus.
 - **Icons:** Lucide only except existing product logos. Every icon-only action has
   an accessible name and tooltip where hover exists.
+- **Guided shell:** one question owns the reading order. Choice rows use a 1px
+  separator, `88–112px` height, one monochrome icon, one short description, and
+  one arrow. They are rows, not a grid of ornamental cards. Low-risk reversible
+  answers may advance after `250–350ms`; model, credential, cost, storage,
+  metadata, public-access, overwrite, and destructive choices require an
+  explicit Continue action. Branching paths show `Step n · label` until the
+  active path length is stable. Review uses a definition list and hairlines at
+  up to `57.5rem`, not nested cards.
 
 ### Composition workspace contract
 
@@ -202,6 +218,11 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   `180–240ms` duration.
 - `prefers-reduced-motion: reduce` removes transforms, animated scrolling, pulse,
   ping, and spinners beyond the minimum state indication.
+- `--welcome-ambient` is allowed only behind the Guided welcome route. It uses
+  pseudo-elements animated through `transform` and `opacity`: the main plane
+  moves over `16–22s`, while the secondary light breathes over `8–12s`.
+  Background-position animation, blur, glow, gradient text, and gradients inside
+  cards or controls remain prohibited. Reduced motion freezes both layers.
 
 ## 7. Depth
 

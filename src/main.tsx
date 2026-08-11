@@ -394,10 +394,10 @@ async function runStartupMigrations(): Promise<void> {
         reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
     }
 
-    // NovelAI tokens hydrate directly from this device's strict app storage so
-    // generation is ready after restart without a separate unlock session.
+    // Secret-free refs hydrate from strict app storage; the OS credential vault
+    // supplies runtime-only tokens without a separate passphrase session.
     try {
-        setSplashStage('Loading local API tokens')
+        setSplashStage('Loading secure API credentials')
         const { initializeAuthCredentialState } = await import('./stores/auth-store')
         await initializeAuthCredentialState()
     } catch (err) {

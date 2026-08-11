@@ -3,6 +3,711 @@
         "name": "NAIS blue",
         "description": "NovelAI Integrated Studio"
     },
+    "guided": {
+        "advanced": "Advanced generation",
+        "resolutionDetails": {
+            "title": "Detailed resolution",
+            "description": "Enter width and height directly. Values are aligned to NovelAI's 64-pixel grid.",
+            "swap": "Swap width and height",
+            "width": "Width",
+            "height": "Height",
+            "widthPixels": "Width in pixels",
+            "heightPixels": "Height in pixels",
+            "pending": "Enter a size to estimate it together with the current Steps value.",
+            "free": "At or below 1024² and Steps 28, the current base generation cost is 0 Anlas.",
+            "paid": "Pixel area and Steps are priced together. Raising either one increases the estimate.",
+            "quote": "{{count}} image(s) · Steps {{steps}}"
+        },
+        "home": {
+            "welcome": "Welcome!",
+            "question": "Let's begin with what you want to accomplish.",
+            "autosave": "Your choices are saved automatically.",
+            "choices": "Choose a task",
+            "open": "Start",
+            "resume": "Continue where you left off",
+            "draftCount": "{{count}} saved drafts",
+            "createError": "We couldn't save a new draft. Please try again in a moment.",
+            "single": { "title": "Create one image with care", "description": "Choose the model and final settings one step at a time." },
+            "batch": { "title": "Create several images", "description": "Choose repeated settings, prompt variation, or planned scenes." },
+            "prompt": { "title": "Refine an image prompt", "description": "Review safe, structured edits with your local AI agent." },
+            "library": { "title": "Manage generated images", "description": "Organize, edit, inspect metadata, and upload to R2." },
+            "environment": { "title": "Configure the workspace", "description": "Set up accounts, storage, appearance, and backups." }
+        },
+        "promptTasks": {
+            "back": "Back",
+            "next": "Next",
+            "breadcrumb": "Current task path",
+            "stepLabel": "Step {{current}} · {{label}}",
+            "saving": "Saving…",
+            "saved": "Saved",
+            "saveFailed": "Couldn't save",
+            "direct": {
+                "editorLabel": "Prompt sections to refine",
+                "steps": {
+                    "edit": "Edit prompt",
+                    "verify": "Check tags",
+                    "review": "Save or continue"
+                },
+                "edit": {
+                    "title": "Let's shape your prompt in four focused sections.",
+                    "description": "Start with the core scene, then add atmosphere, fine detail, and exclusions only where they help.",
+                    "help": "Use English tags or natural-language descriptions. Autocomplete counts are reference post counts from the tag dataset."
+                },
+                "verify": {
+                    "title": "Want to check how established these tags are?",
+                    "description": "The local tagger checks Danbooru post counts for each section. Natural-language phrases can be skipped.",
+                    "action": "Check tags",
+                    "empty": "Run the check, or continue without it.",
+                    "replace": "Replace with"
+                },
+                "review": {
+                    "title": "What would you like to do with this prompt?",
+                    "description": "Apply it to the current generation settings, save it as a named preset, or continue straight into the one-image workflow.",
+                    "positive": "Final positive prompt",
+                    "negative": "Exclusions",
+                    "saveTitle": "Save it for later",
+                    "saveDescription": "Keep all four prompt sections and the current generation parameters in one preset.",
+                    "presetName": "Preset name",
+                    "save": "Save as preset",
+                    "createTitle": "Create one image with this prompt",
+                    "createDescription": "Create an A draft with the current model, resolution, and settings, then continue to Guided review.",
+                    "apply": "Apply to current settings",
+                    "create": "Create A draft"
+                }
+            },
+            "style": {
+                "steps": {
+                    "base": "Comparison base",
+                    "pool": "Artists and mixes",
+                    "preview": "Matched previews",
+                    "compare": "Choose and apply"
+                },
+                "base": {
+                    "title": "Set a fair baseline so only the style changes.",
+                    "description": "Both candidates use the same prompt, model, resolution, and seed. Start with the scene content that should stay fixed.",
+                    "placeholder": "e.g. 1girl, portrait, quiet library, warm afternoon light",
+                    "settingsTitle": "Preview generation settings",
+                    "settingsDescription": "Review and change the model, resolution, and Steps that will be applied equally to both candidates."
+                },
+                "pool": {
+                    "title": "Which artist tags should we mix?",
+                    "description": "Add artist names separated by commas or new lines, then choose how many combinations to prepare. You can keep the default list.",
+                    "count": "Combinations",
+                    "countHelp": "Four is a comfortable starting point. Only two candidates are rendered for the actual comparison.",
+                    "generate": "Create combinations",
+                    "range": "{{min}}–{{max}} tags · weight {{minWeight}}–{{maxWeight}}"
+                },
+                "preview": {
+                    "title": "Preview two candidates under identical conditions.",
+                    "description": "One click selects a fair pair and adds both renders to the queue. They keep running if you move to another task.",
+                    "start": "Start two previews",
+                    "retry": "Preview a new pair",
+                    "compare": "Compare results",
+                    "ready": "Both images are ready under the same conditions.",
+                    "waiting": "The queue is preparing both images.",
+                    "costTitle": "Estimated cost for two images",
+                    "costSummary": "Two candidates · up to {{cost}} Anlas",
+                    "opusBasis": "All active accounts are Opus, so settings up to 1024² and 28 Steps are estimated at 0 Anlas.",
+                    "paidBasis": "The free allowance cannot be confirmed for every active account, so this uses the safer paid estimate.",
+                    "consent": "I understand that generating both candidates may use up to {{cost}} Anlas.",
+                    "tokenRequired": "Add a NovelAI API token before starting these previews."
+                },
+                "compare": {
+                    "title": "Which style do you prefer?",
+                    "description": "Your choice is saved as preference evidence. Add the winning combination to the current supporting prompt when you're ready.",
+                    "another": "Compare another pair",
+                    "selected": "Like this combination?",
+                    "applyHelp": "Add the artist combination to the end of the current supporting prompt.",
+                    "apply": "Apply selected combination",
+                    "applied": "Applied to prompt",
+                    "recorded": "Choice saved. You can compare another pair.",
+                    "missing": "Prepare a matched preview pair first."
+                },
+                "choose": "Choose this result",
+                "previewing": "Generating preview…",
+                "notEnoughCandidates": "Couldn't create at least two combinations. Add more artist tags and try again.",
+                "noPair": "Couldn't select a fair pair. Create the combinations again.",
+                "previewRejected": "Some previews couldn't be added to the queue. Please try again in a moment."
+            },
+            "agent": {
+                "steps": {
+                    "preset": "Choose target",
+                    "workspace": "AI prompt",
+                    "result": "Review result"
+                },
+                "preset": {
+                    "title": "Choose the preset your AI should refine.",
+                    "description": "The agent can edit all four prompt sections and generation parameters in the selected preset. Save the current work first to include it in snapshot.json.",
+                    "label": "Preset to edit",
+                    "saveCurrent": "Save current work to this preset"
+                },
+                "privacy": "NovelAI and R2 tokens, original images, thumbnails, and generation history never enter the AI workspace.",
+                "workspace": {
+                    "title": "Prepare a prompt to paste into your AI.",
+                    "description": "Choose a template and the preset ID, snapshot revision, and workspace path are filled automatically. You can also select a reference file when needed.",
+                    "syncTitle": "Prepare the latest workspace files",
+                    "syncDescription": "Refresh the snapshot before your AI edits files. When request.json is ready, the app validates and applies it automatically."
+                },
+                "composer": {
+                    "template": "Prompt template",
+                    "polish": "Lightly polish the existing prompt",
+                    "rework": "Restructure into four prompt sections",
+                    "reference": "Use an image, JSON, or document",
+                    "goal": "What to change · Optional",
+                    "goalPlaceholder": "For example: emphasize night lighting and remove duplicate tags",
+                    "referenceFile": "Variable · Reference file",
+                    "referenceHelp": "The selected native file path is inserted into the fixed template automatically.",
+                    "noFile": "No file selected yet",
+                    "chooseFile": "Choose file",
+                    "chooseFileTitle": "Choose a file for your AI to reference",
+                    "fileError": "We couldn't select that file.",
+                    "preview": "Prompt to paste into your AI",
+                    "copy": "Copy prompt",
+                    "copied": "Copied",
+                    "copyError": "We couldn't copy to the clipboard. Select and copy the text manually.",
+                    "autoVariables": "Preset ID, revision, and workspace path are filled automatically.",
+                    "unknownPreset": "Selected preset"
+                },
+                "result": {
+                    "title": "Confirm that the AI request was applied safely.",
+                    "description": "Check the result.json outcome and the latest revision watched by the app in one place.",
+                    "open": "Open workspace folder"
+                }
+            }
+        },
+        "promptModules": {
+            "trigger": "Browse prompt folders",
+            "triggerShort": "Load module",
+            "negativeTrigger": "Load exclusion module",
+            "title": "Load a prompt module",
+            "description": "Choose a folder, module, and line to add to this prompt. The selected text is copied into your draft.",
+            "searchPlaceholder": "Search folders or modules",
+            "searchLabel": "Search prompt modules",
+            "filesLabel": "Prompt modules",
+            "empty": "You have no saved prompt modules yet.",
+            "manage": "Manage modules",
+            "noResults": "No matching modules found.",
+            "unfiled": "No folder",
+            "lineCount": "{{count}} lines",
+            "linesLabel": "Prompt lines",
+            "selectFile": "Choose a module on the left first.",
+            "loading": "Loading module…",
+            "loadError": "We couldn't load this module. Please try again.",
+            "retry": "Try again",
+            "noUsableLines": "This module has no selectable lines.",
+            "create": {
+                "trigger": "Create module",
+                "title": "Create a prompt module",
+                "description": "Each line is one candidate. Random or sequential generation takes one line at a time.",
+                "folder": "Folder · Optional",
+                "folderPlaceholder": "For example: characters/hair",
+                "name": "Module name",
+                "namePlaceholder": "For example: hair_colors",
+                "lines": "Candidate prompts · One per line",
+                "linesPlaceholder": "silver hair\nblue hair\npink hair",
+                "invalidName": "The name cannot contain path or reference-reserved characters.",
+                "emptyContent": "Enter at least one prompt line.",
+                "duplicate": "A module with this name already exists in the same folder.",
+                "failed": "We couldn't save the module. Please try again.",
+                "cancel": "Cancel",
+                "save": "Save module"
+            }
+        },
+        "promptImport": {
+            "title": "Load a prompt from an image or JSON",
+            "description": "Drop a file or browse to read positive and negative prompts from image metadata.",
+            "saveImportedModule": "Save imported text as a module",
+            "saveCurrentModule": "Save current prompt as a module",
+            "error": "No prompt metadata was found. Check that this is a NovelAI image or NAIS JSON file.",
+            "loading": "Reading metadata…",
+            "choose": "Drop a file here or select one",
+            "moduleSaved": "Saved module {{path}}.",
+            "replace": "Replace current prompt",
+            "append": "Append to current text"
+        },
+        "workflows": {
+            "home": "Task home",
+            "breadcrumb": "Current task path",
+            "start": "Start now",
+            "native": {
+                "unavailable": {
+                    "library": "This image-management task isn't available. Return to Task Home and choose it again.",
+                    "environment": "This environment task isn't available. Return to Task Home and choose it again."
+                },
+                "device": {
+                    "back": "Back to device connection"
+                },
+                "library": {
+                    "back": "Back to Library"
+                },
+                "diagnostics": {
+                    "title": "Diagnose errors and runtime status",
+                    "description": "Choose a recent redacted error, review the recommended action, or export a sanitized log.",
+                    "empty": "No diagnostics have been recorded.",
+                    "waiting": "New errors will appear here as soon as they are recorded.",
+                    "recommendedAction": "Recommended action",
+                    "copySummary": "Copy summary",
+                    "copyLog": "Copy sanitized log",
+                    "exportJson": "Export JSON",
+                    "technicalDetails": "Sanitized technical details"
+                }
+            },
+            "batch": {
+                "eyebrow": "Create several images",
+                "title": "How would you like to create multiple images?",
+                "description": "Choose repeated generation, prompt variations, or planned scenes, then enter settings, approve cost, queue work, and review results without leaving Guided.",
+                "options": {
+                    "sameSettings": {
+                        "title": "Repeat the same settings",
+                        "description": "Keep one prompt and settings snapshot, then choose how many images to generate."
+                    },
+                    "variations": {
+                        "title": "Generate sequential prompt variations",
+                        "description": "Use sequential or random fragment rules to change the prompt for each image."
+                    },
+                    "scenes": {
+                        "title": "Plan and generate scenes",
+                        "description": "Write several scenes under shared settings and keep each scene's results organized."
+                    },
+                    "queue": {
+                        "title": "Manage the execution order",
+                        "description": "Review queued, active, and failed jobs, then manage priority and retries."
+                    }
+                }
+            },
+            "prompt": {
+                "eyebrow": "Refine a prompt",
+                "title": "How would you like to refine your prompt?",
+                "description": "Organize it safely with your local AI agent, edit it directly, or compare generated alternatives.",
+                "options": {
+                    "localAgent": {
+                        "title": "Work with a local AI agent",
+                        "description": "Review prompts and image metadata in the agent workspace and manage suggested revisions."
+                    },
+                    "direct": {
+                        "title": "Edit the prompt directly",
+                        "description": "Use tag autocomplete and prompt fragments to shape the wording yourself."
+                    },
+                    "styleLab": {
+                        "title": "Build and compare style combinations",
+                        "description": "Generate several style combinations, compare them, and keep the prompt that fits your taste."
+                    }
+                }
+            },
+            "library": {
+                "eyebrow": "Manage images",
+                "title": "What would you like to do with your images?",
+                "description": "Review generation history, edit images, inspect metadata, upload remotely, and recover items right here.",
+                "options": {
+                    "library": {
+                        "title": "Collect and organize images",
+                        "description": "Import images and arrange your collection with stacks and custom ordering."
+                    },
+                    "history": {
+                        "title": "Review recent generations",
+                        "description": "Preview saved results and regenerate them or load their metadata."
+                    },
+                    "tools": {
+                        "title": "Edit or enhance an image",
+                        "description": "Use inpainting, I2I, background removal, and NovelAI Director Tools."
+                    },
+                    "metadata": {
+                        "title": "Inspect metadata from several images",
+                        "description": "Read prompts, models, seeds, and settings, then export the results as JSON or CSV."
+                    },
+                    "trash": {
+                        "title": "Recover deleted images",
+                        "description": "Restore items during their retention period or remove them permanently."
+                    },
+                    "r2": {
+                        "title": "Upload to Cloudflare R2",
+                        "description": "Upload local images to an R2 bucket and manage progress or failed uploads."
+                    }
+                }
+            },
+            "environment": {
+                "eyebrow": "Configure your workspace",
+                "title": "What would you like to set up first?",
+                "description": "Configure essential account and storage settings, appearance, backups, device connections, and diagnostics right here.",
+                "options": {
+                    "credentials": {
+                        "title": "NovelAI accounts and API settings",
+                        "description": "Register and verify API token slots, then choose which accounts may be used."
+                    },
+                    "appearance": {
+                        "title": "Theme and text size",
+                        "description": "Adjust the app theme and prompt editor text size for comfortable reading."
+                    },
+                    "storage": {
+                        "title": "Image storage locations",
+                        "description": "Choose folders for regular generations, scenes, Style Lab, and image tools."
+                    },
+                    "shortcuts": {
+                        "title": "Keyboard shortcuts",
+                        "description": "Assign your preferred key combinations to common generation and panel actions."
+                    },
+                    "backup": {
+                        "title": "Back up settings and work data",
+                        "description": "Export, restore, or automatically back up app data without raw credentials."
+                    },
+                    "device": {
+                        "title": "Connect another device",
+                        "description": "Synchronize presets with a supported device on the same network or move them with a backup."
+                    },
+                    "web": {
+                        "title": "Built-in web workspace",
+                        "description": "Open useful web pages inside the app while keeping your generation work nearby."
+                    },
+                    "diagnostics": {
+                        "title": "Diagnose errors and runtime status",
+                        "description": "Review recent redacted errors, recommended actions, and exportable diagnostic details."
+                    }
+                }
+            }
+        },
+        "activity": {
+            "title": "My work",
+            "description": "Track active work here while moving around the app.",
+            "accounts": "Work by account",
+            "accountLabel": "NovelAI account {{number}}",
+            "available": "Available · {{tier}}",
+            "notReady": "Registration or review required",
+            "drafts": "Drafts in progress",
+            "noDrafts": "New work will appear here once you begin.",
+            "singleUntitled": "Create one image",
+            "batchUntitled": "Create multiple images",
+            "startAnother": "Start another task",
+            "status": {
+                "draft": "Drafting",
+                "review": "Reviewing",
+                "queued": "Queued",
+                "completed": "Complete",
+                "failed": "Failed",
+                "cancelled": "Cancelled",
+                "needs-attention": "Needs attention"
+            }
+        },
+        "batch": {
+            "title": "Create multiple images",
+            "home": "Task home",
+            "back": "Go back",
+            "breadcrumb": "Current task path",
+            "continue": "Continue",
+            "recommended": "Recommended",
+            "loading": "Loading your draft…",
+            "loadError": "We couldn't load this batch draft.",
+            "starting": "Checking your previous work…",
+            "startError": "We couldn't start a batch draft.",
+            "stepLabel": "Step {{current}} · {{label}}",
+            "stepNavigation": "Step navigation",
+            "starter": {
+                "eyebrow": "Create multiple images",
+                "sameSettings": "Multiple images with shared settings",
+                "variations": "Multiple prompt variations",
+                "scenes": "Multiple planned scenes",
+                "first": "Start a new task and your choices will be saved automatically.",
+                "savedCount": "You have {{count}} saved drafts for this method. Resume the latest one or start fresh.",
+                "recent": "Latest draft",
+                "recentMeta": "{{status}} · {{count}} images · {{time}}",
+                "resume": "Resume latest draft",
+                "new": "Start new task",
+                "other": "Choose another method"
+            },
+            "save": { "saving": "Saving…", "saved": "Autosaved", "error": "Please check the save" },
+            "steps": {
+                "model": { "short": "Model", "title": "Which model should make this batch?", "description": "Choose based on creative range and result consistency." },
+                "prompt": { "short": "Prompt", "title": "Let's set the shared prompt and modules", "description": "Load a saved module as-is, or connect it as a random or sequential reference." },
+                "count": { "short": "Count", "title": "How many images should we make?", "description": "Each item becomes an independent durable queue job, so it continues when you move elsewhere." },
+                "scenes": { "short": "Scenes", "title": "Which scenes should we make?", "description": "Give each scene its own prompt and count, then send them to the queue together." },
+                "settings": { "short": "Settings", "title": "Let's check the shared generation settings", "description": "Recommended resolutions and 28 Steps are within the basic cost range. Changes update the estimate immediately." },
+                "review": { "short": "Review", "title": "One last check before queueing?", "description": "Settings are frozen in a snapshot, and resubmitting the same draft won't run it twice." },
+                "result": { "short": "Results", "title": "Let's review the finished images", "description": "Results appear as they finish, and generation continues when you move to another workflow." }
+            },
+            "model": {
+                "legend": "Generation model",
+                "full": "A broad creative range and more freedom for varied images.",
+                "curated": "A selected creative range for more consistent results."
+            },
+            "variation": {
+                "order": "Module selection order",
+                "random": "One random line per image",
+                "sequential": "Use lines from 1 onward",
+                "fixedTitle": "1. Content shared by every image",
+                "fixedDescription": "Anything typed here or added with ‘Load one fixed line’ is repeated unchanged in every image.",
+                "dynamicTitle": "2. Connect a module that changes per image",
+                "dynamicDescription": "Each module line is one candidate. Choose random or sequential order, then connect the module so only that line changes for each image."
+            },
+            "prompt": {
+                "label": "Shared prompt",
+                "placeholder": "For example: 1girl, blue hair, quiet library, warm afternoon light",
+                "basePlaceholder": "Optional details shared by every scene",
+                "commonTitle": "Content shared by every image",
+                "commonDescription": "Write it directly or load one line from a saved module to build the shared prompt.",
+                "fixedModule": "Load one fixed line",
+                "help": "You can use English tags or natural-language prompts. Module references are checked strictly before the batch runs.",
+                "negativeTitle": "Shared exclusions · Optional",
+                "negativeModule": "Load an exclusion module"
+            },
+            "modules": {
+                "file": "Prompt modules by folder",
+                "empty": "No saved modules yet",
+                "choose": "Choose a module",
+                "addReference": "Connect to prompt",
+                "create": "Create variation module",
+                "randomHelp": "Each image deterministically chooses a line from the module using its Seed.",
+                "sequentialHelp": "Uses the next line in generation order. Only successful jobs advance the module sequence."
+            },
+            "count": {
+                "label": "Number of images",
+                "help": "They are queued together. With two API tokens, eligible jobs can be divided between the accounts."
+            },
+            "scenes": {
+                "total": "{{count}} images total",
+                "add": "Add scene",
+                "empty": "Add a scene to begin.",
+                "defaultName": "New scene {{number}}",
+                "legend": "Scene {{number}}",
+                "name": "Scene name",
+                "remove": "Remove scene",
+                "importTarget": "Scene to receive metadata",
+                "positive": "Describe what should appear in this scene",
+                "negative": "What to avoid in this scene · Optional",
+                "count": "Count"
+            },
+            "resolution": { "portrait": "Portrait", "square": "Square", "landscape": "Landscape" },
+            "settings": {
+                "resolution": "Resolution",
+                "stepsHelp": "Up to 28 is within the basic range. More Steps can improve instruction following, but higher is not always better.",
+                "samplerHelp": "The recommended value is a good default.",
+                "cfgHelp": "Higher values follow the prompt more strongly, but can make the image look harsh.",
+                "outputDirectory": "Save folder",
+                "outputHelp": "A relative path is created under the app's default image folder.",
+                "imageFormat": "Image format",
+                "estimate": "Maximum estimated cost for these settings"
+            },
+            "review": {
+                "mode": "Method",
+                "model": "Model",
+                "prompt": "Prompt",
+                "scenePrompts": "Prompts by scene",
+                "count": "Image count",
+                "countValue": "{{count}} images",
+                "settings": "Settings",
+                "output": "Save",
+                "edit": "Edit",
+                "costConsent": "Add this batch to the queue with a maximum cost of {{cost}} Anlas.",
+                "queueHelp": "One account runs one image job at a time; the next job starts automatically.",
+                "tokenRequired": "Register the NovelAI API token you want to use first.",
+                "enqueue": "Add {{count}} images to the queue",
+                "promptModuleError": "A connected prompt module is missing. Check it again in the prompt step.",
+                "submitError": "We couldn't add the batch. Check your account and cost settings.",
+                "footer": "Check the settings and cost once more before running."
+            },
+            "result": {
+                "complete": "Every image is ready.",
+                "progress": "Your images are being made.",
+                "finishedWithIssues": "This batch has stopped. Review the finished results and queue status.",
+                "background": "The queue keeps running when you move elsewhere, and finished results appear here first.",
+                "failedCount": "{{count}} jobs need attention. You can retry them from queue management below.",
+                "stoppedCount": "{{count}} jobs were cancelled or skipped after an earlier job stopped.",
+                "waiting": "Waiting for the first result.",
+                "noSuccessfulResults": "There are no finished results. Check failed and cancelled jobs in queue management.",
+                "loadMore": "Show the next {{count}} results",
+                "imageAlt": "Finished image {{number}}",
+                "previewFailed": "Preview unavailable",
+                "previewLoading": "Loading preview",
+                "next": "Next task",
+                "keepTitle": "Like these settings?",
+                "keepHelp": "The draft is already saved. Run it again as-is or adjust the prompt for the next batch.",
+                "regenerate": "Run again with a new Seed",
+                "edit": "Edit settings",
+                "queue": "Manage queue",
+                "footer": "Finished results appear here automatically."
+            },
+            "queue": {
+                "back": "Back to batch method selection",
+                "title": "Let's check your active work",
+                "description": "Pause a batch here, or retry only the failed items.",
+                "loadError": "We couldn't load the queue.",
+                "empty": "There are no queued jobs yet.",
+                "summary": "{{completed}} / {{total}} complete · {{waiting}} waiting · {{running}} running · {{attention}} need attention",
+                "pause": "Pause",
+                "resume": "Resume",
+                "retry": "Retry failures",
+                "cancel": "Cancel remaining"
+            }
+        },
+        "credential": {
+            "loading": "Checking your saved connection details.",
+            "eyebrow": "Just once before you begin",
+            "eyebrowSession": "Before this session begins",
+            "title": "Let's connect NovelAI.",
+            "descriptionDesktop": "Image generation requires a Persistent API Token. It is kept in your operating system's secure vault and remains available after reopening the app.",
+            "descriptionSession": "Image generation requires a Persistent API Token. This environment keeps it only for the current session, so re-enter it after closing the app or tab.",
+            "formTitle": "Register a Persistent API Token",
+            "formHelp": "In NovelAI, go to Settings → Account → Get Persistent API Token, then create and copy one.",
+            "tokenLabel": "NovelAI API Token",
+            "placeholder": "Paste your token here",
+            "error": "We couldn't verify the token. Check the value and your network connection.",
+            "openGuide": "View the official token guide",
+            "connect": "Verify and connect",
+            "r2Later": "We'll guide you through R2 setup separately when you need to upload images."
+        },
+        "single": {
+            "title": "Create one image",
+            "home": "Task home",
+            "back": "Go back",
+            "breadcrumb": "Current task path",
+            "progress": "Task progress",
+            "stepNavigation": "Detailed step navigation",
+            "stepLabel": "Step {{current}} · {{label}}",
+            "stepA11y": "Step {{current}} of {{total}}",
+            "recommended": "Recommended",
+            "continue": "Continue",
+            "reviewSettings": "Review settings",
+            "loading": "Loading your draft…",
+            "loadError": "We couldn't load this draft.",
+            "returnHome": "Return to task home",
+            "save": {
+                "saving": "Saving…",
+                "saved": "Autosaved",
+                "error": "Check save status"
+            },
+            "steps": {
+                "model": {
+                    "short": "Model",
+                    "title": "Which model would you like to use?",
+                    "description": "If you're new, we recommend V4.5 Full for strong prompt following and a wide range of styles."
+                },
+                "prompt": {
+                    "short": "Prompt",
+                    "title": "What would you like to create?",
+                    "description": "Describe the scene in English tags or natural-language sentences."
+                },
+                "resolution": {
+                    "short": "Resolution",
+                    "title": "What shape should the image be?",
+                    "description": "Choose the aspect ratio closest to your intended use. All three stay within 1024² pixels."
+                },
+                "settings": {
+                    "short": "Generation settings",
+                    "title": "Shall we fine-tune these settings?",
+                    "description": "The recommended values work well as they are. Adjust them only when you want a different feel."
+                },
+                "review": {
+                    "short": "Final review",
+                    "title": "Ready for one last look?",
+                    "description": "Once queued, these settings are locked into a snapshot for safe execution."
+                },
+                "result": {
+                    "short": "Result",
+                    "title": "Ready to see the finished image?",
+                    "description": "Review the result here, save it elsewhere, or adjust the settings for your next image."
+                }
+            },
+            "model": {
+                "legend": "Generation model",
+                "nai-diffusion-4-5-full": "The broadest generation range and creative freedom in the V4.5 family.",
+                "nai-diffusion-4-5-curated": "A more selective generation range that makes consistent anime illustrations easier.",
+                "nai-diffusion-4-full": "Choose this for the broad range and creative freedom of the V4 generation.",
+                "nai-diffusion-4-curated-preview": "A selective V4 range focused on consistent anime illustrations."
+            },
+            "prompt": {
+                "label": "Image to create",
+                "placeholder": "e.g. 1girl, blue hair, quiet library, warm afternoon light",
+                "tagHelp": "You can use English tags or natural language. Numbers in tag suggestions are reference post counts, not the amount of training data.",
+                "negativeTitle": "Add content to avoid · Optional",
+                "negativePlaceholder": "e.g. lowres, blurry, text"
+            },
+            "resolution": {
+                "legend": "Image aspect ratio and resolution",
+                "portrait": "Portrait",
+                "square": "Square",
+                "landscape": "Landscape"
+            },
+            "settings": {
+                "stepsShort": "Choose how thoroughly the image should be refined.",
+                "stepsFree": "28 is a reliable default. With an Opus account and resolution at or below 1024², base generation costs 0 Anlas.",
+                "stepsPaid": "More than 28 steps may cost Anlas. Prompt following can improve, but a higher number does not always mean a better result.",
+                "sampler": "Sampler",
+                "samplerHelp": "This controls how noise is refined into the image.",
+                "outputDirectory": "Save folder",
+                "outputHelp": "A relative path is created under the app's default image folder.",
+                "imageFormat": "Image format",
+                "accountAndCost": "Account and estimated cost",
+                "account": "Account to use",
+                "autoAccount": "Automatically choose an available account",
+                "noAccount": "No account available",
+                "accountCount": "{{count}} tokens are currently available.",
+                "cost": "Current estimated cost",
+                "free": "0 Anlas · Free conditions",
+                "anlas": "Estimated {{cost}} Anlas",
+                "costFinal": "We'll confirm the limit on the final step before adding this to the queue.",
+                "multiToken": "Background work using different API tokens can run concurrently on separate accounts.",
+                "singleToken": "The same API token cannot generate images concurrently. If another generation is active, this task will run next in the queue."
+            },
+            "review": {
+                "edit": "Edit",
+                "model": "Model",
+                "prompt": "Prompt",
+                "negative": "Content to avoid",
+                "resolution": "Resolution",
+                "settings": "Generation settings",
+                "account": "Account",
+                "autoAccount": "Automatic · {{count}} available",
+                "noAccount": "No account available",
+                "output": "Save",
+                "autosave": "Autosave",
+                "cost": "Maximum cost",
+                "free": "0 Anlas",
+                "maxAnlas": "Up to {{cost}} Anlas",
+                "costGuard": "If a settings change exceeds this limit, execution will stop and ask you to confirm again.",
+                "queuedTitle": "Added to the queue.",
+                "queuedDescription": "You can refine another prompt now; this settings snapshot will not change.",
+                "completedTitle": "Your image is ready.",
+                "completedDescription": "Review the result in Guided mode and choose what to do next.",
+                "consentFree": "I've confirmed the current free conditions.",
+                "consentPaid": "I agree to spend up to {{cost}} Anlas.",
+                "consentHelp": "The estimate and approved limit are saved with this task snapshot.",
+                "openQueue": "View execution status",
+                "openResult": "View finished image",
+                "waitForResult": "Wait on the result screen",
+                "enqueue": "Add 1 image to the queue",
+                "advanced": "Open in Advanced mode",
+                "submitError": "We couldn't add this to the queue. Check the account and cost settings.",
+                "promptModuleError": "A saved prompt module is no longer available. Return to the prompt step and choose it again.",
+                "footer": "Please check the settings and cost once more before execution."
+            },
+            "result": {
+                "waitingTitle": "Finishing your image…",
+                "waitingDescription": "The result will appear here as soon as it is ready. Generation continues if you move to another task.",
+                "failedTitle": "We couldn't create the image.",
+                "failedDescription": "Review the cause in Queue Center, then retry with the same settings.",
+                "cancelledTitle": "Image generation was cancelled.",
+                "cancelledDescription": "No new cost was approved. You can retry with the same settings or edit them first.",
+                "needsAttentionTitle": "This job needs attention before it can continue.",
+                "needsAttentionDescription": "Review what blocked it in Queue Center, then retry or edit the settings.",
+                "retryGeneration": "Retry with the same settings",
+                "previewErrorTitle": "We couldn't load the finished image.",
+                "previewErrorDescription": "Check the original file location and queue status, then try again.",
+                "retryPreview": "Try again",
+                "openQueue": "Open Queue Center",
+                "imageAlt": "Finished generated image",
+                "keepEyebrow": "Next step",
+                "keepTitle": "Like these settings?",
+                "keepDescription": "The image is already in your selected folder. Save the settings JSON too, and you can easily review the same conditions later.",
+                "saveMetadata": "Keep these settings",
+                "saveImage": "Save image elsewhere",
+                "imageSaved": "Image saved.",
+                "metadataSaved": "Settings saved as JSON.",
+                "saveFailed": "We couldn't save the file.",
+                "regenerate": "Create again · new seed",
+                "edit": "Edit settings",
+                "advanced": "Refine in Advanced mode",
+                "footer": "Your result is autosaved, and you can refine these settings at any time."
+            }
+        }
+    },
     "update": {
         "available": "Update Available",
         "version": "Version {{version}} is available",
@@ -572,7 +1277,10 @@
             "processing": "In progress",
             "waiting": "Waiting",
             "idle": "No active jobs",
-            "indicator": "{{label}} {{count}}"
+            "indicator": "{{label}} {{count}}",
+            "reservedJobs": "Scheduled jobs",
+            "scheduleHint": "Scheduled work will appear here.",
+            "openDetails": "Open Queue Center for details and controls"
         },
     "enqueuedCount": "{{count}} jobs are ready in Queue Center.",
     "enqueueFailed": "Couldn't add this to the queue. Please try again shortly.",
@@ -1262,8 +1970,10 @@
         },
         "api": {
             "title": "API Settings",
-            "description": "Enter your NovelAI API token. The token is securely encrypted and stored.",
+            "description": "Manage your NovelAI API tokens and account slots.",
             "token": "NovelAI API Token",
+            "secureStorageDescription": "Tokens are stored in your operating system's secure credential vault and remain available after reopening the app.",
+            "sessionStorageDescription": "Tokens are kept only for this session in this environment. Re-enter them after closing the app or tab.",
             "tokenPlaceholder": "pst-xxxxxxxxxxxx...",
             "verify": "Verify",
             "verified": "Token verified successfully.",

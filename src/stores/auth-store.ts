@@ -1,9 +1,21 @@
 import { create } from 'zustand'
 
+import type { CredentialRef, CredentialVault } from '@/domain/credentials/types'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { getUserInfo, verifyToken, type AnlasInfo } from '@/services/novelai-api'
 import { getRuntimeAuthMigrationStorage } from '@/services/credentials/auth-migration-storage'
-import { AUTH_STORE_KEY } from '@/services/credentials/auth-vault-migration'
+import {
+    completeLegacyAuthMigration,
+    initializeEmptyAuthStateV3,
+    inspectAuthPersistence,
+    loadAuthSessionSecrets,
+    persistAuthStateV3,
+    resumeInterruptedAuthMigration,
+    type AuthStateV3Persisted,
+    type AuthSubscriptionTier,
+    type LegacyAuthSecrets,
+} from '@/services/credentials/auth-vault-migration'
+import { getRuntimeCredentialVault } from '@/services/credentials/native-novelai-credential-vault'
 
 export type ApiSlot = 1 | 2
 
@@ -12,13 +24,11 @@ export interface ActiveTokenEntry {
     token: string
 }
 
-interface LocalAuthState {
+interface LocalAuthState extends AuthStateV3Persisted {
+    /** Runtime-only plaintext. Never include this field in persistence projections. */
     token: string
+    /** Runtime-only plaintext. Never include this field in persistence projections. */
     token2: string
-    slot1Enabled: boolean
-    slot2Enabled: boolean
-    tier: string | null
-    tier2: string | null
 }
 
 export interface AuthState extends LocalAuthState {
@@ -62,58 +72,18 @@ export function selectActiveCredentialsAreOpus(
 const DEFAULT_LOCAL_AUTH: LocalAuthState = {
     token: '',
     token2: '',
+    slot1CredentialRef: null,
+    slot2CredentialRef: null,
     slot1Enabled: true,
     slot2Enabled: true,
     tier: null,
     tier2: null,
 }
 
-function stringOrEmpty(value: unknown): string {
-    return typeof value === 'string' ? value.trim() : ''
-}
-
-function nullableString(value: unknown): string | null {
-    return typeof value === 'string' && value.length > 0 ? value : null
-}
-
-/**
- * NovelAI tokens depend only on this app's local IndexedDB storage. They are
- * deliberately absent from backup projections, so the desktop can start
- * generation immediately after restart without a separate vault session while
- * exported backups still require token re-entry on another machine.
- */
-function parseLocalAuth(raw: string | null): LocalAuthState {
-    if (raw === null) return DEFAULT_LOCAL_AUTH
-    try {
-        const payload = JSON.parse(raw) as Record<string, unknown>
-        const state = payload.state && typeof payload.state === 'object'
-            ? payload.state as Record<string, unknown>
-            : payload
-        return {
-            token: stringOrEmpty(state.token),
-            token2: stringOrEmpty(state.token2),
-            slot1Enabled: typeof state.slot1Enabled === 'boolean' ? state.slot1Enabled : true,
-            slot2Enabled: typeof state.slot2Enabled === 'boolean' ? state.slot2Enabled : true,
-            tier: nullableString(state.tier),
-            tier2: nullableString(state.tier2),
-        }
-    } catch {
-        return DEFAULT_LOCAL_AUTH
-    }
-}
-
-function serializeLocalAuth(state: LocalAuthState): string {
-    return JSON.stringify({ state, version: 4 })
-}
-
-async function persistLocalAuth(state: LocalAuthState): Promise<void> {
-    await getRuntimeAuthMigrationStorage().setStrict(AUTH_STORE_KEY, serializeLocalAuth(state))
-}
-
-function localProjection(state: AuthState): LocalAuthState {
+function persistedProjection(state: AuthState | LocalAuthState): AuthStateV3Persisted {
     return {
-        token: state.token,
-        token2: state.token2,
+        slot1CredentialRef: state.slot1CredentialRef,
+        slot2CredentialRef: state.slot2CredentialRef,
         slot1Enabled: state.slot1Enabled,
         slot2Enabled: state.slot2Enabled,
         tier: state.tier,
@@ -121,10 +91,33 @@ function localProjection(state: AuthState): LocalAuthState {
     }
 }
 
+function hydrateSessionState(
+    persisted: AuthStateV3Persisted,
+    secrets: LegacyAuthSecrets = {},
+): LocalAuthState {
+    return {
+        ...persisted,
+        token: secrets.slot1 ?? '',
+        token2: secrets.slot2 ?? '',
+    }
+}
+
+async function ensureVaultUnlocked(vault: CredentialVault): Promise<void> {
+    if (!vault.isUnlocked()) await vault.unlock('')
+}
+
+function refForSlot(state: LocalAuthState, slot: ApiSlot): CredentialRef | null {
+    return slot === 2 ? state.slot2CredentialRef : state.slot1CredentialRef
+}
+
+function tierForVerification(tier: AuthSubscriptionTier | undefined): AuthSubscriptionTier | null {
+    return tier ?? null
+}
+
 function reportAuthError(error: unknown, operation: string): void {
     reportDiagnostic(error, {
         operation,
-        stage: 'local-auth',
+        stage: 'credential-vault',
         category: 'auth',
         recoverable: true,
     })
@@ -154,18 +147,44 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
                 set({ isLoading: false, authError: 'verification-failed' })
                 return false
             }
+
             const current = get()
+            const vault = getRuntimeCredentialVault()
+            await ensureVaultUnlocked(vault)
+            const existingRef = refForSlot(current, slot)
+            const ref = await vault.set('novelai-token', secret, {
+                id: slot === 2 ? 'novelai-slot-2' : 'novelai-slot-1',
+                existingRef,
+                verifiedAt: new Date().toISOString(),
+            })
+            if (await vault.get(ref) !== secret) {
+                throw new Error('Credential vault readback verification failed.')
+            }
+
+            const nextPersisted: AuthStateV3Persisted = slot === 2
+                ? {
+                    ...persistedProjection(current),
+                    slot2CredentialRef: ref,
+                    slot2Enabled: true,
+                    tier2: tierForVerification(verification.tier),
+                }
+                : {
+                    ...persistedProjection(current),
+                    slot1CredentialRef: ref,
+                    slot1Enabled: true,
+                    tier: tierForVerification(verification.tier),
+                }
+            await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
             const next: LocalAuthState = slot === 2
-                ? { ...localProjection(current), token2: secret, slot2Enabled: true, tier2: verification.tier ?? null }
-                : { ...localProjection(current), token: secret, slot1Enabled: true, tier: verification.tier ?? null }
-            await persistLocalAuth(next)
+                ? { ...nextPersisted, token: current.token, token2: secret }
+                : { ...nextPersisted, token: secret, token2: current.token2 }
             set(slot === 2
                 ? { ...next, isVerified2: true, anlas2: null, isLoading: false }
                 : { ...next, isVerified: true, anlas: null, isLoading: false })
             await get().refreshAnlas(slot)
             return true
         } catch (error) {
-            reportAuthError(error, 'local-auth.register')
+            reportAuthError(error, 'credential-vault.register')
             set({ isLoading: false, authError: 'operation-failed' })
             return false
         }
@@ -190,7 +209,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             const userInfo = await getUserInfo(token)
             if (userInfo !== null) set(slot === 2 ? { anlas2: userInfo.anlas } : { anlas: userInfo.anlas })
         } catch (error) {
-            reportAuthError(error, 'local-auth.balance')
+            reportAuthError(error, 'credential-vault.balance')
         }
     },
 
@@ -200,10 +219,27 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
     deleteCredential: async (slot = 1) => {
         const state = get()
+        const vault = getRuntimeCredentialVault()
+        await ensureVaultUnlocked(vault)
+        const ref = refForSlot(state, slot)
+        if (ref !== null) await vault.delete(ref)
+        const nextPersisted: AuthStateV3Persisted = slot === 2
+            ? {
+                ...persistedProjection(state),
+                slot2CredentialRef: null,
+                slot2Enabled: false,
+                tier2: null,
+            }
+            : {
+                ...persistedProjection(state),
+                slot1CredentialRef: null,
+                slot1Enabled: false,
+                tier: null,
+            }
+        await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
         const next: LocalAuthState = slot === 2
-            ? { ...localProjection(state), token2: '', slot2Enabled: false, tier2: null }
-            : { ...localProjection(state), token: '', slot1Enabled: false, tier: null }
-        await persistLocalAuth(next)
+            ? { ...nextPersisted, token: state.token, token2: '' }
+            : { ...nextPersisted, token: '', token2: state.token2 }
         set(slot === 2
             ? { ...next, isVerified2: false, anlas2: null }
             : { ...next, isVerified: false, anlas: null })
@@ -213,11 +249,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
     setSlotEnabled: async (slot, enabled) => {
         const state = get()
-        const next: LocalAuthState = slot === 2
-            ? { ...localProjection(state), slot2Enabled: enabled }
-            : { ...localProjection(state), slot1Enabled: enabled }
-        await persistLocalAuth(next)
-        set(next)
+        const nextPersisted: AuthStateV3Persisted = slot === 2
+            ? { ...persistedProjection(state), slot2Enabled: enabled }
+            : { ...persistedProjection(state), slot1Enabled: enabled }
+        await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
+        set(nextPersisted)
     },
 
     isSlotActive: (slot) => {
@@ -241,16 +277,43 @@ export async function initializeAuthCredentialState(): Promise<void> {
     if (useAuthStore.getState().isCredentialStateInitialized) return
     authInitializationPromise ??= (async () => {
         try {
-            const stored = parseLocalAuth(await getRuntimeAuthMigrationStorage().getStrict(AUTH_STORE_KEY))
+            const storage = getRuntimeAuthMigrationStorage()
+            const vault = getRuntimeCredentialVault()
+            await ensureVaultUnlocked(vault)
+            const inspection = await inspectAuthPersistence(storage)
+            let persisted: AuthStateV3Persisted
+            let sessionSecrets: LegacyAuthSecrets
+
+            if (inspection.status === 'legacy-pending') {
+                ({ persisted, sessionSecrets } = await completeLegacyAuthMigration({
+                    storage,
+                    vault,
+                    inspection,
+                }))
+            } else if (inspection.status === 'v3-verification-pending') {
+                ({ persisted, sessionSecrets } = await resumeInterruptedAuthMigration({
+                    storage,
+                    vault,
+                    inspection,
+                }))
+            } else if (inspection.status === 'empty') {
+                persisted = await initializeEmptyAuthStateV3(storage)
+                sessionSecrets = {}
+            } else {
+                persisted = inspection.persisted
+                sessionSecrets = await loadAuthSessionSecrets(vault, persisted)
+            }
+
+            const hydrated = hydrateSessionState(persisted, sessionSecrets)
             useAuthStore.setState({
-                ...stored,
-                isVerified: stored.token.length > 0,
-                isVerified2: stored.token2.length > 0,
+                ...hydrated,
+                isVerified: hydrated.token.length > 0,
+                isVerified2: hydrated.token2.length > 0,
                 isCredentialStateInitialized: true,
                 authError: null,
             })
         } catch (error) {
-            reportAuthError(error, 'local-auth.hydration')
+            reportAuthError(error, 'credential-vault.hydration')
             useAuthStore.setState({
                 ...DEFAULT_LOCAL_AUTH,
                 isVerified: false,
@@ -267,7 +330,7 @@ export async function initializeAuthCredentialState(): Promise<void> {
     }
 }
 
-/** Source-edit and history actions use the same direct token readiness gate. */
+/** Source-edit and history actions use the same in-memory token readiness gate. */
 export async function waitForApiTokenReady(): Promise<boolean> {
     await initializeAuthCredentialState()
     const state = useAuthStore.getState()

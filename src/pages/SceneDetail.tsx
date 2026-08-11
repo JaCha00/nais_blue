@@ -681,15 +681,13 @@ export default function SceneDetail() {
     const resolvedIssues = compositionPreview
         ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
         : portableResolvedIssues
-    const estimatedCost = calculateAnlasCost(
-        currentWidth,
-        currentHeight,
-        sceneGeneration.steps,
-        1,
-        0,
-        0,
-        activeCredentialsAreOpus,
-    ) * Math.max(1, scene.queueCount)
+    const estimatedCost = calculateAnlasCost({
+        width: currentWidth,
+        height: currentHeight,
+        steps: sceneGeneration.steps,
+        imageCount: 1,
+        pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+    }) * Math.max(1, scene.queueCount)
 
     const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {
         setCompositionPreview(null)

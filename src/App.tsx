@@ -1,15 +1,15 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Navigate, Routes, Route } from 'react-router'
-import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout'
+import { BrowserRouter, Navigate, Outlet, Routes, Route } from 'react-router'
 import { Toaster } from '@/components/ui/toaster'
 import { DiagnosticsSurface } from '@/components/diagnostics/DiagnosticsSurface'
 import { ApiTokenDialog } from '@/components/credentials/ApiTokenDialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RuntimeProviders } from '@/components/runtime/RuntimeProviders'
-import MainMode from '@/pages/MainMode'
 import { useTrashStore } from '@/stores/trash-store'
 import { pruneExpiredTrashItems } from '@/services/trash/asset-trash-service'
 
+const ThreeColumnLayout = lazy(() => import('@/components/layout/ThreeColumnLayout').then(module => ({ default: module.ThreeColumnLayout })))
+const MainMode = lazy(() => import('@/pages/MainMode'))
 const SceneMode = lazy(() => import('@/pages/SceneMode'))
 const SceneDetail = lazy(() => import('@/pages/SceneDetail'))
 const WebView = lazy(() => import('@/pages/WebView'))
@@ -21,6 +21,7 @@ const QueueCenter = lazy(() => import('@/pages/QueueCenter'))
 const R2Upload = lazy(() => import('@/pages/R2Upload'))
 const Trash = lazy(() => import('@/pages/Trash'))
 const DataHub = lazy(() => import('@/pages/DataHub'))
+const GuidedPreview = lazy(() => import('@/presentation/workflow/GuidedPreview'))
 
 function RouteLoadingFallback() {
     return (
@@ -53,10 +54,12 @@ function TrashRetentionSweep() {
 
 function AppContent() {
     return (
-        <ThreeColumnLayout>
-            <Suspense fallback={<RouteLoadingFallback />}>
-                <Routes>
-                    <Route path="/" element={<MainMode />} />
+        <Suspense fallback={<RouteLoadingFallback />}>
+            <Routes>
+                <Route path="/" element={<Navigate to="/guided-preview" replace />} />
+                <Route path="/guided-preview/*" element={<GuidedPreview />} />
+                <Route element={<AdvancedShell />}>
+                    <Route path="/advanced" element={<MainMode />} />
                     <Route path="/scenes" element={<SceneMode />} />
                     <Route path="/scenes/:id" element={<SceneDetail />} />
                     <Route path="/tools" element={<ToolsMode />} />
@@ -68,9 +71,18 @@ function AppContent() {
                     <Route path="/web" element={<WebView />} />
                     <Route path="/library" element={<Library />} />
                     <Route path="/settings" element={<Settings />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-            </Suspense>
+                    <Route path="*" element={<Navigate to="/guided-preview" replace />} />
+                </Route>
+            </Routes>
+        </Suspense>
+    )
+}
+
+/** Existing expert workspaces remain a lazy sibling shell beside the Guided default. */
+function AdvancedShell() {
+    return (
+        <ThreeColumnLayout>
+            <Outlet />
         </ThreeColumnLayout>
     )
 }

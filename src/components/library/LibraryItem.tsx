@@ -13,13 +13,14 @@ interface LibraryItemProps {
     onRename?: (item: LibraryItemType) => void
     onAddRef?: (item: LibraryItemType) => void
     onLoadMetadata?: (item: LibraryItemType) => void
+    onOpenTools?: () => void
     onImageClick?: (imageUrl: string) => void
     isEditMode?: boolean
     isSelected?: boolean
     onSelectionClick?: (e: React.MouseEvent) => void
 }
 
-export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, onLoadMetadata, onImageClick, isEditMode, isSelected, onSelectionClick }: LibraryItemProps) {
+export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, onLoadMetadata, onOpenTools, onImageClick, isEditMode, isSelected, onSelectionClick }: LibraryItemProps) {
     const { t } = useTranslation()
     const [imageUrl, setImageUrl] = useState<string>('')
     const [isLoading, setIsLoading] = useState(true)
@@ -106,6 +107,7 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
             onRename={onRename ? () => onRename(item) : undefined}
             onAddRef={onAddRef ? () => onAddRef(item) : undefined}
             onLoadMetadata={onLoadMetadata ? () => onLoadMetadata(item) : undefined}
+            onOpenTools={onOpenTools}
         >
             {content}
         </LibraryContextMenu>

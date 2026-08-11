@@ -6,7 +6,7 @@ interface LayoutState {
     leftSidebarVisible: boolean
     rightSidebarVisible: boolean
     /** Transient compact-shell surface; a single value prevents overlapping sheets. */
-    supportSheet: 'prompt' | 'history' | null
+    supportSheet: 'prompt' | 'history' | 'activity' | null
     toggleLeftSidebar: () => void
     toggleRightSidebar: () => void
     setLeftSidebarVisible: (visible: boolean) => void

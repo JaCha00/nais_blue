@@ -31,9 +31,18 @@ interface LibraryContextMenuProps {
     onRename?: () => void
     onAddRef?: () => void
     onLoadMetadata?: () => void
+    onOpenTools?: () => void
 }
 
-export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadMetadata }: LibraryContextMenuProps) {
+export function openLibraryToolsSurface(onOpenTools: (() => void) | undefined, navigate: (to: string) => void): void {
+    if (onOpenTools) {
+        onOpenTools()
+        return
+    }
+    navigate('/tools')
+}
+
+export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadMetadata, onOpenTools }: LibraryContextMenuProps) {
     const { t } = useTranslation()
     const { items: libraryItems, removeItem } = useLibraryStore()
     const addToTrash = useTrashStore(state => state.add)
@@ -86,7 +95,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
         try {
             if (item.path.startsWith('data:')) {
                 setActiveImage(item.path)
-                navigate('/tools')
+                openLibraryToolsSurface(onOpenTools, navigate)
                 return
             }
             const data = await readLibraryBytes(item.path)
@@ -98,7 +107,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
             const base64 = btoa(binary)
 
             setActiveImage(`data:image/png;base64,${base64}`)
-            navigate('/tools')
+            openLibraryToolsSurface(onOpenTools, navigate)
         } catch (e) {
             console.error('Failed to load for tools:', e)
             toast({ title: t('smartTools.error', '이미지 로드 실패'), variant: 'destructive' })

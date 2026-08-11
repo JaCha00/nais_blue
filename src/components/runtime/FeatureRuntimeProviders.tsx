@@ -11,7 +11,9 @@ function isSceneRoute(pathname: string): boolean {
 }
 
 function isR2Route(pathname: string): boolean {
-    return pathname === '/r2' || pathname.startsWith('/r2/')
+    return pathname === '/r2'
+        || pathname.startsWith('/r2/')
+        || /^\/guided-preview\/(?:guide|task|work)\/library\/r2(?:\/|$)/.test(pathname)
 }
 
 /**

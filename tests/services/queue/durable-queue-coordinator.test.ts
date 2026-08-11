@@ -164,13 +164,14 @@ function coordinator(
     queue: IndexedDBQueueRepository,
     execute: (context: QueueExecutorContext, jobId: string) => Promise<void>,
     now: () => string = () => NOW,
+    slots: readonly { readonly slotId: string; readonly token: string }[] = [
+        { slotId: 'slot-1', token: 'runtime-token-one' },
+        { slotId: 'slot-2', token: 'runtime-token-two' },
+    ],
 ): DurableQueueCoordinator {
     return new DurableQueueCoordinator({
         repository: queue,
-        tokenProvider: () => [
-            { slotId: 'slot-1', token: 'runtime-token-one' },
-            { slotId: 'slot-2', token: 'runtime-token-two' },
-        ],
+        tokenProvider: () => slots,
         executor: {
             execute: (job, context) => execute(context, job.id),
         },
@@ -221,7 +222,7 @@ describe('durable queue coordinator', () => {
         expect(await queue.getJob('job:scene')).toMatchObject({ state: 'succeeded' })
     })
 
-    it('keeps a streaming job exclusive across Main and Scene workflows', async () => {
+    it('runs a preview stream beside non-streaming work on a different token', async () => {
         const queue = repository('streaming-mixed-workflow')
         await enqueueWorkflowBatch(queue, 'batch:main', 'main', [workflowJob({
             id: 'job:main', batchId: 'batch:main', workflow: 'main',
@@ -230,23 +231,31 @@ describe('durable queue coordinator', () => {
             id: 'job:scene-stream', batchId: 'batch:scene', workflow: 'scene', streaming: true,
         })])
 
-        let active = 0
-        let maximum = 0
+        let releaseBoth: () => void = () => undefined
+        const bothStarted = new Promise<void>(resolve => { releaseBoth = resolve })
+        const started: string[] = []
+        const slotsByJob = new Map<string, string>()
         const runtime = coordinator(queue, async (context, jobId) => {
-            active += 1
-            maximum = Math.max(maximum, active)
-            await new Promise(resolve => setTimeout(resolve, 5))
+            started.push(jobId)
+            slotsByJob.set(jobId, context.tokenSlotId)
+            await bothStarted
             await commit(context, jobId)
-            active -= 1
         })
 
-        await runtime.drain()
-        expect(maximum).toBe(1)
+        const draining = runtime.drain()
+        try {
+            await waitUntil(() => started.length === 2)
+            expect(started).toEqual(expect.arrayContaining(['job:main', 'job:scene-stream']))
+            expect(new Set(slotsByJob.values())).toEqual(new Set(['slot-1', 'slot-2']))
+        } finally {
+            releaseBoth()
+        }
+        await draining
         expect(await queue.getJob('job:main')).toMatchObject({ state: 'succeeded' })
         expect(await queue.getJob('job:scene-stream')).toMatchObject({ state: 'succeeded' })
     })
 
-    it('preserves Main one-slot execution while Scene keeps its separate capacity', async () => {
+    it('runs two normal Main jobs on distinct token slots while a third waits', async () => {
         const queue = repository('main-workflow-cap')
         await enqueueWorkflowBatch(queue, 'batch:main', 'main', [
             workflowJob({ id: 'job:main:0', batchId: 'batch:main', workflow: 'main', ordinal: 0 }),
@@ -256,17 +265,112 @@ describe('durable queue coordinator', () => {
 
         let active = 0
         let maximum = 0
+        let releaseFirstPair: () => void = () => undefined
+        const firstPair = new Promise<void>(resolve => { releaseFirstPair = resolve })
+        const started: string[] = []
+        const slotsByJob = new Map<string, string>()
+        const runtime = coordinator(queue, async (context, jobId) => {
+            started.push(jobId)
+            slotsByJob.set(jobId, context.tokenSlotId)
+            active += 1
+            maximum = Math.max(maximum, active)
+            await firstPair
+            await commit(context, jobId)
+            active -= 1
+        })
+
+        const draining = runtime.drain()
+        await waitUntil(() => started.length === 2)
+        expect(started).toEqual(['job:main:0', 'job:main:1'])
+        expect(new Set(started.map(jobId => slotsByJob.get(jobId)))).toEqual(new Set(['slot-1', 'slot-2']))
+        expect(runtime.activeCount).toBe(2)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(started).toHaveLength(2)
+        releaseFirstPair()
+        await draining
+
+        expect(started).toEqual(['job:main:0', 'job:main:1', 'job:main:2'])
+        expect(maximum).toBe(2)
+        expect((await queue.getBatchSummary('batch:main')).states.succeeded).toBe(3)
+    })
+
+    it('keeps every Main job sequential with one active token', async () => {
+        const queue = repository('main-single-token')
+        await enqueueWorkflowBatch(queue, 'batch:main', 'main', [
+            workflowJob({ id: 'job:main:0', batchId: 'batch:main', workflow: 'main', ordinal: 0 }),
+            workflowJob({ id: 'job:main:1', batchId: 'batch:main', workflow: 'main', ordinal: 1 }),
+            workflowJob({ id: 'job:main:2', batchId: 'batch:main', workflow: 'main', ordinal: 2 }),
+        ])
+
+        let active = 0
+        let maximum = 0
+        const started: string[] = []
+        const runtime = coordinator(queue, async (context, jobId) => {
+            started.push(jobId)
+            active += 1
+            maximum = Math.max(maximum, active)
+            await new Promise(resolve => setTimeout(resolve, 0))
+            await commit(context, jobId)
+            active -= 1
+        }, () => NOW, [{ slotId: 'slot-1', token: 'runtime-token-one' }])
+
+        await runtime.drain()
+        expect(maximum).toBe(1)
+        expect(started).toEqual(['job:main:0', 'job:main:1', 'job:main:2'])
+    })
+
+    it('does not multiply concurrency when two slots contain the same token', async () => {
+        const queue = repository('main-duplicate-token')
+        await enqueueWorkflowBatch(queue, 'batch:main', 'main', [
+            workflowJob({ id: 'job:main:0', batchId: 'batch:main', workflow: 'main', ordinal: 0 }),
+            workflowJob({ id: 'job:main:1', batchId: 'batch:main', workflow: 'main', ordinal: 1 }),
+        ])
+
+        let active = 0
+        let maximum = 0
         const runtime = coordinator(queue, async (context, jobId) => {
             active += 1
             maximum = Math.max(maximum, active)
-            await new Promise(resolve => setTimeout(resolve, 5))
+            await new Promise(resolve => setTimeout(resolve, 0))
+            await commit(context, jobId)
+            active -= 1
+        }, () => NOW, [
+            { slotId: 'slot-1', token: 'same-runtime-token' },
+            { slotId: 'slot-2', token: 'same-runtime-token' },
+        ])
+
+        await runtime.drain()
+        expect(maximum).toBe(1)
+    })
+
+    it('keeps sequence-dependent Main jobs exclusive across batches', async () => {
+        const queue = repository('main-sequence-cross-batch')
+        const [template] = sequentialMainJobs(1)
+        await enqueueWorkflowBatch(queue, 'batch:sequence:a', 'main', [{
+            ...template,
+            id: 'job:sequence:a',
+            batchId: 'batch:sequence:a',
+            idempotencyKey: 'job-key:sequence:a',
+        }])
+        await enqueueWorkflowBatch(queue, 'batch:sequence:b', 'main', [{
+            ...template,
+            id: 'job:sequence:b',
+            batchId: 'batch:sequence:b',
+            idempotencyKey: 'job-key:sequence:b',
+        }])
+
+        let active = 0
+        let maximum = 0
+        const runtime = coordinator(queue, async (context, jobId) => {
+            active += 1
+            maximum = Math.max(maximum, active)
+            await new Promise(resolve => setTimeout(resolve, 0))
             await commit(context, jobId)
             active -= 1
         })
 
         await runtime.drain()
         expect(maximum).toBe(1)
-        expect((await queue.getBatchSummary('batch:main')).states.succeeded).toBe(3)
     })
 
     it('preserves the Scene dual-token maximum concurrency', async () => {
@@ -287,20 +391,30 @@ describe('durable queue coordinator', () => {
         expect((await queue.getBatchSummary('batch:1')).states.succeeded).toBe(5)
     })
 
-    it('runs streaming text-to-image work in exactly one slot', async () => {
+    it('serializes two preview streams even when two tokens are active', async () => {
         const queue = repository('streaming')
-        await enqueue(queue, jobs(3, { streaming: true }))
+        await enqueue(queue, jobs(2, { streaming: true }))
         let active = 0
         let maximum = 0
+        let releaseFirst: () => void = () => undefined
+        const firstMayFinish = new Promise<void>(resolve => { releaseFirst = resolve })
+        const started: string[] = []
         const runtime = coordinator(queue, async (context, jobId) => {
+            started.push(jobId)
             active += 1
             maximum = Math.max(maximum, active)
-            await new Promise(resolve => setTimeout(resolve, 0))
+            if (jobId === 'job:0') await firstMayFinish
             await commit(context, jobId)
             active -= 1
         })
 
-        await runtime.drain()
+        const draining = runtime.drain()
+        await waitUntil(() => started.length === 1)
+        await new Promise(resolve => setTimeout(resolve, 0))
+        expect(started).toEqual(['job:0'])
+        releaseFirst()
+        await draining
+        expect(started).toEqual(['job:0', 'job:1'])
         expect(maximum).toBe(1)
     })
 

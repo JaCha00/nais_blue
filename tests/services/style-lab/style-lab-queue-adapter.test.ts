@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { StateStorage } from 'zustand/middleware'
 import type { GenerationJob } from '@/domain/queue/types'
+import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import { createStyleRenderBudget } from '@/domain/style-lab'
 import { IndexedDbStyleLabRepository } from '@/services/style-lab/indexeddb-style-lab-repository'
 import {
+    authorizeStyleLabPreviewAnlas,
+    estimateStyleLabPreviewAnlas,
     reconcileStyleLabRenderReservations,
     styleLabRenderIdempotencyKey,
 } from '@/services/style-lab/style-lab-queue-adapter'
@@ -18,6 +21,39 @@ function memoryStorage(): StateStorage {
 }
 
 describe('Style-Lab durable Queue adapter', () => {
+    it('uses the shared A/B estimator and requires exact Guided consent before enqueue', () => {
+        const normalPair = [
+            { width: 1024, height: 1024, steps: 28 },
+            { width: 1024, height: 1024, steps: 28 },
+        ]
+        const instant = '2026-08-10T00:00:00.000Z'
+        const opusConsent = createAnlasCostConsentSnapshot({
+            pricingBasis: 'all-active-opus', estimatedAnlas: 0, maxAnlas: 0,
+            estimatedAt: instant, approvedAt: instant,
+        })
+
+        expect(estimateStyleLabPreviewAnlas(normalPair, 'all-active-opus')).toBe(0)
+        expect(estimateStyleLabPreviewAnlas(normalPair, 'paid')).toBe(40)
+        expect(estimateStyleLabPreviewAnlas(normalPair.map(item => ({ ...item, steps: 29 })), 'all-active-opus')).toBe(42)
+        expect(estimateStyleLabPreviewAnlas(normalPair.map(item => ({ ...item, width: 1088 })), 'all-active-opus')).toBeGreaterThan(0)
+        expect(authorizeStyleLabPreviewAnlas(normalPair, { kind: 'advanced' })).toBeUndefined()
+        expect(authorizeStyleLabPreviewAnlas(normalPair, {
+            kind: 'guided', costConsent: opusConsent,
+        })).toBe(opusConsent)
+
+        expect(() => authorizeStyleLabPreviewAnlas(normalPair, {
+            kind: 'guided',
+        } as never)).toThrowError(expect.objectContaining({ code: 'E_ANLAS_CONSENT_REQUIRED' }))
+
+        expect(() => authorizeStyleLabPreviewAnlas(normalPair, {
+            kind: 'guided',
+            costConsent: createAnlasCostConsentSnapshot({
+                pricingBasis: 'paid', estimatedAnlas: 0, maxAnlas: 0,
+                estimatedAt: instant, approvedAt: instant,
+            }),
+        })).toThrowError(expect.objectContaining({ code: 'E_ANLAS_ESTIMATE_CHANGED' }))
+    })
+
     it('keys work by render, context, seed, and output policy', () => {
         const base = {
             renderHash: 'render-a', contextId: 'context-a', seed: 7,

@@ -23,6 +23,7 @@ import { RemoteImageProcessingConsent } from '@/components/privacy/RemoteImagePr
 import { REMOTE_IMAGE_PROCESSING_POLICY_VERSION } from '@/services/privacy/remote-image-processing'
 import { MosaicDialog } from '@/components/tools/MosaicDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
+import { I2IDialog } from '@/components/tools/I2IDialog'
 import {
     getMediaStorageRoot,
     MEDIA_STORAGE_BASE_DIRECTORY,
@@ -30,11 +31,11 @@ import {
 } from '@/platform/storage'
 
 
-export default function ToolsMode() {
+export default function ToolsMode({ guided = false }: { guided?: boolean } = {}) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const { activeImage, setActiveImage } = useToolsStore()
-    const { token } = useAuthStore()
+    const token = useAuthStore(state => state.getActiveTokens()[0]?.token ?? '')
 
     const [processedImage, setProcessedImage] = useState<string | null>(activeImage)
     const [isLoading, setIsLoading] = useState(false)
@@ -53,6 +54,7 @@ export default function ToolsMode() {
     // Mosaic State
     const [isMosaicOpen, setIsMosaicOpen] = useState(false)
     const [isInpaintingOpen, setIsInpaintingOpen] = useState(false)  // For mask editing only
+    const [isI2IOpen, setIsI2IOpen] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
     const [isDragOver, setIsDragOver] = useState(false)
@@ -188,11 +190,12 @@ export default function ToolsMode() {
             // Set as preview image
             const { setPreviewImage } = useGenerationStore.getState()
             setPreviewImage(result)
+            setActiveImage(result)
+            setProcessedImage(result)
 
             toast({ title: t('smartTools.upscaleComplete', '업스케일 완료'), description: t('smartTools.upscaleCompleteDesc', '이미지가 4배 확대되었습니다.'), variant: 'success' })
 
-            // Navigate to main mode
-            navigate('/')
+            if (!guided) navigate('/advanced')
         } catch (e) {
             console.error(e)
             toast({ title: t('smartTools.error', '작업 실패'), description: String(e), variant: 'destructive' })
@@ -416,10 +419,14 @@ export default function ToolsMode() {
                             variant="secondary"
                             onClick={() => {
                                 if (!processedImage) return
+                                if (guided) {
+                                    setIsI2IOpen(true)
+                                    return
+                                }
                                 const { setSourceImage, setI2IMode } = useGenerationStore.getState()
                                 setSourceImage(processedImage)
                                 setI2IMode('i2i')
-                                navigate('/')
+                                navigate('/advanced')
                             }}
                             disabled={!processedImage || isLoading}
                         >
@@ -439,10 +446,14 @@ export default function ToolsMode() {
                             variant="secondary"
                             onClick={() => {
                                 if (!processedImage) return
+                                if (guided) {
+                                    setIsInpaintingOpen(true)
+                                    return
+                                }
                                 const { setSourceImage, setI2IMode } = useGenerationStore.getState()
                                 setSourceImage(processedImage)
                                 setI2IMode('inpaint')
-                                navigate('/')  // Navigate directly, mask editing done from sidebar
+                                navigate('/advanced')  // Navigate directly, mask editing done from sidebar
                             }}
                             disabled={!processedImage || isLoading}
                         >
@@ -586,11 +597,28 @@ export default function ToolsMode() {
                 onOpenChange={(open) => {
                     setIsInpaintingOpen(open)
                     // Navigate to main mode after mask editing is done
-                    if (!open && useGenerationStore.getState().i2iMode === 'inpaint') {
-                        navigate('/')
+                    if (!guided && !open && useGenerationStore.getState().i2iMode === 'inpaint') {
+                        navigate('/advanced')
                     }
                 }}
                 sourceImage={processedImage}
+                generateOnSave={guided}
+                onGenerated={image => {
+                    if (!image) return
+                    setActiveImage(image)
+                    setProcessedImage(image)
+                }}
+            />
+            <I2IDialog
+                open={isI2IOpen}
+                onOpenChange={setIsI2IOpen}
+                sourceImage={processedImage}
+                navigateOnComplete={!guided}
+                onGenerated={image => {
+                    if (!image) return
+                    setActiveImage(image)
+                    setProcessedImage(image)
+                }}
             />
         </div>
     )

@@ -3,6 +3,10 @@ import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { JsonValue, PortablePathRef } from '@/domain/composition/types'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import {
+    isAnlasCostConsentSnapshot,
+    type AnlasCostConsentSnapshot,
+} from '@/domain/queue/anlas-cost-consent'
+import {
     isStyleEvaluationContext,
     styleCombinationIdentity,
     type StyleEvaluationContext,
@@ -39,6 +43,7 @@ export interface StyleLabQueueWorkflowSnapshot {
     readonly requestedAt: number
     readonly reservationId: string
     readonly output: StyleLabQueueOutputSnapshot
+    readonly costConsent?: AnlasCostConsentSnapshot
 }
 
 export interface StyleLabQueueSnapshotParameters extends DehydratedGenerationParameters {
@@ -62,6 +67,7 @@ export interface EncodeStyleLabJobSnapshotInput {
     readonly reservationId: string
     readonly output: StyleLabQueueOutputSnapshot
     readonly planHash: DeepReadonly<CompositionPlanHash> | null
+    readonly costConsent?: AnlasCostConsentSnapshot
 }
 
 export interface EncodedStyleLabJobSnapshot {
@@ -116,6 +122,7 @@ export function encodeStyleLabJobSnapshot(
             requestedAt: input.requestedAt,
             reservationId: input.reservationId,
             output: input.output,
+            ...(input.costConsent === undefined ? {} : { costConsent: input.costConsent }),
         },
     }
     return {
@@ -160,6 +167,7 @@ export function decodeStyleLabJobSnapshot(snapshot: GenerationJobSnapshot): Styl
         || typeof workflow.requestedAt !== 'number'
         || !Number.isSafeInteger(workflow.requestedAt)
         || typeof workflow.reservationId !== 'string'
+        || (workflow.costConsent !== undefined && !isAnlasCostConsentSnapshot(workflow.costConsent))
         || !isRecord(workflow.output)
         || typeof workflow.output.directory !== 'string'
         || typeof workflow.output.useAbsolutePath !== 'boolean'

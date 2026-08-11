@@ -2,6 +2,7 @@ import { KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { runtimeCapabilities } from '@/platform/capabilities'
 import { useAuthStore } from '@/stores/auth-store'
 
 export function ApiTokenSettingsCard() {
@@ -19,7 +20,9 @@ export function ApiTokenSettingsCard() {
                         {t('settingsPage.api.token', 'NovelAI API 토큰')}
                     </h4>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        {t('settingsPage.api.localStorageDescription', '토큰은 이 PC의 앱 데이터에 저장되며, 앱을 다시 열어도 바로 사용할 수 있습니다.')}
+                        {runtimeCapabilities.novelAiCredentialVault.supported
+                            ? t('settingsPage.api.secureStorageDescription', '토큰은 운영체제의 보안 자격 증명 저장소에 보관되어, 앱을 다시 열어도 사용할 수 있습니다.')
+                            : t('settingsPage.api.sessionStorageDescription', '이 환경에서는 토큰이 현재 실행 중인 세션에만 보관됩니다. 앱이나 탭을 닫으면 다시 입력해야 합니다.')}
                     </p>
                 </div>
                 <Button onClick={requestTokenEntry}>{t('settingsPage.api.manage', '토큰 관리')}</Button>

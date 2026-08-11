@@ -410,7 +410,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                                     }
                                                                 }}
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                className="h-6 text-sm px-1.5 py-0 w-28"
+                                                                className="h-8 w-28 px-1.5 py-0 text-sm"
                                                             />
                                                         ) : (
                                                             <span className="font-medium">{group.name}</span>

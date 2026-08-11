@@ -534,7 +534,7 @@ export function CharacterPromptDialog() {
                                                             }
                                                         }}
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="h-6 text-sm px-1 py-0 w-32"
+                                                        className="h-8 w-32 px-1 py-0 text-sm"
                                                     />
                                                 ) : (
                                                     <span>{group.name}</span>

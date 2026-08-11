@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
     CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
     CircleHelp,
     ExternalLink,
     FolderOpen,
@@ -18,6 +20,7 @@ import {
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -85,7 +88,7 @@ function SetupStep({
     return (
         <li className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,32rem),1fr))] gap-5 border-t border-border py-6 first:border-t-0 first:pt-2 xl:gap-8">
             <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[2.75rem_minmax(0,1fr)] sm:gap-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-control bg-accent text-sm font-semibold text-accent-foreground" aria-hidden="true">
+                <div className="flex h-11 w-11 items-center justify-center border-b border-primary/55 font-mono text-sm font-semibold text-primary" aria-hidden="true">
                     {number}
                 </div>
                 <div className="min-w-0 space-y-4">
@@ -105,7 +108,7 @@ function SetupStep({
                 </div>
             </div>
 
-            <aside className="min-w-0 rounded-control bg-muted/50 p-4" aria-label={`${title} 입력 도움말`}>
+            <aside className="min-w-0 border-l border-border/70 py-2 pl-4" aria-label={`${title} 입력 도움말`}>
                 <div className="flex items-start gap-2">
                     <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
                     <div className="min-w-0">
@@ -157,6 +160,8 @@ export function NativeR2SetupPanel({
     const [credentialAvailable, setCredentialAvailable] = useState(false)
     const [connectionVerified, setConnectionVerified] = useState(false)
     const [writeVerified, setWriteVerified] = useState(false)
+    const [overwriteUploadPending, setOverwriteUploadPending] = useState(false)
+    const [setupPage, setSetupPage] = useState(0)
 
     const foreground = runtimeCapabilities.r2ForegroundUpload
     const nativeEnabled = foreground.supported && profile.transport === 'native-s3'
@@ -230,6 +235,8 @@ export function NativeR2SetupPanel({
             setAccessKeyId('')
             setSecretAccessKey('')
             setCredentialAvailable(true)
+            setConnectionVerified(false)
+            setWriteVerified(false)
             setFeedback('API 키를 이 기기의 보안 저장소에 안전하게 저장했습니다.', 'success')
         } catch (error) {
             setFeedback(`API 키를 저장하지 못했습니다. ${error instanceof Error ? error.message : '입력값을 확인해 주세요.'}`, 'error')
@@ -306,8 +313,21 @@ export function NativeR2SetupPanel({
         profile.bucket.trim(),
         credentialAvailable,
     ].filter(Boolean).length
-    const uploadReady = nativeEnabled
-        && Boolean(localRoot.trim() && profile.accountId.trim() && profile.bucket.trim())
+    const connectionReady = nativeEnabled
+        && credentialAvailable
+        && Boolean(profile.accountId.trim() && profile.bucket.trim())
+    const uploadReady = connectionReady
+        && connectionVerified
+        && writeVerified
+        && Boolean(localRoot.trim())
+
+    const requestUpload = () => {
+        if (mode !== 'dry-run' && profile.conflictPolicy === 'overwrite') {
+            setOverwriteUploadPending(true)
+            return
+        }
+        void startUpload()
+    }
 
     // This root depends on the global readable type scale and contains IDs, paths,
     // and product names. The inherited rule lets 200% text wrap intrinsic-width
@@ -321,7 +341,7 @@ export function NativeR2SetupPanel({
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 pb-5">
                 <div className="min-w-0">
                     <h2 className="text-base font-semibold">순서대로 설정하고 업로드하세요</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">왼쪽에서 값을 입력하고, 막히면 같은 줄 오른쪽의 설명을 확인하세요.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">한 화면에는 두 단계만 보여드려요. 값을 입력하고 막히면 같은 줄의 설명을 확인하세요.</p>
                 </div>
                 <div className="flex min-h-11 flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span className="font-medium">필수 준비 {requiredReadyCount}/4</span>
@@ -333,13 +353,24 @@ export function NativeR2SetupPanel({
             </div>
 
             {!foreground.supported && (
-                <div className="rounded-control bg-muted p-4 text-sm" role="status">
+                <div className="border-y border-warning/35 py-4 text-sm" role="status">
                     <div className="font-medium">현재 실행 환경에서는 직접 업로드할 수 없습니다.</div>
                     <div className="mt-1 text-muted-foreground">설치형 NAIS 데스크톱 앱에서 이 화면을 다시 열어 주세요. 브라우저에서는 설정을 확인할 수 있지만 파일 업로드는 실행되지 않습니다.</div>
                 </div>
             )}
 
+            <div className="border-y border-border/70 py-4" aria-label="R2 설정 진행률">
+                <div className="flex items-center justify-between gap-4 text-sm font-semibold">
+                    <span className="text-primary">단계 {setupPage * 2 + 1}–{Math.min(setupPage * 2 + 2, 10)}</span>
+                    <span className="font-mono text-muted-foreground">{setupPage + 1} / 5</span>
+                </div>
+                <div className="mt-3 h-px bg-border">
+                    <div className="h-full bg-primary transition-[width]" style={{ width: `${((setupPage + 1) / 5) * 100}%` }} />
+                </div>
+            </div>
+
             <ol className="min-w-0">
+                {setupPage === 0 && <>
                 <SetupStep
                     label="1. 업로드할 폴더 선택"
                     description="내 컴퓨터에서 R2로 보낼 이미지가 들어 있는 폴더를 지정합니다."
@@ -372,7 +403,7 @@ export function NativeR2SetupPanel({
                         <Input id="r2-account-id" value={profile.accountId} onChange={event => update('accountId', event.target.value)} placeholder="예: 023e105f4ecef8ad9ca31a8372d0c353" autoComplete="off" />
                     </Field>
 
-                    <details className="rounded-control bg-muted/40 p-3">
+                    <details className="border-y border-border/60 py-3">
                         <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 text-sm font-medium">
                             <Settings2 className="h-4 w-4 shrink-0" aria-hidden="true" />
                             고급 연결 설정 <span className="text-xs font-normal text-muted-foreground">(대부분 변경하지 않음)</span>
@@ -399,7 +430,9 @@ export function NativeR2SetupPanel({
                         </div>
                     </details>
                 </SetupStep>
+                </>}
 
+                {setupPage === 1 && <>
                 <SetupStep
                     label="3. 버킷과 저장 폴더 지정"
                     description="이미지를 넣을 R2 버킷과 그 안의 폴더를 정합니다."
@@ -418,7 +451,7 @@ export function NativeR2SetupPanel({
                             <Input id="r2-prefix" value={profile.prefix} onChange={event => update('prefix', event.target.value)} placeholder="예: generated/2026" />
                         </Field>
                     </div>
-                    <div className="rounded-control bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    <div className="border-y border-border/55 py-2 text-xs text-muted-foreground">
                         저장 경로 예시 <span className="ml-1 break-words font-mono text-foreground">{pathPreview || 'example.png'}</span>
                     </div>
                 </SetupStep>
@@ -452,7 +485,9 @@ export function NativeR2SetupPanel({
                         </span>
                     </div>
                 </SetupStep>
+                </>}
 
+                {setupPage === 2 && <>
                 <SetupStep
                     label="5. 연결 확인"
                     description="입력한 계정, 버킷, API 키가 서로 맞는지 확인합니다."
@@ -460,7 +495,7 @@ export function NativeR2SetupPanel({
                     ready={connectionVerified}
                     guide={<p>이 확인은 버킷을 찾고 접근할 수 있는지만 검사합니다. 실패하면 Account ID, 버킷 이름, API 키를 다시 확인하세요.</p>}
                 >
-                    <Button type="button" variant="outline" onClick={runConnectionTest} disabled={!uploadReady || busy !== null}>
+                    <Button type="button" variant="outline" onClick={runConnectionTest} disabled={!connectionReady || busy !== null}>
                         {busy === 'connection' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
                         R2 연결 확인
                     </Button>
@@ -478,7 +513,9 @@ export function NativeR2SetupPanel({
                         테스트 파일 업로드 후 삭제
                     </Button>
                 </SetupStep>
+                </>}
 
+                {setupPage === 3 && <>
                 <SetupStep
                     label="7. 같은 이름의 파일 처리"
                     description="R2에 같은 경로의 파일이 이미 있을 때 어떻게 할지 선택합니다."
@@ -531,7 +568,9 @@ export function NativeR2SetupPanel({
                         )}
                     </div>
                 </SetupStep>
+                </>}
 
+                {setupPage === 4 && <>
                 <SetupStep
                     label="9. 설정 저장"
                     description="지금 입력한 R2 설정을 다음에도 사용할 수 있도록 저장합니다."
@@ -574,28 +613,51 @@ export function NativeR2SetupPanel({
                                     </SelectContent>
                                 </Select>
                             </Field>
-                            <div className="min-w-0 rounded-control bg-muted/40 px-3 py-2 text-xs text-muted-foreground" data-r2-readable-text data-testid="r2-upload-target-summary">
+                            <div className="min-w-0 border-y border-border/55 py-2 text-xs text-muted-foreground" data-r2-readable-text data-testid="r2-upload-target-summary">
                                 <div className="font-medium text-foreground">대상 폴더</div>
                                 <div className="mt-1 break-words font-mono">{localRoot || '-'}</div>
                                 {planSummary && <div className="mt-1">{planSummary}</div>}
                             </div>
                         </div>
-                        <Button className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" type="button" onClick={startUpload} disabled={!uploadReady || busy !== null}>
+                        <Button className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" type="button" onClick={requestUpload} disabled={!uploadReady || busy !== null}>
                             {busy === 'upload' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : mode === 'dry-run' ? <Play className="mr-2 h-4 w-4" /> : <UploadCloud className="mr-2 h-4 w-4" />}
                             {mode === 'dry-run' ? '업로드 내용 미리보기' : '업로드 시작 / 이어하기'}
                         </Button>
                     </div>
                 </SetupStep>
+                </>}
             </ol>
 
+            <nav className="flex items-center justify-between gap-3 border-t border-border/70 py-4" aria-label="R2 설정 단계 이동">
+                <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal px-2 py-2 text-center leading-snug" type="button" variant="ghost" onClick={() => setSetupPage(page => Math.max(0, page - 1))} disabled={setupPage === 0}>
+                    <ChevronLeft className="mr-2 h-4 w-4" aria-hidden="true" />이전 두 단계
+                </Button>
+                <Button className="h-auto min-h-11 min-w-0 flex-1 whitespace-normal px-2 py-2 text-center leading-snug" type="button" onClick={() => setSetupPage(page => Math.min(4, page + 1))} disabled={setupPage === 4}>
+                    다음 두 단계<ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                </Button>
+            </nav>
+
             <div
-                className={`mt-2 flex min-h-11 items-start gap-2 rounded-control px-3 py-3 text-sm ${statusTone === 'success' ? 'bg-success/10 text-foreground' : statusTone === 'error' ? 'bg-destructive/10 text-foreground' : 'bg-muted text-muted-foreground'}`}
+                className={`mt-2 flex min-h-11 items-start gap-2 border-y px-1 py-3 text-sm ${statusTone === 'success' ? 'border-success/35 text-foreground' : statusTone === 'error' ? 'border-destructive/40 text-foreground' : 'border-border/60 text-muted-foreground'}`}
                 role="status"
                 aria-live="polite"
             >
                 {statusTone === 'success' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-hidden="true" /> : statusTone === 'error' ? <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" /> : <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
                 <span className="min-w-0 break-words">{status}</span>
             </div>
+            <ConfirmDialog
+                open={overwriteUploadPending}
+                onOpenChange={setOverwriteUploadPending}
+                title="R2의 기존 파일을 교체할까요?"
+                description="같은 경로의 원격 파일이 새 파일로 바뀝니다. 이 작업은 NAIS 휴지통으로 복구할 수 없습니다."
+                confirmText="확인 후 업로드"
+                cancelText="취소"
+                variant="destructive"
+                onConfirm={async () => {
+                    setOverwriteUploadPending(false)
+                    await startUpload()
+                }}
+            />
         </section>
     )
 }

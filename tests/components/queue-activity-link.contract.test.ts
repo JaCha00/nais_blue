@@ -26,7 +26,8 @@ describe('History Queue activity entry contract', () => {
         ])
 
         expect(link).toContain('to="/queue"')
-        expect(link).toContain('data-testid="history-queue-activity"')
+        expect(link).toContain('testId="history-queue-activity"')
+        expect(link).toContain('data-testid={testId}')
         expect(link).toContain('getActivitySummary()')
         expect(link).not.toContain('listJobProjections')
         expect(link).toContain('summary.processing')

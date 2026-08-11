@@ -19,14 +19,12 @@ import {
 const SLOT_1_SECRET = 'fixture-only-novelai-slot-one-1111'
 const SLOT_2_SECRET = 'fixture-only-novelai-slot-two-2222'
 
-function legacyAuthV2(): string {
+function legacyPlaintextAuthV4(): string {
     return JSON.stringify({
-        version: 2,
+        version: 4,
         state: {
             token: SLOT_1_SECRET,
             token2: SLOT_2_SECRET,
-            isVerified: true,
-            isVerified2: true,
             tier: 'opus',
             tier2: 'tablet',
             slot1Enabled: true,
@@ -142,11 +140,11 @@ class MemoryCredentialVault implements CredentialVault {
     }
 }
 
-describe('AuthState v3 credential migration', () => {
-    it('moves two legacy slots through vault write/readback before sanitizing both storage sources and recording completion', async () => {
+describe('secret-free AuthState credential migration', () => {
+    it('moves two plaintext v4 slots through vault write/readback before sanitizing both storage sources and recording completion', async () => {
         const storage = new MemoryAuthStorage()
-        storage.indexed.set(AUTH_STORE_KEY, legacyAuthV2())
-        storage.local.set(AUTH_STORE_KEY, legacyAuthV2())
+        storage.indexed.set(AUTH_STORE_KEY, legacyPlaintextAuthV4())
+        storage.local.set(AUTH_STORE_KEY, legacyPlaintextAuthV4())
         const vault = new MemoryCredentialVault()
         await vault.unlock('correct horse battery staple')
 
@@ -159,11 +157,13 @@ describe('AuthState v3 credential migration', () => {
             id: 'novelai-slot-1',
             kind: 'novelai-token',
             lastFour: '1111',
+            verifiedAt: expect.any(String),
         })
         expect(migrated.persisted.slot2CredentialRef).toMatchObject({
             id: 'novelai-slot-2',
             kind: 'novelai-token',
             lastFour: '2222',
+            verifiedAt: expect.any(String),
         })
         expect(vault.getCount).toBeGreaterThanOrEqual(2)
 
@@ -178,7 +178,7 @@ describe('AuthState v3 credential migration', () => {
 
     it('leaves the legacy payload and marker untouched when the vault becomes unavailable mid-migration, then safely retries', async () => {
         const storage = new MemoryAuthStorage()
-        const original = legacyAuthV2()
+        const original = legacyPlaintextAuthV4()
         storage.indexed.set(AUTH_STORE_KEY, original)
         const vault = new MemoryCredentialVault()
         await vault.unlock('passphrase')
@@ -199,7 +199,7 @@ describe('AuthState v3 credential migration', () => {
 
     it('resumes after sanitized v3 was committed but the completion marker write was interrupted', async () => {
         const storage = new MemoryAuthStorage()
-        storage.indexed.set(AUTH_STORE_KEY, legacyAuthV2())
+        storage.indexed.set(AUTH_STORE_KEY, legacyPlaintextAuthV4())
         storage.failMarkerWriteOnce = true
         const vault = new MemoryCredentialVault()
         await vault.unlock('passphrase')
@@ -220,7 +220,7 @@ describe('AuthState v3 credential migration', () => {
 
     it('does not sanitize persisted auth when the vault is unavailable', async () => {
         const storage = new MemoryAuthStorage()
-        const original = legacyAuthV2()
+        const original = legacyPlaintextAuthV4()
         storage.indexed.set(AUTH_STORE_KEY, original)
         const unavailable: CredentialVault = {
             availability: async () => ({ available: false, exists: false }),

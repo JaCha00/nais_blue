@@ -113,6 +113,12 @@ export function PromptPanel() {
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
     const stepQuality = assessGenerationStepQuality(steps)
+    const guidedSurface = new URLSearchParams(location.search).get('guided')
+
+    useEffect(() => {
+        if (isGenerating) return
+        if (guidedSurface === 'fragments') setFragmentDialogOpen(true)
+    }, [guidedSurface, isGenerating])
 
     // 전역 단축키 이벤트 수신
     useEffect(() => {
@@ -170,49 +176,53 @@ export function PromptPanel() {
             </div>
 
             {/* Prompt helpers share a quiet tonal rail; dialogs carry their own hierarchy once opened. */}
-            <div className="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem_2.75rem] gap-1 rounded-panel bg-canvas p-1 min-[480px]:flex">
+            <div className="mb-4 grid grid-cols-5 border-y border-border/60 py-1">
                 <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
                 {/* Character Prompt Toggle Button */}
-                <Button
-                    variant={characterPanelOpen ? "default" : "ghost"}
-                    size="sm"
-                    className={cn(
-                        "relative h-11 min-w-0 rounded-control px-2 text-xs",
-                        characterPanelOpen && "bg-primary text-primary-foreground"
-                    )}
-                    onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
-                >
-                    <Users className="mr-1.5 h-3.5 w-3.5 shrink-0" />
-                    <span className="min-w-0 truncate">{t('prompt.character', '캐릭터')}</span>
-                    {characterCount > 0 && (
-                        <div className={cn(
-                            "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-md px-1 py-0.5 text-[11px] font-bold leading-none",
-                            characterPanelOpen
-                                ? "bg-primary-foreground text-primary"
-                                : "bg-primary text-primary-foreground"
-                        )}>
-                            {characterCount}
-                        </div>
-                    )}
-                </Button>
+                <Tip content={t('prompt.character', '캐릭터')}>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                            "relative h-11 w-full min-w-0 rounded-none border-b-2 border-transparent px-0",
+                            characterPanelOpen && "border-primary bg-primary/[0.06] text-primary"
+                        )}
+                        onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
+                        aria-label={t('prompt.character', '캐릭터')}
+                    >
+                        <Users className="h-4 w-4 shrink-0" />
+                        {characterCount > 0 && (
+                            <div className={cn(
+                                "absolute right-1 top-0 flex h-4 min-w-4 items-center justify-center rounded-md px-1 py-0.5 text-[11px] font-bold leading-none",
+                                characterPanelOpen
+                                    ? "bg-primary-foreground text-primary"
+                                    : "bg-primary text-primary-foreground"
+                            )}>
+                                {characterCount}
+                            </div>
+                        )}
+                    </Button>
+                </Tip>
                 {/* Fragment Prompt Button */}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-11 w-11 min-w-0 rounded-control px-0 text-xs min-[480px]:w-auto min-[480px]:flex-1 min-[480px]:px-2"
-                    onClick={() => setFragmentDialogOpen(true)}
-                    aria-label={t('prompt.fragment')}
-                    disabled={isGenerating}
-                >
-                    <Puzzle className="h-3.5 w-3.5 shrink-0 min-[480px]:mr-1.5" />
-                    <span className="sr-only min-[480px]:not-sr-only min-[480px]:min-w-0 min-[480px]:truncate">{t('prompt.fragment')}</span>
-                </Button>
+                <Tip content={t('prompt.fragment')}>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-11 w-full min-w-0 rounded-none px-0 text-xs"
+                        onClick={() => setFragmentDialogOpen(true)}
+                        aria-label={t('prompt.fragment')}
+                        disabled={isGenerating}
+                    >
+                        <Puzzle className="h-3.5 w-3.5 shrink-0" />
+                        <span className="sr-only">{t('prompt.fragment')}</span>
+                    </Button>
+                </Tip>
                 {/* AI Prompt Generator Button */}
                 <Tip content={t('promptGenerator.desc', 'Gemini AI로 프롬프트 생성')}>
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="h-11 w-11 shrink-0 rounded-control hover:bg-accent"
+                        className="h-11 w-full min-w-0 rounded-none hover:bg-accent"
                         onClick={() => setPromptGenOpen(true)}
                         aria-label={t('promptGenerator.title', 'AI 프롬프트 생성')}
                     >
@@ -222,7 +232,7 @@ export function PromptPanel() {
                 {/* Parameter Settings Dialog */}
                 <Dialog open={parameterDialogOpen} onOpenChange={setParameterDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-control" aria-label={t('parameters.title')}>
+                        <Button variant="ghost" size="icon" className="h-11 w-full min-w-0 rounded-none" aria-label={t('parameters.title')}>
                             <SlidersHorizontal className="h-4 w-4" />
                         </Button>
                     </DialogTrigger>

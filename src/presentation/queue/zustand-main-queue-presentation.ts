@@ -11,12 +11,15 @@ import { useQueueStore } from '@/stores/queue-store'
  * adapter owns Store coordination until repositories replace those read models.
  */
 export function createZustandMainQueuePresentation(): MainQueuePresentationPort {
+    let activeExecutions = 0
     const presentation: MainQueuePresentationPort = {
         beginEnqueueOperation: () => useQueueStore.getState().beginEnqueueOperation('main'),
         completeEnqueueOperation: operationId => {
             useQueueStore.getState().completeEnqueueOperation('main', operationId)
         },
         beginExecution: () => {
+            activeExecutions += 1
+            if (activeExecutions > 1) return
             const generation = useGenerationStore.getState()
             generation.setGeneratingMode('main')
             generation.setIsGenerating(true)
@@ -55,6 +58,9 @@ export function createZustandMainQueuePresentation(): MainQueuePresentationPort 
             void useAuthStore.getState().refreshAnlas(slot)
         },
         finishExecution: () => {
+            if (activeExecutions === 0) return
+            activeExecutions -= 1
+            if (activeExecutions > 0) return
             const generation = useGenerationStore.getState()
             generation.setStreamProgress(0)
             generation.setIsGenerating(false)

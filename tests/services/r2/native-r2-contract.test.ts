@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest'
 const ROOT = process.cwd()
 
 describe('native R2 security and guided-setup contract', () => {
-    it('keeps the ten setup decisions visible and current-session artifacts explicit', async () => {
+    it('keeps all ten setup decisions but renders them two at a time', async () => {
         const source = await readFile(`${ROOT}/src/components/r2/NativeR2SetupPanel.tsx`, 'utf8')
         for (let step = 1; step <= 10; step += 1) expect(source).toContain(`${step}. `)
+        expect(source).toContain('const [setupPage, setSetupPage] = useState(0)')
+        expect(source.match(/setupPage === [0-4]/g)).toHaveLength(7)
+        expect(source).toContain('단계 {setupPage * 2 + 1}–')
         expect(source).toContain("mode === 'current-session'")
         expect(source).toContain('artifact set')
         expect(source).toContain('previewConflicts')

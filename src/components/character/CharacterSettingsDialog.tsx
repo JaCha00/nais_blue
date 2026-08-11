@@ -9,7 +9,7 @@ import {
     DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Users, Upload, X, Zap, Database, Lock, Eye, EyeOff, Image as ImageIcon } from 'lucide-react'
+import { Upload, X, Zap, Database, Lock, Eye, EyeOff, Image as ImageIcon } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
@@ -392,9 +392,9 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="group relative h-11 min-w-0 rounded-control px-2 text-xs min-[420px]:flex-1">
-                    <Users className="mr-1.5 h-3.5 w-3.5 shrink-0" />
-                    <span className="min-w-0 truncate">{t('prompt.imageReference')}</span>
+                <Button variant="ghost" size="icon" className="group relative h-11 w-full min-w-0 rounded-none border-b-2 border-transparent px-0 hover:border-primary" aria-label={t('prompt.imageReference')} title={t('prompt.imageReference')}>
+                    <ImageIcon className="h-4 w-4 shrink-0" />
+                    <span className="sr-only">{t('prompt.imageReference')}</span>
                     {totalCount > 0 && (
                         <div className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-control bg-destructive px-1 py-0.5 text-[11px] font-bold leading-none text-destructive-foreground">
                             {totalCount}

@@ -177,8 +177,10 @@ function legacyProjection(payload: ParsedAuthPayload | null): LegacyAuthProjecti
             ...(slot2 === undefined ? {} : { slot2 }),
         },
         metadata: {
-            slot1Verified: state.isVerified === true,
-            slot2Verified: state.isVerified2 === true,
+            // AuthState v4 persisted only verified tokens and dropped the
+            // runtime flags, so a present legacy token is itself the signal.
+            slot1Verified: slot1 !== undefined || state.isVerified === true,
+            slot2Verified: slot2 !== undefined || state.isVerified2 === true,
         },
         persisted: {
             ...emptyPersistedState(),
@@ -422,22 +424,40 @@ export async function resumeInterruptedAuthMigration(options: {
     }
     if (!vault.isUnlocked()) throw new Error('Credential vault must be unlocked before verification.')
 
-    const sessionSecrets: LegacyAuthSecrets = {}
-    for (const [slot, ref] of [
-        ['slot1', inspection.persisted.slot1CredentialRef],
-        ['slot2', inspection.persisted.slot2CredentialRef],
-    ] as const) {
-        if (ref === null) continue
-        const secret = await vault.get(ref)
-        if (secret === null || secret.slice(-4) !== ref.lastFour) {
-            throw new Error('Credential vault reference verification failed.')
-        }
-        sessionSecrets[slot] = secret
-    }
+    const sessionSecrets = await loadAuthSessionSecrets(vault, inspection.persisted, {
+        requireEveryReference: true,
+    })
 
     await writeAndVerifyAuthV3(storage, inspection.persisted)
     await writeAndVerifyMigrationMarker(storage, isoNow(options.now))
     return { persisted: inspection.persisted, sessionSecrets }
+}
+
+export async function loadAuthSessionSecrets(
+    vault: CredentialVault,
+    persisted: AuthStateV3Persisted,
+    options: { requireEveryReference?: boolean } = {},
+): Promise<LegacyAuthSecrets> {
+    if (!vault.isUnlocked()) throw new Error('Credential vault must be unlocked before hydration.')
+    const sessionSecrets: LegacyAuthSecrets = {}
+    for (const [slot, ref] of [
+        ['slot1', persisted.slot1CredentialRef],
+        ['slot2', persisted.slot2CredentialRef],
+    ] as const) {
+        if (ref === null) continue
+        const secret = await vault.get(ref)
+        if (secret === null) {
+            if (options.requireEveryReference === true) {
+                throw new Error('Credential vault reference verification failed.')
+            }
+            continue
+        }
+        if (secret.slice(-4) !== ref.lastFour) {
+            throw new Error('Credential vault reference verification failed.')
+        }
+        sessionSecrets[slot] = secret
+    }
+    return sessionSecrets
 }
 
 export async function initializeEmptyAuthStateV3(

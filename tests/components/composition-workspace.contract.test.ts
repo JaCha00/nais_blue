@@ -240,6 +240,7 @@ describe('composition workspace source contracts', () => {
         expect(dock).toContain('data-testid={testId}')
         expect(dock).toContain('generation.actionTestId')
         expect(dock).toContain('aria-label={labels.modules}')
+        expect(dock).toContain('data-testid="composition-open-modules"')
         expect(dock).toContain('aria-label={labels.inspector}')
         expect(dock).toContain('aria-label={labels.resolved}')
         expect(dock).toContain('onOpenModules?: () => void')

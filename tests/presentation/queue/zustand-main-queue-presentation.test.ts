@@ -77,6 +77,24 @@ describe('Zustand Main Queue presentation adapter', () => {
         expect(runtime.character.releaseImageData).toHaveBeenCalledOnce()
     })
 
+    it('keeps shared Main presentation state active until the last parallel job finishes', () => {
+        const presentation = createZustandMainQueuePresentation()
+
+        presentation.beginExecution()
+        presentation.beginExecution()
+        presentation.finishExecution()
+
+        expect(runtime.generation.setIsGenerating.mock.calls).toEqual([[true]])
+        expect(runtime.generation.setGeneratingMode.mock.calls).toEqual([['main']])
+        expect(runtime.character.releaseImageData).not.toHaveBeenCalled()
+
+        presentation.finishExecution()
+
+        expect(runtime.generation.setIsGenerating.mock.calls).toEqual([[true], [false]])
+        expect(runtime.generation.setGeneratingMode.mock.calls).toEqual([['main'], [null]])
+        expect(runtime.character.releaseImageData).toHaveBeenCalledOnce()
+    })
+
     it('commits and rolls back history while publishing lineage', () => {
         const presentation = createZustandMainQueuePresentation()
         const history = {

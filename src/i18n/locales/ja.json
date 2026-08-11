@@ -3,6 +3,711 @@
         "name": "NAIS blue",
         "description": "NovelAI 統合スタジオ"
     },
+    "guided": {
+        "advanced": "上級生成モード",
+        "resolutionDetails": {
+            "title": "詳細解像度",
+            "description": "幅と高さを直接入力できます。値は NovelAI の仕様に合わせて64ピクセル単位に整えられます。",
+            "swap": "幅と高さを入れ替える",
+            "width": "幅",
+            "height": "高さ",
+            "widthPixels": "幅（ピクセル）",
+            "heightPixels": "高さ（ピクセル）",
+            "pending": "値を入力すると、現在の Steps と合わせて予想コストを計算します。",
+            "free": "1024² 以下・Steps 28 以下のため、現在の基本生成コストは 0 Anlas です。",
+            "paid": "ピクセル面積と Steps は一緒に計算されます。どちらかを上げると予想コストも増えます。",
+            "quote": "{{count}}枚 · Steps {{steps}}"
+        },
+        "home": {
+            "welcome": "ようこそ！",
+            "question": "やりたいことから一緒に決めていきましょう。",
+            "autosave": "選択内容は自動的に保存されます。",
+            "choices": "作業を選択",
+            "open": "開始",
+            "resume": "続きから作業する",
+            "draftCount": "保存済みの下書き {{count}} 件",
+            "createError": "新しい下書きを保存できませんでした。少し待ってからもう一度お試しください。",
+            "single": { "title": "一枚の画像を丁寧に作りたい", "description": "モデルから最終設定まで順番に決めます。" },
+            "batch": { "title": "複数の画像を作りたい", "description": "同じ設定、プロンプト変化、シーン作業から選びます。" },
+            "prompt": { "title": "プロンプトを詳しく整えたい", "description": "ローカル AI エージェントの変更を安全に比較します。" },
+            "library": { "title": "生成画像を管理したい", "description": "整理、編集、メタデータ確認、R2 アップロードを案内します。" },
+            "environment": { "title": "作業環境を構成したい", "description": "アカウント、保存先、表示、バックアップを設定します。" }
+        },
+        "promptTasks": {
+            "back": "戻る",
+            "next": "次へ",
+            "breadcrumb": "現在の作業パス",
+            "stepLabel": "ステップ {{current}} · {{label}}",
+            "saving": "保存中…",
+            "saved": "保存しました",
+            "saveFailed": "保存できませんでした",
+            "direct": {
+                "editorLabel": "整えるプロンプト項目",
+                "steps": {
+                    "edit": "直接編集",
+                    "verify": "タグを確認",
+                    "review": "保存・続行"
+                },
+                "edit": {
+                    "title": "内容を4つの項目に分けて整えましょう。",
+                    "description": "まず中心となるシーンを書き、必要に応じて雰囲気、細部、除外要素を加えてください。",
+                    "help": "英語タグと英語の自然文をどちらも使えます。オートコンプリートの数値は、参考用タグデータの投稿数です。"
+                },
+                "verify": {
+                    "title": "タグが実際に使われているか確認しますか？",
+                    "description": "ローカルタガーが各項目の Danbooru 投稿数を確認します。自然文は確認せずに進んでもかまいません。",
+                    "action": "タグを確認",
+                    "empty": "確認を実行するか、そのまま次へ進んでください。",
+                    "replace": "に置き換える"
+                },
+                "review": {
+                    "title": "整えたプロンプトをどう使いますか？",
+                    "description": "現在の生成設定に適用する、名前付きプリセットとして保存する、または一枚生成のフローへそのまま進めます。",
+                    "positive": "最終ポジティブプロンプト",
+                    "negative": "除外要素",
+                    "saveTitle": "あとで使えるように保存",
+                    "saveDescription": "4つのプロンプト項目と現在の生成パラメータを1つのプリセットに保存します。",
+                    "presetName": "プリセット名",
+                    "save": "プリセットとして保存",
+                    "createTitle": "このプロンプトで一枚作る",
+                    "createDescription": "現在のモデル、解像度、設定を含む A の下書きを作り、Guided の最終確認へ進みます。",
+                    "apply": "現在の設定に適用",
+                    "create": "A の下書きを作成"
+                }
+            },
+            "style": {
+                "steps": {
+                    "base": "比較基準",
+                    "pool": "作家と組み合わせ",
+                    "preview": "同一条件プレビュー",
+                    "compare": "選択・適用"
+                },
+                "base": {
+                    "title": "画風だけを公平に比べる基準を決めましょう。",
+                    "description": "2つの候補は同じプロンプト、モデル、解像度、シードで生成されます。まず変えたくないシーン内容を入力してください。",
+                    "placeholder": "例：1girl, portrait, quiet library, warm afternoon light",
+                    "settingsTitle": "プレビュー生成設定",
+                    "settingsDescription": "2候補へ同じように適用するモデル、解像度、Stepsをここで確認・変更できます。"
+                },
+                "pool": {
+                    "title": "どの作家タグを組み合わせますか？",
+                    "description": "作家名を改行またはカンマで追加し、用意する組み合わせ数を決めてください。既定の一覧をそのまま使うこともできます。",
+                    "count": "組み合わせ数",
+                    "countHelp": "最初は4件が比較しやすい設定です。実際にプレビューするのは2候補だけです。",
+                    "generate": "組み合わせを作成",
+                    "range": "{{min}}～{{max}}個のタグ · 重み {{minWeight}}～{{maxWeight}}"
+                },
+                "preview": {
+                    "title": "同じ条件で2つの候補を確認しましょう。",
+                    "description": "一度押すと公平な2候補を選び、両方をキューに追加します。別の作業へ移動しても生成は続きます。",
+                    "start": "2候補のプレビューを開始",
+                    "retry": "別の2候補をプレビュー",
+                    "compare": "結果を比較",
+                    "ready": "2枚とも同じ条件で準備できました。",
+                    "waiting": "キューで2枚の画像を準備しています。",
+                    "costTitle": "2枚の推定費用",
+                    "costSummary": "2候補 · 最大 {{cost}} Anlas",
+                    "opusBasis": "有効なアカウントがすべてOpusのため、1024²以下・28 Stepsまでは0 Anlasとして計算します。",
+                    "paidBasis": "すべての有効なアカウントで無料条件を確認できないため、安全側の有料基準で計算します。",
+                    "consent": "2候補の生成に最大 {{cost}} Anlasが使われる可能性を確認しました。",
+                    "tokenRequired": "先に使用するNovelAI APIトークンを登録してください。"
+                },
+                "compare": {
+                    "title": "どちらの画風が好みですか？",
+                    "description": "選択は好みの記録として保存されます。気に入った組み合わせを現在の補助プロンプトに追加できます。",
+                    "another": "別の候補を比較",
+                    "selected": "この組み合わせが気に入りましたか？",
+                    "applyHelp": "現在の補助プロンプトの末尾に作家の組み合わせを追加します。",
+                    "apply": "選択した組み合わせを適用",
+                    "applied": "プロンプトに適用しました",
+                    "recorded": "選択を記録しました。別の候補も比較できます。",
+                    "missing": "まず同一条件のプレビューを準備してください。"
+                },
+                "choose": "この結果を選ぶ",
+                "previewing": "プレビューを生成中…",
+                "notEnoughCandidates": "比較する組み合わせを2件以上作れませんでした。作家タグを追加してください。",
+                "noPair": "公平に比較する2候補を選べませんでした。組み合わせを作り直してください。",
+                "previewRejected": "一部のプレビューをキューに追加できませんでした。少し待ってからもう一度お試しください。"
+            },
+            "agent": {
+                "steps": {
+                    "preset": "編集対象",
+                    "workspace": "AIプロンプト",
+                    "result": "反映結果"
+                },
+                "preset": {
+                    "title": "AIに整えてもらうプリセットを選びましょう。",
+                    "description": "エージェントは選択したプリセットの4つのプロンプト項目と生成パラメータを編集できます。現在の内容を先に保存すると snapshot.json に反映されます。",
+                    "label": "編集するプリセット",
+                    "saveCurrent": "現在の内容をこのプリセットに保存"
+                },
+                "privacy": "NovelAI/R2 トークン、元画像、サムネイル、生成履歴は AI 作業フォルダーに含まれません。",
+                "workspace": {
+                    "title": "AIに貼り付けるプロンプトを準備しましょう。",
+                    "description": "テンプレートを選ぶと、プリセットID、snapshot revision、作業フォルダーが自動入力されます。必要に応じて参照ファイルも指定できます。",
+                    "syncTitle": "最新の作業フォルダーを準備",
+                    "syncDescription": "AIがファイルを編集する前に snapshot を更新してください。request.json が完成すると、アプリが検証して自動反映します。"
+                },
+                "composer": {
+                    "template": "プロンプトテンプレート",
+                    "polish": "既存プロンプトを軽く整える",
+                    "rework": "4つの領域に再構成する",
+                    "reference": "画像・JSON・文書を参照する",
+                    "goal": "今回変えたい方向 · 任意",
+                    "goalPlaceholder": "例: 夜間照明を強調し、重複タグを整理",
+                    "referenceFile": "変数 · 参照ファイル",
+                    "referenceHelp": "選択した実ファイルのパスが固定テンプレートへ自動入力されます。",
+                    "noFile": "ファイルはまだ選択されていません",
+                    "chooseFile": "ファイルを指定",
+                    "chooseFileTitle": "AIが参照するファイルを選択",
+                    "fileError": "ファイルを選択できませんでした。",
+                    "preview": "AIに貼り付けるプロンプト",
+                    "copy": "プロンプトをコピー",
+                    "copied": "コピーしました",
+                    "copyError": "クリップボードへコピーできませんでした。手動で選択してコピーしてください。",
+                    "autoVariables": "プリセットID、revision、作業フォルダーは自動入力されます。",
+                    "unknownPreset": "選択したプリセット"
+                },
+                "result": {
+                    "title": "AIの要求が安全に反映されたか確認しましょう。",
+                    "description": "result.json の結果と、アプリが監視している最新リビジョンを1画面で確認できます。",
+                    "open": "作業フォルダーを開く"
+                }
+            }
+        },
+        "promptModules": {
+            "trigger": "フォルダーからプロンプトを読み込む",
+            "triggerShort": "モジュールを読み込む",
+            "negativeTrigger": "除外モジュールを読み込む",
+            "title": "プロンプトモジュールを読み込む",
+            "description": "フォルダー、モジュール、使いたい文を選んで現在のプロンプトに追加します。選んだ文は下書きにそのまま保存されます。",
+            "searchPlaceholder": "フォルダーまたはモジュール名を検索",
+            "searchLabel": "プロンプトモジュールを検索",
+            "filesLabel": "プロンプトモジュール",
+            "empty": "保存済みのプロンプトモジュールはまだありません。",
+            "manage": "モジュール管理を開く",
+            "noResults": "一致するモジュールがありません。",
+            "unfiled": "フォルダーなし",
+            "lineCount": "{{count}}件の文",
+            "linesLabel": "選択するプロンプト文",
+            "selectFile": "まず左側でモジュールを選んでください。",
+            "loading": "内容を読み込み中…",
+            "loadError": "内容を読み込めませんでした。もう一度お試しください。",
+            "retry": "もう一度試す",
+            "noUsableLines": "選択できる文がありません。",
+            "create": {
+                "trigger": "新しいモジュールを作成",
+                "title": "プロンプトモジュールを作成",
+                "description": "1行が1つの候補です。ランダムまたは順次生成では1行ずつ使います。",
+                "folder": "フォルダー · 任意",
+                "folderPlaceholder": "例: characters/hair",
+                "name": "モジュール名",
+                "namePlaceholder": "例: hair_colors",
+                "lines": "候補プロンプト · 1行に1件",
+                "linesPlaceholder": "silver hair\nblue hair\npink hair",
+                "invalidName": "名前にパスまたは参照予約文字は使用できません。",
+                "emptyContent": "1行以上のプロンプトを入力してください。",
+                "duplicate": "同じフォルダーに同名のモジュールがあります。",
+                "failed": "モジュールを保存できませんでした。もう一度お試しください。",
+                "cancel": "キャンセル",
+                "save": "モジュールを保存"
+            }
+        },
+        "promptImport": {
+            "title": "画像・JSONからプロンプトを読み込む",
+            "description": "ファイルをドロップするか選択して、画像メタデータのポジティブ・除外プロンプトを読み込みます。",
+            "saveImportedModule": "読み込んだ内容をモジュールとして保存",
+            "saveCurrentModule": "現在のプロンプトをモジュールとして保存",
+            "error": "プロンプトメタデータが見つかりません。NovelAI画像またはNAIS JSONか確認してください。",
+            "loading": "メタデータを読み込み中…",
+            "choose": "ここにファイルをドロップ、または選択",
+            "moduleSaved": "モジュール {{path}} を保存しました。",
+            "replace": "現在のプロンプトを置換",
+            "append": "現在の内容の後ろに追加"
+        },
+        "workflows": {
+            "home": "作業ホーム",
+            "breadcrumb": "現在の作業パス",
+            "start": "今すぐ始める",
+            "native": {
+                "unavailable": {
+                    "library": "この画像管理作業を開けません。作業ホームに戻って、もう一度選んでください。",
+                    "environment": "この環境設定作業を開けません。作業ホームに戻って、もう一度選んでください。"
+                },
+                "device": {
+                    "back": "機器接続に戻る"
+                },
+                "library": {
+                    "back": "ライブラリに戻る"
+                },
+                "diagnostics": {
+                    "title": "エラーと実行状態を診断",
+                    "description": "機密情報を除去した最近のエラーを選び、推奨対応を確認するか、サニタイズ済みログを書き出します。",
+                    "empty": "診断記録はありません。",
+                    "waiting": "エラーが記録されると、ここですぐに確認できます。",
+                    "recommendedAction": "推奨対応",
+                    "copySummary": "概要をコピー",
+                    "copyLog": "サニタイズ済みログをコピー",
+                    "exportJson": "JSON を書き出す",
+                    "technicalDetails": "サニタイズ済み技術情報"
+                }
+            },
+            "batch": {
+                "eyebrow": "複数画像を作成",
+                "title": "どの方法で複数の画像を作りますか？",
+                "description": "繰り返し生成、プロンプト変化、シーン作業から選び、Guided内で入力、料金確認、キュー実行、結果確認まで続けられます。",
+                "options": {
+                    "sameSettings": {
+                        "title": "同じ設定で複数枚を生成",
+                        "description": "一つのプロンプトと設定を維持し、生成枚数だけを決めて繰り返します。"
+                    },
+                    "variations": {
+                        "title": "プロンプトを変えながら順次生成",
+                        "description": "プロンプト断片の順次・ランダム規則で、画像ごとに内容を変えて生成します。"
+                    },
+                    "scenes": {
+                        "title": "シーンを分けて計画的に生成",
+                        "description": "共通設定の下に複数のシーンを作成し、シーンごとの結果を整理します。"
+                    },
+                    "queue": {
+                        "title": "複数作業の実行順を管理",
+                        "description": "待機中・実行中・失敗した作業を確認し、優先度や再試行を管理します。"
+                    }
+                }
+            },
+            "prompt": {
+                "eyebrow": "プロンプトを調整",
+                "title": "どの方法でプロンプトを整えますか？",
+                "description": "ローカル AI エージェントで安全に整理するか、直接編集して結果を比較できます。",
+                "options": {
+                    "localAgent": {
+                        "title": "ローカル AI エージェントと整理",
+                        "description": "エージェント作業フォルダーでプロンプトと画像メタデータを確認し、修正案を管理します。"
+                    },
+                    "direct": {
+                        "title": "プロンプトを直接編集",
+                        "description": "タグの自動補完とプロンプト断片を使って、希望する表現にすばやく整えます。"
+                    },
+                    "styleLab": {
+                        "title": "スタイルの組み合わせを作成・比較",
+                        "description": "複数のスタイル構成を生成して比較し、好みに合うプロンプトを選びます。"
+                    }
+                }
+            },
+            "library": {
+                "eyebrow": "画像を管理",
+                "title": "画像をどのように管理しますか？",
+                "description": "生成履歴の確認、編集、メタデータ、リモートアップロード、復元まで、この画面ですぐに作業できます。",
+                "options": {
+                    "library": {
+                        "title": "画像を集めて整理",
+                        "description": "画像を読み込み、スタックと並び順を使ってコレクションを整理します。"
+                    },
+                    "history": {
+                        "title": "最近の生成履歴を確認",
+                        "description": "保存済みの生成結果をプレビューし、再生成やメタデータの読み込みを行います。"
+                    },
+                    "tools": {
+                        "title": "画像を編集・補正",
+                        "description": "インペイント、I2I、背景除去、NovelAI Director Tools を使用します。"
+                    },
+                    "metadata": {
+                        "title": "複数画像のメタデータを確認",
+                        "description": "プロンプト、モデル、シード、生成設定を読み取り、JSON または CSV で書き出します。"
+                    },
+                    "trash": {
+                        "title": "削除した画像を復元",
+                        "description": "保管期間内の項目を復元するか、完全に削除します。"
+                    },
+                    "r2": {
+                        "title": "Cloudflare R2 にアップロード",
+                        "description": "ローカル画像を R2 バケットへアップロードし、進行状況や失敗項目を管理します。"
+                    }
+                }
+            },
+            "environment": {
+                "eyebrow": "作業環境を構成",
+                "title": "どの環境から設定しますか？",
+                "description": "アカウントや保存先の必須設定から、表示、バックアップ、機器接続、診断まで、この画面ですぐに設定できます。",
+                "options": {
+                    "credentials": {
+                        "title": "NovelAI アカウントと API 設定",
+                        "description": "API トークンスロットを登録・確認し、使用するアカウントを管理します。"
+                    },
+                    "appearance": {
+                        "title": "テーマと文字サイズ",
+                        "description": "画面テーマとプロンプト入力欄の文字サイズを読みやすく調整します。"
+                    },
+                    "storage": {
+                        "title": "画像の保存先",
+                        "description": "通常生成、シーン、スタイルラボ、画像ツールの結果を保存するフォルダーを選びます。"
+                    },
+                    "shortcuts": {
+                        "title": "キーボードショートカット",
+                        "description": "よく使う生成やパネル操作に好みのキーの組み合わせを割り当てます。"
+                    },
+                    "backup": {
+                        "title": "設定と作業データをバックアップ",
+                        "description": "認証情報の原文を除くアプリデータを書き出し、復元または自動バックアップします。"
+                    },
+                    "device": {
+                        "title": "別の機器とデータを接続",
+                        "description": "同じネットワーク上の対応機器とプリセットを同期するか、バックアップで安全に移動します。"
+                    },
+                    "web": {
+                        "title": "内蔵ウェブ作業スペース",
+                        "description": "生成作業を近くに保ったまま、必要なウェブページをアプリ内で開きます。"
+                    },
+                    "diagnostics": {
+                        "title": "エラーと実行状態を診断",
+                        "description": "機密情報を除去した最近のエラー、推奨対応、書き出し可能な診断情報を確認します。"
+                    }
+                }
+            }
+        },
+        "activity": {
+            "title": "マイ作業",
+            "description": "画面を移動しても実行状況をここで確認できます。",
+            "accounts": "アカウント別の作業",
+            "accountLabel": "NovelAI アカウント {{number}}",
+            "available": "利用可能 · {{tier}}",
+            "notReady": "登録または確認が必要",
+            "drafts": "作成中の下書き",
+            "noDrafts": "新しい作業を始めると、ここに表示されます。",
+            "singleUntitled": "一枚の画像を作る",
+            "batchUntitled": "複数の画像を作る",
+            "startAnother": "別の作業を始める",
+            "status": {
+                "draft": "作成中",
+                "review": "確認中",
+                "queued": "待機中",
+                "completed": "完了",
+                "failed": "失敗",
+                "cancelled": "キャンセル済み",
+                "needs-attention": "要確認"
+            }
+        },
+        "batch": {
+            "title": "複数の画像を作る",
+            "home": "作業ホーム",
+            "back": "戻る",
+            "breadcrumb": "現在の作業経路",
+            "continue": "次へ",
+            "recommended": "おすすめ",
+            "loading": "下書きを読み込んでいます…",
+            "loadError": "バッチの下書きを読み込めませんでした。",
+            "starting": "前回の作業を確認しています…",
+            "startError": "バッチの下書きを開始できませんでした。",
+            "stepLabel": "ステップ {{current}} · {{label}}",
+            "stepNavigation": "ステップ移動",
+            "starter": {
+                "eyebrow": "複数画像を作成",
+                "sameSettings": "同じ設定で複数枚",
+                "variations": "プロンプトを変えて複数枚",
+                "scenes": "シーンを分けて複数枚",
+                "first": "新しい作業を始めると、選択内容は自動保存されます。",
+                "savedCount": "この方式の下書きが{{count}}件あります。最近の作業を続けるか、新しく始められます。",
+                "recent": "最近の下書き",
+                "recentMeta": "{{status}} · {{count}}枚 · {{time}}",
+                "resume": "最近の作業を続ける",
+                "new": "新しい作業を開始",
+                "other": "別の方式を選ぶ"
+            },
+            "save": { "saving": "保存中…", "saved": "自動保存済み", "error": "保存状態を確認してください" },
+            "steps": {
+                "model": { "short": "モデル", "title": "どのモデルで複数枚を作りますか？", "description": "表現できる範囲と結果の安定性で選びましょう。" },
+                "prompt": { "short": "プロンプト", "title": "共通プロンプトとモジュールを決めましょう", "description": "保存済みモジュールをそのまま読み込むか、ランダム・順次参照として接続できます。" },
+                "count": { "short": "枚数", "title": "何枚作りますか？", "description": "各項目は独立した永続キュー作業として保存され、別画面へ移動しても続行します。" },
+                "scenes": { "short": "シーン", "title": "どのシーンを作りますか？", "description": "シーンごとにプロンプトと枚数を決め、まとめてキューへ送れます。" },
+                "settings": { "short": "生成設定", "title": "共通の生成設定を確認しましょう", "description": "推奨解像度と28 Stepsは基本料金範囲です。変更すると見積もりをすぐ更新します。" },
+                "review": { "short": "最終確認", "title": "キューへ入れる前に確認しましょう", "description": "設定はスナップショットとして固定され、同じ下書きを再送しても二重実行されません。" },
+                "result": { "short": "結果", "title": "完成した画像を確認しましょう", "description": "完成した順に結果が表示され、別のワークフローへ移動しても生成は続きます。" }
+            },
+            "model": {
+                "legend": "生成モデル",
+                "full": "表現範囲と自由度が広く、多様な画像に向いています。",
+                "curated": "厳選された表現範囲で、安定した結果を得やすいモデルです。"
+            },
+            "variation": {
+                "order": "モジュールの選択順",
+                "random": "画像ごとにランダムな1行",
+                "sequential": "1行目から順番に使う",
+                "fixedTitle": "1. すべての画像に共通する内容",
+                "fixedDescription": "ここへ直接入力した内容、または「固定文を1行読み込む」で追加した内容は、すべての画像にそのまま繰り返されます。",
+                "dynamicTitle": "2. 画像ごとに変えるモジュールを接続",
+                "dynamicDescription": "モジュールの1行が1候補です。ランダムまたは順番を選び、モジュールを接続すると画像ごとにその1行だけが変わります。"
+            },
+            "prompt": {
+                "label": "共通プロンプト",
+                "placeholder": "例: 1girl, blue hair, quiet library, warm afternoon light",
+                "basePlaceholder": "すべてのシーンに共通する表現 · 任意",
+                "commonTitle": "すべての画像に共通する内容",
+                "commonDescription": "直接入力するか、保存済みモジュールから1行を読み込んで共通プロンプトを作成します。",
+                "fixedModule": "固定文を1行読み込む",
+                "help": "英語タグまたは英語の自然文を使えます。モジュール参照は実行直前に厳密に確認します。",
+                "negativeTitle": "共通で避けたい内容 · 任意",
+                "negativeModule": "除外モジュールを読み込む"
+            },
+            "modules": {
+                "file": "フォルダー別プロンプトモジュール",
+                "empty": "保存済みモジュールはありません",
+                "choose": "モジュールを選択",
+                "addReference": "プロンプトに接続",
+                "create": "変化用モジュールを作成",
+                "randomHelp": "各画像のSeedに基づき、モジュール内の一行を安定して選びます。",
+                "sequentialHelp": "生成順に次の行を使います。成功した作業だけがモジュールの順番を進めます。"
+            },
+            "count": {
+                "label": "生成する画像の枚数",
+                "help": "まとめてキューへ追加します。APIトークンが二つあれば、実行可能な作業をアカウント間で分担できます。"
+            },
+            "scenes": {
+                "total": "合計 {{count}}枚",
+                "add": "シーンを追加",
+                "empty": "まずシーンを一つ追加してください。",
+                "defaultName": "新しいシーン {{number}}",
+                "legend": "シーン {{number}}",
+                "name": "シーン名",
+                "remove": "シーンを削除",
+                "importTarget": "メタデータを反映するシーン",
+                "positive": "このシーンに表示する内容を入力してください",
+                "negative": "このシーンで避けたい内容 · 任意",
+                "count": "枚数"
+            },
+            "resolution": { "portrait": "縦長", "square": "正方形", "landscape": "横長" },
+            "settings": {
+                "resolution": "解像度",
+                "stepsHelp": "28までは基本範囲です。増やすと指示に従いやすくなる場合がありますが、高いほど良いとは限りません。",
+                "samplerHelp": "おすすめ値のままでも十分です。",
+                "cfgHelp": "高いほどプロンプトを強く反映しますが、画像が荒くなる場合があります。",
+                "outputDirectory": "保存フォルダー",
+                "outputHelp": "相対パスはアプリの既定画像フォルダー内に作成されます。",
+                "imageFormat": "画像形式",
+                "estimate": "現在の設定での最大見積もり"
+            },
+            "review": {
+                "mode": "方式",
+                "model": "モデル",
+                "prompt": "プロンプト",
+                "scenePrompts": "シーン別プロンプト",
+                "count": "生成枚数",
+                "countValue": "{{count}}枚",
+                "settings": "設定",
+                "output": "保存",
+                "edit": "修正",
+                "costConsent": "最大 {{cost}} Anlasでキューへ追加します。",
+                "queueHelp": "同じアカウントでは一度に一つの画像作業を実行し、次の作業は自動で続きます。",
+                "tokenRequired": "先に使用するNovelAI APIトークンを登録してください。",
+                "enqueue": "{{count}}枚をキューへ追加",
+                "promptModuleError": "接続したプロンプトモジュールが見つかりません。プロンプトのステップで確認してください。",
+                "submitError": "キューへ追加できませんでした。アカウントと料金設定を確認してください。",
+                "footer": "実行前に設定と料金をもう一度確認してください。"
+            },
+            "result": {
+                "complete": "すべての画像が完成しました。",
+                "progress": "画像を生成しています。",
+                "finishedWithIssues": "作業が停止しました。完成した結果とキューの状態を確認してください。",
+                "background": "別の作業へ移動してもキューは動き続け、完成した結果からここに表示されます。",
+                "failedCount": "{{count}}件の作業は確認が必要です。下のキュー管理から再試行できます。",
+                "stoppedCount": "{{count}}件はキャンセルされたか、前の作業停止によりスキップされました。",
+                "waiting": "最初の結果を待っています。",
+                "noSuccessfulResults": "完成した結果はありません。キュー管理で失敗・キャンセル状態を確認してください。",
+                "loadMore": "次の{{count}}件を表示",
+                "imageAlt": "完成画像 {{number}}",
+                "previewFailed": "プレビューを読み込めませんでした",
+                "previewLoading": "プレビューを読み込み中",
+                "next": "次の作業",
+                "keepTitle": "この設定が気に入りましたか？",
+                "keepHelp": "下書きはすでに保存されています。同じ設定でもう一度作るか、プロンプトを調整して続けられます。",
+                "regenerate": "新しいSeedでもう一度作る",
+                "edit": "設定を修正",
+                "queue": "キューを管理",
+                "footer": "完成した結果から自動で表示します。"
+            },
+            "queue": {
+                "back": "複数画像の作り方選択へ戻る",
+                "title": "進行中の作業を確認しましょう",
+                "description": "ここでキューを一時停止したり、失敗した項目だけを再試行できます。",
+                "loadError": "キューを読み込めませんでした。",
+                "empty": "キューに作業はありません。",
+                "summary": "{{completed}} / {{total}} 完了 · 待機 {{waiting}} · 実行 {{running}} · 要確認 {{attention}}",
+                "pause": "一時停止",
+                "resume": "再開",
+                "retry": "失敗のみ再試行",
+                "cancel": "残りをキャンセル"
+            }
+        },
+        "credential": {
+            "loading": "保存済みの接続情報を確認しています。",
+            "eyebrow": "開始前の一度だけ",
+            "eyebrowSession": "このセッションを始める前に",
+            "title": "NovelAI に接続しましょう。",
+            "descriptionDesktop": "画像の生成には Persistent API Token が必要です。トークンはOSの安全な保管庫に保存され、アプリを再起動しても利用できます。",
+            "descriptionSession": "画像の生成には Persistent API Token が必要です。この環境では現在のセッション中だけ保持されるため、アプリやタブを閉じた後は再入力してください。",
+            "formTitle": "Persistent API Token を登録",
+            "formHelp": "NovelAI の Settings → Account → Get Persistent API Token で作成し、コピーしてください。",
+            "tokenLabel": "NovelAI API Token",
+            "placeholder": "ここにトークンを貼り付けてください",
+            "error": "トークンを確認できませんでした。値とネットワーク接続をご確認ください。",
+            "openGuide": "公式の発行ガイドを見る",
+            "connect": "確認して接続",
+            "r2Later": "R2 接続は、画像をアップロードするときにあらためてご案内します。"
+        },
+        "single": {
+            "title": "一枚の画像を作る",
+            "home": "作業ホーム",
+            "back": "戻る",
+            "breadcrumb": "現在の作業パス",
+            "progress": "作業の進行状況",
+            "stepNavigation": "詳細ステップへ移動",
+            "stepLabel": "ステップ {{current}} · {{label}}",
+            "stepA11y": "全 {{total}} ステップ中 {{current}} ステップ目",
+            "recommended": "おすすめ",
+            "continue": "次へ",
+            "reviewSettings": "設定を確認",
+            "loading": "下書きを読み込んでいます…",
+            "loadError": "下書きを読み込めませんでした。",
+            "returnHome": "作業ホームへ戻る",
+            "save": {
+                "saving": "保存中…",
+                "saved": "自動保存済み",
+                "error": "保存状態をご確認ください"
+            },
+            "steps": {
+                "model": {
+                    "short": "モデル",
+                    "title": "どのモデルを使いますか？",
+                    "description": "初めてなら、指示に忠実で幅広い表現が得意な V4.5 Full がおすすめです。"
+                },
+                "prompt": {
+                    "short": "プロンプト",
+                    "title": "どんな画像を作りたいですか？",
+                    "description": "思い浮かべたシーンを英語タグまたは英語の文章で入力してください。"
+                },
+                "resolution": {
+                    "short": "解像度",
+                    "title": "どの形の画像が必要ですか？",
+                    "description": "用途に近い比率を選んでください。3つとも 1024² ピクセルの範囲内です。"
+                },
+                "settings": {
+                    "short": "生成設定",
+                    "title": "この設定を整えましょうか？",
+                    "description": "おすすめ値はそのままでも十分です。仕上がりを変えたいときだけ調整してみましょう。"
+                },
+                "review": {
+                    "short": "最終確認",
+                    "title": "作る前にひと目で確認しましょう。",
+                    "description": "キューに追加すると、この設定をスナップショットとして固定し、安全に実行します。"
+                },
+                "result": {
+                    "short": "結果",
+                    "title": "完成した画像を確認しましょう。",
+                    "description": "結果をすぐに確認し、保存や設定変更を行って次の画像を続けて作れます。"
+                }
+            },
+            "model": {
+                "legend": "生成モデル",
+                "nai-diffusion-4-5-full": "V4.5 系で生成できる画像の範囲と表現の自由度が最も広いモデルです。",
+                "nai-diffusion-4-5-curated": "表現範囲を厳選し、安定したアニメイラストを作りやすいモデルです。",
+                "nai-diffusion-4-full": "V4 世代の幅広い表現範囲と高い生成自由度を求める場合に適しています。",
+                "nai-diffusion-4-curated-preview": "V4 の表現範囲を厳選し、一貫したアニメイラストに集中します。"
+            },
+            "prompt": {
+                "label": "作りたい画像",
+                "placeholder": "例: 1girl, blue hair, quiet library, warm afternoon light",
+                "tagHelp": "英語タグまたは英語の文章を使えます。タグ候補の数字は学習量ではなく、参考タグデータの投稿数です。",
+                "negativeTitle": "避けたい内容を追加 · 任意",
+                "negativePlaceholder": "例: lowres, blurry, text"
+            },
+            "resolution": {
+                "legend": "画像の比率と解像度",
+                "portrait": "縦長",
+                "square": "正方形",
+                "landscape": "横長"
+            },
+            "settings": {
+                "stepsShort": "画像をどの程度細かく仕上げるかを決めます。",
+                "stepsFree": "28 は安定した基本値です。Opus アカウントで解像度が 1024² 以下なら、基本生成コストはかかりません。",
+                "stepsPaid": "28 を超えると Anlas が必要になる場合があります。指示への忠実さは上がることがありますが、数値が高いほど必ず良くなるわけではありません。",
+                "sampler": "サンプラー",
+                "samplerHelp": "ノイズを画像へ整えていく方式です。",
+                "outputDirectory": "保存フォルダー",
+                "outputHelp": "相対パスはアプリの既定画像フォルダー内に作成されます。",
+                "imageFormat": "画像形式",
+                "accountAndCost": "アカウントと予想コスト",
+                "account": "使用するアカウント",
+                "autoAccount": "利用可能なアカウントを自動選択",
+                "noAccount": "利用可能なアカウントなし",
+                "accountCount": "現在 {{count}} 個のトークンを利用できます。",
+                "cost": "現在の予想コスト",
+                "free": "0 Anlas · 無料条件",
+                "anlas": "予想 {{cost}} Anlas",
+                "costFinal": "最終ステップで上限を確認してからキューに追加します。",
+                "multiToken": "異なる API トークンを使うバックグラウンド作業は、各アカウントで同時に実行できます。",
+                "singleToken": "同じ API トークンでは画像を同時に生成できません。別の生成が進行中なら、この作業を次の順番で実行します。"
+            },
+            "review": {
+                "edit": "修正",
+                "model": "モデル",
+                "prompt": "プロンプト",
+                "negative": "避けたい内容",
+                "resolution": "解像度",
+                "settings": "生成設定",
+                "account": "アカウント",
+                "autoAccount": "自動選択 · {{count}} 個利用可能",
+                "noAccount": "利用可能なアカウントなし",
+                "output": "保存",
+                "autosave": "自動保存",
+                "cost": "最大コスト",
+                "free": "0 Anlas",
+                "maxAnlas": "最大 {{cost}} Anlas",
+                "costGuard": "この上限を超える設定に変わった場合は実行せず、もう一度確認します。",
+                "queuedTitle": "キューに追加しました。",
+                "queuedDescription": "別のプロンプトを整えても、この設定スナップショットは変わりません。",
+                "completedTitle": "画像が完成しました。",
+                "completedDescription": "Guided 画面で結果を確認し、次の作業を選べます。",
+                "consentFree": "現在の無料条件を確認しました。",
+                "consentPaid": "最大 {{cost}} Anlas の使用に同意します。",
+                "consentHelp": "同意した予想値と上限は、この作業スナップショットに保存されます。",
+                "openQueue": "実行状況を見る",
+                "openResult": "完成画像を見る",
+                "waitForResult": "結果画面で待つ",
+                "enqueue": "画像 1 枚をキューに追加",
+                "advanced": "上級モードで開く",
+                "submitError": "キューに追加できませんでした。アカウントとコスト設定をご確認ください。",
+                "promptModuleError": "保存済みのプロンプトモジュールが見つかりません。プロンプト手順に戻って選び直してください。",
+                "footer": "実行前に設定とコストをもう一度ご確認ください。"
+            },
+            "result": {
+                "waitingTitle": "画像を仕上げています。",
+                "waitingDescription": "完了するとすぐに結果を表示します。別の作業へ移動しても生成は続きます。",
+                "failedTitle": "画像を生成できませんでした。",
+                "failedDescription": "キューセンターで原因を確認してから、同じ設定でもう一度お試しください。",
+                "cancelledTitle": "画像生成はキャンセルされました。",
+                "cancelledDescription": "新しいコストは承認されていません。同じ設定で再試行するか、先に設定を修正できます。",
+                "needsAttentionTitle": "続行するにはジョブの確認が必要です。",
+                "needsAttentionDescription": "キューセンターで停止理由を確認してから、再試行または設定を修正してください。",
+                "retryGeneration": "同じ設定で再試行",
+                "previewErrorTitle": "完成した画像を読み込めませんでした。",
+                "previewErrorDescription": "元ファイルの場所とキューの状態を確認して、もう一度お試しください。",
+                "retryPreview": "もう一度読み込む",
+                "openQueue": "キューセンターを開く",
+                "imageAlt": "完成した生成画像",
+                "keepEyebrow": "次の作業",
+                "keepTitle": "この設定が気に入ったら？",
+                "keepDescription": "画像は指定フォルダーに保存済みです。設定 JSON も保存しておくと、後で同じ条件を簡単に確認できます。",
+                "saveMetadata": "この設定を保存",
+                "saveImage": "画像を別の場所に保存",
+                "imageSaved": "画像を保存しました。",
+                "metadataSaved": "設定を JSON で保存しました。",
+                "saveFailed": "ファイルを保存できませんでした。",
+                "regenerate": "同じ設定・新しい Seed で作る",
+                "edit": "設定を修正",
+                "advanced": "上級モードでさらに調整",
+                "footer": "結果は自動保存され、設定はいつでも調整できます。"
+            }
+        }
+    },
     "common": {
         "save": "保存",
         "saved": "保存しました",
@@ -571,7 +1276,10 @@
             "processing": "実行中",
             "waiting": "待機中",
             "idle": "有効なジョブなし",
-            "indicator": "{{label}} {{count}}件"
+            "indicator": "{{label}} {{count}}件",
+            "reservedJobs": "予約ジョブ",
+            "scheduleHint": "ジョブを予約すると、ここに表示されます。",
+            "openDetails": "詳細と操作はキューセンターで確認"
         },
     "enqueuedCount": "{{count}}件のジョブをキューセンターに追加しました。",
     "enqueueFailed": "キューへの追加に失敗しました",
@@ -1259,8 +1967,10 @@
         },
         "api": {
             "title": "API設定",
-            "description": "NovelAI APIトークンを入力してください。トークンは安全に暗号化されて保存されます。",
+            "description": "NovelAI APIトークンとアカウントスロットを管理します。",
             "token": "NovelAI APIトークン",
+            "secureStorageDescription": "トークンはOSの安全な資格情報保管庫に保存され、アプリを再起動しても利用できます。",
+            "sessionStorageDescription": "この環境ではトークンは現在のセッション中だけ保持されます。アプリやタブを閉じた後は再入力してください。",
             "tokenPlaceholder": "pst-xxxxxxxxxxxx...",
             "verify": "検証",
             "verified": "トークンが検証されました。",

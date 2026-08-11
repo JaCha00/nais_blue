@@ -3,6 +3,11 @@ import { Copy, Dice5, Lock, Unlock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
+import { PromptSlotTabs } from '@/components/prompt/PromptSlotTabs'
+import {
+    appendPromptModuleLine,
+    PromptModulePicker,
+} from '@/components/fragments/PromptModulePicker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -118,50 +123,53 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
     }
 
     return (
-        <section className="shrink-0 rounded-panel border border-border bg-card p-3" data-testid="scene-prompt-editor">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <section className="@container shrink-0 border-y border-border/70 bg-transparent py-3" data-testid="scene-prompt-editor">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-2">
                 <div>
                     <h2 className="text-sm font-semibold">{t('scene.promptComposition', '씬 프롬프트 구성')}</h2>
                     <p className="text-xs text-muted-foreground">{t('scene.promptCompositionHelp', '이 씬에서만 사용할 프롬프트와 생성 설정입니다.')}</p>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={copyMainPrompts} disabled={disabled}>
+                <Button type="button" variant="ghost" size="sm" className="rounded-none border-b border-border/70 px-1" onClick={copyMainPrompts} disabled={disabled}>
                     <Copy className="h-4 w-4" />
                     {t('scene.copyMainPrompts', '메인 프롬프트 가져오기')}
                 </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-1 sm:grid-cols-5" role="tablist" aria-label={t('scene.promptComposition', '씬 프롬프트 구성')}>
-                {promptSlots.map(slot => {
-                    const selected = slot.id === active.id
-                    return (
-                        <button
-                            key={slot.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={selected}
-                            aria-controls={panelId}
-                            onClick={() => setActiveSlot(slot.id)}
-                            className={cn(
-                                'relative min-h-10 min-w-0 rounded-control px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                selected
-                                    ? slot.negative ? 'bg-destructive/10 text-destructive' : 'bg-accent text-primary'
-                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                            )}
-                        >
-                            <span className="line-clamp-2">{slot.label}</span>
-                            {prompts[slot.id] && !selected && <span className="absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current" />}
-                        </button>
-                    )
-                })}
-            </div>
-            <div id={panelId} role="tabpanel" className="mt-2">
+            <PromptSlotTabs
+                tabs={promptSlots.map(slot => ({
+                    id: slot.id,
+                    label: slot.label,
+                    filled: prompts[slot.id].trim().length > 0,
+                    negative: slot.negative,
+                }))}
+                activeId={active.id}
+                panelId={panelId}
+                label={t('scene.promptComposition', '씬 프롬프트 구성')}
+                onChange={id => setActiveSlot(id as PromptSlot)}
+            />
+            <div id={panelId} role="tabpanel" aria-labelledby={`${panelId}-${active.id}-tab`}>
+                <div className="flex min-h-11 items-center justify-between gap-3 border-b border-border/45 px-2">
+                    <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">{active.label}</span>
+                    <PromptModulePicker
+                        disabled={disabled}
+                        triggerLabel={t('guided.promptModules.triggerShort', '모듈 불러오기')}
+                        triggerClassName="shrink-0"
+                        onSelectLine={line => updatePrompts(presetId, scene.id, {
+                            [active.id]: appendPromptModuleLine(prompts[active.id], line),
+                        })}
+                    />
+                </div>
                 <AutocompleteTextarea
                     key={active.id}
                     value={prompts[active.id]}
                     placeholder={active.placeholder}
                     onChange={(event: any) => updatePrompts(presetId, scene.id, { [active.id]: event.target.value })}
                     disabled={disabled}
-                    className={cn('h-24 min-h-24 resize-y rounded-control', active.negative && 'border-destructive/30')}
+                    ariaLabel={active.label}
+                    className={cn(
+                        'h-32 min-h-32 resize-y rounded-none border-0 bg-transparent focus-within:ring-1 focus-within:ring-inset',
+                        active.negative && 'focus-within:ring-destructive/50',
+                    )}
                     style={{ fontSize: `${fontSize}px` }}
                 />
             </div>
@@ -206,7 +214,7 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                 </label>
             </div>
 
-            <details className="mt-2 rounded-control bg-canvas px-3 py-2">
+            <details className="mt-2 border-y border-border/60 px-3 py-2">
                 <summary className="cursor-pointer text-xs font-medium">{t('scene.moreGenerationSettings', '세부 생성 설정')}</summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <label className="space-y-1">

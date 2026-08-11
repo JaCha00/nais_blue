@@ -1,94 +1,64 @@
-/**
- * NovelAI Anlas Cost Calculator
- * Based on official pricing structure
- */
+import type { AnlasPricingBasis } from '@/domain/queue/anlas-cost-consent'
 
-// Free generation limit (Opus tier)
-const FREE_PIXEL_LIMIT = 1024 * 1024  // 1 megapixel
-const FREE_STEPS_LIMIT = 28
+export const OPUS_FREE_PIXEL_LIMIT = 1_048_576
+export const OPUS_FREE_STEPS_LIMIT = 28
+export const MAX_BILLABLE_PIXEL_LIMIT = 3_145_728
 
-// Base cost for paid generations
-const BASE_ANLAS_COST = 5
+const BASE_COST_PER_PIXEL = 2.951823174884865e-6
+const STEP_COST_PER_PIXEL = 5.753298233447344e-7
 
-/**
- * Calculate Anlas cost for image generation
- * @param width Image width in pixels
- * @param height Image height in pixels
- * @param steps Number of generation steps
- * @param batchCount Number of images to generate
- * @param isOpus Whether user has Opus tier subscription
- * @returns Anlas cost (0 if free)
- */
-export function calculateAnlasCost(
-    width: number,
-    height: number,
-    steps: number,
-    batchCount: number = 1,
-    charCount: number = 0,
-    vibeCount: number = 0,
-    isOpus: boolean = true
-): number {
-    const totalPixels = width * height
+export interface BaseGenerationAnlasInput {
+    readonly width: number
+    readonly height: number
+    readonly steps: number
+    /** Number of samples in one NovelAI request, not the number of queued requests. */
+    readonly imageCount: number
+    readonly pricingBasis: AnlasPricingBasis
+}
 
-    // Each queued image is billed independently. Opus waives only the base
-    // generation cost; character references and uncached vibes remain billable.
-    const baseIsFree = isOpus && totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT
-    let cost = baseIsFree ? 0 : BASE_ANLAS_COST
-
-    // Higher resolution costs more
-    if (!baseIsFree && totalPixels > FREE_PIXEL_LIMIT) {
-        const pixelMultiplier = Math.ceil(totalPixels / FREE_PIXEL_LIMIT)
-        cost = cost * pixelMultiplier
+function assertPositiveSafeInteger(value: number, name: string): void {
+    if (!Number.isSafeInteger(value) || value < 1) {
+        throw new RangeError(`${name} must be a positive safe integer`)
     }
-
-    // More steps cost more
-    if (!baseIsFree && steps > FREE_STEPS_LIMIT) {
-        const stepsMultiplier = Math.ceil(steps / FREE_STEPS_LIMIT)
-        cost = cost * stepsMultiplier
-    }
-
-    // Add extra costs for features (Fixed costs per generation)
-    if (charCount > 0) {
-        cost += 5 // Character Reference fixed cost
-    }
-
-    if (vibeCount > 0) {
-        cost += (vibeCount * 2) // Vibe Transfer per image cost
-    }
-
-    return cost * Math.max(1, Math.trunc(batchCount))
 }
 
 /**
- * Calculate ONLY the extra costs from features (Char Ref, Vibe Transfer)
- * Does not include base cost (Resolution/Steps) or Batch multiplier
+ * Estimates base NovelAI image-generation cost.
+ *
+ * Paid unit observed in NovelAI's production UI. Resolution and Steps are
+ * billed together, with the quoted pixel area capped at 3,145,728 pixels.
+ * An eligible Opus request waives only its first image.
  */
-export function calculateExtraCost(charCount: number, vibeCount: number): number {
-    let cost = 0
-    if (charCount > 0) cost += 5
-    if (vibeCount > 0) cost += (vibeCount * 2)
-    return cost
-}
+export function calculateAnlasCost(input: BaseGenerationAnlasInput): number {
+    const { width, height, steps, imageCount, pricingBasis } = input
+    assertPositiveSafeInteger(width, 'width')
+    assertPositiveSafeInteger(height, 'height')
+    assertPositiveSafeInteger(steps, 'steps')
+    assertPositiveSafeInteger(imageCount, 'imageCount')
+    if (pricingBasis !== 'all-active-opus' && pricingBasis !== 'paid') {
+        throw new TypeError('pricingBasis must be all-active-opus or paid')
+    }
 
-/**
- * Check if generation is free (Opus tier)
- */
-export function isFreeGeneration(
-    width: number,
-    height: number,
-    steps: number,
-    batchCount: number = 1
-): boolean {
-    const totalPixels = width * height
-    return totalPixels <= FREE_PIXEL_LIMIT && steps <= FREE_STEPS_LIMIT && batchCount >= 1
-}
+    const pixels = width * height
+    if (!Number.isSafeInteger(pixels)) {
+        throw new RangeError('resolution and steps exceed the safe estimation range')
+    }
 
-/**
- * Get pixel count category
- */
-export function getPixelCategory(width: number, height: number): 'small' | 'normal' | 'large' {
-    const totalPixels = width * height
-    if (totalPixels < 512 * 512) return 'small'
-    if (totalPixels <= FREE_PIXEL_LIMIT) return 'normal'
-    return 'large'
+    const billablePixels = Math.min(pixels, MAX_BILLABLE_PIXEL_LIMIT)
+    const paidUnit = Math.max(2, Math.ceil(
+        BASE_COST_PER_PIXEL * billablePixels
+        + STEP_COST_PER_PIXEL * billablePixels * steps,
+    ))
+    if (!Number.isSafeInteger(paidUnit)) {
+        throw new RangeError('estimated Anlas exceeds the safe integer range')
+    }
+
+    const opusFreeFirstImage = pricingBasis === 'all-active-opus'
+        && pixels <= OPUS_FREE_PIXEL_LIMIT
+        && steps <= OPUS_FREE_STEPS_LIMIT
+    const total = paidUnit * (imageCount - Number(opusFreeFirstImage))
+    if (!Number.isSafeInteger(total)) {
+        throw new RangeError('estimated Anlas exceeds the safe integer range')
+    }
+    return total
 }

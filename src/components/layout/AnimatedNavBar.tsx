@@ -22,11 +22,11 @@ interface AnimatedNavBarProps {
     forceCondensed?: boolean
 }
 
-const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+const MOBILE_PRIMARY_PATHS = new Set(['/advanced', '/scenes', '/tools', '/library'])
 
 function isRouteActive(pathname: string, itemPath: string) {
-    return itemPath === '/'
-        ? pathname === '/'
+    return itemPath === '/advanced'
+        ? pathname === '/advanced'
         : pathname === itemPath || pathname.startsWith(`${itemPath}/`)
 }
 

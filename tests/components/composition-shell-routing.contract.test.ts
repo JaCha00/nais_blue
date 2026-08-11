@@ -11,7 +11,7 @@ describe('Composition workspace shell routing', () => {
             source('src/stores/layout-store.ts'),
         ])
 
-        expect(layout).toContain("location.pathname === '/'")
+        expect(layout).toContain("location.pathname === '/advanced'")
         expect(layout).toContain("location.pathname === '/scenes'")
         expect(layout).toContain("location.pathname.startsWith('/scenes/')")
         expect(layout).toContain('const promptPanelIsDocked = isDesktopShell')
@@ -23,10 +23,14 @@ describe('Composition workspace shell routing', () => {
         expect(layout).toMatch(/<Sheet[\s\S]*?modal=\{false\}/)
         expect(layout).toContain('showOverlay={false}')
         expect(layout).not.toContain('LAYOUT_SHEET_EVENTS')
-        expect(layoutStore).toContain("supportSheet: 'prompt' | 'history' | null")
+        expect(layoutStore).toContain("supportSheet: 'prompt' | 'history' | 'activity' | null")
         expect(layoutStore).toContain('openSupportSheet:')
         expect(layoutStore).toContain('closeSupportSheet:')
         expect(layoutStore).toContain('partialize: ({ leftSidebarVisible, rightSidebarVisible })')
+        expect(layout).toContain("const activitySheetOpen = supportSheet === 'activity'")
+        expect(layout).toContain('data-testid="open-my-work-activity"')
+        expect(layout).toContain('id="nais2-activity-sheet"')
+        expect(layout).toContain('<MyWorkActivity headingIsDecorative />')
     })
 
     it('keeps core listeners app-scoped while Scene and R2 runtimes stay lazy', async () => {

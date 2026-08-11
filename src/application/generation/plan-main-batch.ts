@@ -15,6 +15,8 @@ export interface PlannedMainBatch<TPlanned> {
 
 export interface PlanMainBatchOptions<TPrepared, TPlanned> {
     readonly planner: MainBatchPlannerPort<TPrepared>
+    /** Runs after complete preparation and before any materialization side effects. */
+    readonly preflight?: (prepared: readonly TPrepared[]) => void | Promise<void>
     readonly materialize: (prepared: TPrepared, ordinal: number) => TPlanned | Promise<TPlanned>
 }
 
@@ -31,6 +33,7 @@ export async function planMainBatch<TPrepared, TPlanned>(
 
     const prepared = await options.planner.prepareBatch()
     if (prepared.length !== requestedCount) return null
+    await options.preflight?.(prepared)
 
     const items: TPlanned[] = []
     for (const value of prepared) {

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 mod nai_transport;
+mod novelai_credentials;
 mod r2_native;
 mod sync_transport;
 #[cfg(mobile)]
@@ -804,6 +805,10 @@ pub fn run() {
             record_diagnostic_event,
             nai_transport::nai_generate_request,
             nai_transport::cancel_nai_request,
+            novelai_credentials::novelai_store_credential,
+            novelai_credentials::novelai_load_credential,
+            novelai_credentials::novelai_credential_status,
+            novelai_credentials::novelai_delete_credential,
             r2_native::r2_store_credential,
             r2_native::r2_credential_status,
             r2_native::r2_delete_credential,

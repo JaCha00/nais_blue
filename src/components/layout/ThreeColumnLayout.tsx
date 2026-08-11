@@ -18,9 +18,14 @@ import { toast } from '@/components/ui/use-toast'
 import {
     Sheet,
     SheetContent,
+    SheetDescription,
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet'
+import {
+    MyWorkActivity,
+    MyWorkActivityRefreshOwner,
+} from '@/presentation/activity/MyWorkActivity'
 import {
     Home,
     Film,
@@ -36,14 +41,13 @@ import {
     CloudUpload,
     Trash2,
     DatabaseZap,
+    BriefcaseBusiness,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
     children: ReactNode
 }
 
-import { calculateExtraCost } from '@/lib/anlas-calculator'
-import { useCharacterStore } from '@/stores/character-store'
 import { usePresetStore } from '@/stores/preset-store'
 import { useLayoutStore } from '@/stores/layout-store'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -79,22 +83,21 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         supportSheet,
         toggleLeftSidebar,
         toggleRightSidebar,
+        setLeftSidebarVisible,
         openSupportSheet,
         closeSupportSheet,
     } = useLayoutStore()
-    const leftSheetOpen = supportSheet === 'prompt'
-    const rightSheetOpen = supportSheet === 'history'
     const isDesktopShell = useMediaQuery('(min-width: 1536px)')
-    const compositionWorkspaceOwnsRails = location.pathname === '/'
+    const leftSheetOpen = supportSheet === 'prompt' && !isDesktopShell
+    const rightSheetOpen = supportSheet === 'history'
+    const activitySheetOpen = supportSheet === 'activity'
+    const compositionWorkspaceOwnsRails = location.pathname === '/advanced'
         || location.pathname === '/scenes'
         || location.pathname.startsWith('/scenes/')
     const promptPanelIsDocked = isDesktopShell
     const historyPanelIsDocked = isDesktopShell && !compositionWorkspaceOwnsRails
     const mainIsGenerating = useGenerationStore(state => state.isGenerating)
     const sceneIsGenerating = useSceneStore(state => state.isGenerating)
-
-    // Get generation params for cost calculation
-    const { characterImages, vibeImages } = useCharacterStore()
 
     // Get active preset for header display
     const { presets, activePresetId } = usePresetStore()
@@ -131,7 +134,13 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }, [closeSupportSheet, isDesktopShell, leftSheetOpen, mainIsGenerating, sceneIsGenerating])
 
     useEffect(() => {
-        if (!isAndroidRuntime || (!leftSheetOpen && !rightSheetOpen)) return
+        if (!isDesktopShell || supportSheet !== 'prompt') return
+        setLeftSidebarVisible(true)
+        closeSupportSheet()
+    }, [closeSupportSheet, isDesktopShell, setLeftSidebarVisible, supportSheet])
+
+    useEffect(() => {
+        if (!isAndroidRuntime || (!leftSheetOpen && !rightSheetOpen && !activitySheetOpen)) return
 
         let disposed = false
         let unregister: (() => Promise<void>) | undefined
@@ -149,21 +158,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
             disposed = true
             if (unregister) void unregister()
         }
-    }, [closeSupportSheet, leftSheetOpen, rightSheetOpen])
+    }, [activitySheetOpen, closeSupportSheet, leftSheetOpen, rightSheetOpen])
 
-    // Calculate cached vs uncached vibes (only enabled ones)
-    const enabledVibes = vibeImages.filter(v => v.enabled !== false)
-    const uncachedVibeCount = enabledVibes.filter(v => !v.encodedVibe).length
-    const cachedVibeCount = enabledVibes.length - uncachedVibeCount
-
-    // Count only enabled character images
-    const enabledCharCount = characterImages.filter(c => c.enabled !== false).length
-
-    // Only calculate extra costs for enabled uncached vibes and enabled characters
-    const cost = calculateExtraCost(
-        enabledCharCount,
-        uncachedVibeCount
-    )
     const activeTokens = getActiveTokens()
     const activeTokenBalances = activeTokens
         .map((entry) => ({
@@ -180,7 +176,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     }, [isVerified, isVerified2, refreshAnlas])
 
     const navItems = [
-        { path: '/', icon: Home, labelKey: 'nav.main' },
+        { path: '/advanced', icon: Home, labelKey: 'nav.main' },
+        { path: '/guided-preview', icon: Zap, labelKey: 'guided.home.choices', fallbackLabel: '작업 선택' },
         { path: '/scenes', icon: Film, labelKey: 'nav.scenes' },
         { path: '/tools', icon: Wand2, labelKey: 'smartTools.title' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
@@ -270,19 +267,6 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 </button>
                             </Tip>
                         )}
-                        {(cost > 0 || cachedVibeCount > 0) && (
-                            <div className={cn(
-                                "flex items-center gap-1 rounded-control px-2 py-1 text-xs font-semibold animate-in fade-in slide-in-from-left-2 motion-reduce:animate-none",
-                                cost > 0
-                                    ? "bg-destructive/10 text-destructive"
-                                    : "bg-primary/10 text-primary"
-                            )}>
-                                {cost > 0 && <span>-{cost}</span>}
-                                {cachedVibeCount > 0 && (
-                                    <Zap className="h-3 w-3" fill="currentColor" aria-hidden="true" />
-                                )}
-                            </div>
-                        )}
                     </div>
                 ) : (
                     <button
@@ -319,6 +303,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     : 'env(safe-area-inset-bottom)',
             } : undefined}
         >
+            <MyWorkActivityRefreshOwner />
             {/* Custom Title Bar - Only show on Windows (Mac uses native decorations) */}
             {!isMac && !isMobileRuntime && <CustomTitleBar />}
 
@@ -327,14 +312,14 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-prompt-dock"
                     className={cn(
-                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel bg-card 2xl:flex min-[1800px]:w-[500px]",
+                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden border-y border-border/45 bg-card/80 2xl:flex min-[1800px]:w-[500px]",
                         !leftSidebarVisible && "2xl:hidden"
                     )}
                 >
                     {promptPanelContent}
                 </aside>
 
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel bg-canvas">
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden border-y border-border/45 bg-canvas">
                     {/* The compact row keeps navigation primary; utility dialogs wrap below it on phones so every control stays in normal flow. */}
                     <div className="z-10 flex shrink-0 flex-wrap items-center gap-2 bg-card px-3 py-2 sm:flex-nowrap">
                         <Tip content={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}>
@@ -382,6 +367,22 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                             </button>
                         </Tip>
                         <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-2 sm:basis-auto">
+                            <Tip content={t('guided.activity.title', '내 작업')}>
+                                <button
+                                    type="button"
+                                    onClick={() => openSupportSheet('activity')}
+                                    data-testid="open-my-work-activity"
+                                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card min-[1180px]:w-auto min-[1180px]:gap-2 min-[1180px]:px-3"
+                                    aria-label={t('guided.activity.title', '내 작업')}
+                                    aria-expanded={activitySheetOpen}
+                                    aria-controls="nais2-activity-sheet"
+                                >
+                                    <BriefcaseBusiness className="h-4 w-4" aria-hidden="true" />
+                                    <span className="hidden text-sm font-medium min-[1180px]:inline">
+                                        {t('guided.activity.title', '내 작업')}
+                                    </span>
+                                </button>
+                            </Tip>
                             <ProductGuidance />
                             <DiagnosticDrawer />
                         </div>
@@ -390,7 +391,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     {/* Page Content */}
                     <main className={cn(
                         "relative min-h-0 min-w-0 flex-1",
-                        (location.pathname === '/' || location.pathname === '/library') ? "p-0 overflow-hidden" : "overflow-y-auto p-2 sm:p-4"
+                        (location.pathname === '/advanced' || location.pathname === '/library') ? "p-0 overflow-hidden" : "overflow-y-auto p-2 sm:p-4"
                     )}>
                         {children}
                     </main>
@@ -399,7 +400,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-history-dock"
                     className={cn(
-                        "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden rounded-panel bg-card 2xl:block",
+                        "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden border-y border-border/45 bg-card/80 2xl:block",
                         (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
@@ -418,6 +419,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     id="nais2-prompt-sheet"
                     side="left"
                     showOverlay={false}
+                    closeLabel={t('common.close', '닫기')}
                     className="flex !w-full !max-w-none flex-col gap-0 border-r border-border sm:!w-[420px] sm:!max-w-[min(70vw,720px)] sm:!min-w-[360px] sm:resize-x sm:overflow-auto"
                     style={isMobileRuntime ? {
                         paddingTop: 'max(1rem, env(safe-area-inset-top))',
@@ -443,6 +445,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <SheetContent
                     id="nais2-history-sheet"
                     side="right"
+                    closeLabel={t('common.close', '닫기')}
                     className="flex !w-full !max-w-none flex-col gap-0 sm:!w-[400px] sm:!max-w-[400px]"
                     style={isMobileRuntime ? {
                         paddingTop: 'max(1rem, env(safe-area-inset-top))',
@@ -456,6 +459,34 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                     </SheetHeader>
                     <div className="min-h-0 flex-1 overflow-hidden [&>div>div:first-child]:pr-16">
                         {rightSheetOpen && <HistoryPanel />}
+                    </div>
+                </SheetContent>
+            </Sheet>
+
+            <Sheet
+                open={activitySheetOpen}
+                onOpenChange={(open) => open ? openSupportSheet('activity') : closeSupportSheet()}
+            >
+                <SheetContent
+                    id="nais2-activity-sheet"
+                    side="right"
+                    closeLabel={t('common.close', '닫기')}
+                    className="flex !w-full !max-w-none flex-col gap-0 sm:!w-[400px] sm:!max-w-[400px]"
+                    style={isMobileRuntime ? {
+                        paddingTop: 'max(1rem, env(safe-area-inset-top))',
+                        paddingRight: 'max(1rem, env(safe-area-inset-right))',
+                        paddingBottom: 'max(1rem, env(safe-area-inset-bottom))',
+                        paddingLeft: 'max(1rem, env(safe-area-inset-left))',
+                    } : undefined}
+                >
+                    <SheetHeader className="sr-only">
+                        <SheetTitle>{t('guided.activity.title', '내 작업')}</SheetTitle>
+                        <SheetDescription>
+                            {t('guided.activity.description', '실행 중인 작업과 계정 상태')}
+                        </SheetDescription>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-hidden [&>div:first-child]:pr-16">
+                        {activitySheetOpen && <MyWorkActivity headingIsDecorative />}
                     </div>
                 </SheetContent>
             </Sheet>

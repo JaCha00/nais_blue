@@ -332,6 +332,7 @@ describe('Fragment compatibility facade lifecycle', () => {
         ])
 
         expect([first, second]).toEqual(['coat', 'dress'])
+        expect(session.success).toBe(true)
         expect(store.getState().getSequenceSnapshot().counters[file.id]).toBe(0)
         expect(session.sequenceCommitProposal).toEqual({
             expectedRevision: expect.any(Number),
@@ -346,6 +347,20 @@ describe('Fragment compatibility facade lifecycle', () => {
         expect(await session.commitSequence()).toBe(true)
         expect(session.status).toBe('committed')
         expect(store.getState().getSequenceSnapshot().counters[file.id]).toBe(2)
+    })
+
+    it('reports a blocking failure across a strict multi-field session', async () => {
+        const { store } = createTestStore()
+        const session = createWildcardResolutionSession({
+            repository: store.getState().getLookupRepository(),
+            strictness: 'strict',
+        })
+
+        await session.process('safe prompt')
+        await session.process('<missing>')
+
+        expect(session.success).toBe(false)
+        expect(session.sequenceCommitProposal).toBeNull()
     })
 
     it('leases a proposal without consuming it and excludes a concurrent stale worker', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { JsonValue } from '@/domain/composition/types'
+import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import type { GenerationParams } from '@/services/novelai-types'
@@ -91,6 +92,13 @@ describe('Main Job Snapshot codec', () => {
     })
 
     it('round-trips valid payloads and classifies malformed payloads as fatal', () => {
+        const costConsent = createAnlasCostConsentSnapshot({
+            pricingBasis: 'all-active-opus',
+            estimatedAnlas: 0,
+            maxAnlas: 0,
+            estimatedAt: '2026-08-08T12:00:00.000Z',
+            approvedAt: '2026-08-08T12:00:01.000Z',
+        })
         const snapshot = encodeMainJobSnapshot(prepared({
             output: {
                 autoSave: false,
@@ -101,12 +109,13 @@ describe('Main Job Snapshot codec', () => {
                 collisionPolicy: 'overwrite',
             },
             imageFormat: 'webp',
-        }), dehydrated).snapshot
+        }), dehydrated, costConsent).snapshot
 
         expect(decodeMainJobSnapshot(snapshot)).toMatchObject({
             queueExecution: { streaming: true, sourceEdit: false },
             mainWorkflow: {
                 imageFormat: 'webp',
+                costConsent,
                 output: { fileName: 'chosen.webp', collisionPolicy: 'overwrite' },
             },
         })

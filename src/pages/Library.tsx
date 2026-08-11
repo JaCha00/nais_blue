@@ -84,7 +84,7 @@ async function createBrowserLibraryItem(file: File): Promise<LibraryItem> {
     }
 }
 
-export default function Library() {
+export default function Library({ onOpenTools }: { onOpenTools?: () => void } = {}) {
     const { t } = useTranslation()
     const { 
         items, 
@@ -709,6 +709,7 @@ export default function Library() {
                                     onRename={handleRenameClick}
                                     onAddRef={handleAddRefClick}
                                     onLoadMetadata={handleLoadMetadata}
+                                    onOpenTools={onOpenTools}
                                     onImageClick={(imgUrl) => {
                                         if (isEditMode && !item.isStack) {
                                             // Edit mode: toggle selection (stacks cannot be selected)

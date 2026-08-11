@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { openNativePath } from '@/platform/native-shell'
 import QRCode from 'qrcode'
 import jsQR from 'jsqr'
@@ -162,7 +162,7 @@ function MetadataDetail({ item }: { item: MetadataBatchItem | null }) {
     )
 }
 
-function MetadataWorkspace() {
+export function MetadataWorkspace() {
     const { t } = useTranslation()
     const inputRef = useRef<HTMLInputElement>(null)
     const abortRef = useRef<AbortController | null>(null)
@@ -559,7 +559,7 @@ async function decodePairingQr(file: File): Promise<string> {
     }
 }
 
-function DeviceConnectionPanel() {
+export function DeviceConnectionPanel({ onOpenBackup }: { onOpenBackup?: () => void } = {}) {
     const { t } = useTranslation()
     const navigate = useNavigate()
     const capability = runtimeCapabilities.secureLanSyncTransport
@@ -843,7 +843,11 @@ function DeviceConnectionPanel() {
                                 {t('dataHub.sync.safeAlternativeDescription', '설정의 데이터 백업으로 내보낸 뒤 다른 기기에서 복원할 수 있습니다. 자격 증명 원문은 포함되지 않습니다.')}
                             </p>
                         </div>
-                        <Button variant="outline" className="shrink-0" onClick={() => navigate('/settings?section=backup')}>
+                        <Button
+                            variant="outline"
+                            className="shrink-0"
+                            onClick={onOpenBackup ?? (() => navigate('/settings?section=backup'))}
+                        >
                             {t('dataHub.sync.openBackup', '백업 열기')}<ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                     </div>
@@ -867,6 +871,16 @@ function DeviceConnectionPanel() {
  */
 export default function DataHub() {
     const { t } = useTranslation()
+    const [searchParams, setSearchParams] = useSearchParams()
+    const requestedTab = searchParams.get('tab')
+    const activeTab = requestedTab === 'agent' || requestedTab === 'sync' ? requestedTab : 'metadata'
+
+    const selectTab = (tab: string) => {
+        const next = new URLSearchParams(searchParams)
+        next.set('tab', tab)
+        setSearchParams(next, { replace: true })
+    }
+
     return (
         <div className="h-full min-h-0 overflow-y-auto bg-canvas">
             <div className="mx-auto w-full max-w-7xl space-y-5 p-3 sm:p-5 lg:p-7" data-testid="data-hub-page">
@@ -901,7 +915,7 @@ export default function DataHub() {
                     })}
                 </div>
 
-                <Tabs defaultValue="metadata" className="min-w-0 space-y-4">
+                <Tabs value={activeTab} onValueChange={selectTab} className="min-w-0 space-y-4">
                     <TabsList className="grid h-auto w-full grid-cols-3 rounded-panel bg-muted/60 p-1">
                         <TabsTrigger value="metadata" className="min-h-11 gap-2 rounded-control px-2">
                             <ImageIcon className="hidden h-4 w-4 shrink-0 sm:block" /><span className="truncate">{t('dataHub.tabs.metadata', '이미지 정보')}</span>

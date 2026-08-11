@@ -70,7 +70,15 @@ export function MobileCommandDock({
             {!simplified && (
                 <>
                     {onOpenModules && (
-                        <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.modules} onClick={onOpenModules}>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={disabled}
+                            aria-label={labels.modules}
+                            data-testid="composition-open-modules"
+                            onClick={onOpenModules}
+                        >
                             <Layers3 className="h-5 w-5" aria-hidden="true" />
                         </Button>
                     )}

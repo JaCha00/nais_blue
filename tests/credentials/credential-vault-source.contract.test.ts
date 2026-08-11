@@ -5,25 +5,51 @@ import { describe, expect, it } from 'vitest'
 const root = process.cwd()
 const source = (relativePath: string) => readFile(path.join(root, relativePath), 'utf8')
 
-describe('direct local NovelAI token contract', () => {
-    it('loads tokens from local app storage without a vault or passphrase session', async () => {
-        const [authStore, app, dialog, startup] = await Promise.all([
+describe('native NovelAI credential contract', () => {
+    it('persists only secret-free references while keeping the existing token-entry UX', async () => {
+        const [authStore, adapter, nativeVault, tauriLib, app, dialog, settingsCard, guidedGate, startup] = await Promise.all([
             source('src/stores/auth-store.ts'),
+            source('src/services/credentials/native-novelai-credential-vault.ts'),
+            source('src-tauri/src/novelai_credentials.rs'),
+            source('src-tauri/src/lib.rs'),
             source('src/App.tsx'),
             source('src/components/credentials/ApiTokenDialog.tsx'),
+            source('src/components/credentials/ApiTokenSettingsCard.tsx'),
+            source('src/presentation/workflow/GuidedCredentialGate.tsx'),
             source('src/main.tsx'),
         ])
 
-        expect(authStore).toContain('getRuntimeAuthMigrationStorage().setStrict')
-        expect(authStore).toContain('version: 4')
-        expect(authStore).not.toContain('getRuntimeCredentialVault')
+        expect(authStore).toContain('getRuntimeCredentialVault')
+        expect(authStore).toContain('persistAuthStateV3')
+        expect(authStore).toContain('completeLegacyAuthMigration')
+        expect(authStore).not.toContain('serializeLocalAuth')
+        expect(authStore).not.toContain('version: 4')
+        expect(adapter).toContain('browserSecrets = new Map')
+        expect(adapter).toContain('runtimeCapabilities.novelAiCredentialVault.supported')
+        expect(adapter).not.toMatch(/localStorage|indexedDB/i)
+        expect(nativeVault).toContain('com.bluhair.naisblue.novelai')
+        expect(nativeVault).toContain('keyring::Entry')
+        expect(nativeVault).not.toMatch(/println!|dbg!|tracing::/)
+        for (const command of [
+            'novelai_store_credential',
+            'novelai_load_credential',
+            'novelai_credential_status',
+            'novelai_delete_credential',
+        ]) {
+            expect(tauriLib).toContain(`novelai_credentials::${command}`)
+        }
         expect(authStore).not.toContain('unlockVault')
         expect(dialog).not.toMatch(/passphrase|unlockVault|vaultStatus/i)
+        expect(dialog).toContain('sessionStorageDescription')
+        expect(settingsCard).toContain('sessionStorageDescription')
+        expect(guidedGate).toContain('runtimeCapabilities.novelAiCredentialVault.supported')
+        expect(guidedGate).toContain('guided.credential.descriptionSession')
+        expect(guidedGate).toContain('guided.credential.descriptionDesktop')
         expect(app).toContain('<ApiTokenDialog />')
-        expect(startup).toContain('Loading local API tokens')
+        expect(startup).toContain('Loading secure API credentials')
     })
 
-    it('routes missing-token callers to direct token entry and keeps relaunch flushes', async () => {
+    it('routes missing-token callers to the same direct token entry and keeps relaunch flushes', async () => {
         const [mainGeneration, sceneGeneration, styleLab, history, persistence, relaunchLifecycle] = await Promise.all([
             source('src/stores/generation-store.ts'),
             source('src/hooks/useSceneGeneration.ts'),
@@ -38,5 +64,18 @@ describe('direct local NovelAI token contract', () => {
         expect(history).toContain('await waitForApiTokenReady()')
         expect(persistence).not.toContain('getRuntimeCredentialVault().lock()')
         expect(relaunchLifecycle).toContain('closeApplicationWithFlush')
+    })
+
+    it('localizes desktop persistence and session-only guided disclosures separately', async () => {
+        const locales = await Promise.all([
+            source('src/i18n/locales/ko.json'),
+            source('src/i18n/locales/en.json'),
+            source('src/i18n/locales/ja.json'),
+        ])
+        for (const locale of locales) {
+            expect(locale).toContain('"descriptionDesktop"')
+            expect(locale).toContain('"descriptionSession"')
+            expect(locale).toContain('"sessionStorageDescription"')
+        }
     })
 })

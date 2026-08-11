@@ -72,6 +72,8 @@ docs/*
 !docs/composition-v2/**
 !docs/architecture/
 !docs/architecture/**
+!docs/releases/
+!docs/releases/**
 
 # Claude Code
 .claude/

@@ -59,6 +59,8 @@ export interface WildcardResolutionSession {
     /** Serialized so multiple prompt fields share one in-memory sequence view. */
     process(prompt: string): Promise<string>
     readonly status: WildcardResolutionStatus
+    /** False when any processed field produced a blocking strict-resolution issue. */
+    readonly success: boolean
     readonly sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
     /** One-shot CAS commit after every generation/output success guard passes. */
     commitSequence(): Promise<boolean>
@@ -362,6 +364,9 @@ export function createWildcardResolutionSession(
         process,
         get status() {
             return status
+        },
+        get success() {
+            return !failed && pendingCount === 0
         },
         get sequenceCommitProposal() {
             return proposal()

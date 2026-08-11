@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { JsonValue } from '@/domain/composition/types'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import {
     createStyleEvaluationContext,
     styleCombinationIdentity,
@@ -112,6 +113,18 @@ describe('Style Lab Job Snapshot codec', () => {
         expect(decodeStyleLabJobSnapshot(encoded.snapshot).styleLabWorkflow.renderHash)
             .toBe(identity.renderHash)
         expect(Object.isFrozen(encoded.snapshot)).toBe(true)
+    })
+
+    it('preserves a valid Guided cost approval in the immutable workflow snapshot', () => {
+        const instant = '2026-08-10T00:00:00.000Z'
+        const costConsent = createAnlasCostConsentSnapshot({
+            pricingBasis: 'all-active-opus', estimatedAnlas: 0, maxAnlas: 0,
+            estimatedAt: instant, approvedAt: instant,
+        })
+        const encoded = encodeStyleLabJobSnapshot(input({ costConsent }), dehydrated)
+
+        expect(decodeStyleLabJobSnapshot(encoded.snapshot).styleLabWorkflow.costConsent)
+            .toEqual(costConsent)
     })
 
     it('rejects a render identity that no longer matches the snapshotted tags', () => {

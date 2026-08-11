@@ -153,7 +153,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
         
         setSourceImage(base64)
         setI2IMode('i2i')
-        navigate('/')
+        navigate('/advanced')
     }
 
     const handleDelete = () => {

@@ -44,6 +44,21 @@ describe('PlanMainBatch', () => {
         expect(materialize).not.toHaveBeenCalled()
     })
 
+    it('runs preflight before materialization side effects', async () => {
+        const calls: string[] = []
+
+        await planMainBatch({
+            planner: plannerFor(1, ['ready']),
+            preflight: prepared => calls.push(`preflight:${prepared.join(',')}`),
+            materialize: value => {
+                calls.push(`materialize:${value}`)
+                return value
+            },
+        })
+
+        expect(calls).toEqual(['preflight:ready', 'materialize:ready'])
+    })
+
     it('rejects an invalid requested count without invoking the legacy planner', async () => {
         const prepareBatch = vi.fn(async () => [] as const)
 

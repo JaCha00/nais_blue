@@ -7,22 +7,32 @@ import { Label } from "@/components/ui/label"
 import { useGenerationStore } from '@/stores/generation-store'
 import { useToolsStore } from '@/stores/tools-store'
 import { useTranslation } from 'react-i18next'
-import { Paintbrush, Eraser, Undo, Trash2, Save } from 'lucide-react'
+import { Paintbrush, Eraser, Undo, Trash2, Save, Loader2 } from 'lucide-react'
 
 interface InpaintingDialogProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     sourceImage: string | null
+    generateOnSave?: boolean
+    onGenerated?: (image: string | null) => void
 }
 
-export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceImage }: InpaintingDialogProps) {
+export function InpaintingDialog({
+    open,
+    onOpenChange,
+    sourceImage: propSourceImage,
+    generateOnSave = false,
+    onGenerated,
+}: InpaintingDialogProps) {
     const { t } = useTranslation()
     const {
         setSourceImage,
         setMask,
         setI2IMode,
         resetI2IParams,
-        mask: existingMask
+        mask: existingMask,
+        generate,
+        isGenerating,
     } = useGenerationStore()
 
     const {
@@ -278,7 +288,7 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
     }
 
     // Handle save mask button click - saves mask and sets up inpaint mode
-    const handleSaveMask = () => {
+    const handleSaveMask = async () => {
         const canvas = canvasRef.current
         if (!canvas || !propSourceImage) return
 
@@ -290,7 +300,17 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
         setMask(maskDataUrl)
         setI2IMode('inpaint')
 
-        // Close dialog - mask is now saved in store
+        if (generateOnSave) {
+            // A missing token or failed request returns without a new preview.
+            // Clearing first prevents an older result from being reported as this run.
+            useGenerationStore.getState().setPreviewImage(null)
+            await generate()
+            const image = useGenerationStore.getState().previewImage
+            if (!image) return
+            onGenerated?.(image)
+            resetI2IParams()
+        }
+
         onOpenChange(false)
     }
 
@@ -422,11 +442,15 @@ export function InpaintingDialog({ open, onOpenChange, sourceImage: propSourceIm
                     </Button>
                     <Button
                         className="bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={handleSaveMask}
-                        disabled={!propSourceImage}
+                        onClick={() => void handleSaveMask()}
+                        disabled={!propSourceImage || isGenerating}
                     >
-                        <Save className="w-4 h-4 mr-2" />
-                        {t('sourcePanel.saveMask', '마스크 저장')}
+                        {isGenerating
+                            ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            : <Save className="mr-2 h-4 w-4" />}
+                        {generateOnSave
+                            ? t('tools.inpainting.generate', '인페인팅 생성')
+                            : t('sourcePanel.saveMask', '마스크 저장')}
                     </Button>
                 </DialogFooter>
             </DialogContent>

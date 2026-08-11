@@ -13,6 +13,7 @@ export interface RuntimeCapability {
 export interface RuntimeCapabilities {
     readonly platform: RuntimePlatform
     readonly nativePluginRuntime: RuntimeCapability
+    readonly novelAiCredentialVault: RuntimeCapability
     readonly absoluteOutputPath: RuntimeCapability
     readonly externalProfileFileWatch: RuntimeCapability
     readonly localTaggerSidecar: RuntimeCapability
@@ -42,6 +43,10 @@ const APP_SCOPED_OUTPUT = unsupported(
 const NO_NATIVE_PLUGIN_RUNTIME = unsupported(
     'Tauri file, store, and opener plugins are unavailable in the browser runtime.',
     'Use browser storage, file inputs, and normal browser links instead.',
+)
+const NO_NOVELAI_CREDENTIAL_VAULT = unsupported(
+    'Persistent NovelAI credential storage is available only in the installed desktop app.',
+    'The token remains available only until this browser or mobile app session ends.',
 )
 const NO_EXTERNAL_WATCH = unsupported(
     'External profile file watching is available only in the installed desktop app.',
@@ -92,6 +97,7 @@ export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCap
     return Object.freeze({
         platform,
         nativePluginRuntime: nativePluginRuntime ? supported() : NO_NATIVE_PLUGIN_RUNTIME,
+        novelAiCredentialVault: nativeR2Desktop ? supported() : NO_NOVELAI_CREDENTIAL_VAULT,
         // `unknown` remains desktop-compatible for headless characterization;
         // an actual unconfigured browser is detected as `web` below.
         absoluteOutputPath: mobile || platform === 'web' ? APP_SCOPED_OUTPUT : supported(),
@@ -122,8 +128,13 @@ const detectedPlatform = (() => {
     const configured = typeof __NAIS_BLUE_TAURI_PLATFORM__ === 'string'
         ? __NAIS_BLUE_TAURI_PLATFORM__.toLowerCase()
         : ''
-    if (configured === 'android' || configured === 'ios' || configured === 'windows'
-        || configured === 'macos' || configured === 'linux') return configured
+    const configuredNative = configured === 'android' || configured === 'ios'
+        || configured === 'windows' || configured === 'macos' || configured === 'linux'
+    // The compile-time target also exists in production browser previews. Only
+    // trust it in a real Tauri webview (or a windowless build/test process).
+    if (configuredNative && (typeof window === 'undefined' || Reflect.get(globalThis, 'isTauri') === true)) {
+        return configured
+    }
     if (typeof navigator !== 'undefined') {
         const agent = navigator.userAgent.toLowerCase()
         if (agent.includes('android')) return 'android'

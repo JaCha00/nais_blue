@@ -13,7 +13,7 @@ describe('Main composition UI contract', () => {
 
         expect(mainMode).toContain('<CompositionWorkspaceLayout')
         expect(mainMode).toContain('moduleStack={moduleStack}')
-        expect(mainMode).toContain('workspaceClassName="rounded-panel border border-border bg-canvas"')
+        expect(mainMode).toContain('workspaceClassName="border-y border-border/60 bg-canvas"')
         expect(mainMode).toContain('data-testid="main-result-canvas"')
         expect(mainMode).toContain('<CompositionInspector')
         expect(mainMode).toContain('<ModuleStack')
@@ -72,9 +72,10 @@ describe('Main composition UI contract', () => {
     })
 
     it('keeps prompt authoring free of duplicated composition diagnostics', async () => {
-        const [promptPanel, editor, controls, autocomplete] = await Promise.all([
+        const [promptPanel, editor, slotTabs, controls, autocomplete] = await Promise.all([
             source('src/components/layout/PromptPanel.tsx'),
             source('src/components/prompt/PromptEditorSurface.tsx'),
+            source('src/components/prompt/PromptSlotTabs.tsx'),
             source('src/components/prompt/PromptGenerationControls.tsx'),
             source('src/components/ui/AutocompleteTextarea.tsx'),
         ])
@@ -87,7 +88,12 @@ describe('Main composition UI contract', () => {
         expect(promptPanel).toContain('if (isGenerating) setFragmentDialogOpen(false)')
         expect(promptPanel).toMatch(/aria-label=\{t\('prompt\.fragment'\)\}[\s\S]*?disabled=\{isGenerating\}/)
         expect(editor).toContain('<AutocompleteTextarea')
-        expect(editor).toContain('aria-controls={editorPanelId}')
+        expect(editor).toContain('<PromptSlotTabs')
+        expect(slotTabs).toContain('aria-controls={panelId}')
+        expect(slotTabs).toContain("event.key === 'ArrowRight'")
+        expect(slotTabs).toContain('tabIndex={active ? 0 : -1}')
+        expect(editor).toContain("'h-40 min-h-40 resize-none rounded-none")
+        expect(editor).not.toContain("'h-full min-h-28")
         expect(autocomplete).toContain('onBlur={flushPendingChange}')
         expect(autocomplete).toContain('return flushPendingChange')
         expect(controls).toContain('data-testid="prompt-generate-action"')
@@ -156,7 +162,9 @@ describe('Main composition UI contract', () => {
         expect(commandBar).toContain('simplified')
         expect(commandBar).not.toMatch(/\bmode=|validation=|\bseed=|onOpenInspector/)
         expect(mainMode).toContain('const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID')
-        expect(mainMode).toMatch(/calculateAnlasCost\(\s*selectedResolution\.width,\s*selectedResolution\.height,\s*steps,/)
+        expect(mainMode).toMatch(/calculateAnlasCost\(\{\s*width:\s*selectedResolution\.width,\s*height:\s*selectedResolution\.height,\s*steps,/)
+        expect(mainMode).toContain('imageCount: 1')
+        expect(mainMode).toContain('}) * batchCount')
         expect(mainMode).not.toContain('lastResolvedPlan?.params')
         expect(mainMode).toContain('onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}')
         expect(mainMode).toContain('<RecipeSelector onChange={handleRecipeSelection} />')

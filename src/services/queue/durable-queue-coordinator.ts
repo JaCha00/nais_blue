@@ -48,7 +48,7 @@ export interface DurableQueueCoordinatorOptions {
 interface ActiveExecution {
     job: GenerationJob
     slotId: string
-    singleWorker: boolean
+    holdsPreviewStreamLock: boolean
     controller: AbortController
     abortMode: 'none' | 'cancel' | 'shutdown'
     promise: Promise<void>
@@ -81,7 +81,7 @@ function failureText(value: unknown, depth = 0, seen = new Set<object>()): strin
     return `${own} ${nested}`.trim()
 }
 
-function requiresSingleWorker(job: GenerationJob): boolean {
+function requiresPreviewStreamLock(job: GenerationJob): boolean {
     const parameters = job.snapshot.parameters
     if (!isRecord(parameters) || !isRecord(parameters.queueExecution)) return false
     return parameters.queueExecution.streaming === true && parameters.queueExecution.sourceEdit !== true
@@ -115,9 +115,10 @@ function sequenceDependencyDisposition(
 }
 
 function executionLimit(workflow: GenerationWorkflow): number {
-    // Token slots are shared by Main and Scene, while provider safety limits stay
-    // workflow-local: Main commits one durable proposal at a time and Scene may use two slots.
-    return workflow === 'scene' ? 2 : 1
+    // Main sequence dependencies are ordered separately below. Ordinary Main and
+    // Scene jobs may use both configured provider accounts; Style Lab keeps its
+    // existing single-worker presentation contract.
+    return workflow === 'style-lab' ? 1 : 2
 }
 
 function classifyFailure(error: unknown): QueueExecutionError {
@@ -263,9 +264,14 @@ export class DurableQueueCoordinator {
     }
 
     private async scheduleAvailable(): Promise<void> {
-        const slots = this.tokenProvider()
-            .filter(slot => slot.token.trim().length > 0)
-            .filter(slot => ![...this.active.values()].some(active => active.slotId === slot.slotId))
+        const occupiedSlots = new Set([...this.active.values()].map(active => active.slotId))
+        const uniqueTokens = new Set<string>()
+        const slots = this.tokenProvider().filter(slot => {
+            const token = slot.token.trim()
+            if (token.length === 0 || uniqueTokens.has(token)) return false
+            uniqueTokens.add(token)
+            return !occupiedSlots.has(slot.slotId)
+        })
 
         let cursor: string | null = null
         let slotIndex = 0
@@ -274,7 +280,8 @@ export class DurableQueueCoordinator {
             const page = await this.repository.listJobs({ states: ['queued'], cursor, limit: 250 })
             for (const candidate of page.items) {
                 if (candidate.cancelRequestedAt !== null) continue
-                if (isMainSequenceDependent(candidate)) {
+                const sequenceDependent = isMainSequenceDependent(candidate)
+                if (sequenceDependent) {
                     let batchJobs = batchJobsById.get(candidate.batchId)
                     if (batchJobs === undefined) {
                         batchJobs = await this.listBatchJobs(candidate.batchId)
@@ -297,14 +304,18 @@ export class DurableQueueCoordinator {
                 if (Date.parse(candidate.readyAt) > Date.parse(this.now())) continue
                 if (slotIndex >= slots.length) continue
                 const activeExecutions = [...this.active.values()]
-                const activeSingle = activeExecutions.some(execution => execution.singleWorker)
-                const singleWorker = requiresSingleWorker(candidate)
+                const previewStreamActive = activeExecutions.some(execution => execution.holdsPreviewStreamLock)
+                const needsPreviewStreamLock = requiresPreviewStreamLock(candidate)
+                const activeMainSequence = activeExecutions.some(execution => (
+                    isMainSequenceDependent(execution.job)
+                ))
                 const activeForWorkflow = activeExecutions.filter(execution => (
                     execution.job.workflow === candidate.workflow
                 )).length
-                // Streaming executions remain globally exclusive, but normal Main and Scene work
-                // may share vacant token slots up to their independent provider limits.
-                if (activeSingle || (singleWorker && activeExecutions.length > 0)) continue
+                // Preview streams share one presentation channel and serialize with each other.
+                // Non-streaming Main and Scene jobs may still use another provider token.
+                if (previewStreamActive && needsPreviewStreamLock) continue
+                if (sequenceDependent && activeMainSequence) continue
                 if (activeForWorkflow >= executionLimit(candidate.workflow)) continue
 
                 const slot = slots[slotIndex]
@@ -317,8 +328,7 @@ export class DurableQueueCoordinator {
                 })
                 if (leased === null) continue
                 slotIndex += 1
-                this.launch(leased, slot, owner, singleWorker)
-                if (singleWorker) return
+                this.launch(leased, slot, owner, needsPreviewStreamLock)
             }
             cursor = page.nextCursor
         } while (cursor !== null)
@@ -337,12 +347,12 @@ export class DurableQueueCoordinator {
         return jobs
     }
 
-    private launch(job: GenerationJob, slot: QueueTokenSlot, owner: string, singleWorker: boolean): void {
+    private launch(job: GenerationJob, slot: QueueTokenSlot, owner: string, holdsPreviewStreamLock: boolean): void {
         const controller = new AbortController()
         const active: ActiveExecution = {
             job,
             slotId: slot.slotId,
-            singleWorker,
+            holdsPreviewStreamLock,
             controller,
             abortMode: 'none',
             promise: Promise.resolve(),

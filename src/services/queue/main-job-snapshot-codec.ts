@@ -1,5 +1,9 @@
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import type { JsonValue } from '@/domain/composition/types'
+import {
+    isAnlasCostConsentSnapshot,
+    type AnlasCostConsentSnapshot,
+} from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import { ensureImageFileExtension } from '@/services/output/filename-policy'
@@ -24,6 +28,7 @@ export interface MainQueueWorkflowSnapshot {
     readonly imageFormat: 'png' | 'webp'
     readonly metadataMode: PreparedMainGeneration['metadataMode']
     readonly sequenceCommitProposal: FragmentSequenceCommitProposal | null
+    readonly costConsent?: AnlasCostConsentSnapshot
     readonly output: MainQueueOutputSnapshot
 }
 
@@ -57,6 +62,7 @@ function invalidSnapshot(): never {
 export function encodeMainJobSnapshot(
     prepared: PreparedMainGeneration,
     dehydrated: Pick<DehydratedGenerationResult, 'parameters' | 'resources'>,
+    costConsent?: AnlasCostConsentSnapshot,
 ): EncodedMainJobSnapshot {
     const fileName = prepared.output.fileName ?? ensureImageFileExtension(
         `NAIS_${prepared.params.seed}`,
@@ -73,6 +79,7 @@ export function encodeMainJobSnapshot(
             imageFormat: prepared.imageFormat,
             metadataMode: prepared.metadataMode,
             sequenceCommitProposal: prepared.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
+            ...(costConsent === undefined ? {} : { costConsent }),
             output: {
                 directory: prepared.output.directory,
                 useAbsolutePath: prepared.output.useAbsolutePath,
@@ -124,6 +131,8 @@ export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueu
         || !isRecord(candidate.mainWorkflow)
         || typeof candidate.mainWorkflow.finalPrompt !== 'string'
         || (candidate.mainWorkflow.imageFormat !== 'png' && candidate.mainWorkflow.imageFormat !== 'webp')
+        || (candidate.mainWorkflow.costConsent !== undefined
+            && !isAnlasCostConsentSnapshot(candidate.mainWorkflow.costConsent))
         || !isRecord(candidate.mainWorkflow.output)
         || typeof candidate.mainWorkflow.output.directory !== 'string'
         || typeof candidate.mainWorkflow.output.useAbsolutePath !== 'boolean'

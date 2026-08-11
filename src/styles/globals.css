@@ -5,26 +5,26 @@
 @plugin "tailwindcss-animate";
 
 /* Tailwind typography tokens feed every text utility and the inherited body copy.
-   They are linked to all desktop panels, dialogs, and controls, so increasing only
-   font metrics (not rem-based spacing) delivers the requested +4px readability lift
-   without globally stretching grids, paddings, icons, or fixed window geometry. */
+   A measured +2px lift keeps dense expert controls readable without forcing labels
+   to clip inside fixed window chrome. Guided headings and activity copy opt into
+   larger semantic sizes at their component boundary. */
 @theme {
-  --text-xs: 1rem;
-  --text-xs--line-height: 1.5rem;
-  --text-sm: 1.125rem;
-  --text-sm--line-height: 1.625rem;
-  --text-base: 1.25rem;
-  --text-base--line-height: 1.875rem;
-  --text-lg: 1.375rem;
-  --text-lg--line-height: 1.875rem;
-  --text-xl: 1.5rem;
-  --text-xl--line-height: 2rem;
-  --text-2xl: 1.75rem;
-  --text-2xl--line-height: 2.25rem;
-  --text-3xl: 2.125rem;
-  --text-3xl--line-height: 2.625rem;
-  --text-4xl: 2.5rem;
-  --text-4xl--line-height: 3rem;
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5rem;
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.625rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.625rem;
+  --text-2xl--line-height: 2.125rem;
+  --text-3xl: 2rem;
+  --text-3xl--line-height: 2.5rem;
+  --text-4xl: 2.375rem;
+  --text-4xl--line-height: 2.875rem;
   --text-5xl: 3.25rem;
   --text-5xl--line-height: 3.5rem;
   --text-6xl: 4rem;
@@ -64,6 +64,7 @@
     --warning: 0.700 0.140 75;
     --info: 0.520 0.160 250;
     --scrim: 0.100 0.010 262;
+    --welcome-ambient: 0.540 0.190 263.65;
     --radius: 0.75rem;
     --radius-control: 0.625rem;
     --radius-panel: 0.875rem;
@@ -80,6 +81,10 @@
     --space-control: 0.75rem;
     --space-panel: 1.25rem;
     --space-section: 2rem;
+    --guided-content-max: 72rem;
+    --guided-question-max: 45rem;
+    --guided-review-max: 57.5rem;
+    --activity-rail-width: 22rem;
     --chart-1: 0.620 0.190 263.65;
     --chart-2: 0.620 0.130 165;
     --chart-3: 0.650 0.150 75;
@@ -112,6 +117,7 @@
     --warning: 0.780 0.140 75;
     --info: 0.720 0.150 250;
     --scrim: 0.080 0.008 262;
+    --welcome-ambient: 0.600 0.170 263.65;
     --chart-1: 0.720 0.170 263.65;
     --chart-2: 0.720 0.140 165;
     --chart-3: 0.780 0.140 75;
@@ -191,11 +197,118 @@
   .focus-ring {
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
   }
+
+  .guided-display {
+    font-size: clamp(2rem, 4vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.035em;
+  }
+
+  .guided-welcome-ambient {
+    position: relative;
+    isolation: isolate;
+    overflow-x: hidden;
+    background:
+      radial-gradient(circle at 8% 12%, oklch(var(--welcome-ambient) / 0.16), transparent 34%),
+      radial-gradient(circle at 88% 82%, oklch(var(--primary) / 0.11), transparent 32%),
+      oklch(var(--canvas));
+  }
+
+  .guided-welcome-ambient::before,
+  .guided-welcome-ambient::after {
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    content: "";
+    will-change: background-position, opacity;
+  }
+
+  .guided-welcome-ambient::before {
+    inset: 0;
+    background:
+      radial-gradient(circle at 30% 34%, oklch(var(--welcome-ambient) / 0.36) 0%, transparent 28%),
+      radial-gradient(circle at 72% 62%, oklch(var(--primary) / 0.24) 0%, transparent 27%),
+      conic-gradient(from 215deg at 52% 48%, transparent 0 18%, oklch(var(--welcome-ambient) / 0.13) 34%, transparent 50% 73%, oklch(var(--primary) / 0.10) 86%, transparent);
+    background-size: 112% 112%, 116% 116%, 124% 124%;
+    animation: guided-ambient-orbit 17s cubic-bezier(0.45, 0, 0.25, 1) infinite alternate;
+  }
+
+  .guided-welcome-ambient::after {
+    inset: 0;
+    background:
+      linear-gradient(112deg, transparent 8%, oklch(var(--background) / 0.74) 46%, transparent 78%),
+      radial-gradient(ellipse at 50% 110%, oklch(var(--welcome-ambient) / 0.20), transparent 48%);
+    background-size: 112% 112%, 108% 108%;
+    opacity: 0.76;
+    animation: guided-ambient-breathe 9s ease-in-out infinite alternate;
+  }
+
+  .guided-choice-row {
+    position: relative;
+    isolation: isolate;
+    animation: guided-choice-reveal 420ms ease both;
+    transition:
+      transform 180ms cubic-bezier(0.2, 0, 0, 1),
+      color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .guided-choice-row::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    content: "";
+    background: linear-gradient(90deg, oklch(var(--primary) / 0.12), oklch(var(--primary) / 0.035) 58%, transparent 88%);
+    opacity: 0;
+    transform: scaleX(0.96);
+    transform-origin: left center;
+    transition: opacity 180ms ease, transform 180ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .guided-choice-row:nth-child(2) { animation-delay: 55ms; }
+  .guided-choice-row:nth-child(3) { animation-delay: 110ms; }
+  .guided-choice-row:nth-child(4) { animation-delay: 165ms; }
+  .guided-choice-row:nth-child(5) { animation-delay: 220ms; }
+
+  .guided-choice-row:hover,
+  .guided-choice-row:focus-visible {
+    transform: translate3d(0.4rem, -0.12rem, 0);
+    box-shadow: 0 1.25rem 2.5rem -2.25rem oklch(var(--primary) / 0.62);
+  }
+
+  .guided-choice-row:hover::before,
+  .guided-choice-row:focus-visible::before {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
 }
 
-/* Narrow Android and small-window layouts use a +2px compact lift. These values
-   depend on the same global typography tokens and preserve the responsive shell's
-   existing one-column contracts while keeping captions at a readable 14px floor. */
+@keyframes guided-ambient-orbit {
+  from {
+    background-position: 42% 46%, 58% 54%, 48% 52%;
+    opacity: 0.66;
+  }
+
+  to {
+    background-position: 52% 42%, 46% 60%, 56% 46%;
+    opacity: 1;
+  }
+}
+
+@keyframes guided-ambient-breathe {
+  from { background-position: 44% 50%, 50% 56%; opacity: 0.58; }
+  to { background-position: 56% 48%, 50% 48%; opacity: 0.9; }
+}
+
+@keyframes guided-choice-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Narrow Android and small-window layouts retain the same readable scale so text
+   reflows predictably instead of jumping when a window crosses 640px. */
 @media (max-width: 639px) {
   :root {
     --text-xs: 0.875rem;
@@ -273,5 +386,10 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .guided-welcome-ambient::before,
+  .guided-welcome-ambient::after {
+    animation: none !important;
   }
 }

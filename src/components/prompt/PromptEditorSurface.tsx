@@ -3,6 +3,11 @@ import { useTranslation } from 'react-i18next'
 
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { cn } from '@/lib/utils'
+import { PromptSlotTabs } from '@/components/prompt/PromptSlotTabs'
+import {
+    appendPromptModuleLine,
+    PromptModulePicker,
+} from '@/components/fragments/PromptModulePicker'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useSettingsStore } from '@/stores/settings-store'
 
@@ -61,52 +66,47 @@ export function PromptEditorSurface() {
 
     return (
         <div
-            className="flex min-h-40 flex-none flex-col gap-2 rounded-panel bg-canvas p-2"
+            className="@container flex flex-none flex-col border-y border-border/60 bg-transparent"
             // A dock-level test boundary keeps responsive smoke checks coupled to
             // this shared editor surface, not react-simple-code-editor internals.
             data-testid="prompt-editor-surface"
         >
-            <div className="grid grid-cols-4 gap-1" role="tablist" aria-label={t('prompt.title', '프롬프트')}>
-                {promptSlots.map(slot => {
-                    const isActive = slot.id === activePrompt.id
-                    return (
-                        <button
-                            key={slot.id}
-                            type="button"
-                            role="tab"
-                            id={`${editorPanelId}-${slot.id}-tab`}
-                            aria-selected={isActive}
-                            aria-controls={editorPanelId}
-                            onClick={() => setActivePromptSlot(slot.id)}
-                            className={cn(
-                                'relative flex h-11 min-w-0 items-center justify-center rounded-control px-2 text-xs font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                                isActive
-                                    ? slot.id === 'negative' ? 'bg-destructive/10 text-destructive' : 'bg-accent text-primary'
-                                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                            )}
-                        >
-                            <span className="truncate">{slot.label}</span>
-                            {slot.value && !isActive && (
-                                <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden="true" />
-                            )}
-                        </button>
-                    )
-                })}
-            </div>
+            <PromptSlotTabs
+                tabs={promptSlots.map(slot => ({
+                    id: slot.id,
+                    label: slot.label,
+                    filled: slot.value.trim().length > 0,
+                    negative: slot.id === 'negative',
+                }))}
+                activeId={activePrompt.id}
+                panelId={editorPanelId}
+                label={t('prompt.title', '프롬프트')}
+                onChange={id => setActivePromptSlot(id as PromptSlot)}
+            />
             <div
                 id={editorPanelId}
                 role="tabpanel"
                 aria-labelledby={`${editorPanelId}-${activePrompt.id}-tab`}
-                className="min-h-28 flex-1"
+                className="flex min-h-0 flex-col"
             >
+                <div className="flex min-h-11 items-center justify-end border-b border-border/45 px-2">
+                    <PromptModulePicker
+                        triggerLabel={t('guided.promptModules.triggerShort', '모듈 불러오기')}
+                        triggerClassName="shrink-0"
+                        onSelectLine={line => activePrompt.setValue(
+                            appendPromptModuleLine(activePrompt.value, line),
+                        )}
+                    />
+                </div>
                 <AutocompleteTextarea
                     key={activePrompt.id}
                     placeholder={activePrompt.placeholder}
                     value={activePrompt.value}
                     onChange={event => activePrompt.setValue(event.target.value)}
+                    ariaLabel={activePrompt.label}
                     className={cn(
-                        'h-full min-h-28 resize-none rounded-control bg-card',
-                        activePrompt.id === 'negative' && 'border-destructive/30',
+                        'h-40 min-h-40 resize-none rounded-none border-0 bg-transparent focus-within:ring-1 focus-within:ring-inset',
+                        activePrompt.id === 'negative' && 'focus-within:ring-destructive/50',
                     )}
                     style={{ fontSize: `${promptFontSize}px` }}
                 />

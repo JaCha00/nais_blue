@@ -78,7 +78,12 @@ const LANGUAGES = [
     { code: 'ja', name: '日本語' },
 ]
 
-type SettingsSection = 'general' | 'appearance' | 'api' | 'storage' | 'shortcuts' | 'backup'
+export type SettingsSection = 'general' | 'appearance' | 'api' | 'storage' | 'shortcuts' | 'backup'
+
+interface SettingsProps {
+    /** Renders one real settings form without the expert settings navigation. */
+    guidedSection?: Exclude<SettingsSection, 'general'>
+}
 
 const SECTIONS = [
     { id: 'general' as const, icon: Settings2, labelKey: 'settingsPage.sections.general' },
@@ -89,7 +94,7 @@ const SECTIONS = [
     { id: 'backup' as const, icon: Database, labelKey: 'settingsPage.backup.title' },
 ]
 
-export default function Settings() {
+export default function Settings({ guidedSection }: SettingsProps = {}) {
     const { t, i18n } = useTranslation()
     const [searchParams, setSearchParams] = useSearchParams()
     const { theme, setTheme } = useThemeStore()
@@ -128,6 +133,7 @@ export default function Settings() {
     const [localGeminiKey, setLocalGeminiKey] = useState(geminiApiKey)
 
     const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
+        if (guidedSection) return guidedSection
         const requested = searchParams.get('section')
         return SECTIONS.some(section => section.id === requested)
             ? requested as SettingsSection
@@ -158,11 +164,15 @@ export default function Settings() {
     }
 
     useEffect(() => {
+        if (guidedSection) {
+            if (activeSection !== guidedSection) setActiveSection(guidedSection)
+            return
+        }
         const requested = searchParams.get('section')
         if (SECTIONS.some(section => section.id === requested) && requested !== activeSection) {
             setActiveSection(requested as SettingsSection)
         }
-    }, [activeSection, searchParams])
+    }, [activeSection, guidedSection, searchParams])
 
     // 키바인드 편집 상태
     const [editingAction, setEditingAction] = useState<ShortcutAction | null>(null)
@@ -568,9 +578,12 @@ export default function Settings() {
     const totalSize = Object.values(storeSizes).reduce((sum, size) => sum + (size > 0 ? size : 0), 0)
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas lg:flex-row">
+        <div className={cn(
+            'flex min-h-0 flex-col overflow-hidden bg-canvas lg:flex-row',
+            guidedSection ? 'min-h-full' : 'h-full',
+        )}>
             {/* Phones use one compact selector so settings content begins inside the first viewport. */}
-            <header className="shrink-0 bg-card px-3 py-2 lg:hidden">
+            {!guidedSection && <header className="shrink-0 bg-card px-3 py-2 lg:hidden">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <h1 className="shrink-0 text-lg font-semibold sm:mr-auto">{t('settingsPage.title')}</h1>
                     <div className="flex min-w-0 items-center gap-2">
@@ -588,9 +601,9 @@ export default function Settings() {
                         </Select>
                     </div>
                 </div>
-            </header>
+            </header>}
 
-            <aside className="hidden w-56 shrink-0 flex-col bg-card p-3 lg:flex">
+            {!guidedSection && <aside className="hidden w-56 shrink-0 flex-col bg-card p-3 lg:flex">
                 <h2 className="mb-3 px-2 text-lg font-semibold">{t('settingsPage.title')}</h2>
                 <nav className="space-y-1" aria-label={t('settingsPage.title')}>
                     {SECTIONS.map((section) => (
@@ -611,7 +624,7 @@ export default function Settings() {
                         </button>
                     ))}
                 </nav>
-            </aside>
+            </aside>}
 
             {/* The content pane owns scrolling; the shell and mobile selector remain stable. */}
             <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">

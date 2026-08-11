@@ -22,7 +22,12 @@ function isInteractiveTitlebarTarget(target: EventTarget | null) {
     return target instanceof Element && Boolean(target.closest(TITLEBAR_INTERACTIVE_SELECTOR))
 }
 
-export function CustomTitleBar() {
+interface CustomTitleBarProps {
+    /** Guided owns no workspace rails, so only native window controls remain. */
+    showWorkspaceToggles?: boolean
+}
+
+export function CustomTitleBar({ showWorkspaceToggles = true }: CustomTitleBarProps) {
     const { t } = useTranslation()
     const [isMaximized, setIsMaximized] = useState(false)
     // Browser dev smoke tests run outside Tauri; native window APIs exist only in the Tauri webview.
@@ -113,42 +118,43 @@ export function CustomTitleBar() {
 
             {/* Controls */}
             <div className="flex h-full" data-titlebar-no-drag="true">
-                {/* Left Sidebar Toggle */}
-                <Tip content={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')} side="bottom">
-                    <button
-                        onClick={toggleLeftSidebar}
-                        className={cn(
-                            "h-full w-10 flex items-center justify-center",
-                            "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                            "transition-colors",
-                            !leftSidebarVisible && "text-muted-foreground/50"
-                        )}
-                        data-titlebar-no-drag="true"
-                        aria-label="Toggle Left Sidebar"
-                    >
-                        <PanelLeft className="h-4 w-4" />
-                    </button>
-                </Tip>
+                {showWorkspaceToggles && (
+                    <>
+                        <Tip content={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')} side="bottom">
+                            <button
+                                onClick={toggleLeftSidebar}
+                                className={cn(
+                                    "h-full w-10 flex items-center justify-center",
+                                    "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                                    "transition-colors",
+                                    !leftSidebarVisible && "text-muted-foreground/50"
+                                )}
+                                data-titlebar-no-drag="true"
+                                aria-label="Toggle Left Sidebar"
+                            >
+                                <PanelLeft className="h-4 w-4" />
+                            </button>
+                        </Tip>
 
-                {/* Right Sidebar Toggle */}
-                <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')} side="bottom">
-                    <button
-                        onClick={toggleRightSidebar}
-                        className={cn(
-                            "h-full w-10 flex items-center justify-center",
-                            "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                            "transition-colors",
-                            !rightSidebarVisible && "text-muted-foreground/50"
-                        )}
-                        data-titlebar-no-drag="true"
-                        aria-label="Toggle Right Sidebar"
-                    >
-                        <PanelRight className="h-4 w-4" />
-                    </button>
-                </Tip>
+                        <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')} side="bottom">
+                            <button
+                                onClick={toggleRightSidebar}
+                                className={cn(
+                                    "h-full w-10 flex items-center justify-center",
+                                    "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                                    "transition-colors",
+                                    !rightSidebarVisible && "text-muted-foreground/50"
+                                )}
+                                data-titlebar-no-drag="true"
+                                aria-label="Toggle Right Sidebar"
+                            >
+                                <PanelRight className="h-4 w-4" />
+                            </button>
+                        </Tip>
 
-                {/* Separator */}
-                <div className="w-px h-4 my-auto bg-border/50 mx-1" />
+                        <div className="w-px h-4 my-auto bg-border/50 mx-1" />
+                    </>
+                )}
 
                 {/* Minimize */}
                 <button

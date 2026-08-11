@@ -30,14 +30,10 @@ export function getQueueActivityIndicator(summary: QueueActivitySummary): QueueA
     return { tone: 'idle', count: 0 }
 }
 
-export function QueueActivityLink() {
-    const { t } = useTranslation()
+function useQueueActivitySummary(): QueueActivitySummary {
     const repository = useMemo(() => getRuntimeQueueRepository(), [])
-    const closeSupportSheet = useLayoutStore(state => state.closeSupportSheet)
     const refreshId = useRef(0)
     const [summary, setSummary] = useState<QueueActivitySummary>(EMPTY_QUEUE_ACTIVITY_SUMMARY)
-    const indicator = getQueueActivityIndicator(summary)
-    const total = summary.processing + summary.waiting + summary.needsAttention
 
     const refresh = useCallback(async () => {
         const requestId = ++refreshId.current
@@ -66,6 +62,28 @@ export function QueueActivityLink() {
         }
     }, [refresh])
 
+    return summary
+}
+
+export function QueueActivityLink() {
+    const summary = useQueueActivitySummary()
+    return <QueueActivityLinkView summary={summary} testId="history-queue-activity" to="/queue" />
+}
+
+export function QueueActivityLinkView({
+    summary,
+    testId,
+    to,
+}: {
+    summary: QueueActivitySummary
+    testId?: string
+    to: string
+}) {
+    const { t } = useTranslation()
+    const closeSupportSheet = useLayoutStore(state => state.closeSupportSheet)
+    const indicator = getQueueActivityIndicator(summary)
+    const total = summary.processing + summary.waiting + summary.needsAttention
+
     const labels: Record<QueueActivityTone, string> = {
         attention: t('queue.activity.attention', 'Needs attention'),
         processing: t('queue.activity.processing', 'In progress'),
@@ -90,36 +108,36 @@ export function QueueActivityLink() {
         })
 
     return (
-        <section className="shrink-0 px-5 pb-3" aria-label={t('queue.activity.reservedJobs', '예약 작업')}>
+        <section className="shrink-0 px-6 pb-4" aria-label={t('queue.activity.reservedJobs', '예약 작업')}>
             <NavLink
-                to="/queue"
+                to={to}
                 onClick={closeSupportSheet}
-                data-testid="history-queue-activity"
+                data-testid={testId}
                 aria-label={accessibleLabel}
                 className={({ isActive }) => cn(
-                    'group block min-h-11 rounded-panel bg-canvas p-3 text-foreground transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                    'group block min-h-11 border-y border-border/50 px-1 py-4 text-foreground transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
                     isActive
-                        ? 'ring-1 ring-primary/40'
-                        : 'hover:bg-accent',
+                        ? 'border-primary/50 text-primary'
+                        : 'hover:border-primary/35 hover:text-primary',
                 )}
             >
                 <div className="flex items-center gap-2">
                     <ListTodo className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold">{t('queue.activity.reservedJobs', '예약 작업')}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{headline}</p>
+                        <p className="text-sm font-semibold">{t('queue.activity.reservedJobs', '예약 작업')}</p>
+                        <p className="mt-1 break-words text-xs leading-snug text-muted-foreground">{headline}</p>
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                 </div>
 
-                <dl className="mt-3 grid grid-cols-3 gap-2" aria-live="polite">
+                <dl className="mt-4 grid grid-cols-3 divide-x divide-border/55" aria-live="polite">
                     {([
                         ['processing', summary.processing, t('queue.activity.processing', '진행 중')],
                         ['waiting', summary.waiting, t('queue.activity.waiting', '대기')],
                         ['attention', summary.needsAttention, t('queue.activity.attention', '확인 필요')],
                     ] as const).map(([key, count, label]) => (
-                        <div key={key} className="min-w-0 rounded-control bg-card px-2 py-1.5 text-center">
-                            <dt className="truncate text-[10px] text-muted-foreground">{label}</dt>
+                        <div key={key} className="min-w-0 px-2 py-1 text-center">
+                            <dt className="break-words text-xs leading-snug text-muted-foreground">{label}</dt>
                             <dd className={cn(
                                 'mt-0.5 font-mono text-sm font-semibold',
                                 key === 'attention' && count > 0 && 'text-destructive',
@@ -131,7 +149,7 @@ export function QueueActivityLink() {
                     ))}
                 </dl>
 
-                <p className="mt-2 text-[10px] text-muted-foreground">
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                     {total === 0
                         ? t('queue.activity.scheduleHint', '작업을 예약하면 여기에 표시됩니다.')
                         : t('queue.activity.openDetails', '상세 현황과 제어는 큐 센터에서 확인')}

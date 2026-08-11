@@ -42,7 +42,6 @@ import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { useLayoutStore } from '@/stores/layout-store'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
-import { useCharacterStore } from '@/stores/character-store'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import {
@@ -129,8 +128,6 @@ export default function MainMode() {
     const profileLoading = useAssetModuleStore(state => state.isLoading)
     const profileConflict = useAssetModuleStore(state => state.hasConflict)
     const profileConflictMessage = useAssetModuleStore(state => state.conflictMessage)
-    const characterImages = useCharacterStore(state => state.characterImages)
-    const vibeImages = useCharacterStore(state => state.vibeImages)
     const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
     const isMobileWorkspace = useMediaQuery('(max-width: 767px)')
     const [moduleSheetOpen, setModuleSheetOpen] = useState(false)
@@ -283,18 +280,14 @@ export default function MainMode() {
 
     const selectedModule = moduleStackItems.find(module => module.id === selectedModuleId) ?? null
     const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
-    const enabledCharacterCount = characterImages.filter(item => item.enabled !== false).length
-    const uncachedVibeCount = vibeImages.filter(item => item.enabled !== false && !item.encodedVibe).length
     const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
-        ? calculateAnlasCost(
-            selectedResolution.width,
-            selectedResolution.height,
+        ? calculateAnlasCost({
+            width: selectedResolution.width,
+            height: selectedResolution.height,
             steps,
-            batchCount,
-            enabledCharacterCount,
-            uncachedVibeCount,
-            activeCredentialsAreOpus,
-        )
+            imageCount: 1,
+            pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+        }) * batchCount
         : null
     const hasRecipeControls = assetProfile.recipes.length > 0
         || displayedRecipeSelection !== MAIN_DIRECT_SELECTION_ID
@@ -871,7 +864,7 @@ export default function MainMode() {
                 moduleStack={moduleStack}
                 inspector={inspector}
                 mobileDock={mobileDock}
-                workspaceClassName="rounded-panel border border-border bg-canvas"
+                workspaceClassName="border-y border-border/60 bg-canvas"
                 workspace={(
                     <div className="relative h-full min-h-0 min-w-0 overflow-hidden" data-testid="main-result-canvas">
             {/* Full Screen Image Area */}

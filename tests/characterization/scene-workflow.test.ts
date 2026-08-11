@@ -154,6 +154,9 @@ vi.mock('@/lib/fragment-processor', async importOriginal => {
                 get status() {
                     return session.status
                 },
+                get success() {
+                    return session.success
+                },
                 get sequenceCommitProposal() {
                     return session.sequenceCommitProposal
                 },

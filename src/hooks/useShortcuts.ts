@@ -20,7 +20,7 @@ export const SHORTCUT_EVENTS = {
 // 메뉴 순서 정의
 // Keep keyboard navigation aligned with the primary rail so the Data Hub is
 // reachable without pointer input while preserving the existing route order.
-const MENU_ROUTES = ['/', '/scenes', '/tools', '/queue', '/web', '/library', '/data', '/settings']
+const MENU_ROUTES = ['/advanced', '/scenes', '/tools', '/queue', '/web', '/library', '/data', '/settings']
 
 /**
  * Depends on the browser's native focus model and runs before persisted app
@@ -90,7 +90,7 @@ export function useShortcuts() {
                         }
                         
                         const routes: Record<string, string> = {
-                            'navigate:main': '/',
+                            'navigate:main': '/advanced',
                             'navigate:scenes': '/scenes',
                             'navigate:tools': '/tools',
                             'navigate:web': '/web',
@@ -140,7 +140,7 @@ export function useShortcuts() {
 
                     // 이미지 생성 (메인 모드에서만)
                     if (action === 'action:generate') {
-                        if (location.pathname === '/') {
+                        if (location.pathname === '/advanced') {
                             e.preventDefault()
                             // Keyboard invocation shares the same conflict and
                             // cancellation policy as the Dock/Sheet action.
