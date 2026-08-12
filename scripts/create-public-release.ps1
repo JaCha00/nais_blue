@@ -183,7 +183,6 @@ function Assert-SourceArchiveHasNoPrivateEntries {
 $packageJson = Get-Content -LiteralPath (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json
 $version = [string]$packageJson.version
 $releaseRoot = Join-Path $OutputRoot "NAI-Blue-$version"
-$sourceStage = Join-Path $releaseRoot 'source\NAI-Blue-public-source'
 $sourceZip = Join-Path $releaseRoot "source\NAI-Blue_$version-public-source.zip"
 
 if (Test-Path -LiteralPath $releaseRoot) {
@@ -234,67 +233,28 @@ foreach ($file in $files) {
     Copy-RequiredFile -Source $file.Source -Destination $file.Destination
 }
 
-New-Item -ItemType Directory -Force -Path $sourceStage | Out-Null
-
-$excludeDirs = @(
-    '.git',
-    '.idea',
-    '.omx',
-    '.codex',
-    '.remember',
-    '.wrangler',
-    'artifacts',
-    'docs',
-    'legacy',
-    'node_modules',
-    'dist',
-    'release-artifacts',
-    'src-tauri\gen',
-    'src-tauri\target',
-    'NAI-Blue-main',
-    'stylelab-frontend-sources-20260628-155859'
-)
-
-$excludeFiles = @(
-    '.env',
-    '.env.*',
-    'nai-blue-release-key',
-    'NAI_BLUE_KEYSTORE_BASE64.txt',
-    'keystore.properties',
-    '*.pem',
-    '*.key',
-    '*.jks',
-    '*.keystore',
-    '*.p12',
-    '*.pfx',
-    '*.sqlite',
-    '*.db',
-    '*.log',
-    '*.cache',
-    '*.zip',
-    '*.msi',
-    '*.exe',
-    '*.sig'
-)
-
-$robocopyArgs = @($ProjectRoot, $sourceStage, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
-foreach ($dir in $excludeDirs) {
-    $robocopyArgs += '/XD'
-    $robocopyArgs += (Join-Path $ProjectRoot $dir)
+& git -C $ProjectRoot diff --quiet HEAD --
+if ($LASTEXITCODE -ne 0) {
+    throw 'Public source archives must be created from a clean committed worktree.'
 }
-foreach ($file in $excludeFiles) {
-    $robocopyArgs += '/XF'
-    $robocopyArgs += $file
+$untrackedSource = @(& git -C $ProjectRoot ls-files --others --exclude-standard)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to enumerate untracked source files.'
+}
+if ($untrackedSource.Count -gt 0) {
+    throw "Public source archive would omit untracked files: $($untrackedSource -join ', ')"
 }
 
-& robocopy @robocopyArgs | Out-Null
-if ($LASTEXITCODE -gt 7) {
-    throw "robocopy failed with exit code $LASTEXITCODE"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $sourceZip) | Out-Null
+& git -C $ProjectRoot archive `
+    --format=zip `
+    '--prefix=NAI-Blue-public-source/' `
+    "--output=$sourceZip" `
+    HEAD
+if ($LASTEXITCODE -ne 0) {
+    throw 'Failed to archive the committed public source tree.'
 }
-
-Compress-Archive -LiteralPath $sourceStage -DestinationPath $sourceZip -CompressionLevel Optimal -Force
 Assert-SourceArchiveHasNoPrivateEntries -ArchivePath $sourceZip
-Remove-Item -LiteralPath $sourceStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path (Join-Path $releaseRoot 'docs'), (Join-Path $releaseRoot 'checksums') | Out-Null
 Copy-RequiredFile -Source (Join-Path $ProjectRoot 'README.md') -Destination (Join-Path $releaseRoot 'docs\README.md')
