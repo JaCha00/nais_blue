@@ -822,7 +822,7 @@ async function readJobArtifact(jobId: string, artifactId: string | null): Promis
     const platform = createRuntimeOutputPlatformAdapter()
     const directory = await platform.resolveDirectory({
         portableDirectory: artifact.original.file.directory,
-        workflowDefaultDirectory: 'NAIS_Output',
+        workflowDefaultDirectory: 'NAI_Blue_Output',
     })
     return platform.readFile(childOutputRef(directory, artifact.original.file.fileName))
 }

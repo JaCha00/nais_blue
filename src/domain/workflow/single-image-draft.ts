@@ -6,7 +6,7 @@ import {
 } from './bluehair-rights-policy'
 import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 
-export const WORKFLOW_DRAFT_STORE_KEY = 'nais2-workflow-drafts'
+export const WORKFLOW_DRAFT_STORE_KEY = 'nai-blue-workflow-drafts'
 export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
 export const BATCH_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
 
@@ -341,9 +341,9 @@ function hasUsablePromptText(value: string): boolean {
 function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDraftPayload {
     const output: SingleImageOutputSettings = {
         autoSave: input.output?.autoSave ?? true,
-        directory: input.output?.directory ?? 'NAIS_Output',
+        directory: input.output?.directory ?? 'NAI_Blue_Output',
         useAbsolutePath: input.output?.useAbsolutePath ?? false,
-        capabilityFallbackDirectory: input.output?.capabilityFallbackDirectory ?? 'NAIS_Output',
+        capabilityFallbackDirectory: input.output?.capabilityFallbackDirectory ?? 'NAI_Blue_Output',
         imageFormat: input.output?.imageFormat ?? 'png',
         metadataMode: input.output?.metadataMode ?? 'embedded',
         collisionPolicy: input.output?.collisionPolicy ?? 'unique',

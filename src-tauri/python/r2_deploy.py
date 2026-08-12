@@ -34,7 +34,7 @@ DeployMode = Literal["current-session", "delta", "full-sync", "dry-run"]
 UploaderKind = Literal["wrangler", "s3"]
 JobStatus = Literal["queued", "planning", "running", "completed", "failed", "cancelled"]
 
-DEFAULT_INCLUDE_PATTERNS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.nai-blue.json", "*.nais-blue.json", "*.nais2.json"]
+DEFAULT_INCLUDE_PATTERNS = ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.nai-blue.json", "*.nais2.json"]
 DEFAULT_MANIFEST_NAME = ".nai-blue-r2-deploy-manifest.json"
 MAX_RETAINED_RESULTS = 500
 SECRET_ENV_KEYS = (
@@ -813,7 +813,7 @@ def _matches_patterns(relative: str, include_patterns: list[str], exclude_patter
 
 
 def _guess_content_type(path: Path) -> str:
-    if path.name.lower().endswith((".nai-blue.json", ".nais-blue.json", ".nais2.json")):
+    if path.name.lower().endswith((".nai-blue.json", ".nais2.json")):
         return "application/json"
     guessed, _ = mimetypes.guess_type(path.name)
     return guessed or "application/octet-stream"

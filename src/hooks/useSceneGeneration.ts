@@ -270,7 +270,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
                 generationFolderId: generationFolder.id,
                 generationFolderPath: generationFolder.path,
                 directory: generationFolder.directory,
-                capabilityFallbackDirectory: generationFolder.useAbsolutePath ? 'NAIS_Scene' : generationFolder.directory,
+                capabilityFallbackDirectory: generationFolder.useAbsolutePath ? 'NAI_Blue_Scene' : generationFolder.directory,
                 autoR2UploadProfileId: generationFolder.r2.autoUpload ? DEFAULT_R2_PROFILE_ID : null,
                 r2Bucket: generationFolder.r2.bucket,
                 r2Prefix: generationFolder.r2.prefix,

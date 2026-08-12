@@ -100,7 +100,7 @@ export async function executeStyleLabQueueJob(
                 directory: workflow.output.directory,
                 useAbsolutePath: workflow.output.useAbsolutePath,
                 capabilityFallbackDirectory: workflow.output.capabilityFallbackDirectory,
-                workflowDefaultDirectory: 'nais-style',
+                workflowDefaultDirectory: 'nai-blue-style',
                 fileName: workflow.output.fileName,
                 extension: workflow.output.imageFormat,
                 collisionPolicy: workflow.output.collisionPolicy,

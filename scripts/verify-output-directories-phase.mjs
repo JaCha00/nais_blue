@@ -22,10 +22,10 @@ const ja = read('src/i18n/locales/ja.json')
 
 check(
     'settings store defines category-specific output folders',
-    /savePath:\s*'NAIS_Output'/.test(settingsStore) &&
-    /sceneSavePath:\s*'NAIS_Scene'/.test(settingsStore) &&
-    /styleLabSavePath:\s*'nais-style'/.test(settingsStore) &&
-    /toolsSavePath:\s*'nais-tools'/.test(settingsStore)
+    /savePath:\s*'NAI_Blue_Output'/.test(settingsStore) &&
+    /sceneSavePath:\s*'NAI_Blue_Scene'/.test(settingsStore) &&
+    /styleLabSavePath:\s*'nai-blue-style'/.test(settingsStore) &&
+    /toolsSavePath:\s*'nai-blue-tools'/.test(settingsStore)
 )
 
 check(
@@ -39,19 +39,19 @@ check(
 )
 
 check(
-    'StyleLab saves to nais-style path setting instead of main output',
+    'StyleLab saves to nai-blue-style path setting instead of main output',
     /styleLabSavePath/.test(styleLabGeneration) &&
     /useAbsoluteStyleLabPath/.test(styleLabGeneration) &&
-    /styleLabSavePath\s*\|\|\s*'nais-style'/.test(styleLabGeneration) &&
-    !/savePath\s*\|\|\s*'NAIS_Output'/.test(styleLabGeneration)
+    /styleLabSavePath\s*\|\|\s*'nai-blue-style'/.test(styleLabGeneration) &&
+    !/savePath\s*\|\|\s*'NAI_Blue_Output'/.test(styleLabGeneration)
 )
 
 check(
-    'Tools mode saves to nais-tools path setting instead of main output',
+    'Tools mode saves to nai-blue-tools path setting instead of main output',
     /toolsSavePath/.test(toolsMode) &&
     /useAbsoluteToolsPath/.test(toolsMode) &&
-    /toolsSavePath\s*\|\|\s*'nais-tools'/.test(toolsMode) &&
-    !/savePath\s*\|\|\s*'NAIS_Output'/.test(toolsMode)
+    /toolsSavePath\s*\|\|\s*'nai-blue-tools'/.test(toolsMode) &&
+    !/savePath\s*\|\|\s*'NAI_Blue_Output'/.test(toolsMode)
 )
 
 check(
@@ -66,7 +66,7 @@ check(
     'Scene rename uses the dedicated scene output root',
     /sceneSavePath/.test(sceneStore) &&
     /useAbsoluteScenePath/.test(sceneStore) &&
-    !/join\(savePath,\s*'NAIS_Scene'/.test(sceneStore)
+    !/join\(savePath,\s*'NAI_Blue_Scene'/.test(sceneStore)
 )
 
 check(
@@ -74,7 +74,7 @@ check(
     /sceneSavePath/.test(historyPanel) &&
     /useAbsoluteScenePath/.test(historyPanel) &&
     !/join\(savePath,\s*sceneBaseDir/.test(historyPanel) &&
-    !/const sceneBaseDir\s*=\s*'NAIS_Scene'/.test(historyPanel)
+    !/const sceneBaseDir\s*=\s*'NAI_Blue_Scene'/.test(historyPanel)
 )
 
 check(

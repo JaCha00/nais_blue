@@ -42,7 +42,7 @@ describe('Zustand Style Lab Queue presentation adapter', () => {
         const result = {
             comboId: 'combo-a',
             preview: {
-                path: 'nais-style/result.webp',
+                path: 'nai-blue-style/result.webp',
                 thumbnail: 'data:image/webp;base64,thumb',
                 seed: 7,
                 prompt: 'prompt',
@@ -57,7 +57,7 @@ describe('Zustand Style Lab Queue presentation adapter', () => {
                 timestamp: new Date(0),
                 sourceJobId: 'job-a',
             },
-            artifact: { path: 'nais-style/result.webp', sourceJobId: 'job-a' },
+            artifact: { path: 'nai-blue-style/result.webp', sourceJobId: 'job-a' },
         }
 
         presentation.beginPreview('combo-a')
@@ -70,7 +70,7 @@ describe('Zustand Style Lab Queue presentation adapter', () => {
         })
         expect(runtime.styleLab.updateCombinationPreview).toHaveBeenNthCalledWith(2, 'combo-a', {
             previewImage: undefined,
-            previewPath: 'nais-style/result.webp',
+            previewPath: 'nai-blue-style/result.webp',
             previewThumbnail: 'data:image/webp;base64,thumb',
             previewSeed: 7,
             previewPrompt: 'prompt',

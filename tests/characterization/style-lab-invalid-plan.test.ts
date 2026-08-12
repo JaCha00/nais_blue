@@ -248,7 +248,7 @@ beforeEach(() => {
         autoSave: false,
         useStreaming: false,
         imageFormat: 'png',
-        styleLabSavePath: 'nais-style',
+        styleLabSavePath: 'nai-blue-style',
         useAbsoluteStyleLabPath: false,
     })
     runtime.useGenerationStore.setState({
@@ -346,7 +346,7 @@ describe('Style Lab invalid plan isolation', () => {
             previewPrompt: 'valid artist portrait',
         })
         expect(valid?.previewError).toBeUndefined()
-        expect(valid?.previewPath).toMatch(/^memory:\/\/NAIS_STYLELAB_/)
+        expect(valid?.previewPath).toMatch(/^memory:\/\/NAI_Blue_STYLELAB_/)
 
         expect(runtimeCapture.events).toHaveLength(1)
         expect(runtimeCapture.refreshedAnlas).toBe(1)

@@ -484,9 +484,9 @@ function isAbsolutePath(path: string): boolean {
 function outputPolicy(
     runtime: MainOutputSnapshot,
     legacy: AssetProfileOutput | undefined,
-    fallbackFilenameTemplate = 'NAIS_{timestamp}',
+    fallbackFilenameTemplate = 'NAI_Blue_{timestamp}',
 ): OutputPolicy {
-    const directory = legacy?.directory?.trim() || runtime.savePath.trim() || 'NAIS_Output'
+    const directory = legacy?.directory?.trim() || runtime.savePath.trim() || 'NAI_Blue_Output'
     const format = normalizeFormat(legacy?.format, runtime.imageFormat)
     const metadataMode = legacy?.metadataMode ?? runtime.metadataMode
     const filenameTemplate = legacy?.filenameTemplate?.trim()
@@ -858,10 +858,10 @@ function buildDocument(
             snapshot.output,
             undefined,
             snapshot.source.hasMask
-                ? 'NAIS_INPAINT_{timestamp}'
+                ? 'NAI_Blue_INPAINT_{timestamp}'
                 : snapshot.source.hasSourceImage
-                    ? 'NAIS_I2I_{timestamp}'
-                    : 'NAIS_{timestamp}',
+                    ? 'NAI_Blue_I2I_{timestamp}'
+                    : 'NAI_Blue_{timestamp}',
         ),
     }
     const profile: CompositionProfile = {
@@ -1121,14 +1121,14 @@ function materializeOutput(
     const date = new Date(now)
     const rawDirectory = selectedOutput.directory?.trim()
         || snapshot.output.savePath.trim()
-        || 'NAIS_Output'
+        || 'NAI_Blue_Output'
     const materializedDirectory = plan.outputPolicy.destination.kind === 'filesystem'
         && plan.outputPolicy.destination.directory.kind === 'standard'
-        ? plan.outputPolicy.destination.directory.segments.join('/') || 'NAIS_Output'
+        ? plan.outputPolicy.destination.directory.segments.join('/') || 'NAI_Blue_Output'
         : rawDirectory
     const runtimeFallbackDirectory = isAbsolutePath(snapshot.output.savePath)
-        ? 'NAIS_Output'
-        : portableSegments(snapshot.output.savePath).join('/') || 'NAIS_Output'
+        ? 'NAI_Blue_Output'
+        : portableSegments(snapshot.output.savePath).join('/') || 'NAI_Blue_Output'
     const fileName = renderFilenameTemplate({
         template: plan.filenamePolicyInput.template,
         context: {

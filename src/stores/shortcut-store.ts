@@ -158,7 +158,7 @@ export const useShortcutStore = create<ShortcutState>()(
             },
         }),
         {
-            name: 'nais2-shortcuts',
+            name: 'nai-blue-shortcuts',
             storage: createJSONStorage(() => indexedDBStorage),
             // 새로운 바인딩이 추가되면 기존 저장된 데이터와 기본값을 병합
             merge: (persistedState, currentState) => {

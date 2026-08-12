@@ -21,7 +21,7 @@ describe('current Android identity, signing, and transfer executor', () => {
         const signingPatch = read('scripts/patch-android-signing.mjs')
         const verifier = read('scripts/verify-android-apk.mjs')
 
-        expect(policy.applicationId).toBe('com.bluhair.naisblue')
+        expect(policy.applicationId).toBe('blue.bluehair.naiblue')
         expect(policy.debugApplicationIdSuffix).toBe('')
         expect(tauri.identifier).toBe(policy.applicationId)
         expect(signingPatch).not.toContain('applicationIdSuffix = "${debugApplicationIdSuffix}"')
@@ -44,20 +44,20 @@ describe('current Android identity, signing, and transfer executor', () => {
     it('uses the current plugin namespace and installs the Cloudflare executor with a closed fallback', () => {
         const gradle = read('src-tauri/plugins/nai-blue-android-transfer/android/build.gradle.kts')
         const execution = read(
-            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferExecution.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/blue/bluehair/naiblue/transfer/TransferExecution.kt',
         )
         const notifications = read(
-            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferNotifications.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/blue/bluehair/naiblue/transfer/TransferNotifications.kt',
         )
         const plugin = read(
-            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/blue/bluehair/naiblue/transfer/AndroidTransferPlugin.kt',
         )
 
-        expect(gradle).toContain('namespace = "com.bluhair.naisblue.transfer"')
-        expect(execution).toContain('package com.bluhair.naisblue.transfer')
+        expect(gradle).toContain('namespace = "blue.bluehair.naiblue.transfer"')
+        expect(execution).toContain('package blue.bluehair.naiblue.transfer')
         expect(execution).toContain('TransferOutcome.Blocked(ERROR_EXECUTOR_UNAVAILABLE)')
         expect(plugin).toContain('installIfAbsent(CloudflareTransferExecutor(activity))')
-        expect(notifications).toContain('"com.bluhair.naisblue.transfer.PAUSE"')
-        expect(notifications).toContain('"com.bluhair.naisblue.transfer.CANCEL"')
+        expect(notifications).toContain('"blue.bluehair.naiblue.transfer.PAUSE"')
+        expect(notifications).toContain('"blue.bluehair.naiblue.transfer.CANCEL"')
     })
 })

@@ -98,7 +98,7 @@ describe('asset trash service', () => {
         expect(archived?.kind).toBe('folder')
         expect(archived?.folder.presets.map(preset => preset.id)).toEqual(['root', 'child'])
         expect(archived?.folder.presets[0].scenes[0].images[0].originalUrl).toBe('C:/Output/root.png')
-        expect(archived?.folder.presets[0].scenes[0].images[0].url).toContain('/NAIS_Trash/trash-')
+        expect(archived?.folder.presets[0].scenes[0].images[0].url).toContain('/NAI_Blue_Trash/trash-')
         expect(fs.rename).toHaveBeenCalledTimes(2)
         expect(fs.remove).not.toHaveBeenCalled()
     })
@@ -113,7 +113,7 @@ describe('asset trash service', () => {
             source: 'scene',
             image: {
                 id: 'old-image',
-                url: 'C:/Media/NAIS_Trash/expired/old.png',
+                url: 'C:/Media/NAI_Blue_Trash/expired/old.png',
                 originalUrl: 'C:/Output/old.png',
                 timestamp: 0,
                 isFavorite: false,
@@ -122,11 +122,11 @@ describe('asset trash service', () => {
         const fresh: TrashItem = { ...expired, id: 'fresh', expiresAt: Date.now() + 60_000 }
 
         await expect(permanentlyRemoveTrashItem(expired)).resolves.toEqual({ success: true, failedPaths: [] })
-        expect(fs.remove).toHaveBeenCalledWith('C:/Media/NAIS_Trash/expired/old.png')
+        expect(fs.remove).toHaveBeenCalledWith('C:/Media/NAI_Blue_Trash/expired/old.png')
 
         fs.remove.mockClear()
         await expect(pruneExpiredTrashItems([expired, fresh])).resolves.toEqual(['expired'])
-        expect(fs.remove).toHaveBeenCalledWith('C:/Media/NAIS_Trash/expired/old.png')
+        expect(fs.remove).toHaveBeenCalledWith('C:/Media/NAI_Blue_Trash/expired/old.png')
     })
 
     it('keeps a failed permanent-delete journal item eligible for later retry', async () => {
@@ -139,7 +139,7 @@ describe('asset trash service', () => {
             source: 'library',
             image: {
                 id: 'locked-image',
-                url: 'C:/Media/NAIS_Trash/locked/locked.webp',
+                url: 'C:/Media/NAI_Blue_Trash/locked/locked.webp',
                 originalUrl: 'C:/Library/locked.webp',
                 timestamp: 0,
                 isFavorite: false,
@@ -149,7 +149,7 @@ describe('asset trash service', () => {
 
         await expect(permanentlyRemoveTrashItem(locked)).resolves.toEqual({
             success: false,
-            failedPaths: ['C:/Media/NAIS_Trash/locked/locked.webp'],
+            failedPaths: ['C:/Media/NAI_Blue_Trash/locked/locked.webp'],
         })
         fs.remove.mockRejectedValueOnce(new Error('still locked'))
         await expect(pruneExpiredTrashItems([locked])).resolves.toEqual([])
@@ -178,7 +178,7 @@ describe('asset trash service', () => {
     })
 
     it('restores a Scene file and snapshot, then leaves no work for the journal', async () => {
-        const archivedPath = 'C:/Media/NAIS_Trash/scene-item/scene.png'
+        const archivedPath = 'C:/Media/NAI_Blue_Trash/scene-item/scene.png'
         const originalPath = 'C:/Output/scene.png'
         const files = new Set([archivedPath])
         fs.exists.mockImplementation(async (path: string) => files.has(path))
@@ -221,7 +221,7 @@ describe('asset trash service', () => {
     })
 
     it('does not overwrite a conflicting restore destination or change the Scene store', async () => {
-        const archivedPath = 'C:/Media/NAIS_Trash/conflict/conflict.png'
+        const archivedPath = 'C:/Media/NAI_Blue_Trash/conflict/conflict.png'
         const originalPath = 'C:/Output/conflict.png'
         fs.exists.mockImplementation(async (path: string) => path === archivedPath || path === originalPath)
         const item: TrashItem = {
@@ -258,8 +258,8 @@ describe('asset trash service', () => {
     })
 
     it('rolls back an earlier file move when a later restore file fails', async () => {
-        const archivedFirst = 'C:/Media/NAIS_Trash/partial/first.png'
-        const archivedSecond = 'C:/Media/NAIS_Trash/partial/second.png'
+        const archivedFirst = 'C:/Media/NAI_Blue_Trash/partial/first.png'
+        const archivedSecond = 'C:/Media/NAI_Blue_Trash/partial/second.png'
         const originalFirst = 'C:/Output/first.png'
         const originalSecond = 'C:/Output/second.png'
         const files = new Set([archivedFirst, archivedSecond])
@@ -322,7 +322,7 @@ describe('asset trash service', () => {
                 isStack: true, stackItems: [],
             }],
         })
-        const archivedPath = 'C:/Media/NAIS_Trash/library/library.png'
+        const archivedPath = 'C:/Media/NAI_Blue_Trash/library/library.png'
         const originalPath = 'C:/Library/library.png'
         const files = new Set([archivedPath])
         fs.exists.mockImplementation(async (path: string) => files.has(path))

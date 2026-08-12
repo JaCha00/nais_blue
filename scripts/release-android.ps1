@@ -205,7 +205,7 @@ function Get-KeystoreFingerprint {
         [string]$Password
     )
 
-    $passwordVariable = 'NAIS_ANDROID_KEYTOOL_PASSWORD'
+    $passwordVariable = 'NAI_BLUE_ANDROID_KEYTOOL_PASSWORD'
     $previousPassword = [Environment]::GetEnvironmentVariable($passwordVariable, 'Process')
     try {
         [Environment]::SetEnvironmentVariable($passwordVariable, $Password, 'Process')
@@ -358,7 +358,7 @@ function Publish-AndroidRelease {
         $createdDraft = $true
     }
 
-    $verificationRoot = Join-Path ([IO.Path]::GetTempPath()) ('nais-android-release-' + [guid]::NewGuid().ToString('N'))
+    $verificationRoot = Join-Path ([IO.Path]::GetTempPath()) ('nai-blue-android-release-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $verificationRoot -Force | Out-Null
     try {
         $apkName = Split-Path -Leaf $ApkPath
@@ -416,8 +416,8 @@ if ($Publish) {
     Assert-PublishSourceMatchesTag -Root $ProjectRoot -Repo $Repository -ReleaseTag $Tag
 }
 
-Assert-SecretIsNotTracked -Root $ProjectRoot -RelativePath 'nais-release-key'
-Assert-SecretIsNotTracked -Root $ProjectRoot -RelativePath 'NAIS_KEYSTORE_BASE64.txt'
+Assert-SecretIsNotTracked -Root $ProjectRoot -RelativePath 'nai-blue-release-key'
+Assert-SecretIsNotTracked -Root $ProjectRoot -RelativePath 'NAI_BLUE_KEYSTORE_BASE64.txt'
 Assert-SecretIsNotTracked -Root $ProjectRoot -RelativePath '.env'
 
 $configuredKeystorePath = [Environment]::GetEnvironmentVariable('APK_RELEASE_KEYSTORE_PATH', 'Process')
@@ -425,7 +425,7 @@ $keystorePath = if ([string]::IsNullOrWhiteSpace($configuredKeystorePath)) {
     if (-not $AllowProjectSecrets) {
         throw 'APK_RELEASE_KEYSTORE_PATH must point to a keystore outside the project. Use -AllowProjectSecrets only for an explicit legacy build.'
     }
-    Join-Path $ProjectRoot 'nais-release-key'
+    Join-Path $ProjectRoot 'nai-blue-release-key'
 } elseif ([IO.Path]::IsPathRooted($configuredKeystorePath)) {
     $configuredKeystorePath
 } else {

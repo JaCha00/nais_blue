@@ -12,7 +12,7 @@ export default function R2Upload() {
     const profile = useAssetModuleStore(state => state.profile)
     const replaceProfileDraft = useAssetModuleStore(state => state.replaceProfileDraft)
     const saveToDisk = useAssetModuleStore(state => state.saveToDisk)
-    const [localRoot, setLocalRoot] = useState(profile.output.directory ?? 'NAIS_Output')
+    const [localRoot, setLocalRoot] = useState(profile.output.directory ?? 'NAI_Blue_Output')
 
     // R2 still projects its non-secret settings into the shared generation profile;
     // credentials remain in the OS vault and never enter the persisted profile.

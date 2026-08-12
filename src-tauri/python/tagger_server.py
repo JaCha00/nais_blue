@@ -66,15 +66,15 @@ def update_download_status(model_name: str, progress: int = 0, total: int = 0, m
 def get_app_data_dir():
     """Get platform-specific application data directory"""
     if sys.platform == 'win32':
-        # Windows: %APPDATA%\NAIS\models
+        # Windows: %APPDATA%\NAI Blue\models
         base = os.getenv('APPDATA', os.path.expanduser('~'))
-        return os.path.join(base, 'NAIS', 'models')
+        return os.path.join(base, 'NAI Blue', 'models')
     elif sys.platform == 'darwin':
-        # macOS: ~/Library/Application Support/NAIS/models
-        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'NAIS', 'models')
+        # macOS: ~/Library/Application Support/NAI Blue/models
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'NAI Blue', 'models')
     else:
-        # Linux: ~/.local/share/NAIS/models
-        return os.path.join(os.path.expanduser('~'), '.local', 'share', 'NAIS', 'models')
+        # Linux: ~/.local/share/NAI Blue/models
+        return os.path.join(os.path.expanduser('~'), '.local', 'share', 'NAI Blue', 'models')
 
 # AppData path for model storage
 APP_DATA_DIR = get_app_data_dir()

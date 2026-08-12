@@ -21,7 +21,7 @@ export function outputPatchFromGenerationFolder(
     return {
         directory: folder.directory,
         useAbsolutePath: folder.useAbsolutePath,
-        capabilityFallbackDirectory: folder.useAbsolutePath ? 'NAIS_Output' : folder.directory,
+        capabilityFallbackDirectory: folder.useAbsolutePath ? 'NAI_Blue_Output' : folder.directory,
         generationFolderId: folder.id,
         generationFolderPath: folder.path,
         folderCommonPrompt: folder.commonPrompt,

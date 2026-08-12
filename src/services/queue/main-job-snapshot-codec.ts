@@ -81,9 +81,9 @@ export function encodeMainJobSnapshot(
     costConsent?: AnlasCostConsentSnapshot,
 ): EncodedMainJobSnapshot {
     const fileName = prepared.output.fileName ?? ensureImageFileExtension(
-        `NAIS_${prepared.params.seed}`,
+        `NAI_Blue_${prepared.params.seed}`,
         prepared.imageFormat,
-    ) ?? `NAIS_${prepared.params.seed}.${prepared.imageFormat}`
+    ) ?? `NAI_Blue_${prepared.params.seed}.${prepared.imageFormat}`
     const parameters: MainQueueSnapshotParameters = {
         ...dehydrated.parameters,
         queueExecution: {

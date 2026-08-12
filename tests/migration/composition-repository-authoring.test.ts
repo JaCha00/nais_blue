@@ -59,7 +59,7 @@ function repositoryFixture(): { repository: CompositionRepository; storage: Memo
         revision: 7,
         migrationMarker: marker(value),
     })
-    storage.values.set('nais2-composition-repository', JSON.stringify(record))
+    storage.values.set('nai-blue-composition-repository', JSON.stringify(record))
     return { repository: new CompositionRepository(storage), storage, value }
 }
 
@@ -88,7 +88,7 @@ describe('CompositionRepository authoring commit', () => {
 
     it('rejects stale drafts before mutation', async () => {
         const { repository, storage, value } = repositoryFixture()
-        const before = storage.values.get('nais2-composition-repository')
+        const before = storage.values.get('nai-blue-composition-repository')
         const changeSet = createCompositionChangeSet({
             document: { ...value, revision: value.revision - 1 },
             id: 'change:stale',
@@ -100,7 +100,7 @@ describe('CompositionRepository authoring commit', () => {
         await expect(repository.applyChangeSet(changeSet, NOW)).rejects.toMatchObject({
             code: 'E_AUTHORING_STALE_REVISION',
         })
-        expect(storage.values.get('nais2-composition-repository')).toBe(before)
+        expect(storage.values.get('nai-blue-composition-repository')).toBe(before)
     })
 
     it('rejects authoring while a live migration lease exists', async () => {

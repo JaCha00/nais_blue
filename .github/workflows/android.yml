@@ -12,9 +12,9 @@ on:
         required: true
         type: boolean
     secrets:
-      NAIS_KEYSTORE_BASE64:
+      NAI_BLUE_KEYSTORE_BASE64:
         required: true
-      NAIS_KEYSTORE_PASSWORD:
+      NAI_BLUE_KEYSTORE_PASSWORD:
         required: true
 
 permissions:
@@ -202,7 +202,7 @@ jobs:
       - name: Decode release keystore
         shell: bash
         env:
-          ANDROID_KEY_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}
+          ANDROID_KEY_BASE64: ${{ secrets.NAI_BLUE_KEYSTORE_BASE64 }}
         run: |
           test -n "$ANDROID_KEY_BASE64" || { echo '::error::Android keystore secret is not configured'; exit 1; }
           keystore="$RUNNER_TEMP/nai-blue-release.jks"
@@ -217,7 +217,7 @@ jobs:
 
       - name: Build signed universal APK
         env:
-          ANDROID_KEY_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.NAI_BLUE_KEYSTORE_PASSWORD }}
         run: npm run tauri:android:build:apk -- --ci
 
       - name: Verify release APK

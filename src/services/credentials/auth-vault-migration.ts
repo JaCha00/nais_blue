@@ -3,8 +3,8 @@ import {
     type CredentialVault,
 } from '@/domain/credentials/types'
 
-export const AUTH_STORE_KEY = 'nais2-auth' as const
-export const AUTH_MIGRATION_MARKER_KEY = 'nais2-auth-v3-migration-complete' as const
+export const AUTH_STORE_KEY = 'nai-blue-auth' as const
+export const AUTH_MIGRATION_MARKER_KEY = 'nai-blue-auth-v3-migration-complete' as const
 export const AUTH_STATE_VERSION = 3 as const
 
 const AUTH_MIGRATION_MARKER_VERSION = 1 as const

@@ -105,6 +105,19 @@ describe('NAI Blue Metadata v2', () => {
         })
     })
 
+    it('never re-emits an external automation identifier', () => {
+        const imported = {
+            ...buildNaiBlueParams(baseParams()),
+            metadataName: 'nais2' as const,
+        }
+
+        const sidecar = JSON.parse(new TextDecoder().decode(encodeNaiBlueSidecar(imported))) as Record<string, unknown>
+        expect(sidecar.metadataName).toBe('nai-blue')
+
+        const embedded = embedNaiBlueParams(TINY_PNG_BASE64, imported)
+        expect(readNaiBlueParams(bytesFromBase64(embedded))).toMatchObject({ metadataName: 'nai-blue' })
+    })
+
     it('reads known legacy metadata but rejects credential-bearing policy summaries', () => {
         expect(readNaiBlueSidecar('{"version":1,"qualityToggle":true}')).toEqual({
             version: 1,

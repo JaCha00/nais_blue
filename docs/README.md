@@ -1,4 +1,4 @@
-# NAIS blue 디렉터리 인덱스
+# NAI Blue 디렉터리 인덱스
 
 이 문서는 저장소 검색과 문서 탐색의 시작점이다. 도구가 루트 경로를 계약으로 사용하는 설정 파일은 옮기지 않고, 소스와 문서는 아래 책임에 따라 찾는다.
 
@@ -13,15 +13,13 @@
 | `tests/` | 단위·계약·특성화·마이그레이션 테스트 |
 | `scripts/` | 검증, QA, 빌드와 릴리스 자동화 |
 | `.github/` | CI와 릴리스 workflow |
-| `legacy/` | 현재 런타임과 분리된 과거 소스 snapshot |
 
 ## 문서
 
 | 경로 | 용도와 보존 정책 |
 |---|---|
 | `architecture/` | 현재 구조, ADR, import graph와 [영속화 지도](./architecture/persistence-map.md) |
-| `composition-v2/` | Composition·Queue·Sync 전환의 추적된 기준 문서 |
-| `archive/` | 현재 기준은 아니지만 재현·도구 호환을 위해 추적하는 과거 자료 |
+| `releases/` | 현재 릴리스 인계와 배포 기준 문서 |
 | `local/plans/` | 진행 중인 로컬 계획 문서 |
 | `local/handoffs/` | 세션·릴리스 인계 기록 |
 | `local/reviews/` | UI/UX 및 코드 리뷰 원문과 정리본 |
@@ -43,5 +41,5 @@
 
 1. 장기 기준 문서는 `architecture/` 또는 해당 도메인 문서 폴더에 둔다.
 2. 진행 중인 계획·인계·리뷰는 `local/` 아래에 둔다.
-3. 완료되거나 대체된 문서는 `_trash/`로 옮긴다.
+3. 완료되거나 대체된 로컬 문서는 `_trash/`로 옮긴다.
 4. 새 루트 파일은 도구가 루트 위치를 요구할 때만 추가한다.

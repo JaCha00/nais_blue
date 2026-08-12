@@ -68,17 +68,17 @@ describe('startup legacy source capture', () => {
         const local = new Map<string, string>([
             ['novelaiPromptEditorState', '{"tabs":[{"id":"old-tab"}]}'],
             ['scene-store', '{"state":{"presets":[{"id":"old-scenes"}]}}'],
-            ['nais2-scenes', '{"state":{"presets":[{"id":"local-canonical"}]}}'],
+            ['nai-blue-scenes', '{"state":{"presets":[{"id":"local-canonical"}]}}'],
         ])
         const indexed = {
-            'nais2-scenes': '{"state":{"presets":[{"id":"indexed-canonical"}]}}',
+            'nai-blue-scenes': '{"state":{"presets":[{"id":"indexed-canonical"}]}}',
         }
 
         const merged = mergeLegacyLocalStorageAliases(indexed, key => local.get(key) ?? null)
 
         expect(merged.novelaiPromptEditorState).toContain('old-tab')
         expect(merged['scene-store']).toContain('old-scenes')
-        expect(merged['nais2-scenes']).toBe(indexed['nais2-scenes'])
+        expect(merged['nai-blue-scenes']).toBe(indexed['nai-blue-scenes'])
         expect(local.has('novelaiPromptEditorState')).toBe(true)
         expect(local.has('scene-store')).toBe(true)
     })
@@ -97,7 +97,7 @@ describe('startup legacy source capture', () => {
         }
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
-                'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
+                'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
             },
             wildcardContent: {},
         }
@@ -141,7 +141,7 @@ describe('startup legacy source capture', () => {
         }
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
-                'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
+                'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
             },
             wildcardContent: {},
         }
@@ -182,7 +182,7 @@ describe('startup legacy source capture', () => {
         }
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
-                'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
+                'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
             },
             wildcardContent: {},
         }
@@ -239,7 +239,7 @@ describe('startup legacy source capture', () => {
         }
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
-                'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
+                'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
             },
             wildcardContent: {},
         }
@@ -277,7 +277,7 @@ describe('startup legacy source capture', () => {
         }
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
-                'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
+                'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 1 }),
             },
             wildcardContent: {},
         }

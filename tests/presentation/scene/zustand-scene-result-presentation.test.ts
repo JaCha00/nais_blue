@@ -109,7 +109,7 @@ describe('Zustand Scene result presentation adapter', () => {
             historyId,
             presetId: 'preset-a',
             sceneId: 'scene-a',
-            path: 'NAIS_Scene/result.png',
+            path: 'NAI_Blue_Scene/result.png',
             thumbnail: 'data:image/png;base64,thumb',
             prompt: 'scene prompt',
             seed: 7,
@@ -120,11 +120,11 @@ describe('Zustand Scene result presentation adapter', () => {
 
         expect(runtime.generation.addToHistory).toHaveBeenCalledWith(expect.objectContaining({
             id: historyId,
-            url: 'NAIS_Scene/result.png',
+            url: 'NAI_Blue_Scene/result.png',
             sourceJobId: 'job-a',
         }))
         expect(runtime.publishGeneratedArtifact).toHaveBeenCalledWith({
-            path: 'NAIS_Scene/result.png',
+            path: 'NAI_Blue_Scene/result.png',
             artifactId: 'artifact-a',
             sourceJobId: 'job-a',
             sourceSceneId: 'scene-a',
@@ -133,7 +133,7 @@ describe('Zustand Scene result presentation adapter', () => {
         presentation.rollbackResult({
             presetId: 'preset-a',
             sceneId: 'scene-a',
-            path: 'NAIS_Scene/result.png',
+            path: 'NAI_Blue_Scene/result.png',
             historyId,
         })
         expect(runtime.scene.presets[0].scenes[0].images).toEqual([])

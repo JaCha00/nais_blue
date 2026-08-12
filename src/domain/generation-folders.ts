@@ -67,7 +67,7 @@ export function isGenerationFolderName(value: unknown): value is string {
 }
 
 export function createDefaultGenerationFolder(
-    directory = 'NAIS_Output',
+    directory = 'NAI_Blue_Output',
     useAbsolutePath = false,
     now = new Date().toISOString(),
 ): GenerationFolder {
@@ -76,7 +76,7 @@ export function createDefaultGenerationFolder(
         id: DEFAULT_GENERATION_FOLDER_ID,
         name: '기본 출력',
         parentId: null,
-        rootDirectory: directory.trim() || 'NAIS_Output',
+        rootDirectory: directory.trim() || 'NAI_Blue_Output',
         useAbsolutePath,
         commonPrompt: '',
         r2: { autoUpload: false, bucket: null, prefix: null },
@@ -122,7 +122,7 @@ export function resolveGenerationFolder(
     if (chain === null) return null
     const selected = chain[chain.length - 1]
     const root = chain[0]
-    const rootDirectory = root.rootDirectory?.trim() || defaults.directory.trim() || 'NAIS_Output'
+    const rootDirectory = root.rootDirectory?.trim() || defaults.directory.trim() || 'NAI_Blue_Output'
     const childNames = chain.slice(1).map(folder => folder.name)
 
     let bucket = defaults.r2Bucket?.trim() || null

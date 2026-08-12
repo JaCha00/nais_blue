@@ -784,7 +784,7 @@ export default function SceneMode() {
     const handleExportJson = async () => {
         if (!activePreset) return
         try {
-            const fileName = `NAIS_Preset_${activePreset.name}_${Date.now()}.json`
+            const fileName = `NAI_Blue_Preset_${activePreset.name}_${Date.now()}.json`
             const filePath = await saveNativeFileDialog({
                 defaultPath: fileName,
                 filters: [{ name: 'JSON File', extensions: ['json'] }]

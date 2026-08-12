@@ -28,7 +28,7 @@ describe('Guided prompt file import', () => {
     it('reads the settings JSON saved by a Guided result', async () => {
         const file = new File([JSON.stringify({
             schemaVersion: 1,
-            kind: 'nais-guided-single-image-settings',
+            kind: 'nai-blue-guided-single-image-settings',
             prompt: { positive: '1girl, moonlight', negative: 'blurry' },
         })], 'guided-settings.json', { type: 'application/json' })
 
@@ -64,6 +64,87 @@ describe('Guided prompt file import', () => {
                 negative: 'different hairstyle',
                 position: { x: 0.3, y: 0.5 },
             }],
+        })
+    })
+
+    it('imports a NAIS2 metadata sidecar through the external compatibility boundary', async () => {
+        const file = new File([JSON.stringify({
+            metadataName: 'nais2',
+            version: 1,
+            promptParts: {
+                base: 'portrait',
+                additional: 'blue hour',
+                detail: 'rim light',
+                negative: 'text, watermark',
+            },
+        })], 'external-v2.nais2.json', { type: 'application/json' })
+
+        await expect(readGuidedPromptImportFile(file as unknown as globalThis.File)).resolves.toEqual({
+            positive: 'portrait, blue hour, rim light',
+            negative: 'text, watermark',
+            sourceName: 'external-v2.nais2.json',
+        })
+    })
+
+    it('imports NAIS3 payload JSON with split prompts, characters, and coordinates', async () => {
+        const file = new File([JSON.stringify({
+            input: 'provider merged prompt',
+            parameters: {
+                negative_prompt: 'provider merged negative',
+                v4_prompt: {
+                    caption: {
+                        base_caption: 'provider merged prompt',
+                        char_captions: [{
+                            char_caption: '1girl, silver hair',
+                            centers: [{ x: 0.3, y: 0.7 }],
+                        }],
+                    },
+                },
+                v4_negative_prompt: {
+                    caption: {
+                        base_caption: 'provider merged negative',
+                        char_captions: [{ char_caption: 'different hairstyle', centers: [] }],
+                    },
+                },
+            },
+            nais3: {
+                promptParts: {
+                    base: 'portrait',
+                    additional: 'moonlight',
+                    detail: 'soft shadows',
+                    negative: 'text, watermark',
+                },
+            },
+        })], 'external-v3.json', { type: 'application/json' })
+
+        await expect(readGuidedPromptImportFile(file as unknown as globalThis.File)).resolves.toMatchObject({
+            positive: 'portrait, moonlight, soft shadows',
+            negative: 'text, watermark',
+            characters: [{
+                prompt: '1girl, silver hair',
+                negative: 'different hairstyle',
+                position: { x: 0.3, y: 0.7 },
+            }],
+        })
+    })
+
+    it('imports NAIS3 split prompts from its PNG-local metadata chunk', async () => {
+        const local = Buffer.from(JSON.stringify({
+            promptParts: {
+                base: 'portrait',
+                additional: 'night city',
+                detail: 'neon reflection',
+                negative: 'logo, text',
+            },
+        })).toString('base64')
+        const png = new File([pngWithTextChunks([
+            ['Comment', JSON.stringify({ prompt: 'provider merged prompt', uc: 'provider merged negative' })],
+            ['nais3-params', local],
+        ])], 'external-v3.png', { type: 'image/png' })
+
+        await expect(readGuidedPromptImportFile(png as unknown as globalThis.File)).resolves.toMatchObject({
+            positive: 'portrait, night city, neon reflection',
+            negative: 'logo, text',
         })
     })
 
@@ -119,7 +200,7 @@ describe('Guided local-agent prompt templates', () => {
             presetName: 'Night portrait',
             presetId: 'preset:night',
             revision: 7,
-            workspacePath: 'C:\\NAIS\\agent-workspace',
+            workspacePath: 'C:\\NAI Blue\\agent-workspace',
             goal: 'keep the face and change the lighting',
             referencePath: 'D:\\refs\\sample.png',
         })

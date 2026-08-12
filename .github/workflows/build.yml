@@ -158,5 +158,5 @@ jobs:
     # The reusable Android signer needs these two repository secrets; mapping
     # only them keeps desktop packaging isolated from keystore material.
     secrets:
-      NAIS_KEYSTORE_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}
-      NAIS_KEYSTORE_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}
+      NAI_BLUE_KEYSTORE_BASE64: ${{ secrets.NAI_BLUE_KEYSTORE_BASE64 }}
+      NAI_BLUE_KEYSTORE_PASSWORD: ${{ secrets.NAI_BLUE_KEYSTORE_PASSWORD }}

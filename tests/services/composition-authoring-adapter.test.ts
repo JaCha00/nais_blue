@@ -169,7 +169,7 @@ describe('Composition Studio repository adapter', () => {
             revision: 4,
             updatedAt: '2026-07-13T00:04:00.000Z',
         })
-        storage.values.set('nais2-composition-repository', JSON.stringify(record))
+        storage.values.set('nai-blue-composition-repository', JSON.stringify(record))
         const repository = new CompositionRepository(storage)
         const first = createRepositoryCompositionAuthoringSession(repository)
         const second = createRepositoryCompositionAuthoringSession(repository)

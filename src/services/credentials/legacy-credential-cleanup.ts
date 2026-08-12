@@ -9,7 +9,7 @@ import {
     authPayloadContainsRawSecret,
 } from '@/services/credentials/auth-vault-migration'
 
-const LOCAL_AUTO_BACKUP_KEY = 'nais2-auto-backup'
+const LOCAL_AUTO_BACKUP_KEY = 'nai-blue-auto-backup'
 const decoder = new TextDecoder()
 const R2_SECRET_KEYS = new Set([
     'accesskeyid',

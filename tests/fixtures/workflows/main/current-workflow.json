@@ -99,8 +99,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },
@@ -217,8 +217,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },
@@ -335,8 +335,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },
@@ -475,8 +475,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },
@@ -595,8 +595,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },
@@ -747,7 +747,7 @@
       "output": {
         "policy": "filesystem",
         "fileName": "module_424242.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": false,
         "historyCount": 1,
         "targetSegments": [
@@ -896,8 +896,8 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_1783728000000.png",
-        "outputTargetPolicy": "Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.",
+        "fileName": "NAI_Blue_1783728000000.png",
+        "outputTargetPolicy": "Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.",
         "eventIncludesImageData": true,
         "historyCount": 1
       },

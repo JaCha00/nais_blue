@@ -307,7 +307,7 @@
             "description": "파일을 놓거나 탐색기로 골라 이미지 메타데이터의 긍정·제외 프롬프트를 읽습니다.",
             "saveImportedModule": "불러온 내용을 모듈로 저장",
             "saveCurrentModule": "현재 프롬프트를 모듈로 저장",
-            "error": "프롬프트 메타데이터를 찾지 못했어요. NAI 이미지 또는 NAIS JSON인지 확인해 주세요.",
+            "error": "프롬프트 메타데이터를 찾지 못했어요. NAI 이미지 또는 지원하는 외부 JSON인지 확인해 주세요.",
             "loading": "메타데이터를 읽는 중…",
             "choose": "여기에 파일을 놓거나 눌러서 선택",
             "moduleSaved": "{{path}} 모듈을 저장했어요.",
@@ -1327,7 +1327,7 @@
             "exportFailed": "결과를 내보내지 못했습니다.",
             "reading": "{{current}} / {{total}} 읽는 중",
             "dropTitle": "이미지를 선택하거나 이곳에 놓으세요",
-            "dropDescription": "PNG, WebP, JPEG와 NAIS sidecar JSON을 한 번에 최대 500개까지 읽습니다. 원본 이미지와 Base64 데이터는 결과에 저장하지 않습니다.",
+            "dropDescription": "PNG, WebP, JPEG와 지원하는 외부 sidecar JSON을 한 번에 최대 500개까지 읽습니다. 원본 이미지와 Base64 데이터는 결과에 저장하지 않습니다.",
             "total": "전체",
             "found": "메타데이터",
             "empty": "없음",
@@ -2280,21 +2280,21 @@
             "outputFolders": {
                 "main": {
                     "label": "메인 출력 폴더",
-                    "help": "기본값: Pictures/NAIS_Output"
+                    "help": "기본값: Pictures/NAI_Blue_Output"
                 },
                 "scene": {
                     "label": "Scene 출력 폴더",
-                    "help": "기본값: Pictures/NAIS_Scene",
+                    "help": "기본값: Pictures/NAI_Blue_Scene",
                     "selectFolder": "Scene 폴더 선택"
                 },
                 "styleLab": {
                     "label": "StyleLab 출력 폴더",
-                    "help": "기본값: Pictures/nais-style",
+                    "help": "기본값: Pictures/nai-blue-style",
                     "selectFolder": "StyleLab 폴더 선택"
                 },
                 "tools": {
                     "label": "Tools 출력 폴더",
-                    "help": "기본값: Pictures/nais-tools",
+                    "help": "기본값: Pictures/nai-blue-tools",
                     "selectFolder": "Tools 폴더 선택"
                 }
             },
@@ -2310,12 +2310,12 @@
                 "sidecarOnly": "사이드카 파일만",
                 "stripAndSidecar": "깨끗한 이미지 + 사이드카",
                 "stripOnly": "깨끗한 이미지만",
-                "help": "사이드카 옵션은 이미지 옆에 .nais.json 파일을 만듭니다. 깨끗한 이미지만 선택하면 재사용 가능한 메타데이터가 제거되어 나중에 생성 설정을 복원할 수 없습니다."
+                "help": "사이드카 옵션은 이미지 옆에 .nai-blue.json 파일을 만듭니다. 깨끗한 이미지만 선택하면 재사용 가능한 메타데이터가 제거되어 나중에 생성 설정을 복원할 수 없습니다."
             }
         },
         "library": {
             "folder": "라이브러리 폴더",
-            "folderHelp": "기본값: Pictures/NAIS_Library",
+            "folderHelp": "기본값: Pictures/NAI_Blue_Library",
             "absolutePathHelp": "라이브러리 파일이 해당 폴더에 직접 저장됩니다.",
             "selectFolder": "라이브러리 폴더 선택"
         },
@@ -2361,10 +2361,10 @@
             "autoBackupDesc": "앱 시작 시 자동으로 백업을 생성합니다.",
             "autoSnapshotTitle": "자동 복구 스냅샷",
             "autoSnapshotDesc": "기존 내보내기/가져오기 형식을 유지하면서 Pictures 폴더에 전체 앱 스냅샷을 생성합니다.",
-            "snapshotLocation": "위치: Pictures/NAIS_Backup/full",
+            "snapshotLocation": "위치: Pictures/NAI_Blue_Backup/full",
             "storeSnapshotTitle": "스토어 스냅샷",
             "storeSnapshotDesc": "IndexedDB 쓰기 후 스토어별 복구 스냅샷을 보관합니다.",
-            "storeSnapshotLocation": "위치: Pictures/NAIS_Backup/<store>",
+            "storeSnapshotLocation": "위치: Pictures/NAI_Blue_Backup/<store>",
             "restoreStoreSnapshots": "스토어 스냅샷 복원",
             "restoreStoreSnapshotsDesc": "스토어별 자동 스냅샷에서 하나의 스토어를 복원합니다.",
             "storeSnapshotCount": "스냅샷이 있는 스토어 {{count}}개",

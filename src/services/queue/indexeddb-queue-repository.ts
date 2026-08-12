@@ -38,7 +38,7 @@ import {
 } from './job-snapshot'
 
 // Physical database names stay stable so generation jobs survive the rename.
-export const QUEUE_DATABASE_NAME = 'nais2-durable-generation-queue'
+export const QUEUE_DATABASE_NAME = 'nai-blue-durable-generation-queue'
 export const QUEUE_DATABASE_VERSION = 5
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const

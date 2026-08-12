@@ -107,10 +107,10 @@ function outputSnapshot(combo: StyleCombination, seed: number): StyleLabQueueOut
     const settings = useSettingsStore.getState()
     const imageFormat = settings.imageFormat === 'webp' ? 'webp' : 'png'
     return {
-        directory: settings.styleLabSavePath || 'nais-style',
+        directory: settings.styleLabSavePath || 'nai-blue-style',
         useAbsolutePath: settings.useAbsoluteStyleLabPath,
-        capabilityFallbackDirectory: 'nais-style',
-        fileName: `NAIS_STYLELAB_${sha256Utf8(`${combo.renderHash}:${seed}`).slice(0, 16)}.${imageFormat}`,
+        capabilityFallbackDirectory: 'nai-blue-style',
+        fileName: `NAI_Blue_STYLELAB_${sha256Utf8(`${combo.renderHash}:${seed}`).slice(0, 16)}.${imageFormat}`,
         collisionPolicy: 'unique',
         imageFormat,
         metadataMode: settings.metadataMode,

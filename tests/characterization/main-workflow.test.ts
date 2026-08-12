@@ -410,14 +410,14 @@ function resetStores(): void {
             runtimeCapture.calls.push('anlas:refresh-slot-1')
         },
     })
-    const defaultGenerationFolder = createDefaultGenerationFolder('NAIS_Output', false, new Date(FIXED_TIME).toISOString())
+    const defaultGenerationFolder = createDefaultGenerationFolder('NAI_Blue_Output', false, new Date(FIXED_TIME).toISOString())
     stores.useSettingsStore.setState({
         autoSave: false,
         useStreaming: false,
         generationDelay: 0,
         imageFormat: 'png',
         metadataMode: 'embedded',
-        savePath: 'NAIS_Output',
+        savePath: 'NAI_Blue_Output',
         useAbsolutePath: false,
         generationFolders: [defaultGenerationFolder],
         activeGenerationFolderId: defaultGenerationFolder.id,
@@ -514,7 +514,7 @@ function summarizeOutput(): Record<string, unknown> {
     const output: Record<string, unknown> = {
         policy: typeof location === 'string' && location.startsWith('memory://') ? 'memory' : 'filesystem',
         fileName,
-        outputTargetPolicy: 'Asset module fileName when present; otherwise NAIS_<Date.now()>.<format>.',
+        outputTargetPolicy: 'Asset module fileName when present; otherwise NAI_Blue_<Date.now()>.<format>.',
         eventIncludesImageData: Boolean(event?.detail.data),
         historyCount: stores.useGenerationStore.getState().history.length,
     }
@@ -1152,7 +1152,7 @@ describe('Main workflow golden characterization', () => {
         await stores.useGenerationStore.getState().generate()
 
         expect(runtimeCapture.writes).toEqual([])
-        expect(runtimeCapture.events[0].detail.path).toBe(`memory://NAIS_${FIXED_TIME}.png`)
+        expect(runtimeCapture.events[0].detail.path).toBe(`memory://NAI_Blue_${FIXED_TIME}.png`)
         expect(stores.useGenerationStore.getState().lastResolvedPlan?.outputPolicy.destination)
             .toEqual({ kind: 'memory' })
     })
@@ -1797,7 +1797,7 @@ describe('Main workflow golden characterization', () => {
                 { id: 'main-resource:mask', digest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) },
             ],
         })
-        expect(runtimeCapture.events[0].detail.path).toBe(`memory://NAIS_INPAINT_${FIXED_TIME}.png`)
+        expect(runtimeCapture.events[0].detail.path).toBe(`memory://NAI_Blue_INPAINT_${FIXED_TIME}.png`)
     })
 
     it('materializes character and vibe resources only at the existing v2 transport boundary', async () => {

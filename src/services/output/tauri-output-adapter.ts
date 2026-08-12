@@ -35,7 +35,6 @@ import type {
 } from './platform-adapter'
 
 const JOURNAL_DIRECTORY = 'nai-blue/output-journal'
-const PRE_RENAME_JOURNAL_DIRECTORY = 'nais2/output-journal'
 const JOURNAL_SUFFIX = '.json'
 
 export class UnresolvedOutputPathError extends Error {
@@ -60,7 +59,7 @@ export function sanitizeRelativeOutputDirectory(value: string, fallback: string)
         .filter(segment => segment.length > 0 && segment !== '.' && segment !== '..')
         .map(sanitizeDirectoryComponent)
     if (segments.length > 0) return segments.join('/')
-    return fallback.split(/[\\/]+/).filter(Boolean).map(sanitizeDirectoryComponent).join('/') || 'NAIS_Output'
+    return fallback.split(/[\\/]+/).filter(Boolean).map(sanitizeDirectoryComponent).join('/') || 'NAI_Blue_Output'
 }
 
 function optionsFor(file: OutputFileRef): { baseDir?: BaseDirectory } | undefined {
@@ -189,26 +188,21 @@ abstract class TauriOutputPlatformAdapter implements OutputPlatformAdapter {
     }
 
     async readJournal(transactionId: string): Promise<Uint8Array | null> {
-        for (const directory of [JOURNAL_DIRECTORY, PRE_RENAME_JOURNAL_DIRECTORY]) {
-            const file = this.journalRef(transactionId, directory)
-            if (await exists(file.path, { baseDir: BaseDirectory.AppData })) {
-                return readFile(file.path, { baseDir: BaseDirectory.AppData })
-            }
-        }
-        return null
+        const file = this.journalRef(transactionId)
+        return await exists(file.path, { baseDir: BaseDirectory.AppData })
+            ? readFile(file.path, { baseDir: BaseDirectory.AppData })
+            : null
     }
 
     async removeJournal(transactionId: string): Promise<void> {
         await removeIfExists(this.journalRef(transactionId))
-        await removeIfExists(this.journalRef(transactionId, PRE_RENAME_JOURNAL_DIRECTORY))
         await removeIfExists(this.journalTempRef(transactionId))
     }
 
     async listJournalIds(): Promise<string[]> {
         const ids = new Set<string>()
-        for (const directory of [JOURNAL_DIRECTORY, PRE_RENAME_JOURNAL_DIRECTORY]) {
-            if (!await exists(directory, { baseDir: BaseDirectory.AppData })) continue
-            const entries = await readDir(directory, { baseDir: BaseDirectory.AppData })
+        if (await exists(JOURNAL_DIRECTORY, { baseDir: BaseDirectory.AppData })) {
+            const entries = await readDir(JOURNAL_DIRECTORY, { baseDir: BaseDirectory.AppData })
             for (const entry of entries) {
                 if (entry.isFile && entry.name.endsWith(JOURNAL_SUFFIX)) {
                     ids.add(entry.name.slice(0, -JOURNAL_SUFFIX.length))

@@ -5,7 +5,7 @@ import { filterNativeR2ArtifactsForProfile } from '@/services/r2/native-r2-adapt
 
 const artifacts: NativeR2ScannedArtifact[] = [
     { artifactId: 'image', localVariant: 'result.png', remoteKey: 'result.png', contentSha256: 'sha256:image', contentType: 'image/png', size: 1 },
-    { artifactId: 'sidecar', localVariant: 'result.nais-blue.json', remoteKey: 'result.nais-blue.json', contentSha256: 'sha256:json', contentType: 'application/json', size: 1 },
+    { artifactId: 'sidecar', localVariant: 'result.nai-blue.json', remoteKey: 'result.nai-blue.json', contentSha256: 'sha256:json', contentType: 'application/json', size: 1 },
 ]
 
 function profile(publicMode: 'private' | 'custom') {

@@ -32,7 +32,7 @@ export const useToolsStore = create<ToolsState>()(
             setInpaintingBrushSize: (size) => set({ inpaintingBrushSize: size }),
         }),
         {
-            name: 'nais2-tools',
+            name: 'nai-blue-tools',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => ({
                 mosaicPixelSize: state.mosaicPixelSize,

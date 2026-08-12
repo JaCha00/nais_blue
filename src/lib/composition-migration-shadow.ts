@@ -55,7 +55,7 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
 }
 
 function profileFromSource(input: CompositionMigrationShadowInput): AssetProfile {
-    const stored = storeState(input, 'nais2-asset-modules')
+    const stored = storeState(input, 'nai-blue-asset-modules')
     const rawSource = input.source.assetProfileJson ?? stored.profile
     const source = typeof rawSource === 'string' ? parseJsonOrRaw(rawSource) : rawSource
     if (source === undefined) return createDefaultAssetProfile(input.document.updatedAt)
@@ -141,10 +141,10 @@ function paramsFromState(state: Record<string, unknown>): ResolvedGenerationPara
 }
 
 function snapshotFromSource(input: CompositionMigrationShadowInput): MainCompositionSnapshot {
-    const generation = storeState(input, 'nais2-generation')
-    const character = storeState(input, 'nais2-character-prompts')
-    const preset = storeState(input, 'nais2-presets')
-    const settings = storeState(input, 'nais2-settings')
+    const generation = storeState(input, 'nai-blue-generation')
+    const character = storeState(input, 'nai-blue-character-prompts')
+    const preset = storeState(input, 'nai-blue-presets')
+    const settings = storeState(input, 'nai-blue-settings')
     const params = paramsFromState(generation)
     const characters = characterSnapshots(character.characters)
     const positionEnabled = booleanValue(character.positionEnabled, false)
@@ -170,7 +170,7 @@ function snapshotFromSource(input: CompositionMigrationShadowInput): MainComposi
         params,
         output: {
             autoSave: booleanValue(settings.autoSave, false),
-            savePath: stringValue(settings.savePath, 'NAIS_Output'),
+            savePath: stringValue(settings.savePath, 'NAI_Blue_Output'),
             useAbsolutePath: booleanValue(settings.useAbsolutePath, false),
             imageFormat: settings.imageFormat === 'webp' ? 'webp' : 'png',
             metadataMode: settings.metadataMode === 'sidecar-only'

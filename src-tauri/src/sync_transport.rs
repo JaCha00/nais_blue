@@ -3608,17 +3608,17 @@ mod desktop {
         #[ignore = "requires an explicitly authorized Android device on the same private LAN"]
         async fn actual_android_client_pairs_and_pushes_sanitized_preset() {
             assert_eq!(
-                std::env::var("NAIS_LAN_QA").as_deref(),
+                std::env::var("NAI_BLUE_LAN_QA").as_deref(),
                 Ok("1"),
-                "set NAIS_LAN_QA=1 only for an authorized real-device run"
+                "set NAI_BLUE_LAN_QA=1 only for an authorized real-device run"
             );
-            let bind_ip = std::env::var("NAIS_LAN_QA_BIND_IP")
-                .expect("NAIS_LAN_QA_BIND_IP must name the desktop private IPv4");
-            let allow_cidr = std::env::var("NAIS_LAN_QA_CIDR")
-                .expect("NAIS_LAN_QA_CIDR must bound the authorized Wi-Fi subnet");
+            let bind_ip = std::env::var("NAI_BLUE_LAN_QA_BIND_IP")
+                .expect("NAI_BLUE_LAN_QA_BIND_IP must name the desktop private IPv4");
+            let allow_cidr = std::env::var("NAI_BLUE_LAN_QA_CIDR")
+                .expect("NAI_BLUE_LAN_QA_CIDR must bound the authorized Wi-Fi subnet");
             let output_path = PathBuf::from(
-                std::env::var("NAIS_LAN_QA_OUTPUT")
-                    .expect("NAIS_LAN_QA_OUTPUT must be an isolated temporary file"),
+                std::env::var("NAI_BLUE_LAN_QA_OUTPUT")
+                    .expect("NAI_BLUE_LAN_QA_OUTPUT must be an isolated temporary file"),
             );
             let expected_parent = std::env::temp_dir()
                 .canonicalize()
@@ -3634,7 +3634,7 @@ mod desktop {
                 .expect("QA output must have a UTF-8 file name");
             assert_eq!(output_parent, expected_parent);
             assert!(
-                output_name.starts_with("nais-lan-device-qa-") && output_name.ends_with(".json")
+                output_name.starts_with("nai-blue-lan-device-qa-") && output_name.ends_with(".json")
             );
             assert!(!output_path.exists(), "QA output must be a fresh temp file");
             struct EphemeralQaOutput(PathBuf);
@@ -3647,7 +3647,7 @@ mod desktop {
             let policy = NetworkPolicy::parse(&bind_ip, &[allow_cidr])
                 .expect("real-device QA network policy must be private and explicit");
             let directory = test_directory("android-device");
-            let (_device_bundle, ca) = generate_device_identity("qa-host", "NAIS QA Desktop")
+            let (_device_bundle, ca) = generate_device_identity("qa-host", "NAI Blue QA Desktop")
                 .expect("QA host identity should generate");
             let store = Arc::new(DurableStore::open(&directory).expect("QA journal should open"));
             store
@@ -3660,7 +3660,7 @@ mod desktop {
                 &ca,
                 Arc::clone(&store),
                 &data.endpoint,
-                "nais-android-device-qa-capability",
+                "nai-blue-android-device-qa-capability",
                 confirmation_code,
                 now + MAX_PAIRING_TTL_SECONDS,
                 now + MAX_PAIRING_TTL_SECONDS,
@@ -3691,7 +3691,7 @@ mod desktop {
             output
                 .sync_all()
                 .expect("QA automation payload should flush before ADB reads it");
-            println!("NAIS_ANDROID_LAN_QA_READY");
+            println!("NAI_BLUE_ANDROID_LAN_QA_READY");
 
             let deadline = Instant::now() + Duration::from_secs(MAX_PAIRING_TTL_SECONDS);
             let inbound = loop {
@@ -3732,7 +3732,7 @@ mod desktop {
             drop(invitation);
             drop(store);
             remove_test_journal(&directory);
-            println!("NAIS_ANDROID_LAN_QA_OK");
+            println!("NAI_BLUE_ANDROID_LAN_QA_OK");
         }
 
         fn client_from_bundle(bundle: &SyncClientCredentialBundle) -> reqwest::Client {

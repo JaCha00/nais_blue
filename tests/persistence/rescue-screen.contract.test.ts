@@ -11,7 +11,7 @@ describe('rescue screen contract', () => {
 
         expect(source).toContain('onRetry')
         expect(source).toContain('downloadDiagnosticsExport')
-        expect(source).toContain('NAIS_Backup/full')
+        expect(source).toContain('NAI_Blue_Backup/full')
         expect(source).toContain('closeApplicationWithFlush')
         expect(source.match(/<button/g)?.length).toBeGreaterThanOrEqual(3)
         expect(source).toContain('min-h-11')

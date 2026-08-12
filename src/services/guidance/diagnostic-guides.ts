@@ -1,4 +1,4 @@
-export const PRODUCT_GUIDANCE_OPEN_EVENT = 'nais:product-guidance:open'
+export const PRODUCT_GUIDANCE_OPEN_EVENT = 'nai-blue:product-guidance:open'
 
 const AUTH_CODES = new Set(['AUTH_UNAUTHORIZED'])
 const OUTPUT_CODES = new Set(['LOCAL_IO_FAILED', 'IMAGE_PROCESSING_FAILED'])

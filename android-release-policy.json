@@ -1,5 +1,5 @@
 {
-  "applicationId": "com.bluhair.naisblue",
+  "applicationId": "blue.bluehair.naiblue",
   "debugApplicationIdSuffix": "",
   "minSdkVersion": 24,
   "targetSdkVersion": 36,
@@ -15,10 +15,7 @@
     "keyAlias": "release",
     "certificateSha256": "6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65"
   },
-  "updateBaseline": {
-    "tag": "v2.11.3",
-    "versionCode": 2011003
-  },
-  "firstReleaseForApplicationId": false,
-  "firstReleaseVersion": "2.8.3"
+  "updateBaseline": null,
+  "firstReleaseForApplicationId": true,
+  "firstReleaseVersion": "1.0.0"
 }

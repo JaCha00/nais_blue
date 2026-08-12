@@ -133,7 +133,7 @@ describe('portable resource materialization boundary', () => {
                     directory: {
                         kind: 'standard',
                         root: 'pictures',
-                        segments: ['NAIS_Output'],
+                        segments: ['NAI_Blue_Output'],
                     },
                 },
             },

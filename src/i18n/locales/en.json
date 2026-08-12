@@ -307,7 +307,7 @@
             "description": "Drop a file or browse to read positive and negative prompts from image metadata.",
             "saveImportedModule": "Save imported text as a module",
             "saveCurrentModule": "Save current prompt as a module",
-            "error": "No prompt metadata was found. Check that this is a NovelAI image or NAIS JSON file.",
+            "error": "No prompt metadata was found. Check that this is a NovelAI image or a supported external JSON file.",
             "loading": "Reading metadata…",
             "choose": "Drop a file here or select one",
             "moduleSaved": "Saved module {{path}}.",
@@ -1319,7 +1319,7 @@
             "exportFailed": "Could not export the results.",
             "reading": "Reading {{current}} / {{total}}",
             "dropTitle": "Choose images or drop them here",
-            "dropDescription": "Read up to 500 PNG, WebP, JPEG, or NAIS sidecar JSON files at once. Original images and Base64 data are never stored in the results.",
+            "dropDescription": "Read up to 500 PNG, WebP, JPEG, or supported external sidecar JSON files at once. Original images and Base64 data are never stored in the results.",
             "total": "Total",
             "found": "Metadata",
             "empty": "None",
@@ -2244,21 +2244,21 @@
             "outputFolders": {
                 "main": {
                     "label": "Main Output Folder",
-                    "help": "Default: Pictures/NAIS_Output"
+                    "help": "Default: Pictures/NAI_Blue_Output"
                 },
                 "scene": {
                     "label": "Scene Output Folder",
-                    "help": "Default: Pictures/NAIS_Scene",
+                    "help": "Default: Pictures/NAI_Blue_Scene",
                     "selectFolder": "Select Scene Folder"
                 },
                 "styleLab": {
                     "label": "Style Lab Output Folder",
-                    "help": "Default: Pictures/nais-style",
+                    "help": "Default: Pictures/nai-blue-style",
                     "selectFolder": "Select Style Lab Folder"
                 },
                 "tools": {
                     "label": "Tools Output Folder",
-                    "help": "Default: Pictures/nais-tools",
+                    "help": "Default: Pictures/nai-blue-tools",
                     "selectFolder": "Select Tools Folder"
                 }
             },
@@ -2274,12 +2274,12 @@
                 "sidecarOnly": "Sidecar file only",
                 "stripAndSidecar": "Clean image + sidecar",
                 "stripOnly": "Clean image only",
-                "help": "Sidecar options create a .nais.json file next to the image. Clean image only removes reusable metadata and cannot restore generation settings later."
+                "help": "Sidecar options create a .nai-blue.json file next to the image. Clean image only removes reusable metadata and cannot restore generation settings later."
             }
         },
         "library": {
             "folder": "Library Folder",
-            "folderHelp": "Default: Pictures/NAIS_Library",
+            "folderHelp": "Default: Pictures/NAI_Blue_Library",
             "absolutePathHelp": "Library files will be saved to this exact folder.",
             "selectFolder": "Select Library Folder"
         },
@@ -2325,10 +2325,10 @@
             "autoBackupDesc": "Automatically create backup on app startup.",
             "autoSnapshotTitle": "Automatic Recovery Snapshots",
             "autoSnapshotDesc": "Create full app snapshots in the Pictures folder without changing the normal export/import format.",
-            "snapshotLocation": "Location: Pictures/NAIS_Backup/full",
+            "snapshotLocation": "Location: Pictures/NAI_Blue_Backup/full",
             "storeSnapshotTitle": "Store Snapshots",
             "storeSnapshotDesc": "Keep per-store recovery snapshots after IndexedDB writes.",
-            "storeSnapshotLocation": "Location: Pictures/NAIS_Backup/<store>",
+            "storeSnapshotLocation": "Location: Pictures/NAI_Blue_Backup/<store>",
             "restoreStoreSnapshots": "Restore Store Snapshot",
             "restoreStoreSnapshotsDesc": "Restore one store from a per-store automatic snapshot.",
             "storeSnapshotCount": "{{count}} stores with snapshots",

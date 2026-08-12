@@ -5,8 +5,8 @@ import {
 } from '@/lib/composition-migration-runtime'
 import type { CredentialRef } from '@/domain/credentials/types'
 
-export const AUTH_BACKUP_STORE_KEY = 'nais2-auth' as const
-const COMPOSITION_MIGRATION_BACKUP_STORE_KEY = 'nais2-composition-migration-backup'
+export const AUTH_BACKUP_STORE_KEY = 'nai-blue-auth' as const
+const COMPOSITION_MIGRATION_BACKUP_STORE_KEY = 'nai-blue-composition-migration-backup'
 
 export type BackupProjectionPurpose =
     | 'manual-full'

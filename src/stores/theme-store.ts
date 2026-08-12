@@ -19,7 +19,7 @@ export const useThemeStore = create<ThemeState>()(
             },
         }),
         {
-            name: 'nais2-theme',
+            name: 'nai-blue-theme',
             storage: createJSONStorage(() => indexedDBStorage),
             onRehydrateStorage: () => (state) => {
                 if (state) {

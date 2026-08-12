@@ -348,7 +348,7 @@ function resetRuntime(sessionId: number, scenes = [scene('scene-1', 1)]): void {
         generationDelay: 0,
         imageFormat: 'png',
         metadataMode: 'embedded',
-        sceneSavePath: 'NAIS_Scene',
+        sceneSavePath: 'NAI_Blue_Scene',
         useAbsoluteScenePath: false,
     })
     runtime.useGenerationStore.setState({
@@ -460,7 +460,7 @@ function context(sessionId: number, streamingView: boolean, rotation = false) {
     return {
         activePresetId: PRESET_ID,
         sessionId,
-        sceneSavePath: 'NAIS_Scene',
+        sceneSavePath: 'NAI_Blue_Scene',
         streamingView,
         t: (key: string, fallback?: string) => fallback ?? key,
         rotationCharacterId: rotation ? 'rotation-character' : undefined,

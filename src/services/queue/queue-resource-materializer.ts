@@ -178,7 +178,7 @@ export class QueueResourceMaterializer {
         return this.materialize(
             new TextEncoder().encode(value),
             role,
-            'application/x-nais-encoded-vibe',
+            'application/x-nai-blue-encoded-vibe',
             'utf8',
         )
     }

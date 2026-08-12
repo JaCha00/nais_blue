@@ -52,7 +52,7 @@ class MemoryStorage implements CompositionRepositoryStorage {
 function source(overrides: Partial<CompositionMigrationSourceSnapshot> = {}): CompositionMigrationSourceSnapshot {
     return {
         serializedStores: {
-            'nais2-scenes': JSON.stringify({ state: { presets: [] }, version: 0 }),
+            'nai-blue-scenes': JSON.stringify({ state: { presets: [] }, version: 0 }),
         },
         wildcardContent: {},
         ...overrides,
@@ -120,7 +120,7 @@ describe('repeatable Composition migration transaction', () => {
 
     it('runs the ordered transaction, verifies startup readback, and is idempotent', async () => {
         const storage = new MemoryStorage()
-        storage.values.set('nais2-scenes', source().serializedStores['nais2-scenes']!)
+        storage.values.set('nai-blue-scenes', source().serializedStores['nai-blue-scenes']!)
         const repository = new CompositionRepository(storage)
         const run = () => runCompositionMigrationTransaction({
             repository,
@@ -160,14 +160,14 @@ describe('repeatable Composition migration transaction', () => {
         ])
         expect(first.marker?.startupVerifiedAt).toBe(NOW)
         expect((await repository.read(NOW)).authority).toBe('v2')
-        expect(storage.getItem('nais2-scenes')).toBe(source().serializedStores['nais2-scenes'])
+        expect(storage.getItem('nai-blue-scenes')).toBe(source().serializedStores['nai-blue-scenes'])
 
         const rawBackup = JSON.parse(storage.getItem(COMPOSITION_MIGRATION_BACKUP_STORAGE_KEY) ?? 'null') as {
             snapshots: Array<{ serializedStores: Record<string, string> }>
         }
         expect(rawBackup.snapshots).toHaveLength(1)
-        expect(rawBackup.snapshots[0]?.serializedStores['nais2-scenes'])
-            .toBe(source().serializedStores['nais2-scenes'])
+        expect(rawBackup.snapshots[0]?.serializedStores['nai-blue-scenes'])
+            .toBe(source().serializedStores['nai-blue-scenes'])
 
         const second = await run()
         expect(second.status).toBe('already-current')
@@ -199,7 +199,7 @@ describe('repeatable Composition migration transaction', () => {
                 ...snapshot,
                 serializedStores: {
                     ...snapshot.serializedStores,
-                    'nais2-scenes': JSON.stringify({ state: { presets: [{ id: 'forged' }] }, version: 0 }),
+                    'nai-blue-scenes': JSON.stringify({ state: { presets: [{ id: 'forged' }] }, version: 0 }),
                 },
             }),
         },
@@ -485,11 +485,11 @@ describe('repeatable Composition migration transaction', () => {
         })
 
         expect((await run()).status).toBe('committed')
-        const raw = JSON.parse(storage.getItem('nais2-composition-repository')!) as {
+        const raw = JSON.parse(storage.getItem('nai-blue-composition-repository')!) as {
             migrationMarker: { sourceCounts: Record<string, number> }
         }
         raw.migrationMarker.sourceCounts = { stores: 999 }
-        storage.setItem('nais2-composition-repository', JSON.stringify(raw))
+        storage.setItem('nai-blue-composition-repository', JSON.stringify(raw))
 
         const repaired = await run()
         expect(repaired.status).toBe('committed')
@@ -534,13 +534,13 @@ describe('repeatable Composition migration transaction', () => {
     it('cleans temp state and retains old authority when shadow comparison is fatal', async () => {
         const storage = new MemoryStorage()
         const oldScene = JSON.stringify({ state: { presets: [{ id: 'old-preset', scenes: [] }] }, version: 0 })
-        storage.values.set('nais2-scenes', oldScene)
+        storage.values.set('nai-blue-scenes', oldScene)
         const repository = new CompositionRepository(storage)
 
         const result = await runCompositionMigrationTransaction({
             repository,
             storage,
-            source: source({ serializedStores: { 'nais2-scenes': oldScene } }),
+            source: source({ serializedStores: { 'nai-blue-scenes': oldScene } }),
             now: NOW,
             owner: 'test',
             activateAuthority: 'v2',
@@ -556,7 +556,7 @@ describe('repeatable Composition migration transaction', () => {
         expect(result.status).toBe('failed')
         expect(result.completedSteps).toContain('temp-write')
         expect(result.completedSteps).toContain('temp-cleanup')
-        expect(storage.getItem('nais2-scenes')).toBe(oldScene)
+        expect(storage.getItem('nai-blue-scenes')).toBe(oldScene)
         const cleaned = await repository.read(NOW)
         expect(cleaned.authority).toBe('legacy')
         expect(cleaned.staged).toBeUndefined()
@@ -616,7 +616,7 @@ describe('repeatable Composition migration transaction', () => {
                 reads += 1
                 return source({
                     serializedStores: {
-                        'nais2-scenes': JSON.stringify({ state: { revision: reads }, version: 0 }),
+                        'nai-blue-scenes': JSON.stringify({ state: { revision: reads }, version: 0 }),
                     },
                 })
             },
@@ -667,7 +667,7 @@ describe('repeatable Composition migration transaction', () => {
         expect(rollback.authority).toBe('legacy')
         expect(rollback.committedDocument).toEqual(v2Document)
         expect(await repository.readAuthoritativeDocument(NOW)).toBeNull()
-        expect(storage.getItem('nais2-scenes')).toBeNull()
+        expect(storage.getItem('nai-blue-scenes')).toBeNull()
     })
 
     it('round-trips old authority through migration, v3 export, and clean restore', async () => {
@@ -693,13 +693,13 @@ describe('repeatable Composition migration transaction', () => {
             },
             version: 0,
         })
-        storage.values.set('nais2-scenes', oldScene)
+        storage.values.set('nai-blue-scenes', oldScene)
         const repository = new CompositionRepository(storage)
         const migrated = await runCompositionMigrationTransaction({
             repository,
             storage,
             source: source({
-                serializedStores: { 'nais2-scenes': oldScene },
+                serializedStores: { 'nai-blue-scenes': oldScene },
                 wildcardContent: { sky: ['blue', 'red'] },
                 assetProfileJson: rawAssetProfile,
             }),
@@ -721,7 +721,7 @@ describe('repeatable Composition migration transaction', () => {
         const rawBackup = Object.fromEntries(
             Array.from(storage.values.entries()).map(([key, value]) => [key, JSON.parse(value) as unknown]),
         )
-        rawBackup['nais2-wildcard-content'] = { sky: ['blue', 'red'] }
+        rawBackup['nai-blue-wildcard-content'] = { sky: ['blue', 'red'] }
         const legacyLocal = new Map<string, string>([
             ['character-positions', JSON.stringify({ positionEnabled: false, positions: {} })],
         ])
@@ -759,8 +759,8 @@ describe('repeatable Composition migration transaction', () => {
         })
 
         expect(restored.failed).toEqual([])
-        expect(clean.getItem('nais2-scenes')).toBe(oldScene)
-        expect(clean.getItem('character-positions')).not.toBeNull()
+        expect(clean.getItem('nai-blue-scenes')).toBe(oldScene)
+        expect(clean.getItem('character-positions')).toBeNull()
         expect(wildcardContent).toEqual({ sky: ['blue', 'red'] })
         expect(JSON.parse(restoredAssetProfile ?? 'null')).toEqual(rawAssetProfile)
         const cleanRepository = new CompositionRepository(clean)
@@ -769,7 +769,7 @@ describe('repeatable Composition migration transaction', () => {
         const cleanSource: CompositionMigrationSourceSnapshot = {
             serializedStores: Object.fromEntries(
                 [...clean.values.entries()].filter(([key]) => (
-                    key !== 'nais2-composition-repository'
+                    key !== 'nai-blue-composition-repository'
                     && key !== COMPOSITION_MIGRATION_BACKUP_STORAGE_KEY
                 )),
             ),

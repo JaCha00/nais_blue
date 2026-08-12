@@ -36,8 +36,8 @@ const SECRET_CANARIES = [
     'Authorization: Bearer TEST',
 ] as const
 
-const AUTH_STORE_KEY = 'nais2-auth'
-const MIGRATION_BACKUP_STORE_KEY = 'nais2-composition-migration-backup'
+const AUTH_STORE_KEY = 'nai-blue-auth'
+const MIGRATION_BACKUP_STORE_KEY = 'nai-blue-composition-migration-backup'
 
 class MemoryStorage implements BackupStoragePort {
     readonly values = new Map<string, string>()
@@ -213,12 +213,12 @@ describe('secret-safe backup projection', () => {
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
                 [AUTH_STORE_KEY]: JSON.stringify(authPayload()),
-                'nais2-scenes': JSON.stringify({ version: 1, state: { presets: [] } }),
+                'nai-blue-scenes': JSON.stringify({ version: 1, state: { presets: [] } }),
             },
             wildcardContent: {},
         }
         const localArchive = {
-            format: 'nais2-composition-raw-migration-backup',
+            format: 'nai-blue-composition-raw-migration-backup',
             schemaVersion: 1,
             snapshots: [{
                 migrationId: 'migration:secret-redaction',

@@ -169,7 +169,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                     }
                 } else {
                     // Relative to Pictures folder
-                    const relPath = libraryPath || 'NAIS_Library'
+                    const relPath = libraryPath || 'NAI_Blue_Library'
                     const existsDir = await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                     if (!existsDir) {
                         await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -261,7 +261,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                     return
                 }
                 const mediaStorageRoot = await getMediaStorageRoot()
-                const relPath = libraryPath || 'NAIS_Library'
+                const relPath = libraryPath || 'NAI_Blue_Library'
                 const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                     ? libraryPath
                     : await joinNativePath(mediaStorageRoot, relPath)
@@ -280,7 +280,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 let addedCount = 0
 
                 // Check for custom app metadata
-                const customFilename = e.dataTransfer.getData('nais/filename')
+                const customFilename = e.dataTransfer.getData('nai-blue/filename')
 
                 for (const file of imageFiles) {
                     const buffer = await file.arrayBuffer()
@@ -304,7 +304,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                     if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                         await writeNativeBinaryFile(newPath, uint8Array)
                     } else {
-                        const relPath = libraryPath || 'NAIS_Library'
+                        const relPath = libraryPath || 'NAI_Blue_Library'
                         await writeNativeBinaryFile(`${relPath}/${fileName}`, uint8Array, {
                             baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
                         })
@@ -454,7 +454,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 return
             }
             const mediaStorageRoot = await getMediaStorageRoot()
-            const relPath = libraryPath || 'NAIS_Library'
+            const relPath = libraryPath || 'NAI_Blue_Library'
             const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
                 ? libraryPath
                 : await joinNativePath(mediaStorageRoot, relPath)

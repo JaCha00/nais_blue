@@ -24,7 +24,7 @@ afterEach(() => {
 describe('legacy credential backup detection', () => {
     it('detects raw NovelAI credentials in direct and nested migration backup shapes', () => {
         expect(backupArtifactContainsRawCredential({
-            'nais2-auth': {
+            'nai-blue-auth': {
                 version: 2,
                 state: { token: 'fixture-only-raw-token' },
             },
@@ -32,7 +32,7 @@ describe('legacy credential backup detection', () => {
         expect(backupArtifactContainsRawCredential({
             snapshots: [{
                 serializedStores: {
-                    'nais2-auth': JSON.stringify({
+                    'nai-blue-auth': JSON.stringify({
                         version: 2,
                         state: { token2: 'fixture-only-slot-two' },
                     }),
@@ -52,7 +52,7 @@ describe('legacy credential backup detection', () => {
 
     it('does not flag an AuthState v3 reference containing only the allowed last four characters', () => {
         expect(backupArtifactContainsRawCredential({
-            'nais2-auth': {
+            'nai-blue-auth': {
                 version: 3,
                 state: {
                     slot1CredentialRef: {
@@ -74,17 +74,17 @@ describe('legacy credential backup detection', () => {
 
     it('deletes only unsafe entries from the managed local auto-backup after confirmation', async () => {
         const storage = new MemoryLocalStorage()
-        storage.setItem('nais2-auto-backup', JSON.stringify([
-            { id: 'unsafe', stores: { 'nais2-auth': { state: { token: 'fixture-only-token' }, version: 2 } } },
-            { id: 'safe', stores: { 'nais2-auth': { state: { token: '', tier: 'opus' }, version: 2 } } },
+        storage.setItem('nai-blue-auto-backup', JSON.stringify([
+            { id: 'unsafe', stores: { 'nai-blue-auth': { state: { token: 'fixture-only-token' }, version: 2 } } },
+            { id: 'safe', stores: { 'nai-blue-auth': { state: { token: '', tier: 'opus' }, version: 2 } } },
         ]))
         vi.stubGlobal('localStorage', storage)
 
         const result = await cleanupLegacyCredentialBackups()
 
         expect(result).toMatchObject({ inspected: 2, unsafe: 1, deleted: 1, failed: 0 })
-        expect(JSON.parse(storage.getItem('nais2-auto-backup')!)).toEqual([
-            { id: 'safe', stores: { 'nais2-auth': { state: { token: '', tier: 'opus' }, version: 2 } } },
+        expect(JSON.parse(storage.getItem('nai-blue-auto-backup')!)).toEqual([
+            { id: 'safe', stores: { 'nai-blue-auth': { state: { token: '', tier: 'opus' }, version: 2 } } },
         ])
     })
 })

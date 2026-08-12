@@ -41,14 +41,14 @@ function recoveredOutput(): OutputWriteResult {
     return {
         transactionId: 'txn-bound',
         fileName: 'queue-output.png',
-        path: 'C:/Pictures/NAIS_Output/queue-output.png',
-        file: { path: 'NAIS_Output/queue-output.png', displayPath: 'C:/Pictures/NAIS_Output/queue-output.png' },
-        directory: { path: 'NAIS_Output', displayPath: 'C:/Pictures/NAIS_Output', capabilityFallbackUsed: false },
+        path: 'C:/Pictures/NAI_Blue_Output/queue-output.png',
+        file: { path: 'NAI_Blue_Output/queue-output.png', displayPath: 'C:/Pictures/NAI_Blue_Output/queue-output.png' },
+        directory: { path: 'NAI_Blue_Output', displayPath: 'C:/Pictures/NAI_Blue_Output', capabilityFallbackUsed: false },
         capabilityFallbackUsed: false,
         finalImage: {
             contentChecksum: CHECKSUM,
             byteSize: 222,
-            portableDirectory: { kind: 'standard', root: 'pictures', segments: ['NAIS_Output'] },
+            portableDirectory: { kind: 'standard', root: 'pictures', segments: ['NAI_Blue_Output'] },
         },
     }
 }

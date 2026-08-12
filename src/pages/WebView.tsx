@@ -45,7 +45,7 @@ const DEFAULT_QUICK_LINKS: QuickLink[] = [
 ]
 
 const STORE_KEY = 'webview_quick_links'
-const BROWSER_STORE_KEY = 'nais2-webview-quick-links'
+const BROWSER_STORE_KEY = 'nai-blue-webview-quick-links'
 const WEBVIEW_RESIZE_THROTTLE_MS = 80
 
 interface WebViewRect {

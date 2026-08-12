@@ -30,7 +30,7 @@ check('getStoreSizes uses the full backup registry', /getStoreSizes[\s\S]*for\s*
 
 check('store snapshot scheduler exports start function', /export function startStoreSnapshotScheduler/.test(snapshots))
 check('store snapshot scheduler is Tauri guarded', /isTauri\(\)/.test(snapshots))
-check('store snapshots use the media root NAIS_Backup', /MEDIA_STORAGE_BASE_DIRECTORY/.test(snapshots) && /NAIS_Backup/.test(snapshots))
+check('store snapshots use the media root NAI_Blue_Backup', /MEDIA_STORAGE_BASE_DIRECTORY/.test(snapshots) && /NAI_Blue_Backup/.test(snapshots))
 check('store snapshots are debounced 5s', /DEBOUNCE_MS\s*=\s*5000/.test(snapshots))
 check('store snapshots keep max 30 per store', /MAX_SNAPSHOTS_PER_STORE\s*=\s*30/.test(snapshots))
 check('store snapshots subscribe to IndexedDB writes', /registerIndexedDBWriteListener/.test(snapshots))

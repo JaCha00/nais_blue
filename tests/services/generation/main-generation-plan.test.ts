@@ -37,9 +37,9 @@ function prepare(
         sequenceCommitProposal: null,
         output: {
             autoSave: true,
-            directory: 'NAIS_Output',
+            directory: 'NAI_Blue_Output',
             useAbsolutePath: false,
-            capabilityFallbackDirectory: 'NAIS_Output',
+            capabilityFallbackDirectory: 'NAI_Blue_Output',
             collisionPolicy: 'unique',
         },
         ...overrides,
@@ -71,9 +71,9 @@ describe('prepareMainGeneration', () => {
             streaming: false,
             sourceEdit: true,
             output: {
-                directory: 'NAIS_Output',
+                directory: 'NAI_Blue_Output',
                 useAbsolutePath: true,
-                capabilityFallbackDirectory: 'NAIS_Output',
+                capabilityFallbackDirectory: 'NAI_Blue_Output',
                 fileName: 'unsafe_name.webp',
                 collisionPolicy: 'overwrite',
             },

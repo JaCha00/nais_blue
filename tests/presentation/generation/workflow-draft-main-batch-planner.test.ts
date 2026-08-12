@@ -69,7 +69,7 @@ describe('Workflow Draft Main batch Planner', () => {
                 seed: 4242,
             },
             output: {
-                directory: 'NAIS_Output',
+                directory: 'NAI_Blue_Output',
                 collisionPolicy: 'unique',
             },
         })
@@ -276,7 +276,7 @@ describe('Workflow Draft Main batch Planner', () => {
                 prompt: { positive: '1girl, portrait', negative: '' },
                 output: {
                     ...source.payload.output,
-                    directory: 'NAIS_Output/batches/portraits',
+                    directory: 'NAI_Blue_Output/batches/portraits',
                     imageFormat: 'webp',
                 },
             },
@@ -296,7 +296,7 @@ describe('Workflow Draft Main batch Planner', () => {
         expect(prepared.every(item => (
             item.imageFormat === 'webp'
             && item.params.imageFormat === 'webp'
-            && item.output.directory === 'NAIS_Output/batches/portraits'
+            && item.output.directory === 'NAI_Blue_Output/batches/portraits'
         ))).toBe(true)
     })
 })

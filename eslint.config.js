@@ -43,9 +43,7 @@ export default [
             'dist/**',
             'node_modules/**',
             'NAI-Blue-main/**',
-            'legacy/**',
             'src-tauri/**',
-            'stylelab-frontend-sources-*/**',
         ],
     },
     {

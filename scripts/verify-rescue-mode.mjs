@@ -64,10 +64,10 @@ async function main() {
             return route.abort()
         })
         await page.addInitScript(() => {
-            window.__naisRescueDbOpenCount = 0
+            window.__naiBlueRescueDbOpenCount = 0
             const blockedFactory = {
                 open() {
-                    window.__naisRescueDbOpenCount += 1
+                    window.__naiBlueRescueDbOpenCount += 1
                     const request = {
                         error: null,
                         onblocked: null,
@@ -89,7 +89,7 @@ async function main() {
         const rescue = page.locator('main[data-startup-mode="rescue"]')
         await rescue.waitFor({ state: 'visible' })
         assert.equal(await page.locator('[data-testid="main-generate-action"], [data-testid="scene-generate-action"]').count(), 0)
-        assert.match(await rescue.textContent(), /NAIS_Backup\/full/)
+        assert.match(await rescue.textContent(), /NAI_Blue_Backup\/full/)
 
         const buttons = rescue.locator('button')
         assert.equal(await buttons.count(), 3)
@@ -99,15 +99,15 @@ async function main() {
         }
 
         const retry = page.getByRole('button', { name: '데이터베이스 다시 시도' })
-        const initialOpenCount = await page.evaluate(() => window.__naisRescueDbOpenCount)
+        const initialOpenCount = await page.evaluate(() => window.__naiBlueRescueDbOpenCount)
         await retry.focus()
         await page.keyboard.press('Enter')
-        await page.waitForFunction(count => window.__naisRescueDbOpenCount > count, initialOpenCount)
+        await page.waitForFunction(count => window.__naiBlueRescueDbOpenCount > count, initialOpenCount)
         await rescue.waitFor({ state: 'visible' })
 
-        const keyboardOpenCount = await page.evaluate(() => window.__naisRescueDbOpenCount)
+        const keyboardOpenCount = await page.evaluate(() => window.__naiBlueRescueDbOpenCount)
         await page.getByRole('button', { name: '데이터베이스 다시 시도' }).tap()
-        await page.waitForFunction(count => window.__naisRescueDbOpenCount > count, keyboardOpenCount)
+        await page.waitForFunction(count => window.__naiBlueRescueDbOpenCount > count, keyboardOpenCount)
         await page.locator('main[data-startup-mode="rescue"]').waitFor({ state: 'visible' })
 
         console.log('Rescue mode keyboard/touch contract passed (blocked IndexedDB; normal generation UI absent).')

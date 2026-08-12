@@ -23,7 +23,7 @@ function repository(label: string): IndexedDBArtifactRepository {
 
 function policy(): DistributionPolicy {
     return {
-        destination: { kind: 'standard', root: 'app-data', segments: ['nais2', 'organizer', 'distributions'] },
+        destination: { kind: 'standard', root: 'app-data', segments: ['nai-blue', 'organizer', 'distributions'] },
         filenameTemplate: '{original.name}-distribution',
         collisionPolicy: 'unique',
         format: 'png',
@@ -59,7 +59,7 @@ async function putOriginal(repo: IndexedDBArtifactRepository, artifactId = 'arti
         artifactId,
         sourceJobId: 'job-1',
         sourceSceneId: 'scene-1',
-        file: { directory: { kind: 'standard', root: 'app-data', segments: ['nais2', 'organizer', 'sources'] }, fileName: `${artifactId}.png` },
+        file: { directory: { kind: 'standard', root: 'app-data', segments: ['nai-blue', 'organizer', 'sources'] }, fileName: `${artifactId}.png` },
         format: 'png',
         contentChecksum: checksum,
         size: 123,
@@ -78,7 +78,7 @@ describe('Organizer artifact repository', () => {
             file: { directory: policy().destination, fileName: 'portrait-distribution.png' },
             contentChecksum: HASH_B,
             size: 98,
-            sidecar: { file: { directory: policy().destination, fileName: 'portrait-distribution.nais-blue.artifact.json' }, digest: HASH_A },
+            sidecar: { file: { directory: policy().destination, fileName: 'portrait-distribution.nai-blue.artifact.json' }, digest: HASH_A },
             updatedAt: NOW,
         }), NOW)
 
@@ -94,7 +94,7 @@ describe('Organizer artifact repository', () => {
         }, NOW)
 
         expect(completed.original.contentChecksum).toBe(HASH_A)
-        expect(linked.sidecar?.file.fileName).toBe('portrait-distribution.nais-blue.artifact.json')
+        expect(linked.sidecar?.file.fileName).toBe('portrait-distribution.nai-blue.artifact.json')
         expect(linked.remoteObjectRefs).toEqual([expect.objectContaining({ artifactId: 'artifact-1', variantId: 'distribution-1' })])
         await expect(putOriginal(repo, 'artifact-1', HASH_B)).rejects.toMatchObject({ code: 'E_ARTIFACT_ORIGINAL_IMMUTABLE' })
     })

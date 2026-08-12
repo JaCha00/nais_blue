@@ -77,7 +77,7 @@ function baseSnapshot(): MainCompositionSnapshot {
         params: defaultParams(),
         output: {
             autoSave: false,
-            savePath: 'NAIS_Output',
+            savePath: 'NAI_Blue_Output',
             useAbsolutePath: false,
             imageFormat: 'png',
             metadataMode: 'embedded',
@@ -384,11 +384,11 @@ describe('Main composition direct adapter', () => {
         expect(plan.outputPolicy).toMatchObject({
             destination: { kind: 'memory' },
             format: 'png',
-            filenameTemplate: 'NAIS_{timestamp}',
+            filenameTemplate: 'NAI_Blue_{timestamp}',
             metadataMode: 'embedded',
         })
         expect(resolution.output).toMatchObject({
-            directory: 'NAIS_Output',
+            directory: 'NAI_Blue_Output',
             format: 'png',
             metadataMode: 'embedded',
         })
@@ -905,7 +905,7 @@ describe('Main composition settings and filename policy', () => {
         snapshot.output = {
             ...snapshot.output,
             autoSave: true,
-            savePath: 'C:\\Users\\Example\\Pictures\\NAIS',
+            savePath: 'C:\\Users\\Example\\Pictures\\NAI Blue',
         }
 
         const resolution = resolveMainComposition(adapterInput(snapshot))
@@ -920,12 +920,12 @@ describe('Main composition settings and filename policy', () => {
             },
         })
         expect(resolution.output).toMatchObject({
-            directory: 'C:\\Users\\Example\\Pictures\\NAIS',
+            directory: 'C:\\Users\\Example\\Pictures\\NAI Blue',
             useAbsolutePath: true,
-            capabilityFallbackDirectory: 'NAIS_Output',
+            capabilityFallbackDirectory: 'NAI_Blue_Output',
         })
         const movedSnapshot = structuredClone(snapshot)
-        movedSnapshot.output.savePath = 'D:\\Portable\\NAIS'
+        movedSnapshot.output.savePath = 'D:\\Portable\\NAI Blue'
         const moved = successfulPlan(resolveMainComposition(adapterInput(movedSnapshot)))
         expect(moved.planHash).toEqual(plan.planHash)
     })
@@ -935,7 +935,7 @@ describe('Main composition settings and filename policy', () => {
         snapshot.output = {
             ...snapshot.output,
             autoSave: true,
-            savePath: 'NAIS_Output/mobile',
+            savePath: 'NAI_Blue_Output/mobile',
             portableRoot: 'app-data',
         }
 
@@ -947,13 +947,13 @@ describe('Main composition settings and filename policy', () => {
             directory: {
                 kind: 'standard',
                 root: 'app-data',
-                segments: ['NAIS_Output', 'mobile'],
+                segments: ['NAI_Blue_Output', 'mobile'],
             },
         })
         expect(resolution.output?.portableDirectory).toEqual({
             kind: 'standard',
             root: 'app-data',
-            segments: ['NAIS_Output', 'mobile'],
+            segments: ['NAI_Blue_Output', 'mobile'],
         })
     })
 

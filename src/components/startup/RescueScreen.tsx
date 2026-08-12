@@ -71,10 +71,10 @@ export function RescueScreen({ diagnostic, onRetry }: RescueScreenProps) {
                     <div className="min-w-0 text-sm leading-6">
                         <h2 className="font-semibold">백업 위치</h2>
                         <p className="text-muted-foreground">
-                            데스크톱: Pictures/NAIS_Backup/full · Android: AppData/NAIS_Backup/full
+                            데스크톱: Pictures/NAI_Blue_Backup/full · Android: AppData/NAI_Blue_Backup/full
                         </p>
                         <p className="text-muted-foreground">
-                            스토어별 스냅샷은 NAIS_Backup/&lt;store-key&gt;에 있습니다.
+                            스토어별 스냅샷은 NAI_Blue_Backup/&lt;store-key&gt;에 있습니다.
                         </p>
                     </div>
                 </div>

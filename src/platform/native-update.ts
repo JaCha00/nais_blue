@@ -18,8 +18,5 @@ export interface NativeUpdate {
  * contained here while download, install, and progress behavior stay intact.
  */
 export async function checkForNativeUpdate(): Promise<NativeUpdate | null> {
-    // The public version line restarted at 1.0.0 without resetting app data or
-    // functionality. Existing 2.x installs therefore need one intentional
-    // semver downgrade to enter the NAI Blue release line.
-    return check({ allowDowngrades: true })
+    return check()
 }

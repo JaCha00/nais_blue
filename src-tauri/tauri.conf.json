@@ -3,7 +3,7 @@
   "productName": "NAI Blue",
   "mainBinaryName": "NAI-Blue",
   "version": "1.0.0",
-  "identifier": "com.bluhair.naisblue",
+  "identifier": "blue.bluehair.naiblue",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:9090",

@@ -20,7 +20,7 @@ function record(
         sourceJobId,
         sourceSceneId: sourceJobId === null ? null : 'scene:history',
         file: {
-            directory: { kind: 'standard', root: 'pictures', segments: ['NAIS_Output'] },
+            directory: { kind: 'standard', root: 'pictures', segments: ['NAI_Blue_Output'] },
             fileName,
         },
         format: 'png',
@@ -31,8 +31,8 @@ function record(
 }
 
 function platform(resolveDirectory = vi.fn(async (_request: OutputDestinationRequest): Promise<ResolvedOutputDirectory> => ({
-    path: 'NAIS_Output',
-    displayPath: 'C:\\Pictures\\NAIS_Output',
+    path: 'NAI_Blue_Output',
+    displayPath: 'C:\\Pictures\\NAI_Blue_Output',
     capabilityFallbackUsed: false,
 }))) {
     return { resolveDirectory }
@@ -51,20 +51,20 @@ describe('Artifact History shadow', () => {
 
         const shadow = await buildArtifactHistoryShadow([{
             name: 'queued.png',
-            path: 'c:/pictures/nais_output/queued.png',
+            path: 'c:/pictures/nai_blue_output/queued.png',
         }, {
             name: 'disk-only.png',
-            path: 'C:\\Pictures\\NAIS_Output\\disk-only.png',
+            path: 'C:\\Pictures\\NAI_Blue_Output\\disk-only.png',
         }], repository, runtime)
 
-        expect(shadow.lineageByPath.get(artifactHistoryPathKey('C:\\Pictures\\NAIS_Output\\queued.png'))).toEqual({
+        expect(shadow.lineageByPath.get(artifactHistoryPathKey('C:\\Pictures\\NAI_Blue_Output\\queued.png'))).toEqual({
             artifactId: 'artifact:job:history',
             sourceJobId: 'job:history',
             sourceSceneId: 'scene:history',
         })
         expect(shadow.unmatchedArtifactIds).toEqual(['artifact:missing'])
         expect(shadow.unmatchedDiskPaths).toEqual([
-            artifactHistoryPathKey('C:\\Pictures\\NAIS_Output\\disk-only.png'),
+            artifactHistoryPathKey('C:\\Pictures\\NAI_Blue_Output\\disk-only.png'),
         ])
         expect(runtime.resolveDirectory).toHaveBeenCalledTimes(1)
         expect(repository.list).toHaveBeenNthCalledWith(1, { cursor: null, limit: 500 })

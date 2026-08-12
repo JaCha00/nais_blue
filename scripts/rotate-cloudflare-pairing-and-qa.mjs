@@ -17,12 +17,12 @@ const arguments_ = new Set(process.argv.slice(2))
 const dryRun = arguments_.delete('--dry-run')
 if (arguments_.size > 0) throw new Error(`Unknown argument: ${[...arguments_][0]}`)
 
-const endpoint = process.env.NAIS_WORKER_URL?.trim().replace(/\/$/, '')
-if (!endpoint) throw new Error('NAIS_WORKER_URL is required.')
+const endpoint = process.env.NAI_BLUE_WORKER_URL?.trim().replace(/\/$/, '')
+if (!endpoint) throw new Error('NAI_BLUE_WORKER_URL is required.')
 const endpointUrl = new URL(endpoint)
 if (endpointUrl.protocol !== 'https:' || endpointUrl.username || endpointUrl.password
     || endpointUrl.search || endpointUrl.hash) {
-    throw new Error('NAIS_WORKER_URL must be a credential-free HTTPS base URL.')
+    throw new Error('NAI_BLUE_WORKER_URL must be a credential-free HTTPS base URL.')
 }
 
 await Promise.all([access(wranglerCli), access(qaScript)])
@@ -179,8 +179,8 @@ await waitForEdgeVersion(secretVersionId)
 await run(process.execPath, [qaScript], {
     env: {
         ...process.env,
-        NAIS_WORKER_URL: endpoint,
-        NAIS_PAIRING_CAPABILITY: capability,
+        NAI_BLUE_WORKER_URL: endpoint,
+        NAI_BLUE_PAIRING_CAPABILITY: capability,
     },
 })
 capabilityBytes.fill(0)

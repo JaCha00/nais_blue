@@ -22,10 +22,10 @@ describe('native file dialog adapter', () => {
     })
 
     it('forwards save options and the selected path', async () => {
-        dialog.save.mockResolvedValue('C:\\NAIS\\image.png')
+        dialog.save.mockResolvedValue('C:\\NAI Blue\\image.png')
         const options = { defaultPath: 'image.png' }
 
-        await expect(saveNativeFileDialog(options)).resolves.toBe('C:\\NAIS\\image.png')
+        await expect(saveNativeFileDialog(options)).resolves.toBe('C:\\NAI Blue\\image.png')
         expect(dialog.save).toHaveBeenCalledWith(options)
     })
 })

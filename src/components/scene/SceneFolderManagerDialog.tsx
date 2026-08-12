@@ -251,7 +251,7 @@ export function SceneFolderManagerDialog({ open, onOpenChange }: SceneFolderMana
 
     const rootLabel = useAbsoluteScenePath
         ? (sceneSavePath || t('scene.folderManager.defaultRoot', '최초 저장 폴더'))
-        : `Pictures/${sceneSavePath || 'NAIS_Scene'}`
+        : `Pictures/${sceneSavePath || 'NAI_Blue_Scene'}`
 
     const toggleFolder = (id: string) => {
         setSelected(current => {

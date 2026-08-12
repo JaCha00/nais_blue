@@ -68,7 +68,7 @@ export const useUpdateStore = create<UpdateStore>()(
             },
         }),
         {
-            name: 'nais2-update',
+            name: 'nai-blue-update',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => ({
                 // Only persist pendingUpdate info, not the actual Update object

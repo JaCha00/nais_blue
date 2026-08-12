@@ -7,7 +7,7 @@ const persistence = vi.hoisted(() => ({
 
 vi.mock('@/lib/indexed-db', () => ({
     indexedDBStorage: {
-        getItem: async (name: string) => name === 'nais2-generation' ? persistence.value : null,
+        getItem: async (name: string) => name === 'nai-blue-generation' ? persistence.value : null,
         setItem: async (_name: string, value: string) => { persistence.writes.push(value) },
         removeItem: async () => undefined,
     },

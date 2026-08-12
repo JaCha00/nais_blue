@@ -90,7 +90,7 @@ export const useTrashStore = create<TrashState>()(
             },
         }),
         {
-            name: 'nais2-trash',
+            name: 'nai-blue-trash',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: state => ({ items: state.items }),
         },

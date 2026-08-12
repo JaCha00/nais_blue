@@ -29,7 +29,7 @@ export const useLayoutStore = create<LayoutState>()(
             closeSupportSheet: () => set({ supportSheet: null }),
         }),
         {
-            name: 'nais2-layout',
+            name: 'nai-blue-layout',
             storage: createJSONStorage(() => indexedDBStorage),
             // Dock preferences survive restarts; an open modal surface does not.
             partialize: ({ leftSidebarVisible, rightSidebarVisible }) => ({

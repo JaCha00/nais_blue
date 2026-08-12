@@ -99,7 +99,7 @@ check('scene params exclude pinned prompts per scene', includesAll(buildScenePar
 check('scene output path helper owns normal and rotation directories', includesAll(sceneOutputPath, [
   'resolveSceneOutputPath',
   'getRotationCharacterFolderName',
-  "request.sceneSavePath || 'NAIS_Scene'",
+  "request.sceneSavePath || 'NAI_Blue_Scene'",
   'const pathSegments = [sceneRoot, safePresetName',
   'safeCharacterName ? [safeCharacterName] : []',
   'MEDIA_STORAGE_BASE_DIRECTORY',

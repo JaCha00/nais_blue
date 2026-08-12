@@ -1,7 +1,7 @@
 import { createHash, randomBytes, webcrypto } from 'node:crypto'
 
-const endpoint = process.env.NAIS_WORKER_URL?.replace(/\/$/, '')
-const capability = process.env.NAIS_PAIRING_CAPABILITY
+const endpoint = process.env.NAI_BLUE_WORKER_URL?.replace(/\/$/, '')
+const capability = process.env.NAI_BLUE_PAIRING_CAPABILITY
 if (!endpoint || !capability) throw new Error('Live Cloudflare QA environment is unavailable.')
 if (new URL(endpoint).protocol !== 'https:') throw new Error('Live Cloudflare QA requires HTTPS.')
 
@@ -40,13 +40,13 @@ async function device(deviceId) {
                 method,
                 headers: {
                     'content-type': 'application/json',
-                    'x-nais-device': deviceId,
-                    'x-nais-sequence': String(requestSequence),
-                    'x-nais-nonce': nonce,
-                    'x-nais-timestamp': String(timestamp),
-                    'x-nais-idempotency': operation,
-                    'x-nais-content-sha256': bodyHash,
-                    'x-nais-signature': base64Url(signature),
+                    'x-nai-blue-device': deviceId,
+                    'x-nai-blue-sequence': String(requestSequence),
+                    'x-nai-blue-nonce': nonce,
+                    'x-nai-blue-timestamp': String(timestamp),
+                    'x-nai-blue-idempotency': operation,
+                    'x-nai-blue-content-sha256': bodyHash,
+                    'x-nai-blue-signature': base64Url(signature),
                     ...extra,
                 },
                 body: method === 'GET' ? undefined : body,
@@ -60,14 +60,14 @@ async function pair(subject, pairingCapability) {
         method: 'POST',
         headers: {
             'content-type': 'application/json',
-            'x-nais-pairing-capability': pairingCapability,
+            'x-nai-blue-pairing-capability': pairingCapability,
         },
         body: JSON.stringify({ deviceId: subject.deviceId, publicKeySpki: subject.publicKeySpki }),
     })
 }
 
-const primary = await device(unique('nais-live'))
-const stranger = await device(unique('nais-unpaired'))
+const primary = await device(unique('nai-blue-live'))
+const stranger = await device(unique('nai-blue-unpaired'))
 const unknownTransfer = unique('unknown')
 await expectStatus(
     await fetch(`${endpoint}/v1/transfers/${unknownTransfer}/status`, await stranger.signed('GET', `/v1/transfers/${unknownTransfer}/status`)),
@@ -111,7 +111,7 @@ const part = await expectStatus(
         partPath,
         payload,
         unique('part'),
-        { 'content-type': 'application/octet-stream', 'x-nais-part-sha256': sha256(payload) },
+        { 'content-type': 'application/octet-stream', 'x-nai-blue-part-sha256': sha256(payload) },
     )),
     200,
     'part upload',
@@ -131,7 +131,7 @@ const completed = await expectStatus(
     200,
     'complete',
 )
-if (completed.state !== 'succeeded' || !completed.r2Reference?.key?.startsWith('nais/')) {
+if (completed.state !== 'succeeded' || !completed.r2Reference?.key?.startsWith('nai-blue/')) {
     throw new Error('R2 reference contract failed.')
 }
 
@@ -162,7 +162,7 @@ await expectStatus(
         latePartPath,
         payload,
         unique('late'),
-        { 'content-type': 'application/octet-stream', 'x-nais-part-sha256': sha256(payload) },
+        { 'content-type': 'application/octet-stream', 'x-nai-blue-part-sha256': sha256(payload) },
     )),
     409,
     'late part after cancel',
@@ -179,4 +179,4 @@ await expectStatus(
     'request after revoke',
 )
 
-console.log('LIVE_CLOUDFLARE_QA_OK unpaired=denied pairing=one-use replay=denied duplicate=stable checkpoint=acknowledged r2=nais tombstone=preserved revoke=denied')
+console.log('LIVE_CLOUDFLARE_QA_OK unpaired=denied pairing=one-use replay=denied duplicate=stable checkpoint=acknowledged r2=nai-blue tombstone=preserved revoke=denied')

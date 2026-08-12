@@ -80,7 +80,7 @@ function sceneOutputDirectory(params: {
     if (params.exactDirectory?.trim()) {
         return {
             directory: params.exactDirectory,
-            capabilityFallbackDirectory: params.exactCapabilityFallbackDirectory?.trim() || 'NAIS_Scene',
+            capabilityFallbackDirectory: params.exactCapabilityFallbackDirectory?.trim() || 'NAI_Blue_Scene',
             nestedSegments: [],
         }
     }
@@ -93,14 +93,14 @@ function sceneOutputDirectory(params: {
         ? sanitizePathComponent(params.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(params.rotationCharacterId)
     const nestedSegments = [...safePresetPath, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
-    const relativeRoot = sanitizePathComponent(params.sceneSavePath || 'NAIS_Scene', 'NAIS_Scene')
+    const relativeRoot = sanitizePathComponent(params.sceneSavePath || 'NAI_Blue_Scene', 'NAI_Blue_Scene')
     const relativeDirectory = [relativeRoot, ...nestedSegments].join('/')
     const requestedRoot = params.sceneSavePath.replace(/[\\/]+$/, '')
     return {
         directory: params.useAbsoluteScenePath && requestedRoot
             ? [requestedRoot, ...nestedSegments].join('/')
             : relativeDirectory,
-        capabilityFallbackDirectory: ['NAIS_Scene', ...nestedSegments].join('/'),
+        capabilityFallbackDirectory: ['NAI_Blue_Scene', ...nestedSegments].join('/'),
         nestedSegments,
     }
 }
@@ -135,7 +135,7 @@ export async function saveSceneResult(
         ?? outputDefaults.presetPathSegments
     const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
-    const fallbackFileName = `NAIS_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
+    const fallbackFileName = `NAI_Blue_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
     const policyFileName = params.outputPolicySummary?.filenameTemplateId
         ? renderFilenameTemplate({
             template: params.outputPolicySummary.filenameTemplateId,
@@ -206,7 +206,7 @@ export async function saveSceneResult(
                 directory: destination.directory,
                 useAbsolutePath: useAbsoluteScenePath,
                 capabilityFallbackDirectory: destination.capabilityFallbackDirectory,
-                workflowDefaultDirectory: 'NAIS_Scene',
+                workflowDefaultDirectory: 'NAI_Blue_Scene',
                 fileName,
                 extension: fileExt,
                 collisionPolicy: params.outputPolicySummary?.collisionPolicy ?? 'unique',

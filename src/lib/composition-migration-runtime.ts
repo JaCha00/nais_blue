@@ -19,7 +19,7 @@ import {
 } from '@/domain/composition/migrations/legacy-stores-to-v2'
 import type { MigrationReport } from '@/domain/composition/migrations/report-types'
 
-export const RAW_MIGRATION_BACKUP_FORMAT = 'nais2-composition-raw-migration-backup' as const
+export const RAW_MIGRATION_BACKUP_FORMAT = 'nai-blue-composition-raw-migration-backup' as const
 export const RAW_MIGRATION_BACKUP_SCHEMA_VERSION = 1 as const
 export const COMPOSITION_MIGRATION_POST_COMMIT_SOURCE_CHANGED = 'E_MIGRATION_POST_COMMIT_SOURCE_CHANGED' as const
 

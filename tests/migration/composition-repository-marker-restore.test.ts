@@ -37,14 +37,14 @@ describe('Composition repository marker restore integrity', () => {
         const prepared = prepareBackupRestore({
             _version: '2.3',
             _exportedAt: NOW,
-            'nais2-composition-repository': repository,
+            'nai-blue-composition-repository': repository,
         })
 
         expect(prepared.report.canRestore).toBe(false)
         expect(prepared.report.errors).toContainEqual(expect.objectContaining({
             code: 'E_COMPOSITION_REPOSITORY_INVALID',
-            key: 'nais2-composition-repository',
+            key: 'nai-blue-composition-repository',
         }))
-        expect(prepared.restorePayload).not.toHaveProperty('nais2-composition-repository')
+        expect(prepared.restorePayload).not.toHaveProperty('nai-blue-composition-repository')
     })
 })

@@ -229,7 +229,7 @@ export function GenerationFolderManagerDialog({
                                 <label className="grid gap-1 text-xs font-medium">
                                     <span>{t('generationFolders.manager.rootPath', '로컬 최상위 경로')}</span>
                                     <div className="flex gap-2">
-                                        <Input value={rootDirectory} onChange={event => setRootDirectory(event.target.value)} placeholder="NAIS_Output" />
+                                        <Input value={rootDirectory} onChange={event => setRootDirectory(event.target.value)} placeholder="NAI_Blue_Output" />
                                         <Button type="button" variant="outline" size="icon" aria-label={t('generationFolders.manager.browse', '폴더 찾아보기')} onClick={() => void browse()}><FolderOpen className="h-4 w-4" /></Button>
                                     </div>
                                     <span className="flex min-h-8 items-center gap-2 font-normal text-muted-foreground">

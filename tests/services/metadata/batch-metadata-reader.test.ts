@@ -51,10 +51,10 @@ describe('batch metadata reader', () => {
 
     it('reads a real NAI Blue sidecar through the production parser', async () => {
         const fixture = readFileSync(
-            new URL('../../fixtures/metadata/data-hub-sample.nais-blue.json', import.meta.url),
+            new URL('../../fixtures/metadata/data-hub-sample.nai-blue.json', import.meta.url),
             'utf8',
         )
-        const sidecar = new File([fixture], 'data-hub-sample.nais-blue.json', {
+        const sidecar = new File([fixture], 'data-hub-sample.nai-blue.json', {
             type: 'application/json',
             lastModified: 1_753_478_400_000,
         })
@@ -63,7 +63,7 @@ describe('batch metadata reader', () => {
 
         expect(items[0]).toMatchObject({
             status: 'found',
-            fileName: 'data-hub-sample.nais-blue.json',
+            fileName: 'data-hub-sample.nai-blue.json',
             metadata: {
                 prompt: '1girl, blue hour portrait, quiet expression',
                 model: 'nai-diffusion-4-5-full',

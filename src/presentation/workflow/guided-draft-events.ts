@@ -1,5 +1,5 @@
-export const GUIDED_DRAFTS_CHANGED_EVENT = 'nais:guided-drafts-changed'
-export const GUIDED_QUEUE_ACTIVITY_REFRESH_EVENT = 'nais:guided-queue-activity-refresh'
+export const GUIDED_DRAFTS_CHANGED_EVENT = 'nai-blue:guided-drafts-changed'
+export const GUIDED_QUEUE_ACTIVITY_REFRESH_EVENT = 'nai-blue:guided-queue-activity-refresh'
 
 /** Keeps the Guided activity rail current without adding another polling loop. */
 export function announceGuidedDraftChange(): void {

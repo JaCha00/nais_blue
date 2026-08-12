@@ -15,14 +15,14 @@ describe('native shell adapter', () => {
     })
 
     it('forwards file and directory opening to the native plugin', async () => {
-        await openNativePath('C:\\NAIS\\Output')
+        await openNativePath('C:\\NAI Blue\\Output')
 
-        expect(opener.openPath).toHaveBeenCalledWith('C:\\NAIS\\Output')
+        expect(opener.openPath).toHaveBeenCalledWith('C:\\NAI Blue\\Output')
     })
 
     it('forwards item reveal without changing its path', async () => {
-        await revealNativeItem('C:\\NAIS\\Output\\image.png')
+        await revealNativeItem('C:\\NAI Blue\\Output\\image.png')
 
-        expect(opener.revealItemInDir).toHaveBeenCalledWith('C:\\NAIS\\Output\\image.png')
+        expect(opener.revealItemInDir).toHaveBeenCalledWith('C:\\NAI Blue\\Output\\image.png')
     })
 })

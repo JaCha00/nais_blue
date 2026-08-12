@@ -9,7 +9,7 @@ import {
     canonicalRequest,
     parseSignedMetadata,
     validateStartTransfer,
-} from '../../../cloudflare/nais-transfer-worker/src/protocol'
+} from '../../../cloudflare/nai-blue-transfer-worker/src/protocol'
 
 const ROOT = process.cwd()
 const source = (path: string): Promise<string> => readFile(resolve(ROOT, path), 'utf8')
@@ -17,13 +17,13 @@ const source = (path: string): Promise<string> => readFile(resolve(ROOT, path), 
 describe('Cloudflare transfer protocol', () => {
     it('canonicalizes bounded signed requests without credential or payload material', () => {
         const headers = new Headers({
-            'x-nais-device': 'device-qa-0001',
-            'x-nais-sequence': '7',
-            'x-nais-nonce': 'abcdefghijklmnopqrstuv',
-            'x-nais-timestamp': '1784090000000',
-            'x-nais-idempotency': 'op:abc123',
-            'x-nais-content-sha256': `sha256:${'a'.repeat(64)}`,
-            'x-nais-signature': 'A'.repeat(86),
+            'x-nai-blue-device': 'device-qa-0001',
+            'x-nai-blue-sequence': '7',
+            'x-nai-blue-nonce': 'abcdefghijklmnopqrstuv',
+            'x-nai-blue-timestamp': '1784090000000',
+            'x-nai-blue-idempotency': 'op:abc123',
+            'x-nai-blue-content-sha256': `sha256:${'a'.repeat(64)}`,
+            'x-nai-blue-signature': 'A'.repeat(86),
         })
         const metadata = parseSignedMetadata(headers)
         expect(canonicalRequest('post', '/v1/transfers/job-1/start', metadata)).toBe([
@@ -65,11 +65,11 @@ describe('Cloudflare transfer protocol', () => {
 
     it('keeps replay, idempotency, tombstone, and no-late-commit state in Durable Object storage', async () => {
         const [worker, wrangler, rotation, executor, credentialStore] = await Promise.all([
-            source('cloudflare/nais-transfer-worker/src/index.ts'),
+            source('cloudflare/nai-blue-transfer-worker/src/index.ts'),
             source('wrangler.toml'),
             source('scripts/rotate-cloudflare-pairing-and-qa.mjs'),
-            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareTransferExecutor.kt'),
-            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareCredentialStore.kt'),
+            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/blue/bluehair/naiblue/transfer/CloudflareTransferExecutor.kt'),
+            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/blue/bluehair/naiblue/transfer/CloudflareCredentialStore.kt'),
         ])
 
         for (const evidence of [
@@ -84,7 +84,7 @@ describe('Cloudflare transfer protocol', () => {
         ]) expect(worker).toContain(evidence)
         expect(wrangler).toContain('new_sqlite_classes = ["TransferStateObject"]')
         expect(wrangler).toContain('bucket_name = "prime"')
-        expect(wrangler).toContain('R2_PREFIX = "nais"')
+        expect(wrangler).toContain('R2_PREFIX = "nai-blue"')
         expect(wrangler).toContain('binding = "CF_VERSION_METADATA"')
         expect(worker).toContain("url.pathname === '/v1/ready'")
         expect(worker).toContain('env.CF_VERSION_METADATA.id')

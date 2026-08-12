@@ -419,7 +419,7 @@ function GuidedDirectPromptTask() {
                     autoSave: settings.autoSave,
                     directory: settings.savePath,
                     useAbsolutePath: settings.useAbsolutePath,
-                    capabilityFallbackDirectory: 'NAIS_Output',
+                    capabilityFallbackDirectory: 'NAI_Blue_Output',
                     imageFormat: settings.imageFormat,
                     metadataMode: settings.metadataMode,
                     collisionPolicy: 'unique',

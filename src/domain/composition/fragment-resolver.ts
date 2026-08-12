@@ -142,7 +142,7 @@ function compareStableText(left: string, right: string): number {
 }
 
 /**
- * Accepts both NAI Blue path conveniences and NAIS3's spaces-around-slash form.
+ * Accepts path segments with optional whitespace around separators.
  * Lookup is case-insensitive, while the returned fragment ID remains unchanged.
  */
 export function normalizeFragmentLookupPath(path: string): string {
@@ -518,7 +518,7 @@ function resolveParenthesisSyntax(text: string, state: ResolverState): string {
 
 /**
  * Simple slash choices are processed per line. This keeps NAI Blue's grammar but
- * adopts NAIS3's newline-preserving fix instead of collapsing prompt comments.
+ * preserves newlines instead of collapsing prompt comments.
  */
 function resolveSimpleSlashSyntax(text: string, state: ResolverState): string {
     return text

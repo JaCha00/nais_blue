@@ -629,7 +629,7 @@ export const useSceneStore = create<SceneState>()(
                         newFolderPath = await joinNativePath(sceneSavePath, ...safePresetSegments, safeNewName)
                     } else {
                         const baseDir = await getMediaStorageRoot()
-                        const sceneRoot = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
+                        const sceneRoot = (sceneSavePath || 'NAI_Blue_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAI_Blue_Scene'
                         oldFolderPath = await joinNativePath(baseDir, sceneRoot, ...safePresetSegments, safeOldName)
                         newFolderPath = await joinNativePath(baseDir, sceneRoot, ...safePresetSegments, safeNewName)
                     }
@@ -1495,7 +1495,7 @@ export const useSceneStore = create<SceneState>()(
             setScrollPosition: (position) => set({ scrollPosition: position }),
         }),
         {
-            name: 'nais2-scenes',
+            name: 'nai-blue-scenes',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => {
                 // Images are stored as file paths, not base64 - storage is minimal per entry

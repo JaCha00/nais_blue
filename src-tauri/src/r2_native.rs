@@ -6,9 +6,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const R2_CREDENTIAL_SERVICE: &str = "com.bluhair.naisblue.r2";
+const R2_CREDENTIAL_SERVICE: &str = "blue.bluehair.naiblue.r2";
 const R2_HASH_METADATA_KEY: &str = "nai-blue-sha256";
-const PRE_RENAME_R2_HASH_METADATA_KEY: &str = "nais2-sha256";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -600,7 +599,6 @@ mod desktop {
                     .and_then(|metadata| {
                         metadata
                             .get(R2_HASH_METADATA_KEY)
-                            .or_else(|| metadata.get(PRE_RENAME_R2_HASH_METADATA_KEY))
                     })
                     .cloned(),
                 etag: output.e_tag().map(str::to_string),

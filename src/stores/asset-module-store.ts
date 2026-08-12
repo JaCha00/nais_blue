@@ -20,7 +20,7 @@ import {
     type AssetRecipe,
 } from '@/types/asset-profile'
 
-export const ASSET_MODULE_STORE_KEY = 'nais2-asset-modules'
+export const ASSET_MODULE_STORE_KEY = 'nai-blue-asset-modules'
 
 interface AssetModuleStoreState {
     profile: AssetProfile

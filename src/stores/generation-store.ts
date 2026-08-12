@@ -362,10 +362,10 @@ function hasVolatileFilenameTime(template: string): boolean {
 
 function directMainFilenameTemplate(sourceImage: string | null, mask: string | null): string {
     return mask
-        ? 'NAIS_INPAINT_{timestamp}'
+        ? 'NAI_Blue_INPAINT_{timestamp}'
         : sourceImage
-            ? 'NAIS_I2I_{timestamp}'
-            : 'NAIS_{timestamp}'
+            ? 'NAI_Blue_I2I_{timestamp}'
+            : 'NAI_Blue_{timestamp}'
 }
 
 function legacyShadowOutputSemantics(params: {
@@ -384,7 +384,7 @@ function legacyShadowOutputSemantics(params: {
         recipeId: params.modulePlan?.recipeId ?? params.directRecipeId,
         directory: params.modulePlan?.output.directory
             || params.settings.savePath
-            || 'NAIS_Output',
+            || 'NAI_Blue_Output',
         filenameTemplate: template,
         ...(!hasVolatileFilenameTime(template) && params.modulePlan?.output.fileName
             ? { renderedFileName: ensureImageFileExtension(params.modulePlan.output.fileName, format) ?? undefined }
@@ -392,7 +392,7 @@ function legacyShadowOutputSemantics(params: {
         format,
         metadataMode: params.modulePlan?.output.metadataMode ?? params.settings.metadataMode,
         useAbsolutePath: shouldUseAbsoluteMediaPath(params.settings.useAbsolutePath),
-        capabilityFallbackDirectory: params.settings.savePath || 'NAIS_Output',
+        capabilityFallbackDirectory: params.settings.savePath || 'NAI_Blue_Output',
     }
 }
 
@@ -1525,7 +1525,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     ?? v2Output?.useAbsolutePath
                                     ?? useAbsolutePath,
                                 capabilityFallbackDirectory: explicitOutputFolder
-                                    ? explicitOutputFolder.useAbsolutePath ? 'NAIS_Output' : explicitOutputFolder.directory
+                                    ? explicitOutputFolder.useAbsolutePath ? 'NAI_Blue_Output' : explicitOutputFolder.directory
                                     : v2Output?.capabilityFallbackDirectory
                                     || savePath,
                                 ...(v2Output?.portableDirectory === undefined
@@ -1672,7 +1672,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     }
                                     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
                                     const fileName = preparedOutput.fileName
-                                        ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
+                                        ?? `NAI_Blue_${typePrefix}${Date.now()}.${fileExt}`
                                     const sourceJobId = `main-direct-${sessionId}-${i + 1}`
                                     const autoR2UploadProfileId = preparedOutput.autoR2UploadProfileId
                                     const shouldReleaseToR2 = autoR2UploadProfileId !== null
@@ -1687,7 +1687,7 @@ export const useGenerationStore = create<GenerationState>()(
                                             directory: preparedOutput.directory,
                                             useAbsolutePath: preparedOutput.useAbsolutePath,
                                             capabilityFallbackDirectory: preparedOutput.capabilityFallbackDirectory,
-                                            workflowDefaultDirectory: 'NAIS_Output',
+                                            workflowDefaultDirectory: 'NAI_Blue_Output',
                                             fileName,
                                             extension: fileExt,
                                             collisionPolicy: preparedOutput.collisionPolicy,
@@ -1780,7 +1780,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 if (!commitGeneratedSequence()) break
                                 commitHistory(thumbnail)
                                 const memExt = imageFormat === 'webp' ? 'webp' : 'png'
-                                const memoryFileName = preparedOutput.fileName ?? `NAIS_${Date.now()}.${memExt}`
+                                const memoryFileName = preparedOutput.fileName ?? `NAI_Blue_${Date.now()}.${memExt}`
                                 const memoryPath = `memory://${memoryFileName}`
                                 publishGeneratedArtifact({ path: memoryPath, data: imageUrl })
                             }
@@ -1883,7 +1883,7 @@ export const useGenerationStore = create<GenerationState>()(
             }),
         }),
         {
-            name: 'nais2-generation',
+            name: 'nai-blue-generation',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => ({
                 // Prompts

@@ -85,7 +85,7 @@ function baseFixture(): EngineFixture {
     profile.randomRuleIds = []
     profile.paramsPresetIds = []
     delete profile.defaultParamsPresetId
-    profile.outputPolicy = memoryPolicy('png', 'NAIS_{seed}')
+    profile.outputPolicy = memoryPolicy('png', 'NAI_Blue_{seed}')
 
     const module = document.modules[0]
     module.contributions = []
@@ -212,7 +212,7 @@ describe('CompositionEngine concrete resolution', () => {
                 variety: false,
             },
             filenamePolicyInput: {
-                template: 'NAIS_{seed}',
+                template: 'NAI_Blue_{seed}',
                 format: 'png',
                 now: fixture.input.now,
                 seed: 123456789,
@@ -244,7 +244,7 @@ describe('CompositionEngine concrete resolution', () => {
         })
         expect(result.plan.planHash.digest).toMatch(/^[0-9a-f]{64}$/)
         expect(result.plan.planHash.digest).toBe(
-            '1e52dbe921c77490308b41f5f184be0f8f546ac505f01cebc27ccce6d9f94a03',
+            '5612ba6d3981068ae9da6e2a5574473608e4e626d178663319fb6234df9fe42a',
         )
         expect(result.plan.planId).toBe(
             `resolved-plan:${result.plan.planHash.version}:${result.plan.planHash.digest}`,

@@ -505,7 +505,7 @@ function outputPolicy(value: unknown): OutputPolicy {
         && !rawTemplate.includes('\\')
         && !rawTemplate.includes('\0')
         ? rawTemplate
-        : 'NAIS_{timestamp}'
+        : 'NAI_Blue_{timestamp}'
     const rawMetadataMode = readNonEmptyString(record, 'metadataMode')
     const metadataMode = rawMetadataMode !== undefined && KNOWN_METADATA_MODES.has(rawMetadataMode)
         ? rawMetadataMode as OutputPolicy['metadataMode']

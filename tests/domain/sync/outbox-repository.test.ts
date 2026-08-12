@@ -112,7 +112,7 @@ describe('transactional sync outbox repository', () => {
 
     it('persists offline pending edits across close and reconnect without a transport', async () => {
         const factory = new IDBFactory()
-        const databaseName = 'nais2-sync-offline-reopen'
+        const databaseName = 'nai-blue-sync-offline-reopen'
         const options = {
             factory: factory as unknown as globalThis.IDBFactory,
             keyRange: IDBKeyRange as unknown as typeof globalThis.IDBKeyRange,
@@ -211,7 +211,7 @@ describe('transactional sync outbox repository', () => {
         const options = {
             factory: factory as unknown as globalThis.IDBFactory,
             keyRange: IDBKeyRange as unknown as typeof globalThis.IDBKeyRange,
-            databaseName: 'nais2-sync-expired-attempt',
+            databaseName: 'nai-blue-sync-expired-attempt',
             userId: 'user:1',
         }
         const before = new IndexedDBSyncOutboxRepository(options)
@@ -280,7 +280,7 @@ describe('transactional sync outbox repository', () => {
         const shared = {
             factory: factory as unknown as globalThis.IDBFactory,
             keyRange: IDBKeyRange as unknown as typeof globalThis.IDBKeyRange,
-            databaseName: 'nais2-sync-shared-account-base',
+            databaseName: 'nai-blue-sync-shared-account-base',
         }
         const userOne = new IndexedDBSyncOutboxRepository({ ...shared, userId: 'user:1' })
         const userTwo = new IndexedDBSyncOutboxRepository({ ...shared, userId: 'user:2' })
@@ -310,7 +310,7 @@ describe('transactional sync outbox repository', () => {
 
     it('treats a tombstone-only record as independent authority and rejects resurrection', async () => {
         const factory = new IDBFactory()
-        const databaseName = 'nais2-sync-tombstone-only'
+        const databaseName = 'nai-blue-sync-tombstone-only'
         const options = {
             factory: factory as unknown as globalThis.IDBFactory,
             keyRange: IDBKeyRange as unknown as typeof globalThis.IDBKeyRange,

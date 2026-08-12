@@ -80,7 +80,7 @@ function baseSnapshot(): SceneCompositionSnapshot {
         params: defaultParams(),
         output: {
             autoSave: true,
-            savePath: 'NAIS_Scene',
+            savePath: 'NAI_Blue_Scene',
             useAbsolutePath: false,
             imageFormat: 'png',
             metadataMode: 'embedded',

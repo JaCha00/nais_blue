@@ -87,7 +87,7 @@ function resolveStyleLabFileName(
     now = new Date(Date.now()),
 ): string {
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
-    const fallback = `NAIS_STYLELAB_${now.getTime()}`
+    const fallback = `NAI_Blue_STYLELAB_${now.getTime()}`
     const rendered = filenameTemplate
         ? renderFilenameTemplate({
             template: filenameTemplate,
@@ -155,10 +155,10 @@ async function saveStyleLabImage(
                 ...(params.portableOutputDirectory === undefined
                     ? {}
                     : { portableDirectory: params.portableOutputDirectory }),
-                directory: styleLabSavePath || 'nais-style',
+                directory: styleLabSavePath || 'nai-blue-style',
                 useAbsolutePath: useAbsoluteStyleLabPath,
-                capabilityFallbackDirectory: 'nais-style',
-                workflowDefaultDirectory: 'nais-style',
+                capabilityFallbackDirectory: 'nai-blue-style',
+                workflowDefaultDirectory: 'nai-blue-style',
                 fileName,
                 extension: fileExt,
                 collisionPolicy: params.outputPolicySummary?.collisionPolicy ?? 'unique',

@@ -7,7 +7,7 @@ const persistedSceneStorage = vi.hoisted(() => ({
 vi.mock('@/lib/indexed-db', () => ({
     indexedDBStorage: {
         getItem: async (name: string) => (
-            name === 'nais2-scenes' ? persistedSceneStorage.value : null
+            name === 'nai-blue-scenes' ? persistedSceneStorage.value : null
         ),
         setItem: async () => undefined,
         removeItem: async () => undefined,
@@ -35,7 +35,7 @@ describe('Scene store legacy persistence hydration', () => {
             queueCount: 2,
             images: [{
                 id: 'image:legacy',
-                url: 'NAIS_Scene/legacy.png',
+                url: 'NAI_Blue_Scene/imported.png',
                 timestamp: 1_700_000_000_000,
                 isFavorite: true,
             }],

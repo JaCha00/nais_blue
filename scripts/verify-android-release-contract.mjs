@@ -27,12 +27,12 @@ assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
 assert.equal(policy.versionCode, android.bundle.android.versionCode)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.deepEqual(policy.updateBaseline, { tag: 'v2.11.3', versionCode: 2011003 })
-assert.equal(policy.firstReleaseForApplicationId, false)
-assert.equal(policy.firstReleaseVersion, '2.8.3')
-assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v2.11.3')
+assert.equal(policy.updateBaseline, null)
+assert.equal(policy.firstReleaseForApplicationId, true)
+assert.equal(policy.firstReleaseVersion, '1.0.0')
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), null)
 assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011004)
-assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), 2011003)
+assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), null)
 assert.throws(
     () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
     /first release of an applicationId/,
@@ -113,8 +113,8 @@ for (const path of [
 
 const workflow = read('.github/workflows/android.yml')
 for (const requiredText of [
-    'secrets.NAIS_KEYSTORE_BASE64',
-    'secrets.NAIS_KEYSTORE_PASSWORD',
+    'secrets.NAI_BLUE_KEYSTORE_BASE64',
+    'secrets.NAI_BLUE_KEYSTORE_PASSWORD',
     'ANDROID_KEY_ALIAS',
     'npm run android:prepare',
     'npm run test:release-version',
@@ -134,8 +134,8 @@ for (const requiredText of [
     'playwright install --with-deps chromium',
     'verify_or_upload',
     'workflow_call:',
-    'NAIS_KEYSTORE_BASE64:',
-    'NAIS_KEYSTORE_PASSWORD:',
+    'NAI_BLUE_KEYSTORE_BASE64:',
+    'NAI_BLUE_KEYSTORE_PASSWORD:',
 ]) {
     assert.ok(workflow.includes(requiredText), `Android workflow must include ${requiredText}`)
 }
@@ -161,14 +161,14 @@ for (const requiredText of [
     'releaseDraft: true',
     'needs: desktop',
     'release: true',
-    'NAIS_KEYSTORE_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}',
-    'NAIS_KEYSTORE_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}',
+    'NAI_BLUE_KEYSTORE_BASE64: ${{ secrets.NAI_BLUE_KEYSTORE_BASE64 }}',
+    'NAI_BLUE_KEYSTORE_PASSWORD: ${{ secrets.NAI_BLUE_KEYSTORE_PASSWORD }}',
 ]) {
     assert.ok(desktopWorkflow.includes(requiredText), `Desktop workflow must include ${requiredText}`)
 }
 assert.ok(!desktopWorkflow.includes('secrets: inherit'))
-assert.ok(!desktopWorkflow.includes('ANDROID_KEY_BASE64: ${{ secrets.NAIS_KEYSTORE_BASE64 }}'))
-assert.ok(!desktopWorkflow.includes('ANDROID_KEY_PASSWORD: ${{ secrets.NAIS_KEYSTORE_PASSWORD }}'))
+assert.ok(!desktopWorkflow.includes('ANDROID_KEY_BASE64: ${{ secrets.NAI_BLUE_KEYSTORE_BASE64 }}'))
+assert.ok(!desktopWorkflow.includes('ANDROID_KEY_PASSWORD: ${{ secrets.NAI_BLUE_KEYSTORE_PASSWORD }}'))
 assert.ok(workflow.includes('gh release edit "$GITHUB_REF_NAME" --draft=false'))
 
 for (const [name, source] of [
@@ -190,8 +190,8 @@ for (const [name, source] of [
 
 const gitignore = read('.gitignore')
 for (const ignoredSecret of [
-    'nais-release-key',
-    'NAIS_KEYSTORE_BASE64.txt',
+    'nai-blue-release-key',
+    'NAI_BLUE_KEYSTORE_BASE64.txt',
     'keystore.properties',
     '*.jks',
     '*.keystore',
@@ -219,7 +219,7 @@ assert.ok(prepareRelease.includes('patchAndroidBackDispatcher'))
 const localSignedBuild = read('scripts/build-android-signed-local.ps1')
 assert.ok(localSignedBuild.includes('scripts\\patch-android-signing.mjs'))
 
-const temporaryRoot = mkdtempSync(join(tmpdir(), 'nais-android-signing-'))
+const temporaryRoot = mkdtempSync(join(tmpdir(), 'nai-blue-android-signing-'))
 try {
     const rootBuildFile = join(temporaryRoot, 'root-build.gradle.kts')
     writeFileSync(
@@ -259,10 +259,10 @@ android {
     assert.equal(patchAndroidSigning(gradleFile), false)
     const twice = readFileSync(gradleFile, 'utf8')
     assert.equal(twice, once, 'Gradle signing patch must be idempotent')
-    assert.equal((twice.match(/NAIS_ANDROID_SIGNING_START/g) ?? []).length, 1)
-    assert.equal((twice.match(/NAIS_ANDROID_SIGNING_CONFIG/g) ?? []).length, 1)
-    assert.equal((twice.match(/NAIS_ANDROID_DEBUG_ID/g) ?? []).length, 1)
-    assert.equal((twice.match(/naisUserSigningConfig\?\.let \{ signingConfig = it \}/g) ?? []).length, 2)
+    assert.equal((twice.match(/NAI_BLUE_ANDROID_SIGNING_START/g) ?? []).length, 1)
+    assert.equal((twice.match(/NAI_BLUE_ANDROID_SIGNING_CONFIG/g) ?? []).length, 1)
+    assert.equal((twice.match(/NAI_BLUE_ANDROID_DEBUG_ID/g) ?? []).length, 1)
+    assert.equal((twice.match(/naiBlueUserSigningConfig\?\.let \{ signingConfig = it \}/g) ?? []).length, 2)
     assert.doesNotMatch(twice, /applicationIdSuffix\s*=/)
 
     const manifestFile = join(temporaryRoot, 'AndroidManifest.xml')

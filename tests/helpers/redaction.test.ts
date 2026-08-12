@@ -22,7 +22,7 @@ describe('snapshot redaction', () => {
             remoteAnonKey: fixtureOnlyValues.remote,
             token: fixtureOnlyValues.generic,
             cacheKey: fixtureOnlyValues.cache,
-            outputPath: join(homedir(), 'nais2-fixture-only', 'image.png'),
+            outputPath: join(homedir(), 'nai-blue-fixture-only', 'image.png'),
             imageBase64: `data:image/png;base64,${'QUJD'.repeat(50)}`,
             oauthSession: {
                 access_token: fixtureOnlyValues.access,
@@ -81,7 +81,7 @@ describe('snapshot redaction', () => {
     })
 
     it('redacts secrets, bearer tokens, callback tokens, data URIs and home paths embedded in strings', () => {
-        const syntheticHome = join(homedir(), 'nais2-fixture-only')
+        const syntheticHome = join(homedir(), 'nai-blue-fixture-only')
         const result = redactSnapshot({
             env: 'NAI_TOKEN=fixture-only-nai',
             header: 'Bearer fixture-only-bearer-token',
@@ -171,7 +171,7 @@ describe('snapshot redaction', () => {
     })
 
     it('preserves deep-diff JSONPath values while still redacting filesystem paths', () => {
-        const absolutePath = join(homedir(), 'nais2-fixture-only', 'payload.json')
+        const absolutePath = join(homedir(), 'nai-blue-fixture-only', 'payload.json')
         const result = redactSnapshot({
             difference: { path: '$.parameters.image' },
             indexedDifference: { path: '$[0].value' },

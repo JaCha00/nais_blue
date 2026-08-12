@@ -36,11 +36,11 @@ function output(portable = true): OutputWriteResult {
     return {
         transactionId: 'transaction-1',
         fileName: 'queue-result.png',
-        path: 'C:/Pictures/NAIS_Output/queue-result.png',
-        file: { path: 'NAIS_Output/queue-result.png', displayPath: 'C:/Pictures/NAIS_Output/queue-result.png' },
+        path: 'C:/Pictures/NAI_Blue_Output/queue-result.png',
+        file: { path: 'NAI_Blue_Output/queue-result.png', displayPath: 'C:/Pictures/NAI_Blue_Output/queue-result.png' },
         directory: {
-            path: 'NAIS_Output',
-            displayPath: 'C:/Pictures/NAIS_Output',
+            path: 'NAI_Blue_Output',
+            displayPath: 'C:/Pictures/NAI_Blue_Output',
             capabilityFallbackUsed: false,
         },
         capabilityFallbackUsed: false,
@@ -48,7 +48,7 @@ function output(portable = true): OutputWriteResult {
             contentChecksum: CHECKSUM,
             byteSize: 321,
             ...(portable ? {
-                portableDirectory: { kind: 'standard' as const, root: 'pictures' as const, segments: ['NAIS_Output'] },
+                portableDirectory: { kind: 'standard' as const, root: 'pictures' as const, segments: ['NAI_Blue_Output'] },
             } : {}),
         },
     }

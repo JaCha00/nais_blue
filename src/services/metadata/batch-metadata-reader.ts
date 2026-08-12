@@ -103,7 +103,6 @@ function supportedFile(file: File): boolean {
         || name.endsWith('.jpg')
         || name.endsWith('.jpeg')
         || name.endsWith('.nai-blue.json')
-        || name.endsWith('.nais-blue.json')
         || name.endsWith('.nais2.json')
 }
 
@@ -212,7 +211,7 @@ export async function readMetadataBatch(
         if (options.signal?.aborted) throw abortError()
         let item: MetadataBatchItem
         try {
-            if (!supportedFile(file)) throw new TypeError('PNG, WebP, JPEG 또는 NAIS sidecar JSON만 지원합니다.')
+            if (!supportedFile(file)) throw new TypeError('PNG, WebP, JPEG 또는 지원하는 외부 sidecar JSON만 사용할 수 있습니다.')
             if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > MAX_METADATA_FILE_BYTES) {
                 throw new RangeError('파일 크기는 0바이트보다 크고 50MB 이하여야 합니다.')
             }

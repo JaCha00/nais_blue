@@ -25,7 +25,7 @@ if (-not $sourceKeystore -or -not $password -or -not (Test-Path -LiteralPath $so
     throw 'Local Android signing inputs are unavailable.'
 }
 
-$tempKeystore = Join-Path ([System.IO.Path]::GetTempPath()) ("nais-signing-{0}.jks" -f [guid]::NewGuid().ToString('N'))
+$tempKeystore = Join-Path ([System.IO.Path]::GetTempPath()) ("nai-blue-signing-{0}.jks" -f [guid]::NewGuid().ToString('N'))
 $logAbsolute = if ($LogPath) { [System.IO.Path]::GetFullPath((Join-Path $repo $LogPath)) } else { $null }
 if ($logAbsolute) { New-Item -ItemType Directory -Force -Path (Split-Path $logAbsolute) | Out-Null }
 

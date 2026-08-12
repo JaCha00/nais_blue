@@ -358,7 +358,7 @@ export function NativeR2SetupPanel({
             {!foreground.supported && (
                 <div className="border-y border-warning/35 py-4 text-sm" role="status">
                     <div className="font-medium">현재 실행 환경에서는 직접 업로드할 수 없습니다.</div>
-                    <div className="mt-1 text-muted-foreground">설치형 NAIS 데스크톱 앱에서 이 화면을 다시 열어 주세요. 브라우저에서는 설정을 확인할 수 있지만 파일 업로드는 실행되지 않습니다.</div>
+                    <div className="mt-1 text-muted-foreground">설치형 NAI Blue 데스크톱 앱에서 이 화면을 다시 열어 주세요. 브라우저에서는 설정을 확인할 수 있지만 파일 업로드는 실행되지 않습니다.</div>
                 </div>
             )}
 
@@ -380,14 +380,14 @@ export function NativeR2SetupPanel({
                     guideTitle="어떤 값을 넣나요?"
                     ready={Boolean(localRoot.trim())}
                     guide={<>
-                        <p>NAIS가 결과 이미지를 저장하는 폴더 이름 또는 전체 경로를 입력하세요.</p>
-                        <p><span className="font-medium text-foreground">예:</span> <span className="font-mono">NAIS_Output</span> 또는 <span className="break-all font-mono">D:\Images\NAIS_Output</span></p>
+                        <p>NAI Blue가 결과 이미지를 저장하는 폴더 이름 또는 전체 경로를 입력하세요.</p>
+                        <p><span className="font-medium text-foreground">예:</span> <span className="font-mono">NAI_Blue_Output</span> 또는 <span className="break-all font-mono">D:\Images\NAI_Blue_Output</span></p>
                     </>}
                 >
                     <Field label="이미지 폴더" htmlFor="r2-local-root" hint="폴더 안의 업로드 가능한 결과 파일을 자동으로 찾습니다.">
                         <div className="relative">
                             <FolderOpen className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                            <Input id="r2-local-root" className="pl-10" value={localRoot} onChange={event => onLocalRootChange(event.target.value)} placeholder="NAIS_Output" />
+                            <Input id="r2-local-root" className="pl-10" value={localRoot} onChange={event => onLocalRootChange(event.target.value)} placeholder="NAI_Blue_Output" />
                         </div>
                     </Field>
                 </SetupStep>
@@ -448,7 +448,7 @@ export function NativeR2SetupPanel({
                 >
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="기본 R2 버킷" htmlFor="r2-bucket">
-                            <Input id="r2-bucket" value={profile.bucket} onChange={event => update('bucket', event.target.value)} placeholder="예: nais-images" autoComplete="off" />
+                            <Input id="r2-bucket" value={profile.bucket} onChange={event => update('bucket', event.target.value)} placeholder="예: nai-blue-images" autoComplete="off" />
                         </Field>
                         <Field label="기본 프리픽스 (선택)" htmlFor="r2-prefix">
                             <Input id="r2-prefix" value={profile.prefix} onChange={event => update('prefix', event.target.value)} placeholder="예: generated/2026" />
@@ -461,7 +461,7 @@ export function NativeR2SetupPanel({
 
                 <SetupStep
                     label="4. R2 API 키 저장"
-                    description="NAIS가 내 버킷에 파일을 올릴 수 있도록 발급받은 두 값을 입력합니다."
+                    description="NAI Blue가 내 버킷에 파일을 올릴 수 있도록 발급받은 두 값을 입력합니다."
                     guideTitle="두 값은 어디서 발급하나요?"
                     ready={credentialAvailable}
                     guide={<>
@@ -509,7 +509,7 @@ export function NativeR2SetupPanel({
                     description="작은 테스트 파일을 올렸다가 바로 지워서 실제 업로드 권한을 확인합니다."
                     guideTitle="내 파일에는 영향을 주지 않습니다"
                     ready={writeVerified}
-                    guide={<p>NAIS가 임시 파일 하나를 생성해 업로드·조회·삭제합니다. 연결 확인이 성공한 뒤 실행하세요.</p>}
+                    guide={<p>NAI Blue가 임시 파일 하나를 생성해 업로드·조회·삭제합니다. 연결 확인이 성공한 뒤 실행하세요.</p>}
                 >
                     <Button className="h-auto min-h-11 max-w-full whitespace-normal py-2 text-center" type="button" variant="outline" onClick={runTemporaryObjectTest} disabled={!nativeEnabled || !connectionVerified || busy !== null}>
                         {busy === 'temporary' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
@@ -652,7 +652,7 @@ export function NativeR2SetupPanel({
                 open={overwriteUploadPending}
                 onOpenChange={setOverwriteUploadPending}
                 title="R2의 기존 파일을 교체할까요?"
-                description="같은 경로의 원격 파일이 새 파일로 바뀝니다. 이 작업은 NAIS 휴지통으로 복구할 수 없습니다."
+                description="같은 경로의 원격 파일이 새 파일로 바뀝니다. 이 작업은 NAI Blue 휴지통으로 복구할 수 없습니다."
                 confirmText="확인 후 업로드"
                 cancelText="취소"
                 variant="destructive"

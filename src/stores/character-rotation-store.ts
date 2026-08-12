@@ -511,7 +511,7 @@ export const useRotationStore = create<RotationState>()(
             },
         }),
         {
-            name: 'nais2-character-rotation',
+            name: 'nai-blue-character-rotation',
             storage: createJSONStorage(() => indexedDBStorage),
             version: CHARACTER_ROTATION_STORE_VERSION,
             migrate: (persistedState) => (

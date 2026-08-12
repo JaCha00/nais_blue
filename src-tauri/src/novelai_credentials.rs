@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-const NOVELAI_CREDENTIAL_SERVICE: &str = "com.bluhair.naisblue.novelai";
+const NOVELAI_CREDENTIAL_SERVICE: &str = "blue.bluehair.naiblue.novelai";
 const MAX_TOKEN_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Serialize)]

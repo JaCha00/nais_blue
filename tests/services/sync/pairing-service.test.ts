@@ -41,7 +41,7 @@ function nativeAdapter(): NativePairingAdapter {
     return {
         async createInvitation() {
             return {
-                invitation: 'nais-sync-v1:redacted-test-invitation',
+                invitation: 'nai-blue-sync-v1:redacted-test-invitation',
                 confirmationCode: '482913',
                 expiresAt: '2026-07-15T00:02:00.000Z',
             }
@@ -67,7 +67,7 @@ describe('PairingService', () => {
         const invitation = await service.createInvitation(120)
         expect(vault.stored).toEqual([{
             kind: 'sync-pairing-secret',
-            secret: 'nais-sync-v1:redacted-test-invitation',
+            secret: 'nai-blue-sync-v1:redacted-test-invitation',
         }])
         await service.discardInvitation(invitation.credentialRef)
         expect(vault.deleted).toEqual([invitation.credentialRef])
@@ -90,7 +90,7 @@ describe('PairingService', () => {
         const service = new PairingService(vault, nativeAdapter())
 
         const peer = await service.acceptInvitation({
-            invitation: 'nais-sync-v1:redacted-test-invitation',
+            invitation: 'nai-blue-sync-v1:redacted-test-invitation',
             confirmationCode: '482913',
             displayName: 'Android',
         })
@@ -113,7 +113,7 @@ describe('PairingService', () => {
         }
 
         await expect(new PairingService(vault, adapter).acceptInvitation({
-            invitation: 'nais-sync-v1:expired',
+            invitation: 'nai-blue-sync-v1:expired',
             confirmationCode: '482913',
             displayName: 'Android',
         })).rejects.toMatchObject({ code: 'E_SYNC_PAIRING_EXPIRED' })
@@ -128,7 +128,7 @@ describe('PairingService', () => {
         adapter.revokeIssuedPeer = async ({ credentialBundle }) => { revoked.push(credentialBundle) }
 
         await expect(new PairingService(vault, adapter).acceptInvitation({
-            invitation: 'nais-sync-v1:redacted-test-invitation',
+            invitation: 'nai-blue-sync-v1:redacted-test-invitation',
             confirmationCode: '482913',
             displayName: 'Android',
         })).rejects.toThrow('vault write failed')

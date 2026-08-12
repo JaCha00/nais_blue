@@ -161,12 +161,12 @@ describe('composition plan hash', () => {
             },
             resource: {
                 digest: 'sha256:stable',
-                path: { kind: 'standard', root: 'pictures', segments: ['NAIS'] },
+                path: { kind: 'standard', root: 'pictures', segments: ['NAI Blue'] },
             },
         }
         const sameSemanticPlan = {
             resource: {
-                path: { segments: ['NAIS'], root: 'pictures', kind: 'standard' },
+                path: { segments: ['NAI Blue'], root: 'pictures', kind: 'standard' },
                 digest: 'sha256:stable',
             },
             transport: {
@@ -185,7 +185,7 @@ describe('composition plan hash', () => {
             positivePrompt: 'cat',
             resource: {
                 digest: 'sha256:stable',
-                path: { kind: 'standard', root: 'pictures', segments: ['NAIS'] },
+                path: { kind: 'standard', root: 'pictures', segments: ['NAI Blue'] },
             },
             transport: {},
         })

@@ -17,7 +17,7 @@ export function repository(label: string, factory = new IDBFactory()): IndexedDB
     return new IndexedDBSyncOutboxRepository({
         factory: factory as unknown as globalThis.IDBFactory,
         keyRange: IDBKeyRange as unknown as typeof globalThis.IDBKeyRange,
-        databaseName: `nais2-sync-${label}-${databaseCounter}`,
+        databaseName: `nai-blue-sync-${label}-${databaseCounter}`,
         userId: 'user:1',
     })
 }

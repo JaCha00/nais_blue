@@ -2,10 +2,10 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const START_MARKER = '// NAIS_ANDROID_SIGNING_START'
-const END_MARKER = '// NAIS_ANDROID_SIGNING_END'
-const CONFIG_MARKER = '// NAIS_ANDROID_SIGNING_CONFIG'
-const DEBUG_ID_MARKER = '// NAIS_ANDROID_DEBUG_ID'
+const START_MARKER = '// NAI_BLUE_ANDROID_SIGNING_START'
+const END_MARKER = '// NAI_BLUE_ANDROID_SIGNING_END'
+const CONFIG_MARKER = '// NAI_BLUE_ANDROID_SIGNING_CONFIG'
+const DEBUG_ID_MARKER = '// NAI_BLUE_ANDROID_DEBUG_ID'
 const ANDROID_KOTLIN_VERSION = '2.1.20'
 
 // Tauri owns the generated root build file, while the tracked transfer module
@@ -34,15 +34,15 @@ export function patchAndroidKotlinToolchain(buildFile, version = ANDROID_KOTLIN_
 function removeManagedSigning(content) {
     return content
         .replace(
-            /^[ \t]*\/\/ NAIS_(?:LOCAL_APK|ANDROID)_SIGNING_START[\s\S]*?^[ \t]*\/\/ NAIS_(?:LOCAL_APK|ANDROID)_SIGNING_END[ \t]*\r?\n?/gm,
+            /^[ \t]*\/\/ NAI_BLUE_(?:LOCAL_APK|ANDROID)_SIGNING_START[\s\S]*?^[ \t]*\/\/ NAI_BLUE_(?:LOCAL_APK|ANDROID)_SIGNING_END[ \t]*\r?\n?/gm,
             '',
         )
         .replace(
-            /^[ \t]*\/\/ NAIS_(?:LOCAL_APK|ANDROID)_SIGNING_CONFIG[ \t]*\r?\n[^\r\n]*\r?\n?/gm,
+            /^[ \t]*\/\/ NAI_BLUE_(?:LOCAL_APK|ANDROID)_SIGNING_CONFIG[ \t]*\r?\n[^\r\n]*\r?\n?/gm,
             '',
         )
         .replace(
-            /^[ \t]*\/\/ NAIS_ANDROID_DEBUG_ID[ \t]*\r?\n[^\r\n]*\r?\n?/gm,
+            /^[ \t]*\/\/ NAI_BLUE_ANDROID_DEBUG_ID[ \t]*\r?\n[^\r\n]*\r?\n?/gm,
             '',
         )
 }
@@ -79,27 +79,27 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '') {
 
     const signingBlock = [
         `    ${START_MARKER}`,
-        '    val naisKeystorePropertiesFile = rootProject.file("keystore.properties")',
-        '    val naisKeystoreProperties = Properties()',
-        '    if (naisKeystorePropertiesFile.exists()) {',
-        '        FileInputStream(naisKeystorePropertiesFile).use { naisKeystoreProperties.load(it) }',
+        '    val naiBlueKeystorePropertiesFile = rootProject.file("keystore.properties")',
+        '    val naiBlueKeystoreProperties = Properties()',
+        '    if (naiBlueKeystorePropertiesFile.exists()) {',
+        '        FileInputStream(naiBlueKeystorePropertiesFile).use { naiBlueKeystoreProperties.load(it) }',
         '    }',
-        '    val naisStoreFile = System.getenv("ANDROID_KEYSTORE_PATH")',
-        '        ?: naisKeystoreProperties.getProperty("storeFile")',
-        '    val naisKeyAlias = System.getenv("ANDROID_KEY_ALIAS")',
-        '        ?: naisKeystoreProperties.getProperty("keyAlias")',
-        '    val naisPassword = System.getenv("ANDROID_KEY_PASSWORD")',
-        '        ?: naisKeystoreProperties.getProperty("password")',
-        '        ?: naisKeystoreProperties.getProperty("storePassword")',
+        '    val naiBlueStoreFile = System.getenv("ANDROID_KEYSTORE_PATH")',
+        '        ?: naiBlueKeystoreProperties.getProperty("storeFile")',
+        '    val naiBlueKeyAlias = System.getenv("ANDROID_KEY_ALIAS")',
+        '        ?: naiBlueKeystoreProperties.getProperty("keyAlias")',
+        '    val naiBluePassword = System.getenv("ANDROID_KEY_PASSWORD")',
+        '        ?: naiBlueKeystoreProperties.getProperty("password")',
+        '        ?: naiBlueKeystoreProperties.getProperty("storePassword")',
         '',
-        '    val naisUserSigningConfig = if (naisStoreFile != null && naisKeyAlias != null && naisPassword != null) {',
+        '    val naiBlueUserSigningConfig = if (naiBlueStoreFile != null && naiBlueKeyAlias != null && naiBluePassword != null) {',
         '        signingConfigs.create("release") {',
-        '            keyAlias = naisKeyAlias',
+        '            keyAlias = naiBlueKeyAlias',
         '            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")',
-        '                ?: naisKeystoreProperties.getProperty("keyPassword")',
-        '                ?: naisPassword',
-        '            storeFile = file(naisStoreFile)',
-        '            storePassword = naisPassword',
+        '                ?: naiBlueKeystoreProperties.getProperty("keyPassword")',
+        '                ?: naiBluePassword',
+        '            storeFile = file(naiBlueStoreFile)',
+        '            storePassword = naiBluePassword',
         '        }',
         '    } else {',
         '        null',
@@ -123,7 +123,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '') {
     const releaseConfig = [
         releaseAnchor,
         `            ${CONFIG_MARKER}`,
-        '            naisUserSigningConfig?.let { signingConfig = it }',
+        '            naiBlueUserSigningConfig?.let { signingConfig = it }',
     ].join(newline)
     content =
         content.slice(0, releaseIndex) +
@@ -138,7 +138,7 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '') {
     const debugConfig = [
         debugAnchor,
         `            ${DEBUG_ID_MARKER}`,
-        '            naisUserSigningConfig?.let { signingConfig = it }',
+        '            naiBlueUserSigningConfig?.let { signingConfig = it }',
     ].join(newline)
     content =
         content.slice(0, debugIndex) +

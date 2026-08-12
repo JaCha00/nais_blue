@@ -132,7 +132,7 @@ async function readRawEntity(factory: IDBFactory, name: string): Promise<unknown
 describe('sync repository schema upgrade', () => {
     it('upgrades v1 envelopes/retry records while preserving tombstones and checkpoints', async () => {
         const factory = new IDBFactory()
-        const name = 'nais2-sync-v1-upgrade'
+        const name = 'nai-blue-sync-v1-upgrade'
         const physicalName = syncDatabaseNameForUser(name, 'user:1')
         await createV1Database(factory, physicalName)
         const sync = new IndexedDBSyncOutboxRepository({
@@ -165,7 +165,7 @@ describe('sync repository schema upgrade', () => {
 
     it('aborts a malformed upgrade and leaves the v1 record readable', async () => {
         const factory = new IDBFactory()
-        const name = 'nais2-sync-v1-malformed'
+        const name = 'nai-blue-sync-v1-malformed'
         const physicalName = syncDatabaseNameForUser(name, 'user:1')
         await createV1Database(factory, physicalName, true)
         const sync = new IndexedDBSyncOutboxRepository({
@@ -184,7 +184,7 @@ describe('sync repository schema upgrade', () => {
 
     it('preserves unknown legacy upsert lineage as a conservative transportable root', async () => {
         const factory = new IDBFactory()
-        const name = 'nais2-sync-v1-upsert-upgrade'
+        const name = 'nai-blue-sync-v1-upsert-upgrade'
         await createV1Database(factory, syncDatabaseNameForUser(name, 'user:1'), false, 'upsert')
         const options = {
             factory: factory as unknown as globalThis.IDBFactory,

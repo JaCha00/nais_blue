@@ -38,7 +38,7 @@ import {
     setRuntimeCompositionDocument,
 } from '@/lib/composition-authority'
 
-const STARTUP_MIGRATION_OWNER = 'nais2-startup'
+const STARTUP_MIGRATION_OWNER = 'nai-blue-startup'
 
 // The production default feeds startup migration and every Main/Scene/Style Lab authority gate.
 // Explicit rollback flags and startup safety overrides still win, so v2 is used only after transaction verification.

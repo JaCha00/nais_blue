@@ -120,16 +120,16 @@ describe('CompositionRepository migration authority', () => {
     it('rejects a newer repository schema without overwriting it', async () => {
         const storage = new MemoryStorage()
         const raw = JSON.stringify({
-            format: 'nais2-composition-repository',
+            format: 'nai-blue-composition-repository',
             repositorySchemaVersion: 99,
         })
-        storage.values.set('nais2-composition-repository', raw)
+        storage.values.set('nai-blue-composition-repository', raw)
         const repository = new CompositionRepository(storage)
 
         await expect(repository.read(NOW)).rejects.toMatchObject({
             code: 'E_REPOSITORY_SCHEMA_NEWER',
         } satisfies Partial<CompositionRepositoryError>)
-        expect(storage.values.get('nais2-composition-repository')).toBe(raw)
+        expect(storage.values.get('nai-blue-composition-repository')).toBe(raw)
     })
 
     it.each([
@@ -161,9 +161,9 @@ describe('CompositionRepository migration authority', () => {
         await repository.writeStagedDocument(lock.id, 'migration:fixture', value, NOW)
         await repository.commitStagedDocument({ lockId: lock.id, marker: marker(value), now: NOW })
 
-        const raw = JSON.parse(storage.values.get('nais2-composition-repository')!) as Record<string, any>
+        const raw = JSON.parse(storage.values.get('nai-blue-composition-repository')!) as Record<string, any>
         corrupt(raw)
-        storage.values.set('nais2-composition-repository', JSON.stringify(raw))
+        storage.values.set('nai-blue-composition-repository', JSON.stringify(raw))
 
         await expect(repository.read(NOW)).rejects.toMatchObject({
             code: 'E_REPOSITORY_RECORD_INVALID',

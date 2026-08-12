@@ -326,7 +326,7 @@ function resetRuntime(): void {
         generationDelay: 0,
         imageFormat: 'png',
         metadataMode: 'strip-and-sidecar',
-        styleLabSavePath: 'nais-style',
+        styleLabSavePath: 'nai-blue-style',
         useAbsoluteStyleLabPath: false,
     })
     runtime.useGenerationStore.setState({
@@ -603,8 +603,8 @@ describe('Style Lab workflow golden characterization', () => {
         expect(runtimeCapture.requests).toHaveLength(2)
         const styleState = runtime.useStyleLabStore.getState()
         const memoryOutputPolicy = {
-            autoSaveOff: 'memory://NAIS_STYLELAB_<Date.now()>.<format>',
-            autoSaveOn: 'configured style root or nais-style / NAIS_STYLELAB_<Date.now()>.<format>',
+            autoSaveOff: 'memory://NAI_Blue_STYLELAB_<Date.now()>.<format>',
+            autoSaveOn: 'configured style root or nai-blue-style / NAI_Blue_STYLELAB_<Date.now()>.<format>',
             memoryEventsIncludeImageData: true,
             memoryOutputAddsHistory: false,
             capturedEventCount: runtimeCapture.events.length,

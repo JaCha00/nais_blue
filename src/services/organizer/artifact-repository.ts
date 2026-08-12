@@ -10,7 +10,7 @@ import {
 } from '@/domain/organizer/types'
 
 // Physical database names stay stable so organizer history survives the rename.
-export const ORGANIZER_ARTIFACT_DATABASE_NAME = 'nais2-organizer-artifacts'
+export const ORGANIZER_ARTIFACT_DATABASE_NAME = 'nai-blue-organizer-artifacts'
 export const ORGANIZER_ARTIFACT_DATABASE_VERSION = 1
 
 const FORBIDDEN_KEY = /(?:token|authorization|signed.?url|secret|password|prompt|base64|absolute.?path|display.?path|native.?path|opaque.?token)/i

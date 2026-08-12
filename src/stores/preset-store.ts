@@ -345,7 +345,7 @@ export const usePresetStore = create<PresetState>()(
             },
         }),
         {
-            name: 'nais2-presets',
+            name: 'nai-blue-presets',
             storage: createJSONStorage(() => indexedDBStorage),
             version: GENERATION_PRESET_STORE_VERSION,
             migrate: (persistedState) => (

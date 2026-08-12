@@ -85,11 +85,11 @@ const EMPTY_SOURCE: CompositionMigrationSourceSnapshot = {
 }
 const LEGACY_SOURCE: CompositionMigrationSourceSnapshot = {
     serializedStores: {
-        'nais2-generation': JSON.stringify({
+        'nai-blue-generation': JSON.stringify({
             state: { basePrompt: 'synthetic local prompt', seed: 17, seedLocked: true },
             version: 8,
         }),
-        'nais2-scenes': JSON.stringify({
+        'nai-blue-scenes': JSON.stringify({
             state: { activePresetId: 'preset:synthetic', presets: [] },
             version: 1,
         }),
@@ -164,7 +164,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
 
         expect(result.status).toBe('committed')
         await expectAuthority('fresh-install', storage)
-        expect(featureFlags.get('nais2-composition-authority')).toBeUndefined()
+        expect(featureFlags.get('nai-blue-composition-authority')).toBeUndefined()
 
         setRuntimeCompositionAuthority('legacy')
         const restarted = await runStartupCompositionMigration({
@@ -212,7 +212,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
 
         expect(upgraded.status).toBe('committed')
         await expectAuthority('upgrade-current-legacy-stores', storage)
-        expect(featureFlags.get('nais2-composition-authority')).toBeUndefined()
+        expect(featureFlags.get('nai-blue-composition-authority')).toBeUndefined()
 
         setRuntimeCompositionAuthority('legacy')
         const restarted = await runStartupCompositionMigration({
@@ -262,7 +262,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
         }
 
         expect(prepared.report.ignoredKeys.map(item => item.key)).toEqual(expect.arrayContaining([
-            'nais2-marketplace-cache',
+            'nai-blue-marketplace-cache',
             'supabase.auth.session',
             'sb-obsolete-project-auth-token',
         ]))
@@ -275,7 +275,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
 
         expect(migrated.status).toBe('committed')
         await expectAuthority('old-backup-retired-remote-keys', storage)
-        expect(source.serializedStores).not.toHaveProperty('nais2-marketplace-cache')
+        expect(source.serializedStores).not.toHaveProperty('nai-blue-marketplace-cache')
         expect(source.serializedStores).not.toHaveProperty('supabase.auth.session')
 
         setRuntimeCompositionAuthority('legacy')
@@ -402,7 +402,7 @@ describe('Phase 06 production-like authority startup matrix', () => {
         })).rejects.toThrow('repository verification failed')
 
         expect(getRuntimeCompositionAuthority()).toBe('legacy')
-        expect(featureFlags.get('nais2-composition-authority')).toBe('legacy')
+        expect(featureFlags.get('nai-blue-composition-authority')).toBe('legacy')
         expect(getLastCompositionStartupObservation()).toMatchObject({
             requestedAuthority: 'v2',
             persistedAuthority: 'unavailable',

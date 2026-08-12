@@ -49,23 +49,22 @@ function rawBackup(compositionDocument = document()): Record<string, unknown> {
     return {
         _exportedAt: '2026-07-12T00:00:00.000Z',
         _version: '2.3',
-        'nais2-generation': {
+        'nai-blue-generation': {
             version: 8,
             state: { seed: 0, seedLocked: false, prompt: 'old prompt' },
         },
-        'nais2-scenes': {
+        'nai-blue-scenes': {
             version: 1,
             state: { presets: [{ id: 'scene:old', scenes: [] }] },
         },
-        'tools-storage': { version: 0, state: { enabled: false, count: 0 } },
         [COMPOSITION_REPOSITORY_STORE_KEY]: createCommittedCompositionRepositoryRecord(compositionDocument, {
             updatedAt: '2026-07-12T00:00:00.000Z',
             authority: 'v2',
         }),
-        'nais2-wildcard-content': { sky: ['blue', 'red'] },
+        'nai-blue-wildcard-content': { sky: ['blue', 'red'] },
         'old-marketplace-cache': { shouldNeverBeWritten: true },
         'supabase.auth.session': { accessToken: 'secret' },
-        'nais2-future-store': { future: true },
+        'nai-blue-future-store': { future: true },
     }
 }
 
@@ -148,7 +147,7 @@ describe('Backup Envelope v3', () => {
 
     it('accepts the current generation preset persistence version', () => {
         const source = rawBackup()
-        source['nais2-presets'] = {
+        source['nai-blue-presets'] = {
             version: 3,
             state: { presets: [], activePresetId: 'default' },
         }
@@ -177,30 +176,28 @@ describe('Backup Envelope v3', () => {
             compositionSchemaVersion: 2,
         })
         expect(envelope.storeManifest.entries.map(entry => entry.key)).toEqual([
-            'nais2-composition-repository',
-            'nais2-generation',
-            'nais2-scenes',
-            'tools-storage',
+            'nai-blue-composition-repository',
+            'nai-blue-generation',
+            'nai-blue-scenes',
         ])
         expect(envelope.storeManifest.entries.every(entry => entry.hash.digest.length === 64)).toBe(true)
-        expect(envelope.stores['nais2-generation']).toMatchObject({
+        expect(envelope.stores['nai-blue-generation']).toMatchObject({
             state: { seed: 0, seedLocked: false },
         })
-        expect(envelope.legacyStores).toHaveProperty('tools-storage')
+        expect(envelope.legacyStores).toBeUndefined()
         expect(envelope.wildcardContent).toEqual({ sky: ['blue', 'red'] })
         expect(envelope.ignoredLegacyKeys).toEqual([
-            'nais2-future-store',
+            'nai-blue-future-store',
             'old-marketplace-cache',
             'supabase.auth.session',
         ])
         expect(envelope.fileManifest.included.map(entry => entry.path)).toEqual(expect.arrayContaining([
             'composition/document.json',
-            'stores/nais2-generation.json',
-            'legacy-stores/tools-storage.json',
-            'indexeddb/nais2-wildcard-content.json',
+            'stores/nai-blue-generation.json',
+            'indexeddb/nai-blue-wildcard-content.json',
         ]))
         expect(envelope.fileManifest.excluded).toEqual(expect.arrayContaining([
-            expect.objectContaining({ path: 'NAIS_Library/**' }),
+            expect.objectContaining({ path: 'NAI_Blue_Library/**' }),
             expect.objectContaining({ path: 'references/**' }),
             expect.objectContaining({ path: 'output/**' }),
         ]))
@@ -218,11 +215,11 @@ describe('Backup Envelope v3', () => {
         expect(prepared.report.ignoredKeys).toEqual(expect.arrayContaining([
             { key: 'old-marketplace-cache', reason: 'declared-ignored' },
             { key: 'supabase.auth.session', reason: 'declared-ignored' },
-            { key: 'nais2-future-store', reason: 'declared-ignored' },
+            { key: 'nai-blue-future-store', reason: 'declared-ignored' },
         ]))
         expect(prepared.restorePayload).not.toHaveProperty('old-marketplace-cache')
         expect(prepared.restorePayload).not.toHaveProperty('supabase.auth.session')
-        expect(prepared.restorePayload).not.toHaveProperty('nais2-future-store')
+        expect(prepared.restorePayload).not.toHaveProperty('nai-blue-future-store')
 
         const old = rawBackup()
         const legacyPrepared = prepareBackupRestore(old)
@@ -230,9 +227,9 @@ describe('Backup Envelope v3', () => {
         expect(legacyPrepared.report.ignoredKeys).toEqual(expect.arrayContaining([
             { key: 'old-marketplace-cache', reason: 'legacy-marketplace-supabase' },
             { key: 'supabase.auth.session', reason: 'legacy-marketplace-supabase' },
-            { key: 'nais2-future-store', reason: 'unknown-key' },
+            { key: 'nai-blue-future-store', reason: 'unknown-key' },
         ]))
-        expect(legacyPrepared.restorePayload).not.toHaveProperty('nais2-future-store')
+        expect(legacyPrepared.restorePayload).not.toHaveProperty('nai-blue-future-store')
     })
 
     it('restores an old backup fixture while ignoring obsolete Marketplace and Supabase state', async () => {
@@ -243,7 +240,7 @@ describe('Backup Envelope v3', () => {
 
         expect(prepared.report.canRestore).toBe(true)
         expect(prepared.report.ignoredKeys).toEqual(expect.arrayContaining([
-            { key: 'nais2-marketplace-cache', reason: 'legacy-marketplace-supabase' },
+            { key: 'nai-blue-marketplace-cache', reason: 'legacy-marketplace-supabase' },
             { key: 'supabase.auth.session', reason: 'legacy-marketplace-supabase' },
             { key: 'sb-obsolete-project-auth-token', reason: 'legacy-marketplace-supabase' },
         ]))
@@ -253,21 +250,21 @@ describe('Backup Envelope v3', () => {
 
         expect(restored.failed).toEqual([])
         expect(restored.success).toEqual(expect.arrayContaining([
-            'nais2-generation',
-            'nais2-scenes',
+            'nai-blue-generation',
+            'nai-blue-scenes',
         ]))
-        expect(JSON.parse(clean.getItem('nais2-generation') ?? 'null')).toMatchObject({
+        expect(JSON.parse(clean.getItem('nai-blue-generation') ?? 'null')).toMatchObject({
             state: { prompt: 'restored local prompt', seed: 1234, seedLocked: true },
         })
-        expect(JSON.parse(clean.getItem('nais2-scenes') ?? 'null')).toMatchObject({
+        expect(JSON.parse(clean.getItem('nai-blue-scenes') ?? 'null')).toMatchObject({
             state: { activePresetId: 'preset:fixture' },
         })
-        expect(clean.getItem('nais2-marketplace-cache')).toBeNull()
+        expect(clean.getItem('nai-blue-marketplace-cache')).toBeNull()
         expect(clean.getItem('supabase.auth.session')).toBeNull()
         expect(clean.getItem('sb-obsolete-project-auth-token')).toBeNull()
     })
 
-    it('preserves allowlisted localStorage-only migration aliases for clean restore', async () => {
+    it('does not carry pre-release localStorage aliases into a clean install backup', async () => {
         const localAliases = new Map<string, string>([
             ['scene-store', JSON.stringify({ version: 1, state: { presets: [{ id: 'alias-scenes' }] } })],
             ['character-positions', JSON.stringify({ positionEnabled: true, positions: [{ x: 0, y: 1 }] })],
@@ -282,33 +279,23 @@ describe('Backup Envelope v3', () => {
             createdAt: '2026-07-12T00:00:00.000Z',
         })
 
-        expect(envelope.legacyStores).toEqual(expect.objectContaining({
-            'scene-store': expect.any(Object),
-            'character-positions': expect.any(Object),
-            novelaiPromptEditorState: expect.any(Object),
-        }))
+        expect(envelope.legacyStores).toBeUndefined()
         const clean = new MemoryStorage()
         await restoreBackupToStorage(clean, envelope, {
             overwrite: true,
             importWildcardContent: async () => undefined,
             readWildcardContent: async () => ({}),
         })
-        expect(JSON.parse(clean.getItem('scene-store') ?? 'null')).toMatchObject({
-            state: { presets: [{ id: 'alias-scenes' }] },
-        })
-        expect(JSON.parse(clean.getItem('character-positions') ?? 'null')).toMatchObject({
-            positionEnabled: true,
-        })
-        expect(JSON.parse(clean.getItem('novelaiPromptEditorState') ?? 'null')).toMatchObject({
-            tabs: [{ id: 'legacy-tab' }],
-        })
+        expect(clean.getItem('scene-store')).toBeNull()
+        expect(clean.getItem('character-positions')).toBeNull()
+        expect(clean.getItem('novelaiPromptEditorState')).toBeNull()
         expect(localAliases.has('scene-store')).toBe(true)
     })
 
     it('retains the raw migration archive in the envelope but never restores it', async () => {
         const source = rawBackup()
         source[COMPOSITION_MIGRATION_BACKUP_STORE_KEY] = {
-            format: 'nais2-composition-raw-migration-backup',
+            format: 'nai-blue-composition-raw-migration-backup',
             archives: [{ sourceHash: 'sha256:source-before-migration' }],
         }
         const envelope = createBackupEnvelopeV3(source, {
@@ -343,7 +330,7 @@ describe('Backup Envelope v3', () => {
 
     it('rejects consistent future store persistence and state schema versions', () => {
         const futureVersionSource = rawBackup()
-        futureVersionSource['nais2-scenes'] = {
+        futureVersionSource['nai-blue-scenes'] = {
             version: 999,
             state: { presets: [] },
         }
@@ -354,15 +341,15 @@ describe('Backup Envelope v3', () => {
         expect(dryRunBackupRestore(futureVersionEnvelope)).toMatchObject({
             canRestore: false,
             errors: expect.arrayContaining([
-                expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nais2-scenes' }),
+                expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nai-blue-scenes' }),
             ]),
         })
         expect(dryRunBackupRestore(futureVersionSource).errors).toEqual(expect.arrayContaining([
-            expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nais2-scenes' }),
+            expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nai-blue-scenes' }),
         ]))
 
         const futureSchemaSource = rawBackup()
-        futureSchemaSource['nais2-wildcards'] = {
+        futureSchemaSource['nai-blue-wildcards'] = {
             version: 2,
             state: { schemaVersion: 999, files: [] },
         }
@@ -371,11 +358,11 @@ describe('Backup Envelope v3', () => {
             createdAt: '2026-07-12T00:00:00.000Z',
         })
         expect(dryRunBackupRestore(futureSchemaEnvelope).errors).toEqual(expect.arrayContaining([
-            expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nais2-wildcards' }),
+            expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'nai-blue-wildcards' }),
         ]))
     })
 
-    it('applies the canonical future-version cap to explicit legacy aliases', () => {
+    it('ignores pre-release aliases instead of treating them as restore authority', () => {
         const source = rawBackup()
         source['scene-store'] = {
             version: 2,
@@ -389,13 +376,8 @@ describe('Backup Envelope v3', () => {
             createdAt: '2026-07-12T00:00:00.000Z',
         })
 
-        expect(envelope.legacyStores).toHaveProperty('scene-store')
-        expect(dryRunBackupRestore(envelope)).toMatchObject({
-            canRestore: false,
-            errors: expect.arrayContaining([
-                expect.objectContaining({ code: 'E_STORE_SCHEMA_NEWER', key: 'scene-store' }),
-            ]),
-        })
+        expect(envelope.legacyStores).toBeUndefined()
+        expect(dryRunBackupRestore(envelope)).toMatchObject({ canRestore: true, errors: [] })
     })
 
     it('strictly validates repository state and restores only its committed envelope projection', () => {
@@ -465,12 +447,12 @@ describe('Backup Envelope v3', () => {
         ]))
 
         const corrupted = JSON.parse(JSON.stringify(envelope)) as typeof envelope
-        const generation = corrupted.stores['nais2-generation'] as { state: { prompt: string } }
+        const generation = corrupted.stores['nai-blue-generation'] as { state: { prompt: string } }
         generation.state.prompt = 'tampered after export'
         const report = dryRunBackupRestore(corrupted)
         expect(report.canRestore).toBe(false)
         expect(report.errors).toEqual(expect.arrayContaining([
-            expect.objectContaining({ code: 'E_STORE_MANIFEST_MISMATCH', key: 'nais2-generation' }),
+            expect.objectContaining({ code: 'E_STORE_MANIFEST_MISMATCH', key: 'nai-blue-generation' }),
         ]))
 
         const storage = new MemoryStorage()
@@ -498,18 +480,17 @@ describe('Backup Envelope v3', () => {
         expect(result.failed).toEqual([])
         expect(result.report.canRestore).toBe(true)
         expect(result.success).toEqual(expect.arrayContaining([
-            'nais2-generation',
-            'nais2-scenes',
-            'tools-storage',
+            'nai-blue-generation',
+            'nai-blue-scenes',
             COMPOSITION_REPOSITORY_STORE_KEY,
-            'nais2-wildcard-content',
+            'nai-blue-wildcard-content',
         ]))
-        for (const key of ['nais2-generation', 'nais2-scenes', 'tools-storage', COMPOSITION_REPOSITORY_STORE_KEY]) {
+        for (const key of ['nai-blue-generation', 'nai-blue-scenes', COMPOSITION_REPOSITORY_STORE_KEY]) {
             expect(JSON.parse(clean.getItem(key) ?? 'null')).toEqual(source[key])
         }
         expect(restoredWildcard).toEqual({ sky: ['blue', 'red'] })
         expect(clean.getItem('old-marketplace-cache')).toBeNull()
-        expect(clean.getItem('nais2-future-store')).toBeNull()
+        expect(clean.getItem('nai-blue-future-store')).toBeNull()
     })
 
     it('round-trips the exact Asset Profile disk authority through the allowlisted file path', async () => {
@@ -563,7 +544,7 @@ describe('Backup Envelope v3', () => {
         expect(dryRunBackupRestore(missingWildcardPayload).errors).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 code: 'E_FILE_MANIFEST_ORPHANED_ENTRY',
-                key: 'indexeddb/nais2-wildcard-content.json',
+                key: 'indexeddb/nai-blue-wildcard-content.json',
             }),
         ]))
     })
@@ -666,7 +647,7 @@ describe('Backup Envelope v3', () => {
         })
         const storage = new MemoryStorage()
         const previousGeneration = JSON.stringify({ version: 8, state: { prompt: 'before restore' } })
-        storage.values.set('nais2-generation', previousGeneration)
+        storage.values.set('nai-blue-generation', previousGeneration)
         let diskAuthority = 'before-file'
 
         await expect(restoreBackupToStorage(storage, envelope, {
@@ -680,7 +661,7 @@ describe('Backup Envelope v3', () => {
             rollbackAssetProfileJson: async () => { diskAuthority = 'before-file' },
         })).rejects.toBeInstanceOf(BackupRestoreWriteError)
 
-        expect(storage.getItem('nais2-generation')).toBe(previousGeneration)
+        expect(storage.getItem('nai-blue-generation')).toBe(previousGeneration)
         expect(storage.getItem(COMPOSITION_REPOSITORY_STORE_KEY)).toBeNull()
         expect(diskAuthority).toBe('before-file')
     })
@@ -708,12 +689,12 @@ describe('Backup Envelope v3', () => {
             createdAt: '2026-07-12T00:00:00.000Z',
         })
         const values = new Map<string, string>([
-            ['nais2-generation', JSON.stringify({ version: 8, state: { prompt: 'before restore' } })],
+            ['nai-blue-generation', JSON.stringify({ version: 8, state: { prompt: 'before restore' } })],
         ])
         const storage: BackupStoragePort = {
             getItem: key => values.get(key) ?? null,
             setItem: (key, value) => {
-                values.set(key, key === 'nais2-scenes' ? `${value}:corrupted-readback` : value)
+                values.set(key, key === 'nai-blue-scenes' ? `${value}:corrupted-readback` : value)
             },
             removeItem: key => { values.delete(key) },
         }
@@ -724,10 +705,10 @@ describe('Backup Envelope v3', () => {
             readWildcardContent: async () => ({}),
         })).rejects.toBeInstanceOf(BackupRestoreWriteError)
 
-        expect(JSON.parse(values.get('nais2-generation') ?? 'null')).toMatchObject({
+        expect(JSON.parse(values.get('nai-blue-generation') ?? 'null')).toMatchObject({
             state: { prompt: 'before restore' },
         })
-        expect(values.has('nais2-scenes')).toBe(false)
+        expect(values.has('nai-blue-scenes')).toBe(false)
         expect(values.has(COMPOSITION_REPOSITORY_STORE_KEY)).toBe(false)
     })
 
@@ -742,7 +723,7 @@ describe('Backup Envelope v3', () => {
         const defaultPrepared = prepareBackupRestore(envelope)
         expect(defaultPrepared.report.canRestore).toBe(true)
         expect(defaultPrepared.restorePayload[COMPOSITION_REPOSITORY_STORE_KEY]).toMatchObject({
-            format: 'nais2-composition-repository',
+            format: 'nai-blue-composition-repository',
             repositorySchemaVersion: 1,
             committedDocument: { schemaVersion: 2 },
         })
@@ -768,12 +749,12 @@ describe('Backup Envelope v3', () => {
             _exportedAt: '2026-07-12T00:00:00.000Z',
             _version: 'store-snapshot/1',
             _kind: 'store-snapshot',
-            _storeKey: 'nais2-settings',
-            'nais2-settings': payload,
+            _storeKey: 'nai-blue-settings',
+            'nai-blue-settings': payload,
         }
-        expect(prepareStoreSnapshotRestore('nais2-settings', oldSnapshot).report.canRestore).toBe(true)
+        expect(prepareStoreSnapshotRestore('nai-blue-settings', oldSnapshot).report.canRestore).toBe(true)
 
-        const v2Envelope = createBackupEnvelopeV3({ 'nais2-settings': payload }, {
+        const v2Envelope = createBackupEnvelopeV3({ 'nai-blue-settings': payload }, {
             compositionDocument: document(),
             createdAt: '2026-07-12T00:00:00.000Z',
         })
@@ -783,13 +764,13 @@ describe('Backup Envelope v3', () => {
             _version: 'store-snapshot/2',
             _manifest: manifest,
         }
-        expect(prepareStoreSnapshotRestore('nais2-settings', newSnapshot).report).toMatchObject({
+        expect(prepareStoreSnapshotRestore('nai-blue-settings', newSnapshot).report).toMatchObject({
             canRestore: true,
             manifestVerified: true,
         })
 
         const futureSnapshot = { ...newSnapshot, _version: 'store-snapshot/99' }
-        expect(prepareStoreSnapshotRestore('nais2-settings', futureSnapshot).report).toMatchObject({
+        expect(prepareStoreSnapshotRestore('nai-blue-settings', futureSnapshot).report).toMatchObject({
             canRestore: false,
             errors: expect.arrayContaining([
                 expect.objectContaining({ code: 'E_STORE_SNAPSHOT_VERSION_UNSUPPORTED' }),

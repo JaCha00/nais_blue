@@ -8,7 +8,7 @@ import type {
 } from '@/domain/r2/types'
 
 // Physical database names stay stable so pending uploads survive the rename.
-export const R2_UPLOAD_DATABASE_NAME = 'nais2-r2-upload-queue'
+export const R2_UPLOAD_DATABASE_NAME = 'nai-blue-r2-upload-queue'
 export const R2_UPLOAD_DATABASE_VERSION = 1
 
 const SECRET_KEY_PATTERN = /(?:access.?key|secret|authorization|signed.?url|session.?token|private.?key)/i

@@ -2,8 +2,9 @@
  * Inject/read NAI Blue metadata into PNG tEXt chunks.
  *
  * NAI does not echo qualityToggle/ucPreset into the image Comment JSON,
- * so we embed them ourselves (keyword: "nais-blue-params", value: base64 of JSON).
- * to guarantee round-trip when re-importing our own images.
+ * so new files embed them under "nai-blue-params" to guarantee round-trip
+ * when re-importing our own images. External automation names are accepted
+ * only by this metadata import boundary.
  *
  * Format matches the approach used by SDStudio.
  */
@@ -69,8 +70,8 @@ export interface NaiBlueResolvedParams {
 }
 
 interface NaiBlueParamsCommon {
-    /** Name carried by newly emitted metadata; absent in older files. */
-    metadataName?: 'nai-blue' | 'nais-blue' | 'nais2'
+    /** Name carried by newly emitted metadata or recognized external metadata. */
+    metadataName?: 'nai-blue' | 'nais2'
     qualityToggle?: boolean
     ucPreset?: number
     promptParts?: NaiBluePromptParts
@@ -118,19 +119,16 @@ export interface NaiBlueParamsV2 extends NaiBlueParamsCommon {
 export type NaiBlueParams = NaiBlueParamsV1 | NaiBlueParamsV2
 
 /**
- * New writes use the NAI Blue names below; the pre-rename keyword remains read-compatible
- * so existing images and sidecars can still be imported without a migration step.
+ * New writes use the NAI Blue names below. External automation keywords remain
+ * read-only so users can import image metadata created by other NAI tools.
  */
 export const NAI_BLUE_METADATA_NAME = 'nai-blue' as const
 export const NAI_BLUE_PNG_KEYWORD = 'nai-blue-params' as const
-const PRE_RENAME_BLUE_METADATA_NAME = 'nais-blue' as const
-const PRE_RENAME_BLUE_PNG_KEYWORD = 'nais-blue-params' as const
-const PRE_RENAME_METADATA_NAME = 'nais2' as const
-const PRE_RENAME_PNG_KEYWORD = 'nais2-params' as const
+const EXTERNAL_V2_METADATA_NAME = 'nais2' as const
+const EXTERNAL_V2_PNG_KEYWORD = 'nais2-params' as const
 const PNG_METADATA_KEYWORDS: ReadonlySet<string> = new Set([
     NAI_BLUE_PNG_KEYWORD,
-    PRE_RENAME_BLUE_PNG_KEYWORD,
-    PRE_RENAME_PNG_KEYWORD,
+    EXTERNAL_V2_PNG_KEYWORD,
 ])
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10]
 const WEBP_RIFF_SIGNATURE = [82, 73, 70, 70] // "RIFF"
@@ -373,8 +371,7 @@ function isNaiBlueParamsV2(value: Record<string, unknown>): boolean {
         && (value.compositionRandomTrace === undefined || isRandomTrace(value.compositionRandomTrace))
         && (value.metadataName === undefined
             || value.metadataName === NAI_BLUE_METADATA_NAME
-            || value.metadataName === PRE_RENAME_BLUE_METADATA_NAME
-            || value.metadataName === PRE_RENAME_METADATA_NAME)
+            || value.metadataName === EXTERNAL_V2_METADATA_NAME)
 }
 
 function isNaiBlueParamsV1(value: Record<string, unknown>): value is NaiBlueParamsV1 {
@@ -415,13 +412,13 @@ function buildTextChunk(keyword: string, value: string): Uint8Array {
 
 /**
  * Embed NAI Blue params into a PNG (base64 in, base64 out).
- * Inserts a "nais-blue-params" tEXt chunk immediately after IHDR. If the input is
+ * Inserts a "nai-blue-params" tEXt chunk immediately after IHDR. If the input is
  * not a valid PNG the original base64 is returned unchanged.
  */
 export function embedNaiBlueParams(pngBase64: string, params: NaiBlueParams): string {
     const bytes = base64ToBytes(pngBase64)
     // PNG tEXt chunks do not exist in WebP. WebP metadata is persisted by
-    // callers as a sibling .nais-blue.json sidecar instead of mutating the image.
+    // callers as a sibling .nai-blue.json sidecar instead of mutating the image.
     if (isWebP(bytes)) return pngBase64
     if (!isPng(bytes)) return pngBase64
 
@@ -430,7 +427,7 @@ export function embedNaiBlueParams(pngBase64: string, params: NaiBlueParams): st
     const ihdrEnd = 8 + 4 + 4 + 13 + 4
     if (bytes.length < ihdrEnd) return pngBase64
 
-    // Remove both the new and legacy chunks before inserting the new one so a
+    // Remove current and supported external chunks before inserting the new one so a
     // re-save never emits two competing metadata names.
     const stripped = stripNaiBlueChunks(bytes)
 
@@ -453,7 +450,7 @@ export function encodeNaiBlueSidecar(params: NaiBlueParams): Uint8Array {
     return new TextEncoder().encode(JSON.stringify(withNaiBlueVersion(params), null, 2))
 }
 
-/** Parse either a new or legacy sibling sidecar. */
+/** Parse either a current or supported external sibling sidecar. */
 export function readNaiBlueSidecar(sidecar: Uint8Array | string): NaiBlueParams | null {
     try {
         const json = typeof sidecar === 'string'

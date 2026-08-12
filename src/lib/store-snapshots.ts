@@ -20,7 +20,7 @@ import {
 import { projectStoreForBackup } from '@/lib/backup-projection'
 import { MEDIA_STORAGE_BASE_DIRECTORY } from '@/platform/storage'
 
-const BACKUP_ROOT = 'NAIS_Backup'
+const BACKUP_ROOT = 'NAI_Blue_Backup'
 const DEBOUNCE_MS = 5000
 const MAX_SNAPSHOTS_PER_STORE = 30
 const STORE_SNAPSHOT_VERSION = 'store-snapshot/2'

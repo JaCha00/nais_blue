@@ -31,7 +31,7 @@ import {
     type WeightedPromptTag,
 } from '@/lib/style-lab'
 
-export const STYLE_LAB_OUTPUT_FILENAME_TEMPLATE = 'NAIS_STYLELAB_{seed}' as const
+export const STYLE_LAB_OUTPUT_FILENAME_TEMPLATE = 'NAI_Blue_STYLELAB_{seed}' as const
 
 const STYLE_LAB_TEMPLATE_PLACEHOLDERS = Object.freeze({
     [STYLE_LAB_ARTIST_PLACEHOLDER]: 'artist-tags',

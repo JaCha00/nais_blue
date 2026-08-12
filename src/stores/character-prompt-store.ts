@@ -335,7 +335,7 @@ export const useCharacterPromptStore = create<CharacterPromptState>()(
             }
         }),
         {
-            name: 'nais2-character-prompts',
+            name: 'nai-blue-character-prompts',
             storage: createJSONStorage(() => indexedDBStorage),
             version: 2,
             migrate: (persistedState) => (

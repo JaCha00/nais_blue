@@ -307,7 +307,7 @@
             "description": "ファイルをドロップするか選択して、画像メタデータのポジティブ・除外プロンプトを読み込みます。",
             "saveImportedModule": "読み込んだ内容をモジュールとして保存",
             "saveCurrentModule": "現在のプロンプトをモジュールとして保存",
-            "error": "プロンプトメタデータが見つかりません。NovelAI画像またはNAIS JSONか確認してください。",
+            "error": "プロンプトメタデータが見つかりません。NovelAI画像または対応する外部JSONか確認してください。",
             "loading": "メタデータを読み込み中…",
             "choose": "ここにファイルをドロップ、または選択",
             "moduleSaved": "モジュール {{path}} を保存しました。",
@@ -1318,7 +1318,7 @@
             "exportFailed": "結果をエクスポートできませんでした。",
             "reading": "{{current}} / {{total}} を読み取り中",
             "dropTitle": "画像を選択するか、ここにドロップしてください",
-            "dropDescription": "PNG、WebP、JPEG、NAIS sidecar JSONを一度に最大500件まで読み取れます。元画像とBase64データは結果に保存しません。",
+            "dropDescription": "PNG、WebP、JPEG、対応する外部sidecar JSONを一度に最大500件まで読み取れます。元画像とBase64データは結果に保存しません。",
             "total": "合計",
             "found": "メタデータ",
             "empty": "なし",
@@ -2241,21 +2241,21 @@
             "outputFolders": {
                 "main": {
                     "label": "メイン出力フォルダ",
-                    "help": "デフォルト: Pictures/NAIS_Output"
+                    "help": "デフォルト: Pictures/NAI_Blue_Output"
                 },
                 "scene": {
                     "label": "Scene出力フォルダ",
-                    "help": "デフォルト: Pictures/NAIS_Scene",
+                    "help": "デフォルト: Pictures/NAI_Blue_Scene",
                     "selectFolder": "Sceneフォルダを選択"
                 },
                 "styleLab": {
                     "label": "StyleLab出力フォルダ",
-                    "help": "デフォルト: Pictures/nais-style",
+                    "help": "デフォルト: Pictures/nai-blue-style",
                     "selectFolder": "StyleLabフォルダを選択"
                 },
                 "tools": {
                     "label": "Tools出力フォルダ",
-                    "help": "デフォルト: Pictures/nais-tools",
+                    "help": "デフォルト: Pictures/nai-blue-tools",
                     "selectFolder": "Toolsフォルダを選択"
                 }
             },
@@ -2271,12 +2271,12 @@
                 "sidecarOnly": "サイドカーファイルのみ",
                 "stripAndSidecar": "クリーン画像 + サイドカー",
                 "stripOnly": "クリーン画像のみ",
-                "help": "サイドカーを選ぶと画像の隣に .nais.json ファイルを作成します。クリーン画像のみでは再利用可能なメタデータが削除され、後から生成設定を復元できません。"
+                "help": "サイドカーを選ぶと画像の隣に .nai-blue.json ファイルを作成します。クリーン画像のみでは再利用可能なメタデータが削除され、後から生成設定を復元できません。"
             }
         },
         "library": {
             "folder": "ライブラリフォルダ",
-            "folderHelp": "デフォルト: Pictures/NAIS_Library",
+            "folderHelp": "デフォルト: Pictures/NAI_Blue_Library",
             "absolutePathHelp": "ライブラリファイルはこのフォルダに直接保存されます。",
             "selectFolder": "ライブラリフォルダを選択"
         },
@@ -2322,10 +2322,10 @@
             "autoBackupDesc": "アプリ起動時に自動でバックアップを作成します。",
             "autoSnapshotTitle": "自動復旧スナップショット",
             "autoSnapshotDesc": "通常のエクスポート/インポート形式を変えず、Picturesフォルダーに全体スナップショットを作成します。",
-            "snapshotLocation": "保存先: Pictures/NAIS_Backup/full",
+            "snapshotLocation": "保存先: Pictures/NAI_Blue_Backup/full",
             "storeSnapshotTitle": "ストアスナップショット",
             "storeSnapshotDesc": "IndexedDB 書き込み後にストア単位の復旧スナップショットを保持します。",
-            "storeSnapshotLocation": "保存先: Pictures/NAIS_Backup/<store>",
+            "storeSnapshotLocation": "保存先: Pictures/NAI_Blue_Backup/<store>",
             "restoreStoreSnapshots": "ストアスナップショットを復元",
             "restoreStoreSnapshotsDesc": "ストア単位の自動スナップショットから 1 つのストアを復元します。",
             "storeSnapshotCount": "{{count}}個のストアにスナップショットがあります",

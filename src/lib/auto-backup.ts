@@ -49,19 +49,19 @@ import {
 } from '@/services/asset-profile-file'
 import { GENERATION_PRESET_STORE_VERSION } from '@/lib/composition/preset-store-migration'
 
-const BACKUP_ROOT = 'NAIS_Backup'
+const BACKUP_ROOT = 'NAI_Blue_Backup'
 const FULL_BACKUP_DIR = `${BACKUP_ROOT}/full`
-const FULL_BACKUP_PREFIX = 'nais2-full'
+const FULL_BACKUP_PREFIX = 'nai-blue-full'
 const MAX_FULL_BACKUPS = 10
 
-export const DISK_AUTO_BACKUP_LAST_KEY = 'nais2-last-disk-auto-backup'
-export const BACKUP_ENVELOPE_FORMAT = 'nais2-backup-envelope' as const
+export const DISK_AUTO_BACKUP_LAST_KEY = 'nai-blue-last-disk-auto-backup'
+export const BACKUP_ENVELOPE_FORMAT = 'nai-blue-backup-envelope' as const
 export const BACKUP_ENVELOPE_VERSION = 3 as const
 export const BACKUP_STORE_MANIFEST_VERSION = 1 as const
-export const COMPOSITION_REPOSITORY_STORE_KEY = 'nais2-composition-repository' as const
-export const COMPOSITION_MIGRATION_BACKUP_STORE_KEY = 'nais2-composition-migration-backup' as const
+export const COMPOSITION_REPOSITORY_STORE_KEY = 'nai-blue-composition-repository' as const
+export const COMPOSITION_MIGRATION_BACKUP_STORE_KEY = 'nai-blue-composition-migration-backup' as const
 
-const WILDCARD_CONTENT_KEY = 'nais2-wildcard-content'
+const WILDCARD_CONTENT_KEY = 'nai-blue-wildcard-content'
 export const ASSET_PROFILE_FILE_RESTORE_KEY = 'file:asset-profile' as const
 const CURRENT_APP_VERSION = packageMetadata.version
 const encoder = new TextEncoder()
@@ -101,48 +101,42 @@ interface SupportedBackupStoreVersion {
  * must update this registry before its payload becomes restorable.
  */
 export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedBackupStoreVersion>> = Object.freeze({
-    'nais2-generation': { version: 8, schemaVersion: 2 },
-    'nais2-character-store': { version: 2, schemaVersion: 2 },
-    'nais2-character-prompts': { version: 2, schemaVersion: 2 },
-    'nais2-presets': { version: GENERATION_PRESET_STORE_VERSION, schemaVersion: 2 },
-    'nais2-settings': { version: 2, schemaVersion: 2 },
-    'nais2-auth': { version: 3, schemaVersion: 2 },
-    'nais2-scenes': { version: 1, schemaVersion: 2 },
-    'nais2-character-rotation': { version: 2, schemaVersion: 2 },
-    'nais2-shortcuts': { version: 2, schemaVersion: 2 },
-    'nais2-theme': { version: 2, schemaVersion: 2 },
-    'nais2-wildcards': { version: 2, schemaVersion: 2 },
-    'nais2-prompt-library': { version: 2, schemaVersion: 2 },
-    'nais2-layout': { version: 2, schemaVersion: 2 },
-    'nais2-library': { version: 2, schemaVersion: 2 },
-    'nais2-tools': { version: 2, schemaVersion: 2 },
-    'nais2-update': { version: 2, schemaVersion: 2 },
-    'nais2-style-lab': { version: 2, schemaVersion: 2 },
+    'nai-blue-generation': { version: 8, schemaVersion: 2 },
+    'nai-blue-character-store': { version: 2, schemaVersion: 2 },
+    'nai-blue-character-prompts': { version: 2, schemaVersion: 2 },
+    'nai-blue-presets': { version: GENERATION_PRESET_STORE_VERSION, schemaVersion: 2 },
+    'nai-blue-settings': { version: 2, schemaVersion: 2 },
+    'nai-blue-auth': { version: 3, schemaVersion: 2 },
+    'nai-blue-scenes': { version: 1, schemaVersion: 2 },
+    'nai-blue-character-rotation': { version: 2, schemaVersion: 2 },
+    'nai-blue-shortcuts': { version: 2, schemaVersion: 2 },
+    'nai-blue-theme': { version: 2, schemaVersion: 2 },
+    'nai-blue-wildcards': { version: 2, schemaVersion: 2 },
+    'nai-blue-prompt-library': { version: 2, schemaVersion: 2 },
+    'nai-blue-layout': { version: 2, schemaVersion: 2 },
+    'nai-blue-library': { version: 2, schemaVersion: 2 },
+    'nai-blue-tools': { version: 2, schemaVersion: 2 },
+    'nai-blue-update': { version: 2, schemaVersion: 2 },
+    'nai-blue-style-lab': { version: 2, schemaVersion: 2 },
     [STYLE_LAB_REPOSITORY_STORE_KEY]: { schemaVersion: STYLE_LAB_REPOSITORY_SCHEMA_VERSION },
-    'nais2-asset-modules': { version: 2, schemaVersion: 2 },
+    'nai-blue-asset-modules': { version: 2, schemaVersion: 2 },
     [COMPOSITION_REPOSITORY_STORE_KEY]: { schemaVersion: COMPOSITION_REPOSITORY_SCHEMA_VERSION },
-    'nais-library-storage': { version: 2, schemaVersion: 2 },
-    'tools-storage': { version: 2, schemaVersion: 2 },
-    'nais-update': { version: 2, schemaVersion: 2 },
 })
 
 const LEGACY_STORE_VERSION_POLICY_ALIASES: Readonly<Record<string, string>> = Object.freeze({
-    'nais-library-storage': 'nais2-library',
-    'tools-storage': 'nais2-tools',
-    'nais-update': 'nais2-update',
-    scenes: 'nais2-scenes',
-    'scene-store': 'nais2-scenes',
-    wildcards: 'nais2-wildcards',
-    fragments: 'nais2-wildcards',
-    'character-prompts': 'nais2-character-prompts',
-    characterPrompts: 'nais2-character-prompts',
-    'generation-presets': 'nais2-presets',
-    generationPresets: 'nais2-presets',
-    novelaiPromptEditorState: 'nais2-prompt-library',
-    'prompt-presets': 'nais2-prompt-library',
-    promptPresets: 'nais2-prompt-library',
-    'asset-profile': 'nais2-asset-modules',
-    assetProfile: 'nais2-asset-modules',
+    scenes: 'nai-blue-scenes',
+    'scene-store': 'nai-blue-scenes',
+    wildcards: 'nai-blue-wildcards',
+    fragments: 'nai-blue-wildcards',
+    'character-prompts': 'nai-blue-character-prompts',
+    characterPrompts: 'nai-blue-character-prompts',
+    'generation-presets': 'nai-blue-presets',
+    generationPresets: 'nai-blue-presets',
+    novelaiPromptEditorState: 'nai-blue-prompt-library',
+    'prompt-presets': 'nai-blue-prompt-library',
+    promptPresets: 'nai-blue-prompt-library',
+    'asset-profile': 'nai-blue-asset-modules',
+    assetProfile: 'nai-blue-asset-modules',
 })
 
 const SUPPORTED_AUXILIARY_LEGACY_STORE_VERSION = Object.freeze({
@@ -487,7 +481,7 @@ function assetProfileIncludedFile(rawJson: string): BackupIncludedFileEntry {
 
 function defaultExcludedFiles(): BackupExcludedFileEntry[] {
     return [
-        { path: 'NAIS_Library/**', reason: 'external library/resource files are not embedded in JSON backups' },
+        { path: 'NAI_Blue_Library/**', reason: 'external library/resource files are not embedded in JSON backups' },
         { path: 'references/**', reason: 'character/vibe bytes and encoded caches remain in the resource repository' },
         { path: 'output/**', reason: 'generated output files are not embedded in JSON backups' },
     ]
@@ -524,7 +518,7 @@ function includedPayloadFiles(
     }
     if (wildcardContent) {
         included.push({
-            path: 'indexeddb/nais2-wildcard-content.json',
+            path: 'indexeddb/nai-blue-wildcard-content.json',
             kind: 'wildcard-content',
             sizeBytes: jsonByteLength(wildcardContent),
             hash: contentHash(wildcardContent),
@@ -1201,7 +1195,7 @@ function prepareEnvelopeRestore(
                 }
             }
             const isPayloadBackedPath = (path: string) => path === 'composition/document.json'
-                || path === 'indexeddb/nais2-wildcard-content.json'
+                || path === 'indexeddb/nai-blue-wildcard-content.json'
                 || path === ASSET_PROFILE_FILE_PATH
                 || path.startsWith('stores/')
                 || path.startsWith('legacy-stores/')
@@ -1534,7 +1528,7 @@ export async function createFullAutoBackup(options: CreateFullAutoBackupOptions 
 
     await writeFile(relPath, encoder.encode(JSON.stringify(backup, null, 2)), { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
     localStorage.setItem(DISK_AUTO_BACKUP_LAST_KEY, String(now))
-    localStorage.setItem('nais2-last-disk-auto-backup-file', relPath)
+    localStorage.setItem('nai-blue-last-disk-auto-backup-file', relPath)
     await rotateFullBackups()
 
     return {

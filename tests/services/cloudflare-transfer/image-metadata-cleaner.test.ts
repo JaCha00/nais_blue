@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stripPngMeta } from '../../../cloudflare/nais-transfer-worker/src/image-metadata-cleaner'
+import { stripPngMeta } from '../../../cloudflare/nai-blue-transfer-worker/src/image-metadata-cleaner'
 
 function chunk(type: string, payload: readonly number[]): number[] {
     const length = payload.length

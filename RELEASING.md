@@ -9,8 +9,8 @@ services, or legacy-read compatibility when preparing a release.
 
 - Repository: `bluehair-blue/NAI-Blue`
 - Desktop product: `NAI Blue`
-- Application identifier: `com.bluhair.naisblue` (intentionally stable)
-- Android application ID: `com.bluhair.naisblue` (intentionally stable)
+- Application identifier: `blue.bluehair.naiblue`
+- Android application ID: `blue.bluehair.naiblue`
 - Android signer certificate SHA-256: pinned in `android-release-policy.json`
 - Android version name: package version
 - Android version code: explicit monotonic value from
@@ -61,8 +61,8 @@ uploads it, and publishes the cross-platform release.
 
 The protected `android-release` GitHub Environment must provide:
 
-- `NAIS_KEYSTORE_BASE64`
-- `NAIS_KEYSTORE_PASSWORD`
+- `NAI_BLUE_KEYSTORE_BASE64`
+- `NAI_BLUE_KEYSTORE_PASSWORD`
 
 These existing secret names are retained as release-infrastructure
 compatibility. They are not product branding and must never be printed or

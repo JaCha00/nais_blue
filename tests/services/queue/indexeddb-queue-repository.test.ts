@@ -17,7 +17,7 @@ let databaseCounter = 0
 
 function databaseName(label: string): string {
     databaseCounter += 1
-    return `nais2-queue-test-${label}-${databaseCounter}`
+    return `nai-blue-queue-test-${label}-${databaseCounter}`
 }
 
 function snapshot(resources: GenerationJobSnapshot['resources'] = []): GenerationJobSnapshot {

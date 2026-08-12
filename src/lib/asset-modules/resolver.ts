@@ -64,7 +64,7 @@ interface IndexedContribution extends AssetModulePromptContribution {
 
 const DEFAULT_TARGET = 'main.base'
 const DEFAULT_FILENAME_TEMPLATE = '{profile}_{seed}_{datetime:YYYYMMDD-HHmmss}'
-const DEFAULT_OUTPUT_DIRECTORY = 'NAIS_Output'
+const DEFAULT_OUTPUT_DIRECTORY = 'NAI_Blue_Output'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)

@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import './styles/globals.css'
 import './i18n'
-import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, initializeIndexedDB, resetIndexedDBConnectionForRetry, indexedDBStorage, type RetainedStoreMigrationResult } from './lib/indexed-db'
+import { BACKUP_STORE_KEYS, migrateFromLocalStorage, initializeIndexedDB, resetIndexedDBConnectionForRetry, indexedDBStorage } from './lib/indexed-db'
 import { createCurrentBackupEnvelopeV3, createFullAutoBackup } from './lib/auto-backup'
 import { setRuntimeCompositionAuthority } from './lib/composition-authority'
 import { runStartupGate } from './lib/startup-mode'
@@ -11,36 +11,15 @@ import { reportDiagnostic, reportPersistenceFault } from './services/diagnostics
 import type { DiagnosticEvent } from './domain/diagnostics/types'
 
 // 자동 백업 상수
-const AUTO_BACKUP_KEY = 'nais2-auto-backup'
+const AUTO_BACKUP_KEY = 'nai-blue-auto-backup'
 const AUTO_BACKUP_INTERVAL = 24 * 60 * 60 * 1000 // 24시간
 const MAX_AUTO_BACKUPS = 3
-const LEGACY_STORE_KEY_RENAMES: [string, string][] = [
-    ['nais-library-storage', 'nais2-library'],
-    ['tools-storage', 'nais2-tools'],
-    ['nais-update', 'nais2-update'],
-    // Same-shape pre-v2 aliases. Sources are retained for old-authority
-    // rollback; targets are only populated when no canonical value exists.
-    ['scenes', 'nais2-scenes'],
-    ['scene-store', 'nais2-scenes'],
-    ['wildcards', 'nais2-wildcards'],
-    ['fragments', 'nais2-wildcards'],
-    ['character-prompts', 'nais2-character-prompts'],
-    ['characterPrompts', 'nais2-character-prompts'],
-    ['generation-presets', 'nais2-presets'],
-    ['generationPresets', 'nais2-presets'],
-    ['prompt-presets', 'nais2-prompt-library'],
-    ['promptPresets', 'nais2-prompt-library'],
-]
 let appRoot: ReactDOM.Root | null = null
 let startupInProgress = false
 
 function getAppRoot(): ReactDOM.Root {
     appRoot ??= ReactDOM.createRoot(document.getElementById('root')!)
     return appRoot
-}
-
-function retainedStoreCopiesAreHealthy(results: readonly RetainedStoreMigrationResult[]): boolean {
-    return results.every(result => result.status !== 'failed' && result.status !== 'verification-failed')
 }
 
 async function rehydrateCompositionConnectedStores(): Promise<void> {
@@ -105,7 +84,7 @@ const showSplashError = (message: string) => {
 // 자동 백업 실행 (localStorage에 저장 - IndexedDB와 분리)
 async function performAutoBackup() {
     try {
-        const lastBackupStr = localStorage.getItem('nais2-last-auto-backup')
+        const lastBackupStr = localStorage.getItem('nai-blue-last-auto-backup')
         const lastBackup = lastBackupStr ? parseInt(lastBackupStr, 10) : 0
         const now = Date.now()
         
@@ -146,7 +125,7 @@ async function performAutoBackup() {
         }
         
         localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(backups))
-        localStorage.setItem('nais2-last-auto-backup', now.toString())
+        localStorage.setItem('nai-blue-last-auto-backup', now.toString())
         
         console.log(`[AutoBackup] Complete - ${backups.length} backups stored`)
     } catch (err) {
@@ -158,7 +137,7 @@ async function performAutoBackup() {
 async function checkDataIntegrity(): Promise<boolean> {
     try {
         // 중요 스토어들의 데이터 확인
-        const criticalStores = ['nais2-character-prompts', 'nais2-scenes', 'nais2-presets']
+        const criticalStores = ['nai-blue-character-prompts', 'nai-blue-scenes', 'nai-blue-presets']
         let hasDataLoss = false
         
         for (const storeKey of criticalStores) {
@@ -174,12 +153,12 @@ async function checkDataIntegrity(): Promise<boolean> {
                 const state = parsed.state
                 
                 // character-prompts 체크
-                if (storeKey === 'nais2-character-prompts') {
+                if (storeKey === 'nai-blue-character-prompts') {
                     const presetCount = state?.presets?.length || 0
                     const charCount = state?.characters?.length || 0
                     
                     // 이전 기록과 비교
-                    const prevStats = localStorage.getItem('nais2-integrity-character-prompts')
+                    const prevStats = localStorage.getItem('nai-blue-integrity-character-prompts')
                     if (prevStats) {
                         const prev = JSON.parse(prevStats)
                         // 프리셋이 갑자기 절반 이하로 줄었으면 경고
@@ -190,15 +169,15 @@ async function checkDataIntegrity(): Promise<boolean> {
                     }
                     
                     // 현재 통계 저장
-                    localStorage.setItem('nais2-integrity-character-prompts', JSON.stringify({ presets: presetCount, characters: charCount }))
+                    localStorage.setItem('nai-blue-integrity-character-prompts', JSON.stringify({ presets: presetCount, characters: charCount }))
                 }
                 
                 // scenes 체크
-                if (storeKey === 'nais2-scenes') {
+                if (storeKey === 'nai-blue-scenes') {
                     const presetCount = state?.presets?.length || 0
                     const totalScenes = state?.presets?.reduce((sum: number, p: { scenes?: unknown[] }) => sum + (p.scenes?.length || 0), 0) || 0
                     
-                    const prevStats = localStorage.getItem('nais2-integrity-scenes')
+                    const prevStats = localStorage.getItem('nai-blue-integrity-scenes')
                     if (prevStats) {
                         const prev = JSON.parse(prevStats)
                         if (prev.scenes > 10 && totalScenes < prev.scenes * 0.5) {
@@ -207,7 +186,7 @@ async function checkDataIntegrity(): Promise<boolean> {
                         }
                     }
                     
-                    localStorage.setItem('nais2-integrity-scenes', JSON.stringify({ presets: presetCount, scenes: totalScenes }))
+                    localStorage.setItem('nai-blue-integrity-scenes', JSON.stringify({ presets: presetCount, scenes: totalScenes }))
                 }
             } catch (parseErr) {
                 console.error(`[Integrity] ${storeKey}: Parse error`, parseErr)
@@ -359,38 +338,13 @@ function schedulePostRenderStartupTasks() {
 async function runStartupMigrations(): Promise<void> {
     // CRITICAL: Migration must complete BEFORE React renders
     // Otherwise Zustand stores will hydrate from empty IndexedDB
-    let legacySourceCopyHealthy = true
-    // Step 1: Migrate renamed keys within IndexedDB (old name → new name)
-    // This handles stores that were already using IndexedDB but had their names changed
-    try {
-        setSplashStage('Migrating IndexedDB keys')
-        const results = await migrateIndexedDBKeys(LEGACY_STORE_KEY_RENAMES)
-        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
-        console.log('[Startup] IndexedDB key migration complete')
-    } catch (err) {
-        legacySourceCopyHealthy = false
-        reportDiagnostic(err, { operation: 'startup.indexeddb-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
-    }
-
-    try {
-        setSplashStage('Migrating legacy local data')
-        const results = await migrateRenamedLocalStorageKeys(LEGACY_STORE_KEY_RENAMES)
-        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
-        console.log('[Startup] Legacy localStorage key migration complete')
-    } catch (err) {
-        legacySourceCopyHealthy = false
-        reportDiagnostic(err, { operation: 'startup.local-storage-key-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
-    }
-
-    // Step 2: Migrate localStorage to IndexedDB for ALL stores
+    // Import any current NAI Blue localStorage entries into IndexedDB.
     // Missing entries here will cause data loss on app restart/update!
     try {
         setSplashStage('Migrating local data')
-        const results = await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
-        legacySourceCopyHealthy &&= retainedStoreCopiesAreHealthy(results)
+        await migrateFromLocalStorage([...BACKUP_STORE_KEYS])
         console.log('[Startup] LocalStorage migration complete')
     } catch (err) {
-        legacySourceCopyHealthy = false
         reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
     }
 
@@ -410,19 +364,8 @@ async function runStartupMigrations(): Promise<void> {
             getLastCompositionStartupObservation,
             runStartupCompositionMigration,
         } = await import('./lib/composition-migration-startup')
-        const migration = await runStartupCompositionMigration(
-            legacySourceCopyHealthy ? {} : { authority: 'legacy' },
-        )
+        const migration = await runStartupCompositionMigration()
         const authorityObservation = getLastCompositionStartupObservation()
-        if (!legacySourceCopyHealthy) {
-            reportDiagnostic(new Error('Composition v2 activation blocked because a retained source copy was not verified'), {
-                operation: 'startup.composition-migration',
-                stage: 'authority',
-                category: 'persistence',
-                severity: 'error',
-                recoverable: true,
-            })
-        }
         if (migration.status === 'failed') {
             reportDiagnostic(new Error(migration.error || 'Composition migration retained legacy authority'), {
                 operation: 'startup.composition-migration',

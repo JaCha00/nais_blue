@@ -193,7 +193,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
     useEffect(() => {
         getNativeAppVersion().then(setAppVersion).catch(() => setAppVersion('dev'))
         // 마지막 백업 시간 로드
-        const lastBackup = localStorage.getItem('nais2-last-backup-time')
+        const lastBackup = localStorage.getItem('nai-blue-last-backup-time')
         if (lastBackup) setLastBackupTime(lastBackup)
         const lastAutoBackup = localStorage.getItem(DISK_AUTO_BACKUP_LAST_KEY)
         if (lastAutoBackup) {
@@ -236,9 +236,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
 
     // Reset to default Pictures subfolder
     const handleResetToDefault = async () => {
-        setLocalSavePath('NAIS_Output')
+        setLocalSavePath('NAI_Blue_Output')
         setIsAbsolutePath(false)
-        setSavePath('NAIS_Output', false)
+        setSavePath('NAI_Blue_Output', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
 
@@ -264,9 +264,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
     }
 
     const handleResetSceneToDefault = async () => {
-        setLocalSceneSavePath('NAIS_Scene')
+        setLocalSceneSavePath('NAI_Blue_Scene')
         setIsAbsoluteScenePath(false)
-        setSceneSavePath('NAIS_Scene', false)
+        setSceneSavePath('NAI_Blue_Scene', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
 
@@ -292,9 +292,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
     }
 
     const handleResetStyleLabToDefault = async () => {
-        setLocalStyleLabSavePath('nais-style')
+        setLocalStyleLabSavePath('nai-blue-style')
         setIsAbsoluteStyleLabPath(false)
-        setStyleLabSavePath('nais-style', false)
+        setStyleLabSavePath('nai-blue-style', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
 
@@ -320,9 +320,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
     }
 
     const handleResetToolsToDefault = async () => {
-        setLocalToolsSavePath('nais-tools')
+        setLocalToolsSavePath('nai-blue-tools')
         setIsAbsoluteToolsPath(false)
-        setToolsSavePath('nais-tools', false)
+        setToolsSavePath('nai-blue-tools', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
 
@@ -349,9 +349,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
     }
 
     const handleResetLibraryToDefault = async () => {
-        setLocalLibraryPath('NAIS_Library')
+        setLocalLibraryPath('NAI_Blue_Library')
         setIsAbsoluteLibraryPath(false)
-        setLibraryPath('NAIS_Library', false)
+        setLibraryPath('NAI_Blue_Library', false)
         toast({ title: t('settingsPage.saved'), variant: 'success' })
     }
     
@@ -374,7 +374,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                 
                 // 마지막 백업 시간 저장
                 const now = new Date().toISOString()
-                localStorage.setItem('nais2-last-backup-time', now)
+                localStorage.setItem('nai-blue-last-backup-time', now)
                 setLastBackupTime(now)
                 
                 toast({
@@ -995,7 +995,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 setLocalSavePath(e.target.value)
                                                 setIsAbsolutePath(isAbsoluteFolderPath(e.target.value))
                                             }}
-                                            placeholder="NAIS_Output"
+                                            placeholder="NAI_Blue_Output"
                                             className="flex-1"
                                         />
                                         <Button variant="outline" onClick={handleBrowseFolder}>
@@ -1017,7 +1017,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsolutePath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
-                                                : t('settingsPage.save.outputFolders.main.help', 'Default: Pictures/NAIS_Output')}
+                                                : t('settingsPage.save.outputFolders.main.help', 'Default: Pictures/NAI_Blue_Output')}
                                         </p>
                                         {isAbsolutePath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetToDefault} className="h-11 shrink-0 text-xs">
@@ -1044,7 +1044,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 setLocalSceneSavePath(e.target.value)
                                                 setIsAbsoluteScenePath(isAbsoluteFolderPath(e.target.value))
                                             }}
-                                            placeholder="NAIS_Scene"
+                                            placeholder="NAI_Blue_Scene"
                                             className="flex-1"
                                         />
                                         <Button variant="outline" onClick={handleBrowseSceneFolder}>
@@ -1063,7 +1063,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteScenePath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
-                                                : t('settingsPage.save.outputFolders.scene.help', 'Default: Pictures/NAIS_Scene')}
+                                                : t('settingsPage.save.outputFolders.scene.help', 'Default: Pictures/NAI_Blue_Scene')}
                                         </p>
                                         {isAbsoluteScenePath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetSceneToDefault} className="h-11 shrink-0 text-xs">
@@ -1090,7 +1090,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 setLocalStyleLabSavePath(e.target.value)
                                                 setIsAbsoluteStyleLabPath(isAbsoluteFolderPath(e.target.value))
                                             }}
-                                            placeholder="nais-style"
+                                            placeholder="nai-blue-style"
                                             className="flex-1"
                                         />
                                         <Button variant="outline" onClick={handleBrowseStyleLabFolder}>
@@ -1109,7 +1109,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteStyleLabPath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
-                                                : t('settingsPage.save.outputFolders.styleLab.help', 'Default: Pictures/nais-style')}
+                                                : t('settingsPage.save.outputFolders.styleLab.help', 'Default: Pictures/nai-blue-style')}
                                         </p>
                                         {isAbsoluteStyleLabPath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetStyleLabToDefault} className="h-11 shrink-0 text-xs">
@@ -1136,7 +1136,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 setLocalToolsSavePath(e.target.value)
                                                 setIsAbsoluteToolsPath(isAbsoluteFolderPath(e.target.value))
                                             }}
-                                            placeholder="nais-tools"
+                                            placeholder="nai-blue-tools"
                                             className="flex-1"
                                         />
                                         <Button variant="outline" onClick={handleBrowseToolsFolder}>
@@ -1155,7 +1155,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteToolsPath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
-                                                : t('settingsPage.save.outputFolders.tools.help', 'Default: Pictures/nais-tools')}
+                                                : t('settingsPage.save.outputFolders.tools.help', 'Default: Pictures/nai-blue-tools')}
                                         </p>
                                         {isAbsoluteToolsPath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetToolsToDefault} className="h-11 shrink-0 text-xs">
@@ -1198,7 +1198,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 setLocalLibraryPath(e.target.value)
                                                 setIsAbsoluteLibraryPath(isAbsoluteFolderPath(e.target.value))
                                             }}
-                                            placeholder="NAIS_Library"
+                                            placeholder="NAI_Blue_Library"
                                             className="flex-1"
                                         />
                                         <Button variant="outline" onClick={handleBrowseLibraryFolder}>
@@ -1220,7 +1220,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteLibraryPath
                                                 ? t('settingsPage.library.absolutePathHelp', 'Library files will be saved to this exact folder.')
-                                                : t('settingsPage.library.folderHelp', 'Default: Pictures/NAIS_Library')}
+                                                : t('settingsPage.library.folderHelp', 'Default: Pictures/NAI_Blue_Library')}
                                         </p>
                                         {isAbsoluteLibraryPath && (
                                             <Button variant="ghost" size="sm" onClick={handleResetLibraryToDefault} className="h-11 shrink-0 text-xs">
@@ -1581,7 +1581,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                     {Object.entries(storeSizes).filter(([, size]) => size > 0).map(([key, size]) => (
                                         <div key={key} className="flex items-center justify-between py-1">
                                             <span className="text-muted-foreground">
-                                                {key.replace(/^(?:nai-blue|nais2)-/, '')}
+                                                {key.replace(/^nai-blue-/, '')}
                                             </span>
                                             <span className={cn(
                                                 "font-mono",

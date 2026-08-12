@@ -92,9 +92,9 @@ function createRollbackFixture() {
     const source: CompositionMigrationSourceSnapshot = {
         serializedStores: {
             'asset-profile': JSON.stringify(assetProfile),
-            'nais2-scenes': JSON.stringify(scenes),
-            'nais2-character-prompts': JSON.stringify(characters),
-            'nais2-wildcards': JSON.stringify(fragments),
+            'nai-blue-scenes': JSON.stringify(scenes),
+            'nai-blue-character-prompts': JSON.stringify(characters),
+            'nai-blue-wildcards': JSON.stringify(fragments),
         },
         wildcardContent: { 'preexisting-content': ['do not change'] },
     }
@@ -192,9 +192,9 @@ describe('legacy compatibility sidecar materialization', () => {
         expect(migrated.report.fatal).toBe(false)
 
         const values = new Map<string, string>([
-            ['nais2-scenes', JSON.stringify(scenes)],
-            ['nais2-character-prompts', JSON.stringify(characters)],
-            ['nais2-wildcards', JSON.stringify(fragments)],
+            ['nai-blue-scenes', JSON.stringify(scenes)],
+            ['nai-blue-character-prompts', JSON.stringify(characters)],
+            ['nai-blue-wildcards', JSON.stringify(fragments)],
         ])
         let wildcardContent: Record<string, string[]> = {}
         let seededAssetProfile: string | undefined
@@ -231,9 +231,9 @@ describe('legacy compatibility sidecar materialization', () => {
         const source: CompositionMigrationSourceSnapshot = {
             serializedStores: {
                 'asset-profile': JSON.stringify(assetProfile),
-                'nais2-scenes': JSON.stringify(scenes),
-                'nais2-character-prompts': JSON.stringify(characters),
-                'nais2-wildcards': JSON.stringify(fragments),
+                'nai-blue-scenes': JSON.stringify(scenes),
+                'nai-blue-character-prompts': JSON.stringify(characters),
+                'nai-blue-wildcards': JSON.stringify(fragments),
             },
             wildcardContent: {},
         }
@@ -244,20 +244,20 @@ describe('legacy compatibility sidecar materialization', () => {
             sidecars: migrated.sidecars,
         }, dependencies)
 
-        const restoredScenes = JSON.parse(values.get('nais2-scenes') ?? 'null') as typeof scenes
+        const restoredScenes = JSON.parse(values.get('nai-blue-scenes') ?? 'null') as typeof scenes
         expect(restoredScenes.state.presets[0].scenes[0]).toMatchObject({
             id: 'scene:old',
             scenePrompt: 'separate scene prompt',
             images: [{ id: 'image:kept', url: 'data:image/png;base64,KEEP' }],
         })
-        const restoredCharacters = JSON.parse(values.get('nais2-character-prompts') ?? 'null') as typeof characters
+        const restoredCharacters = JSON.parse(values.get('nai-blue-character-prompts') ?? 'null') as typeof characters
         expect(restoredCharacters.state).toMatchObject({
             positionEnabled: true,
             characters: [{ id: 'character:old', position: { x: 0, y: 1 } }],
         })
         const fragmentMeta = migrated.sidecars.fragments.meta[0]
         expect(wildcardContent[fragmentMeta.contentKey]).toEqual(['kept fragment line'])
-        expect(JSON.parse(values.get('nais2-prompt-library') ?? 'null')).toMatchObject({
+        expect(JSON.parse(values.get('nai-blue-prompt-library') ?? 'null')).toMatchObject({
             state: { tabs: [{ id: 'tab:old' }] },
         })
         expect(JSON.parse(seededAssetProfile ?? 'null')).toEqual(assetProfile)
@@ -271,13 +271,13 @@ describe('legacy compatibility sidecar materialization', () => {
             state: { presets: [{ id: 'concurrent', scenes: [] }] },
             version: 1,
         })
-        values.set('nais2-scenes', concurrentSceneEdit)
+        values.set('nai-blue-scenes', concurrentSceneEdit)
         await expect(materializeCompositionMigrationSidecars({
             source,
             document: migrated.document,
             sidecars: migrated.sidecars,
-        }, dependencies)).rejects.toThrow('source changed for nais2-scenes')
-        expect(values.get('nais2-scenes')).toBe(concurrentSceneEdit)
+        }, dependencies)).rejects.toThrow('source changed for nai-blue-scenes')
+        expect(values.get('nai-blue-scenes')).toBe(concurrentSceneEdit)
     })
 
     it('restores every IDB, wildcard, and file preimage when file seeding mutates and then fails', async () => {
@@ -330,10 +330,10 @@ describe('legacy compatibility sidecar materialization', () => {
             path: 'asset-profiles/default.json',
             rawJson: null,
         })
-        expect(JSON.parse(values.get('nais2-scenes') ?? 'null')).toEqual(
-            JSON.parse(source.serializedStores['nais2-scenes']),
+        expect(JSON.parse(values.get('nai-blue-scenes') ?? 'null')).toEqual(
+            JSON.parse(source.serializedStores['nai-blue-scenes']),
         )
-        expect(values.get('nais2-scenes')).toContain('data:image/png;base64,EXACT_BYTES')
+        expect(values.get('nai-blue-scenes')).toContain('data:image/png;base64,EXACT_BYTES')
     })
 
     it('retains a concurrently created Asset Profile when a missing-file seed loses the race', async () => {
@@ -502,7 +502,7 @@ describe('legacy compatibility sidecar materialization', () => {
                 if ((values.get(key) ?? null) !== expected) return false
                 if (replacement === null) values.delete(key)
                 else values.set(key, replacement)
-                if (key === 'nais2-prompt-library' && failPromptLibraryWrite) {
+                if (key === 'nai-blue-prompt-library' && failPromptLibraryWrite) {
                     failPromptLibraryWrite = false
                     throw new Error('injected IDB failure after commit')
                 }
@@ -527,7 +527,7 @@ describe('legacy compatibility sidecar materialization', () => {
 
         expect(recordSnapshot(values)).toEqual(beforeValues)
         expect(wildcardContent).toEqual(source.wildcardContent)
-        expect(values.has('nais2-prompt-library')).toBe(false)
+        expect(values.has('nai-blue-prompt-library')).toBe(false)
     })
 
     it('rolls back IDB and wildcard mutations when wildcard replacement throws after commit', async () => {
@@ -583,7 +583,7 @@ describe('legacy compatibility sidecar materialization', () => {
     it('rejects late source drift, rolls back preceding writes, and never adopts the fresh value as CAS expected', async () => {
         const { migrated, source } = createRollbackFixture()
         const values = new Map(Object.entries(source.serializedStores))
-        const originalSceneRaw = values.get('nais2-scenes') ?? null
+        const originalSceneRaw = values.get('nai-blue-scenes') ?? null
         const concurrentCharacterRaw = JSON.stringify({
             state: { characters: [{ id: 'concurrent-character', prompt: 'concurrent' }] },
             version: 2,
@@ -598,7 +598,7 @@ describe('legacy compatibility sidecar materialization', () => {
         }
         const dependencies: CompositionMigrationMaterializationDependencies = {
             getItem: async key => {
-                if (key === 'nais2-character-prompts' && !injectedDrift) {
+                if (key === 'nai-blue-character-prompts' && !injectedDrift) {
                     injectedDrift = true
                     values.set(key, concurrentCharacterRaw)
                 }
@@ -626,15 +626,15 @@ describe('legacy compatibility sidecar materialization', () => {
             source,
             document: migrated.document,
             sidecars: migrated.sidecars,
-        }, dependencies)).rejects.toThrow('source changed for nais2-character-prompts')
+        }, dependencies)).rejects.toThrow('source changed for nai-blue-character-prompts')
 
-        expect(values.get('nais2-scenes') ?? null).toBe(originalSceneRaw)
-        expect(values.get('nais2-character-prompts')).toBe(concurrentCharacterRaw)
+        expect(values.get('nai-blue-scenes') ?? null).toBe(originalSceneRaw)
+        expect(values.get('nai-blue-character-prompts')).toBe(concurrentCharacterRaw)
         expect(casExpectations[0]).toEqual({
-            key: 'nais2-scenes',
-            expected: source.serializedStores['nais2-scenes'],
+            key: 'nai-blue-scenes',
+            expected: source.serializedStores['nai-blue-scenes'],
         })
-        expect(casExpectations.at(-1)).toMatchObject({ key: 'nais2-scenes' })
+        expect(casExpectations.at(-1)).toMatchObject({ key: 'nai-blue-scenes' })
         expect(wildcardContent).toEqual(source.wildcardContent)
     })
 })

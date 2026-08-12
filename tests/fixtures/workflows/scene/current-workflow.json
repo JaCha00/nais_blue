@@ -157,17 +157,17 @@
       "output": {
         "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
         "fileNames": [
-          "NAIS_SCENE_1783728000000_7500.png",
-          "NAIS_SCENE_1783728000000_7500-2.png"
+          "NAI_Blue_SCENE_1783728000000_7500.png",
+          "NAI_Blue_SCENE_1783728000000_7500-2.png"
         ],
         "targetSegments": [
           [
-            "NAIS_Scene",
+            "NAI_Blue_Scene",
             "Golden_Preset",
             "Opening_Shot"
           ],
           [
-            "NAIS_Scene",
+            "NAI_Blue_Scene",
             "Golden_Preset",
             "Opening_Shot"
           ]
@@ -340,11 +340,11 @@
       "output": {
         "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
         "fileNames": [
-          "NAIS_SCENE_1783728000000_7500.png"
+          "NAI_Blue_SCENE_1783728000000_7500.png"
         ],
         "targetSegments": [
           [
-            "NAIS_Scene",
+            "NAI_Blue_Scene",
             "Golden_Preset",
             "Hero",
             "Rotation Scene"
@@ -528,17 +528,17 @@
       "output": {
         "policy": "platform media root / configured scene root / sanitized preset / optional rotation character / sanitized scene",
         "fileNames": [
-          "NAIS_SCENE_1783728000000_7500.png",
-          "NAIS_SCENE_1783728000000_7500-2.png"
+          "NAI_Blue_SCENE_1783728000000_7500.png",
+          "NAI_Blue_SCENE_1783728000000_7500-2.png"
         ],
         "targetSegments": [
           [
-            "NAIS_Scene",
+            "NAI_Blue_Scene",
             "Golden_Preset",
             "Opening_Shot"
           ],
           [
-            "NAIS_Scene",
+            "NAI_Blue_Scene",
             "Golden_Preset",
             "Opening_Shot"
           ]

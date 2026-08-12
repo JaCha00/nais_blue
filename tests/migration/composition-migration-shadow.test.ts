@@ -6,7 +6,7 @@ import { compareLegacyAuthorityToMigratedDocument } from '@/lib/composition-migr
 
 function fixture(basePrompt: string) {
     const indexedDbSnapshots = {
-        'nais2-generation': {
+        'nai-blue-generation': {
             state: {
                 basePrompt,
                 inpaintingPrompt: '',
@@ -30,7 +30,7 @@ function fixture(basePrompt: string) {
             },
             version: 8,
         },
-        'nais2-scenes': {
+        'nai-blue-scenes': {
             state: {
                 activePresetId: 'old-scenes',
                 presets: [{

@@ -48,7 +48,7 @@ export const typeFixtureRevision = {
 export const typeFixturePath = {
     kind: 'standard',
     root: 'pictures',
-    segments: ['NAIS', 'Composition'],
+    segments: ['NAI Blue', 'Composition'],
 } satisfies PortablePathRef
 
 export const typeFixtureOutput = {

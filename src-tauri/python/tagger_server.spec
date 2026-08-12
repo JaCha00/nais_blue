@@ -99,5 +99,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='../icons/icon.ico',  # Use NAIS icon
+    icon='../icons/icon.ico',  # Use NAI Blue icon
 )

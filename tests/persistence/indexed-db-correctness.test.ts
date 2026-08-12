@@ -134,17 +134,17 @@ describe('IndexedDB persistence correctness', () => {
         const { getPersistenceCriticality } = await loadPersistence()
 
         for (const key of [
-            'nais2-auth',
-            'nais2-scenes',
-            'nais2-composition-repository',
-            'nais2-composition-migration-backup',
-            'nais2-backup-restore-journal',
-            'nais2-queue-repository',
+            'nai-blue-auth',
+            'nai-blue-scenes',
+            'nai-blue-composition-repository',
+            'nai-blue-composition-migration-backup',
+            'nai-blue-backup-restore-journal',
+            'nai-blue-queue-repository',
             'future-user-data-store',
         ]) {
             expect(getPersistenceCriticality(key), key).toBe('critical')
         }
-        for (const key of ['nais2-theme', 'nais2-layout', 'nais2-shortcuts', 'nais2-tools', 'nais2-update']) {
+        for (const key of ['nai-blue-theme', 'nai-blue-layout', 'nai-blue-shortcuts', 'nai-blue-tools', 'nai-blue-update']) {
             expect(getPersistenceCriticality(key), key).toBe('best-effort')
         }
     })
@@ -158,7 +158,7 @@ describe('IndexedDB persistence correctness', () => {
         const { indexedDBStorage } = await loadPersistence()
         const { useDiagnosticsStore } = await import('@/stores/diagnostics-store')
 
-        await expect(indexedDBStorage.setItem('nais2-auth', '{"state":{}}')).rejects.toMatchObject({
+        await expect(indexedDBStorage.setItem('nai-blue-auth', '{"state":{}}')).rejects.toMatchObject({
             name: 'PersistenceFault',
             code,
         })
@@ -184,7 +184,7 @@ describe('IndexedDB persistence correctness', () => {
         control.writeMode = 'readback-mismatch'
         const { indexedDBStorage } = await loadPersistence()
 
-        await expect(indexedDBStorage.setItem('nais2-scenes', '{"state":{"presets":[]}}')).rejects.toMatchObject({
+        await expect(indexedDBStorage.setItem('nai-blue-scenes', '{"state":{"presets":[]}}')).rejects.toMatchObject({
             name: 'PersistenceFault',
             code: 'PERSISTENCE_READBACK_MISMATCH',
         })
@@ -194,13 +194,13 @@ describe('IndexedDB persistence correctness', () => {
         const control = installFakeIndexedDB()
         const { flushAllPendingWrites, indexedDBStorage } = await loadPersistence()
 
-        await indexedDBStorage.setItem('nais2-layout', '{"state":{"leftSidebarVisible":true}}')
+        await indexedDBStorage.setItem('nai-blue-layout', '{"state":{"leftSidebarVisible":true}}')
         control.writeMode = 'abort'
-        await indexedDBStorage.setItem('nais2-layout', '{"state":{"leftSidebarVisible":false}}')
+        await indexedDBStorage.setItem('nai-blue-layout', '{"state":{"leftSidebarVisible":false}}')
 
         await expect(flushAllPendingWrites()).rejects.toMatchObject({
             name: 'PersistenceFlushError',
-            failures: [expect.objectContaining({ key: 'nais2-layout' })],
+            failures: [expect.objectContaining({ key: 'nai-blue-layout' })],
         })
     })
 

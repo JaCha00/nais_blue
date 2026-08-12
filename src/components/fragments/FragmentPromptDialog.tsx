@@ -316,7 +316,7 @@ export function FragmentPromptDialog({ open, onOpenChange }: FragmentPromptDialo
             const data = await exportAll()
             
             const filePath = await saveNativeFileDialog({
-                defaultPath: `NAIS_Fragments_${Date.now()}.json`,
+                defaultPath: `NAI_Blue_Fragments_${Date.now()}.json`,
                 filters: [{ name: 'JSON Files', extensions: ['json'] }],
             })
 

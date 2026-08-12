@@ -186,7 +186,7 @@ function request(overrides: Partial<OutputWriterRequest> = {}): OutputWriterRequ
         destination: {
             directory: 'output',
             useAbsolutePath: false,
-            workflowDefaultDirectory: 'NAIS_Output',
+            workflowDefaultDirectory: 'NAI_Blue_Output',
             extension: 'png',
             fileName: 'result.png',
             collisionPolicy: 'unique',
@@ -210,7 +210,6 @@ function writer(adapter: InMemoryOutputAdapter, transactionId = 'txn-1'): Output
 
 function expectNoTransactionArtifacts(adapter: InMemoryOutputAdapter): void {
     expect(adapter.paths().filter(path => path.includes('.nai-blue-txn-'))).toEqual([])
-    expect(adapter.paths().filter(path => path.includes('.nais2-txn-'))).toEqual([])
     expect([...adapter.journals.keys()]).toEqual([])
 }
 
@@ -350,7 +349,7 @@ describe('OutputWriter fault containment', () => {
                 },
                 directory: 'output',
                 useAbsolutePath: false,
-                workflowDefaultDirectory: 'NAIS_Output',
+                workflowDefaultDirectory: 'NAI_Blue_Output',
                 extension: 'png',
                 fileName: 'result.png',
                 collisionPolicy: 'unique',
@@ -390,7 +389,7 @@ describe('OutputWriter fault containment', () => {
                 },
                 directory: 'output',
                 useAbsolutePath: false,
-                workflowDefaultDirectory: 'NAIS_Output',
+                workflowDefaultDirectory: 'NAI_Blue_Output',
                 extension: 'png',
                 fileName: 'result.png',
                 collisionPolicy: 'unique',
@@ -445,7 +444,7 @@ describe('OutputWriter fault containment', () => {
         const commitWorkflow = vi.fn()
         const checksum = await sha256Bytes(IMAGE_BYTES)
         await adapter.writeJournal('txn-invalid-final-image', new TextEncoder().encode(JSON.stringify({
-            format: 'nais2-output-transaction',
+            format: 'nai-blue-output-transaction',
             version: 1,
             transactionId: 'txn-invalid-final-image',
             createdAt: FIXED_NOW.toISOString(),
@@ -470,8 +469,8 @@ describe('OutputWriter fault containment', () => {
             artifacts: [{
                 kind: 'image',
                 temp: {
-                    path: 'output/.result.png.nais2-txn-txn-invalid-final-image.image.tmp',
-                    displayPath: '/app-data/output/.result.png.nais2-txn-txn-invalid-final-image.image.tmp',
+                    path: 'output/.result.png.nai-blue-txn-txn-invalid-final-image.image.tmp',
+                    displayPath: '/app-data/output/.result.png.nai-blue-txn-txn-invalid-final-image.image.tmp',
                     baseDir: 1,
                 },
                 final: {
@@ -595,10 +594,10 @@ describe('OutputWriter fault containment', () => {
         const oldBytes = new Uint8Array([9, 9, 9])
         const newBytes = new Uint8Array([8, 8, 8])
         adapter.seed('output/restart.png', newBytes)
-        adapter.seed('output/.restart.png.nais2-txn-restart.backup', oldBytes)
-        adapter.seed('output/.restart.png.nais2-txn-restart.image.tmp', IMAGE_BYTES)
+        adapter.seed('output/.restart.png.nai-blue-txn-restart.backup', oldBytes)
+        adapter.seed('output/.restart.png.nai-blue-txn-restart.image.tmp', IMAGE_BYTES)
         await adapter.writeJournal('txn-restart', new TextEncoder().encode(JSON.stringify({
-            format: 'nais2-output-transaction',
+            format: 'nai-blue-output-transaction',
             version: 1,
             transactionId: 'txn-restart',
             createdAt: FIXED_NOW.toISOString(),
@@ -614,8 +613,8 @@ describe('OutputWriter fault containment', () => {
             artifacts: [{
                 kind: 'image',
                 temp: {
-                    path: 'output/.restart.png.nais2-txn-restart.image.tmp',
-                    displayPath: '/app-data/output/.restart.png.nais2-txn-restart.image.tmp',
+                    path: 'output/.restart.png.nai-blue-txn-restart.image.tmp',
+                    displayPath: '/app-data/output/.restart.png.nai-blue-txn-restart.image.tmp',
                     baseDir: 1,
                 },
                 final: {
@@ -624,8 +623,8 @@ describe('OutputWriter fault containment', () => {
                     baseDir: 1,
                 },
                 backup: {
-                    path: 'output/.restart.png.nais2-txn-restart.backup',
-                    displayPath: '/app-data/output/.restart.png.nais2-txn-restart.backup',
+                    path: 'output/.restart.png.nai-blue-txn-restart.backup',
+                    displayPath: '/app-data/output/.restart.png.nai-blue-txn-restart.backup',
                     baseDir: 1,
                 },
             }],
@@ -685,7 +684,7 @@ describe('OutputWriter fault containment', () => {
     it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         const existing = new Uint8Array([7, 7, 7])
-        adapter.seed('output/result.nais-blue.artifact.json', existing)
+        adapter.seed('output/result.nai-blue.artifact.json', existing)
         const artifactSidecar = new TextEncoder().encode('{"artifactId":"artifact-fixture"}')
         let attemptedFileName = ''
         const commitFailure = new Error('store commit failed')
@@ -699,8 +698,8 @@ describe('OutputWriter fault containment', () => {
         }))).rejects.toBe(commitFailure)
 
         expect(attemptedFileName).toBe('result-2.png')
-        expect(bytesEqual(adapter.file('output/result.nais-blue.artifact.json'), existing)).toBe(true)
-        expect(adapter.paths()).toEqual(['output/result.nais-blue.artifact.json'])
+        expect(bytesEqual(adapter.file('output/result.nai-blue.artifact.json'), existing)).toBe(true)
+        expect(adapter.paths()).toEqual(['output/result.nai-blue.artifact.json'])
         expectNoTransactionArtifacts(adapter)
     })
 })
@@ -718,7 +717,7 @@ describe('OutputWriter overwrite rollback safety', () => {
         await expect(writer(adapter).write(request({
             destination: {
                 directory: 'output',
-                workflowDefaultDirectory: 'NAIS_Output',
+                workflowDefaultDirectory: 'NAI_Blue_Output',
                 extension: 'png',
                 fileName: 'result.png',
                 collisionPolicy: 'overwrite',

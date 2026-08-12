@@ -177,7 +177,7 @@ export const usePromptModuleLibraryStore = create<PromptModuleLibraryState>()(
             },
         }),
         {
-            name: 'nais2-structured-prompt-modules',
+            name: 'nai-blue-structured-prompt-modules',
             version: 1,
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: state => ({

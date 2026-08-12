@@ -27,7 +27,7 @@ describe('native NovelAI credential contract', () => {
         expect(adapter).toContain('browserSecrets = new Map')
         expect(adapter).toContain('runtimeCapabilities.novelAiCredentialVault.supported')
         expect(adapter).not.toMatch(/localStorage|indexedDB/i)
-        expect(nativeVault).toContain('com.bluhair.naisblue.novelai')
+        expect(nativeVault).toContain('blue.bluehair.naiblue.novelai')
         expect(nativeVault).toContain('keyring::Entry')
         expect(nativeVault).not.toMatch(/println!|dbg!|tracing::/)
         for (const command of [

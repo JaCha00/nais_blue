@@ -107,12 +107,11 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
     const loadFile = useCallback(async (file?: File) => {
         const lowerName = file?.name.toLowerCase() ?? ''
         const isSidecar = lowerName.endsWith('.nai-blue.json')
-            || lowerName.endsWith('.nais-blue.json')
             || lowerName.endsWith('.nais2.json')
         if (!file || (!file.type.startsWith('image/') && !isSidecar)) {
             toast({
                 title: t('metadata.invalidFile', '잘못된 파일'),
-                description: t('metadata.invalidFileDesc', '이미지 또는 .nais-blue.json 파일만 지원합니다.'),
+                description: t('metadata.invalidFileDesc', '이미지 또는 지원하는 메타데이터 JSON만 사용할 수 있습니다.'),
                 variant: 'destructive',
             })
             return
@@ -264,7 +263,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="image/*,.nai-blue.json,.nais-blue.json,.nais2.json,application/json"
+                            accept="image/*,.nai-blue.json,.nais2.json,application/json"
                             className="sr-only"
                             tabIndex={-1}
                             aria-hidden="true"

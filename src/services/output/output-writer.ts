@@ -7,8 +7,6 @@ import {
     resolveCollisionFileName,
     toArtifactSidecarPath,
     toDiagnosticSidecarPath,
-    toPreRenameArtifactSidecarPath,
-    toPreRenameSidecarPath,
     toSidecarFileName,
     type OutputCollisionPolicy,
 } from './filename-policy'
@@ -333,8 +331,7 @@ function parseFileRef(value: unknown): OutputFileRef {
 function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
     const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown
     if (!isRecord(value)
-        || (value.format !== 'nai-blue-output-transaction'
-            && value.format !== 'nais2-output-transaction')
+        || value.format !== 'nai-blue-output-transaction'
         || value.version !== 1
         || typeof value.transactionId !== 'string'
         || typeof value.createdAt !== 'string'
@@ -533,7 +530,7 @@ export class OutputWriter {
             if (preserveProviderOriginal) await this.platform.ensureDirectory(privateOriginalDirectory)
             if (!request.canCommit()) return { status: 'cancelled' }
 
-            const fallback = `NAIS_${this.now().getTime()}.${request.destination.extension}`
+            const fallback = `NAI_Blue_${this.now().getTime()}.${request.destination.extension}`
             const requestedFileName = ensureImageFileExtension(
                 request.destination.fileName ?? fallback,
                 request.destination.extension,
@@ -550,10 +547,7 @@ export class OutputWriter {
                         const currentSidecarExists = await this.platform.exists(
                             childOutputRef(directory, toSidecarFileName(candidate)),
                         )
-                        const previousSidecarExists = await this.platform.exists(
-                            childOutputRef(directory, toPreRenameSidecarPath(candidate)),
-                        )
-                        if (currentSidecarExists || previousSidecarExists) return true
+                        if (currentSidecarExists) return true
                     }
                 }
                 if (preserveProviderOriginal
@@ -562,10 +556,7 @@ export class OutputWriter {
                 const currentArtifactExists = await this.platform.exists(
                     childOutputRef(directory, toArtifactSidecarPath(candidate)),
                 )
-                const previousArtifactExists = await this.platform.exists(
-                    childOutputRef(directory, toPreRenameArtifactSidecarPath(candidate)),
-                )
-                return currentArtifactExists || previousArtifactExists
+                return currentArtifactExists
             })
             const transactionId = request.transactionId ?? this.createTransactionId()
             if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
@@ -580,7 +571,7 @@ export class OutputWriter {
             }
             // Privacy modes depend on the pixel re-encoder to remove provider
             // chunks and stealth payloads before MetadataWriter optionally adds
-            // the explicit NAIS sidecar. Centralizing here covers every workflow.
+            // the explicit NAI Blue sidecar. Centralizing here covers every workflow.
             const cleanImage = stripsImageMetadata
                 ? await this.purgeImageMetadata(request.imageDataUrl, request.destination.extension)
                 : null

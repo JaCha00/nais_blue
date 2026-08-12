@@ -67,7 +67,7 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
 
     const saveToolsImage = async (fileName: string, binaryData: Uint8Array): Promise<string> => {
         const { toolsSavePath, useAbsoluteToolsPath } = useSettingsStore.getState()
-        const outputDir = toolsSavePath || 'nais-tools'
+        const outputDir = toolsSavePath || 'nai-blue-tools'
 
         if (shouldUseAbsoluteMediaPath(useAbsoluteToolsPath)) {
             const dirExists = await nativePathExists(outputDir)
@@ -175,7 +175,7 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
         try {
             const result = await smartTools.upscale(processedImage, token)
 
-            const fileName = `NAIS_UPSCALE_${Date.now()}.png`
+            const fileName = `NAI_Blue_UPSCALE_${Date.now()}.png`
 
             try {
                 const base64Data = result.replace(/^data:image\/png;base64,/, '')
@@ -218,7 +218,7 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
             const result = await smartTools.directorTool(processedImage, token, reqType, options)
 
             const label = reqType.toUpperCase().replace('-', '_')
-            const fileName = `NAIS_${label}_${Date.now()}.png`
+            const fileName = `NAI_Blue_${label}_${Date.now()}.png`
 
             try {
                 const base64Data = result.replace(/^data:image\/\w+;base64,/, '')
@@ -251,7 +251,7 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
             const array = new Uint8Array(binary.length)
             for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
 
-            const filename = `NAIS_Edit_${Date.now()}.png`
+            const filename = `NAI_Blue_Edit_${Date.now()}.png`
             await saveToolsImage(filename, array)
 
             toast({ title: t('common.saved', '저장됨'), description: filename, variant: 'success' })

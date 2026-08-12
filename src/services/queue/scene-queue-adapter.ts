@@ -167,7 +167,7 @@ async function enqueueSceneQueueTargetsOnce(
                         generationFolderPath: generationFolder.path,
                         directory: generationFolder.directory,
                         capabilityFallbackDirectory: generationFolder.useAbsolutePath
-                            ? 'NAIS_Scene'
+                            ? 'NAI_Blue_Scene'
                             : generationFolder.directory,
                         autoR2UploadProfileId: generationFolder.r2.autoUpload
                             ? DEFAULT_R2_PROFILE_ID

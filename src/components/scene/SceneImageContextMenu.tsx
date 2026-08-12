@@ -73,7 +73,7 @@ export function SceneImageContextMenu({ image, children, onDelete, onAddRef, onL
             const { imageFormat } = useSettingsStore.getState()
             const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
             const filePath = await saveNativeFileDialog({
-                defaultPath: `NAIS_${image.timestamp}.${fileExt}`,
+                defaultPath: `NAI_Blue_${image.timestamp}.${fileExt}`,
                 filters: [{ name: 'Image', extensions: ['png', 'jpg', 'webp'] }],
             })
             if (filePath) {

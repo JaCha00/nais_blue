@@ -79,11 +79,11 @@ stableSemver(packageJson.version, 'Release version')
 if (packageJson.name !== 'nai-blue' || tauriConfig.productName !== 'NAI Blue') {
     throw new Error('Package and Tauri product names must use the NAI Blue release identity')
 }
-if (tauriConfig.identifier !== 'com.bluhair.naisblue') {
-    throw new Error('The stable application identifier must not change during the version-label reset')
+if (tauriConfig.identifier !== 'blue.bluehair.naiblue') {
+    throw new Error('The application identifier must use the NAI Blue namespace')
 }
-if (!nativeUpdater.includes('allowDowngrades: true')) {
-    throw new Error('The reset display version requires the explicit compatible updater check')
+if (nativeUpdater.includes('allowDowngrades: true')) {
+    throw new Error('The new NAI Blue application identity must not permit updater downgrades')
 }
 if (!desktopWorkflow.includes('updaterJsonPreferNsis: true')) {
     throw new Error('Windows updater metadata must prefer the NSIS upgrade path')

@@ -12,7 +12,7 @@ import {
     type TrashedImageRestoreTarget,
 } from '@/stores/trash-store'
 
-const TRASH_DIRECTORY_NAME = 'NAIS_Trash'
+const TRASH_DIRECTORY_NAME = 'NAI_Blue_Trash'
 
 interface ImageArchiveInput {
     image: SceneImage

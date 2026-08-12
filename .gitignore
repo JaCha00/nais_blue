@@ -8,8 +8,8 @@ artifacts/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-nais-release-key
-NAIS_KEYSTORE_BASE64.txt
+nai-blue-release-key
+NAI_BLUE_KEYSTORE_BASE64.txt
 keystore.properties
 *.jks
 *.keystore
@@ -66,10 +66,6 @@ discord_setup/
 # Docs (tracked guidance is explicit; local working material and trash stay ignored)
 docs/*
 !docs/README.md
-!docs/archive/
-!docs/archive/**
-!docs/composition-v2/
-!docs/composition-v2/**
 !docs/architecture/
 !docs/architecture/**
 !docs/releases/
@@ -86,16 +82,3 @@ docs/*
 .idea/
 tmp/
 src-tauri/src-tauri/
-
-# Legacy source snapshots keep source only, not local build/runtime artifacts.
-legacy/**/node_modules/
-legacy/**/dist/
-legacy/**/dist-isolation/
-legacy/**/src-tauri/target/
-legacy/**/src-tauri/gen/android/
-legacy/**/src-tauri/gen/schemas/
-legacy/**/src-tauri/python/build/
-legacy/**/src-tauri/binaries/tagger-server*
-legacy/**/src-tauri/binaries/*.pkg
-legacy/**/src-tauri/binaries/tagger-server-x86_64-pc-windows-msvc.exe
-legacy/**/.env

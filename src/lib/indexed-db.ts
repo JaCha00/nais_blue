@@ -16,70 +16,40 @@ import { WORKFLOW_DRAFT_STORE_KEY } from '@/domain/workflow/single-image-draft'
 // or I can implement a raw IndexedDB wrapper.
 // Given constraints, raw IndexedDB is safer as strict dependency rules apply.
 
-const DB_NAME = 'nais2-db'
+const DB_NAME = 'nai-blue-db'
 const STORE_NAME = 'keyval'
 const DB_TIMEOUT_MS = 10000 // 10초 타임아웃
 
 // Central backup registry used by full exports, size diagnostics, and the
 // store snapshot layer so new persisted stores are added in one place.
 export const BACKUP_STORE_KEYS = [
-    'nais2-generation',
-    'nais2-character-store',
-    'nais2-character-prompts',
-    'nais2-presets',
-    'nais2-settings',
-    'nais2-auth',
-    'nais2-scenes',
-    'nais2-character-rotation',
-    'nais2-shortcuts',
-    'nais2-theme',
-    'nais2-wildcards',
-    'nais2-prompt-library',
-    'nais2-layout',
-    'nais2-library',
-    'nais2-tools',
-    'nais2-update',
-    'nais2-style-lab',
+    'nai-blue-generation',
+    'nai-blue-character-store',
+    'nai-blue-character-prompts',
+    'nai-blue-presets',
+    'nai-blue-settings',
+    'nai-blue-auth',
+    'nai-blue-scenes',
+    'nai-blue-character-rotation',
+    'nai-blue-shortcuts',
+    'nai-blue-theme',
+    'nai-blue-wildcards',
+    'nai-blue-prompt-library',
+    'nai-blue-layout',
+    'nai-blue-library',
+    'nai-blue-tools',
+    'nai-blue-update',
+    'nai-blue-style-lab',
     STYLE_LAB_REPOSITORY_STORE_KEY,
-    'nais2-asset-modules',
-    'nais2-composition-repository',
-    'nais2-composition-migration-backup',
+    'nai-blue-asset-modules',
+    'nai-blue-composition-repository',
+    'nai-blue-composition-migration-backup',
     WORKFLOW_DRAFT_STORE_KEY,
 ] as const
 
 export type BackupStoreKey = typeof BACKUP_STORE_KEYS[number]
 
-// Renamed stores remain rollback sources until a dedicated destructive cleanup
-// phase is approved. Full backups include both names so an export/import cycle
-// never silently discards the retained copy.
-export const LEGACY_BACKUP_STORE_KEYS = [
-    'nais-library-storage',
-    'tools-storage',
-    'nais-update',
-    // Explicit Composition migration aliases. These are allowlisted rollback
-    // sources, not arbitrary IndexedDB keys.
-    'scenes',
-    'scene-store',
-    'nais2-scene-prompts',
-    'scene-prompts',
-    'scenePrompts',
-    'wildcards',
-    'fragments',
-    'wildcard-content',
-    'fragmentContent',
-    'character-prompts',
-    'characterPrompts',
-    'nais2-character-positions',
-    'character-positions',
-    'characterPositions',
-    'generation-presets',
-    'generationPresets',
-    'novelaiPromptEditorState',
-    'prompt-presets',
-    'promptPresets',
-    'asset-profile',
-    'assetProfile',
-] as const
+export const LEGACY_BACKUP_STORE_KEYS = [] as const
 
 export const FULL_BACKUP_STORE_KEYS = [
     ...BACKUP_STORE_KEYS,
@@ -95,21 +65,21 @@ let dbPromise: Promise<IDBDatabase> | null = null
 let activeDb: IDBDatabase | null = null
 
 const BEST_EFFORT_PERSISTENCE_KEYS = new Set([
-    'nais2-layout',
-    'nais2-theme',
-    'nais2-shortcuts',
-    'nais2-tools',
-    'nais2-update',
+    'nai-blue-layout',
+    'nai-blue-theme',
+    'nai-blue-shortcuts',
+    'nai-blue-tools',
+    'nai-blue-update',
 ])
 
 export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
-    'nais2-auth',
-    'nais2-auth-v3-migration-complete',
-    'nais2-scenes',
-    'nais2-composition-repository',
-    'nais2-composition-migration-backup',
-    'nais2-backup-restore-journal',
-    'nais2-queue-repository',
+    'nai-blue-auth',
+    'nai-blue-auth-v3-migration-complete',
+    'nai-blue-scenes',
+    'nai-blue-composition-repository',
+    'nai-blue-composition-migration-backup',
+    'nai-blue-backup-restore-journal',
+    'nai-blue-queue-repository',
     STYLE_LAB_REPOSITORY_STORE_KEY,
     WORKFLOW_DRAFT_STORE_KEY,
 ] as const)
@@ -252,11 +222,11 @@ const OPERATION_TIMEOUT_MS = 5000 // 개별 작업 타임아웃
 // With thousands of scene images, each write serializes megabytes of data.
 // ============================================
 const WRITE_DEBOUNCE_MS: Record<string, number> = {
-    'nais2-layout': 500,
-    'nais2-theme': 500,
-    'nais2-shortcuts': 750,
-    'nais2-tools': 750,
-    'nais2-update': 750,
+    'nai-blue-layout': 500,
+    'nai-blue-theme': 500,
+    'nai-blue-shortcuts': 750,
+    'nai-blue-tools': 750,
+    'nai-blue-update': 750,
 }
 const DEFAULT_WRITE_DEBOUNCE = 500
 const MAX_WRITE_INTERVAL = 10000   // Force write at least every 10 seconds even during rapid changes
@@ -1085,7 +1055,7 @@ export async function exportBackupFromStorage(
         try {
             const wildcardContent = await options.exportWildcardContent()
             if (Object.keys(wildcardContent).length > 0) {
-                backup['nais2-wildcard-content'] = wildcardContent
+                backup['nai-blue-wildcard-content'] = wildcardContent
                 console.log('[Backup] Wildcard content exported:', Object.keys(wildcardContent).length, 'files')
             }
         } catch (err) {
@@ -1133,10 +1103,10 @@ function filterLargeImageData(key: string, data: unknown): unknown {
     }
     
     switch (key) {
-        case 'nais2-character-store':
+        case 'nai-blue-character-store':
             return data
             
-        case 'nais2-generation':
+        case 'nai-blue-generation':
             // Filter history thumbnails (files exist) and temp images
             return {
                 ...obj,
@@ -1193,7 +1163,7 @@ export async function exportWildcardContentSnapshot(
             else finishResolve({})
         }, options.timeoutMs ?? 30000)
         
-        const request = indexedDB.open('nais2-wildcard-content', 1)
+        const request = indexedDB.open('nai-blue-wildcard-content', 1)
         
         request.onerror = () => {
             finishReject(request.error)
@@ -1266,7 +1236,7 @@ export async function importWildcardContentSnapshot(content: { [id: string]: str
     }
 
     await new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open('nais2-wildcard-content', 1)
+        const request = indexedDB.open('nai-blue-wildcard-content', 1)
         
         request.onerror = () => reject(request.error)
         
@@ -1330,7 +1300,7 @@ export async function compareAndReplaceWildcardContentSnapshot(
             reject(error)
         }
         const timeout = setTimeout(() => fail(new Error('Wildcard compare-and-replace timed out')), 30000)
-        const request = indexedDB.open('nais2-wildcard-content', 1)
+        const request = indexedDB.open('nai-blue-wildcard-content', 1)
 
         request.onerror = () => fail(request.error)
         request.onupgradeneeded = event => {
@@ -1412,7 +1382,7 @@ export interface BackupImportResult {
 
 export const RESTORE_STORE_ALLOWLIST = [
     ...FULL_BACKUP_STORE_KEYS,
-    'nais2-wildcard-content',
+    'nai-blue-wildcard-content',
 ] as const
 
 function ignoredRestoreReason(key: string): BackupRestoreIgnoredReason {
@@ -1461,7 +1431,7 @@ export async function importBackupToStorage(
 
     try {
         for (const key of dryRun.acceptedKeys) {
-            if (key === 'nais2-wildcard-content') {
+            if (key === 'nai-blue-wildcard-content') {
                 if (options.readWildcardContent !== undefined) {
                     previousWildcardContent = await options.readWildcardContent()
                 }
@@ -1478,7 +1448,7 @@ export async function importBackupToStorage(
     for (const [key, value] of Object.entries(backup)) {
         if (!accepted.has(key)) continue
 
-        if (key === 'nais2-wildcard-content') {
+        if (key === 'nai-blue-wildcard-content') {
             if (!options.importWildcardContent) {
                 result.failed.push(key)
                 continue
@@ -1543,7 +1513,7 @@ export async function importBackupToStorage(
         const restoredKeys = [...new Set(attemptedMutations)].reverse()
         for (const key of restoredKeys) {
             try {
-                if (key === 'nais2-wildcard-content') {
+                if (key === 'nai-blue-wildcard-content') {
                     if (options.importWildcardContent === undefined || previousWildcardContent === undefined) {
                         throw new Error('Wildcard rollback snapshot is unavailable')
                     }

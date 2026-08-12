@@ -24,7 +24,7 @@ function pad(value: number, length: number): string {
 }
 
 export function createFallbackFilename(now: Date = new Date()): string {
-    return `NAIS_${now.getTime()}`
+    return `NAI_Blue_${now.getTime()}`
 }
 
 function formatDate(date: Date, format: string): string {
@@ -124,11 +124,6 @@ export function toSidecarFileName(fileName: string): string {
     return toSidecarPath(fileName)
 }
 
-/** Existing output libraries may contain the pre-rename sibling filename. */
-export function toPreRenameSidecarPath(imagePath: string): string {
-    return imagePath.replace(/\.[^./\\]+$/, '.nais-blue.json')
-}
-
 export function toDiagnosticSidecarPath(imagePath: string): string {
     return imagePath.replace(/\.[^./\\]+$/, '.nai-blue.diagnostic.json')
 }
@@ -140,11 +135,6 @@ export function toDiagnosticSidecarPath(imagePath: string): string {
  */
 export function toArtifactSidecarPath(imagePath: string): string {
     return imagePath.replace(/\.[^./\\]+$/, '.nai-blue.artifact.json')
-}
-
-/** Prevent a new image from claiming a stem already owned by an older artifact. */
-export function toPreRenameArtifactSidecarPath(imagePath: string): string {
-    return imagePath.replace(/\.[^./\\]+$/, '.nais-blue.artifact.json')
 }
 
 export function splitFileName(fileName: string): { stem: string; extension: string } {

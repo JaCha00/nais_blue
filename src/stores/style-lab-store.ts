@@ -545,7 +545,7 @@ export const useStyleLabStore = create<StyleLabState>()(
             })),
         }),
         {
-            name: 'nais2-style-lab',
+            name: 'nai-blue-style-lab',
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: (state) => ({
                 schemaVersion: state.schemaVersion,

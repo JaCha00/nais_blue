@@ -87,5 +87,5 @@ opt-level = 3
 [patch.crates-io]
 # Tauri 2.11 still pulls plist 1.9.0, whose published crate depends on
 # vulnerable quick-xml 0.39.x. The local plist copy is source-identical except
-# for the quick-xml 0.41.x floor documented in vendor/plist/NAIS_PATCH.md.
+# for the quick-xml 0.41.x floor documented in vendor/plist/NAI_BLUE_PATCH.md.
 plist = { path = "vendor/plist" }

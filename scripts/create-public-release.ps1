@@ -100,14 +100,14 @@ function Assert-NoReleaseSecrets {
             UserValue = [Environment]::GetEnvironmentVariable('ANDROID_KEY_BASE64', 'User')
         },
         @{
-            Name = 'NAIS_KEYSTORE_PASSWORD'
-            Value = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_PASSWORD', 'Process')
-            UserValue = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_PASSWORD', 'User')
+            Name = 'NAI_BLUE_KEYSTORE_PASSWORD'
+            Value = [Environment]::GetEnvironmentVariable('NAI_BLUE_KEYSTORE_PASSWORD', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('NAI_BLUE_KEYSTORE_PASSWORD', 'User')
         },
         @{
-            Name = 'NAIS_KEYSTORE_BASE64'
-            Value = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_BASE64', 'Process')
-            UserValue = [Environment]::GetEnvironmentVariable('NAIS_KEYSTORE_BASE64', 'User')
+            Name = 'NAI_BLUE_KEYSTORE_BASE64'
+            Value = [Environment]::GetEnvironmentVariable('NAI_BLUE_KEYSTORE_BASE64', 'Process')
+            UserValue = [Environment]::GetEnvironmentVariable('NAI_BLUE_KEYSTORE_BASE64', 'User')
         }
     )
 
@@ -159,7 +159,7 @@ function Assert-SourceArchiveHasNoPrivateEntries {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $blockedEntryPatterns = @(
         '(?i)(^|/)\.env(\..*)?$',
-        '(?i)(^|/)(nais-release-key|NAIS_KEYSTORE_BASE64\.txt|keystore\.properties)$',
+        '(?i)(^|/)(nai-blue-release-key|NAI_BLUE_KEYSTORE_BASE64\.txt|keystore\.properties)$',
         '(?i)\.(pem|key|jks|keystore|p12|pfx)$'
     )
 
@@ -258,8 +258,8 @@ $excludeDirs = @(
 $excludeFiles = @(
     '.env',
     '.env.*',
-    'nais-release-key',
-    'NAIS_KEYSTORE_BASE64.txt',
+    'nai-blue-release-key',
+    'NAI_BLUE_KEYSTORE_BASE64.txt',
     'keystore.properties',
     '*.pem',
     '*.key',

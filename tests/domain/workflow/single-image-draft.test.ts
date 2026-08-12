@@ -39,7 +39,7 @@ describe('single-image workflow draft', () => {
                 credentialPolicy: { kind: 'auto' },
                 characterPrompts: { positionEnabled: false, items: [] },
                 output: {
-                    directory: 'NAIS_Output',
+                    directory: 'NAI_Blue_Output',
                     imageFormat: 'png',
                     metadataMode: 'embedded',
                 },

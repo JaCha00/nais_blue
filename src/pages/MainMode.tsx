@@ -397,8 +397,8 @@ export default function MainMode() {
                             bytes[j] = binaryString.charCodeAt(j)
                         }
 
-                        const fileName = `NAIS_${Date.now()}.${fileExt}`
-                        const outputDir = savePath || 'NAIS_Output'
+                        const fileName = `NAI_Blue_${Date.now()}.${fileExt}`
+                        const outputDir = savePath || 'NAI_Blue_Output'
                         const imageDataUrl = `data:${mimeType};base64,${result.imageData}`
                         const canCommit = (): boolean => {
                             const state = useGenerationStore.getState()
@@ -408,8 +408,8 @@ export default function MainMode() {
                             destination: {
                                 directory: outputDir,
                                 useAbsolutePath,
-                                capabilityFallbackDirectory: 'NAIS_Output',
-                                workflowDefaultDirectory: 'NAIS_Output',
+                                capabilityFallbackDirectory: 'NAI_Blue_Output',
+                                workflowDefaultDirectory: 'NAI_Blue_Output',
                                 fileName,
                                 extension: fileExt,
                                 collisionPolicy: 'unique',
@@ -475,7 +475,7 @@ export default function MainMode() {
             const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
             const filterName = imageFormat === 'webp' ? 'WebP Image' : 'PNG Image'
             const filePath = await saveNativeFileDialog({
-                defaultPath: `NAIS_${Date.now()}.${fileExt}`,
+                defaultPath: `NAI_Blue_${Date.now()}.${fileExt}`,
                 filters: [{ name: filterName, extensions: [fileExt] }],
             })
 
@@ -506,7 +506,7 @@ export default function MainMode() {
     const handleOpenFolder = async () => {
         try {
             const { savePath, useAbsolutePath } = useSettingsStore.getState()
-            const finalSavePath = savePath || 'NAIS_Output'
+            const finalSavePath = savePath || 'NAI_Blue_Output'
 
             let folderPath: string
             if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {

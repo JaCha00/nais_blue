@@ -6,10 +6,10 @@ import {
 import { parseCompositionDocument } from './schema'
 import type { CompositionChangeSet, CompositionDocument } from './types'
 
-export const COMPOSITION_REPOSITORY_STORAGE_KEY = 'nais2-composition-repository' as const
-export const COMPOSITION_MIGRATION_BACKUP_STORAGE_KEY = 'nais2-composition-migration-backup' as const
-export const COMPOSITION_AUTHORITY_FEATURE_FLAG_KEY = 'nais2-composition-authority' as const
-export const COMPOSITION_REPOSITORY_FORMAT = 'nais2-composition-repository' as const
+export const COMPOSITION_REPOSITORY_STORAGE_KEY = 'nai-blue-composition-repository' as const
+export const COMPOSITION_MIGRATION_BACKUP_STORAGE_KEY = 'nai-blue-composition-migration-backup' as const
+export const COMPOSITION_AUTHORITY_FEATURE_FLAG_KEY = 'nai-blue-composition-authority' as const
+export const COMPOSITION_REPOSITORY_FORMAT = 'nai-blue-composition-repository' as const
 export const COMPOSITION_REPOSITORY_SCHEMA_VERSION = 1 as const
 
 export type CompositionAuthority = 'legacy' | 'v2'

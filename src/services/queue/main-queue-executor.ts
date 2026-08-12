@@ -121,7 +121,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                 directory: payload.mainWorkflow.output.directory,
                 useAbsolutePath: payload.mainWorkflow.output.useAbsolutePath,
                 capabilityFallbackDirectory: payload.mainWorkflow.output.capabilityFallbackDirectory,
-                workflowDefaultDirectory: 'NAIS_Output',
+                workflowDefaultDirectory: 'NAI_Blue_Output',
                 fileName: payload.mainWorkflow.output.fileName,
                 extension: payload.mainWorkflow.imageFormat,
                 collisionPolicy: payload.mainWorkflow.output.collisionPolicy,

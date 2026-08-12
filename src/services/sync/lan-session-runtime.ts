@@ -15,7 +15,7 @@ import { NativeLanIngressCoordinator } from './native-lan-ingress-coordinator'
 import { IndexedDBSyncOutboxRepository } from './outbox-repository'
 import { sanitizeSyncPayload } from './sanitizer'
 
-const LOCAL_SYNC_USER_ID = 'nais-local-user'
+const LOCAL_SYNC_USER_ID = 'nai-blue-local-user'
 const DEVICE_ID_KEY = 'nai-blue-lan-device-id'
 const DEFAULT_PORT = 41_921
 const HOST_POLL_MS = 750
@@ -78,7 +78,7 @@ function runtimeErrorCode(error: unknown): string {
 
 function deviceId(): string {
     const existing = globalThis.localStorage?.getItem(DEVICE_ID_KEY)
-        ?? globalThis.localStorage?.getItem('nais2-lan-device-id')
+        ?? globalThis.localStorage?.getItem('nai-blue-lan-device-id')
     if (existing && /^device:[a-f0-9-]{36}$/i.test(existing)) return existing
     const created = `device:${crypto.randomUUID()}`
     globalThis.localStorage?.setItem(DEVICE_ID_KEY, created)

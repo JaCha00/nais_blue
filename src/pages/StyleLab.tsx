@@ -1099,7 +1099,7 @@ export default function StyleLab() {
             const note = combo.note.trim() ? `\n${t('styleLab.card.notePlaceholder')}: ${combo.note.trim()}` : ''
             return `${header}\n${formatWeightedPromptTags(combo.tags)}${note}`
         }).join('\n\n---\n\n')
-        downloadText(`NAIS_style_lab_${Date.now()}.txt`, body || t('styleLab.empty.noSavedCombinations'))
+        downloadText(`NAI_Blue_style_lab_${Date.now()}.txt`, body || t('styleLab.empty.noSavedCombinations'))
     }
 
     const buildCombinationPrompt = (combo: StyleCombination) => buildStyleLabPrompt(

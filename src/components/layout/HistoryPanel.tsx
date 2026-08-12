@@ -331,13 +331,13 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
     const addNewImage = useCallback((imagePath: string, imageData?: string, lineage?: SavedImageLineage) => {
         const timestamp = Date.now()
         const isTemporary = imagePath.startsWith('memory://')
-        const name = imagePath.split(/[/\\]/).pop() || `NAIS_${timestamp}.png`
+        const name = imagePath.split(/[/\\]/).pop() || `NAI_Blue_${timestamp}.png`
 
         const newImage: SavedImage = {
             name,
             path: imagePath,
             timestamp,
-            type: imagePath.includes('NAIS_Scene') ? 'scene' :
+            type: imagePath.includes('NAI_Blue_Scene') ? 'scene' :
                 name.includes('INPAINT_') ? 'inpaint' :
                     name.includes('I2I_') ? 'i2i' :
                         name.includes('UPSCALE_') ? 'upscale' :
@@ -427,10 +427,9 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
             const images: SavedImage[] = []
             const picturePath = await getMediaStorageRoot()
 
-            // 1. Load Main Output Images - Always load from Pictures/NAIS_Output first
-            const defaultOutputDir = 'NAIS_Output'
+            // 1. Load Main Output Images from the NAI Blue default folder.
+            const defaultOutputDir = 'NAI_Blue_Output'
 
-            // Always load from Pictures/NAIS_Output for backward compatibility
             try {
                 if (await exists(defaultOutputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })) {
                     const entries = await readDir(defaultOutputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
@@ -483,7 +482,7 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
             }
 
             // 2. Load Scene Images (Recursive) - use the dedicated Scene folder setting.
-            const sceneBaseDir = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
+            const sceneBaseDir = (sceneSavePath || 'NAI_Blue_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAI_Blue_Scene'
             const scenePicturePath = await getMediaStorageRoot()
 
             // Helper function to load scene images from a directory (supports presetName/sceneName structure)
@@ -599,13 +598,8 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
 
             if (shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath) {
                 await loadSceneImagesFromDir(sceneSavePath, false)
-                // Keep old relative Scene output visible after users move to an absolute Scene folder.
-                await loadSceneImagesFromDir('NAIS_Scene', true)
             } else {
                 await loadSceneImagesFromDir(sceneBaseDir, true)
-                if (sceneBaseDir !== 'NAIS_Scene') {
-                    await loadSceneImagesFromDir('NAIS_Scene', true)
-                }
             }
 
             images.sort((a, b) => b.timestamp - a.timestamp)
@@ -894,8 +888,8 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
                             bytes[j] = binaryString.charCodeAt(j)
                         }
 
-                        const fileName = `NAIS_${Date.now()}.${fileExt}`
-                        const outputDir = savePath || 'NAIS_Output'
+                        const fileName = `NAI_Blue_${Date.now()}.${fileExt}`
+                        const outputDir = savePath || 'NAI_Blue_Output'
 
                         let fullPath: string
 
@@ -926,7 +920,7 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
                     }
                 } else {
                     // Auto-save OFF (Regenerate): Dispatch memory-only event
-                    const fileName = `NAIS_${Date.now()}.${fileExt}`
+                    const fileName = `NAI_Blue_${Date.now()}.${fileExt}`
                     const memoryPath = `memory://${fileName}`
 
                     publishGeneratedArtifact({

@@ -157,7 +157,7 @@ export function GuidedPromptFileImport({
             setImported(await readGuidedPromptImportFile(file))
         } catch {
             setImported(null)
-            setError(t('guided.promptImport.error', '프롬프트 메타데이터를 찾지 못했어요. NAI 이미지 또는 NAIS JSON인지 확인해 주세요.'))
+            setError(t('guided.promptImport.error', '프롬프트 메타데이터를 찾지 못했어요. NAI 이미지 또는 지원하는 외부 JSON인지 확인해 주세요.'))
         } finally {
             setLoading(false)
         }
@@ -194,7 +194,7 @@ export function GuidedPromptFileImport({
                 type="file"
                 className="sr-only"
                 tabIndex={-1}
-                accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais-blue.json,.nais2.json,application/json"
+                accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais2.json,application/json"
                 disabled={disabled || loading}
                 onChange={event => {
                     void read(event.target.files?.[0])

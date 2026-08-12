@@ -509,7 +509,7 @@ export default function SceneDetail() {
             const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
             const sceneRootPath = shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath
                 ? sceneSavePath
-                : await joinNativePath(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
+                : await joinNativePath(await getMediaStorageRoot(), sceneSavePath || 'NAI_Blue_Scene')
             const presetPath = await joinNativePath(sceneRootPath, ...safePresetSegments)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 

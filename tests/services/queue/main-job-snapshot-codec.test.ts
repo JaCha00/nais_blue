@@ -42,9 +42,9 @@ function prepared(overrides: Partial<PreparedMainGeneration> = {}): PreparedMain
         sequenceCommitProposal: null,
         output: {
             autoSave: true,
-            directory: 'NAIS_Output',
+            directory: 'NAI_Blue_Output',
             useAbsolutePath: false,
-            capabilityFallbackDirectory: 'NAIS_Output',
+            capabilityFallbackDirectory: 'NAI_Blue_Output',
             collisionPolicy: 'unique',
         },
         ...overrides,
@@ -75,8 +75,8 @@ describe('Main Job Snapshot codec', () => {
                     imageFormat: 'png',
                     metadataMode: 'embedded',
                     output: {
-                        directory: 'NAIS_Output',
-                        fileName: 'NAIS_4321.png',
+                        directory: 'NAI_Blue_Output',
+                        fileName: 'NAI_Blue_4321.png',
                         collisionPolicy: 'unique',
                     },
                 },

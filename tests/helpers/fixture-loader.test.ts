@@ -15,7 +15,7 @@ import {
 const temporaryDirectories: string[] = []
 
 async function temporaryDirectory(label: string): Promise<string> {
-    const directory = await mkdtemp(join(tmpdir(), `nais2-${label}-`))
+    const directory = await mkdtemp(join(tmpdir(), `nai-blue-${label}-`))
     temporaryDirectories.push(directory)
     return directory
 }

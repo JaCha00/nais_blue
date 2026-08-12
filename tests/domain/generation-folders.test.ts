@@ -35,7 +35,7 @@ describe('generation folder resolution', () => {
         ]
 
         expect(resolveGenerationFolder(folders, 'child', {
-            directory: 'NAIS_Output', useAbsolutePath: false, r2Bucket: 'profile-bucket', r2Prefix: 'generated',
+            directory: 'NAI_Blue_Output', useAbsolutePath: false, r2Bucket: 'profile-bucket', r2Prefix: 'generated',
         })).toMatchObject({
             path: 'Project / 01',
             directory: 'D:\\images\\01',
@@ -46,19 +46,19 @@ describe('generation folder resolution', () => {
 
     it('prioritizes a child bucket and prefix override without inheriting the parent prompt', () => {
         const folders = [
-            folder({ id: 'root', name: 'Project', rootDirectory: 'NAIS_Output', commonPrompt: 'parent prompt', r2: { autoUpload: true, bucket: 'root-bucket', prefix: 'prime' } }),
+            folder({ id: 'root', name: 'Project', rootDirectory: 'NAI_Blue_Output', commonPrompt: 'parent prompt', r2: { autoUpload: true, bucket: 'root-bucket', prefix: 'prime' } }),
             folder({ id: 'child', name: 'Blue', parentId: 'root', commonPrompt: 'child prompt', r2: { autoUpload: true, bucket: 'child-bucket', prefix: 'custom/path' } }),
         ]
 
         expect(resolveGenerationFolder(folders, 'child', { directory: 'fallback', useAbsolutePath: false })).toMatchObject({
-            directory: 'NAIS_Output/Blue',
+            directory: 'NAI_Blue_Output/Blue',
             commonPrompt: 'child prompt',
             r2: { bucket: 'child-bucket', prefix: 'custom/path', prefixSource: 'folder' },
         })
     })
 
     it('uses the profile prefix plus the logical tree when no folder overrides it', () => {
-        const root = createDefaultGenerationFolder('NAIS_Output', false, NOW)
+        const root = createDefaultGenerationFolder('NAI_Blue_Output', false, NOW)
         const child = folder({ id: 'child', name: '01', parentId: root.id })
         expect(resolveGenerationFolder([root, child], child.id, {
             directory: 'fallback', useAbsolutePath: false, r2Bucket: 'bucket', r2Prefix: 'generated',
@@ -66,7 +66,7 @@ describe('generation folder resolution', () => {
     })
 
     it('preserves the legacy profile prefix for the untouched default folder', () => {
-        const root = createDefaultGenerationFolder('NAIS_Output', false, NOW)
+        const root = createDefaultGenerationFolder('NAI_Blue_Output', false, NOW)
         expect(resolveGenerationFolder([root], root.id, {
             directory: 'fallback', useAbsolutePath: false, r2Bucket: 'bucket', r2Prefix: 'generated',
         })?.r2.prefix).toBe('generated')

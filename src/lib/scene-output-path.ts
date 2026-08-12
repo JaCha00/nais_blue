@@ -46,7 +46,7 @@ export async function resolveSceneOutputPath(request: SceneOutputPathRequest): P
     const safeCharacterName = request.rotationCharacterFolderName
         ? sanitizePathComponent(request.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(request.rotationCharacterId)
-    const sceneRoot = sanitizePathComponent(request.sceneSavePath || 'NAIS_Scene', 'NAIS_Scene')
+    const sceneRoot = sanitizePathComponent(request.sceneSavePath || 'NAI_Blue_Scene', 'NAI_Blue_Scene')
     const pathSegments = [sceneRoot, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
 
     if (shouldUseAbsoluteMediaPath(request.useAbsoluteScenePath) && request.sceneSavePath) {

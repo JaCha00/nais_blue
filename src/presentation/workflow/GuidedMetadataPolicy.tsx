@@ -54,8 +54,8 @@ export function GuidedMetadataPolicy({
 
     const descriptions: Record<SingleImageMetadataMode, string> = {
         embedded: t('guided.metadata.embeddedHelp', '편집 정보를 이미지 안에 유지합니다. 개인 보관과 다시 불러오기에 편리해요.'),
-        'sidecar-only': t('guided.metadata.sidecarHelp', '이미지는 받은 상태로 두고 편집 정보를 로컬 .nais-blue.json에도 저장합니다.'),
-        'strip-and-sidecar': t('guided.metadata.cleanHelp', '공유용 이미지는 정화하고, 원본 생성 정보는 로컬 .nais-blue.json에 분리합니다.'),
+        'sidecar-only': t('guided.metadata.sidecarHelp', '이미지는 받은 상태로 두고 편집 정보를 로컬 .nai-blue.json에도 저장합니다.'),
+        'strip-and-sidecar': t('guided.metadata.cleanHelp', '공유용 이미지는 정화하고, 원본 생성 정보는 로컬 .nai-blue.json에 분리합니다.'),
         'strip-only': t('guided.metadata.stripOnlyHelp', '이미지 메타데이터를 제거하지만 복구용 sidecar를 남기지 않는 기존 설정입니다.'),
     }
     const selectable = value === 'strip-only' ? [...MODES, 'strip-only' as const] : MODES

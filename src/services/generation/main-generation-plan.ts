@@ -76,9 +76,9 @@ export function prepareMainGeneration(
     const fileName = ensureImageFileExtension(options.output.fileName, imageFormat)
     const output = Object.freeze({
         autoSave: options.output.autoSave,
-        directory: options.output.directory || 'NAIS_Output',
+        directory: options.output.directory || 'NAI_Blue_Output',
         useAbsolutePath: options.output.useAbsolutePath,
-        capabilityFallbackDirectory: options.output.capabilityFallbackDirectory || 'NAIS_Output',
+        capabilityFallbackDirectory: options.output.capabilityFallbackDirectory || 'NAI_Blue_Output',
         ...(options.output.portableDirectory === undefined
             ? {}
             : { portableDirectory: options.output.portableDirectory }),

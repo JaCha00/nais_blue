@@ -20,8 +20,8 @@
     "Each preview rereads live Main/character/settings stores, so mid-queue edits affect later requests."
   ],
   "outputPolicy": {
-    "autoSaveOff": "memory://NAIS_STYLELAB_<Date.now()>.<format>",
-    "autoSaveOn": "configured style root or nais-style / NAIS_STYLELAB_<Date.now()>.<format>",
+    "autoSaveOff": "memory://NAI_Blue_STYLELAB_<Date.now()>.<format>",
+    "autoSaveOn": "configured style root or nai-blue-style / NAI_Blue_STYLELAB_<Date.now()>.<format>",
     "memoryEventsIncludeImageData": true,
     "memoryOutputAddsHistory": false,
     "capturedEventCount": 2,
@@ -142,7 +142,7 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_STYLELAB_1783728000000.png",
+        "fileName": "NAI_Blue_STYLELAB_1783728000000.png",
         "eventIncludesImageData": true
       },
       "metadata": {
@@ -163,7 +163,7 @@
         "embeddedMatchesPlanned": true
       },
       "finalPreviewState": {
-        "previewLocation": "memory://NAIS_STYLELAB_1783728000000.png",
+        "previewLocation": "memory://NAI_Blue_STYLELAB_1783728000000.png",
         "previewImagePresent": true,
         "previewThumbnailPresent": true,
         "previewSeed": 616161,
@@ -293,7 +293,7 @@
       },
       "output": {
         "policy": "memory",
-        "fileName": "NAIS_STYLELAB_1783728000000.png",
+        "fileName": "NAI_Blue_STYLELAB_1783728000000.png",
         "eventIncludesImageData": true
       },
       "metadata": {
@@ -314,7 +314,7 @@
         "embeddedMatchesPlanned": true
       },
       "finalPreviewState": {
-        "previewLocation": "memory://NAIS_STYLELAB_1783728000000.png",
+        "previewLocation": "memory://NAI_Blue_STYLELAB_1783728000000.png",
         "previewImagePresent": true,
         "previewThumbnailPresent": true,
         "previewSeed": 616161,
@@ -327,9 +327,9 @@
   ],
   "filesystemOutput": {
     "policy": "platform media root / configured style root",
-    "fileName": "NAIS_STYLELAB_1783728000000.png",
+    "fileName": "NAI_Blue_STYLELAB_1783728000000.png",
     "targetSegments": [
-      "nais-style"
+      "nai-blue-style"
     ],
     "baseDirectoryUsed": true,
     "generatedFileCount": 1,

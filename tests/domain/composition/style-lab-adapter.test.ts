@@ -72,7 +72,7 @@ function snapshot(): MainCompositionSnapshot {
         },
         output: {
             autoSave: false,
-            savePath: 'nais-style',
+            savePath: 'nai-blue-style',
             useAbsolutePath: false,
             imageFormat: 'png',
             metadataMode: 'embedded',

@@ -17,21 +17,11 @@ const SEARCH_TERMS = [
     '@supabase/supabase-js',
     '@tauri-apps/plugin-deep-link',
     'tauri-plugin-deep-link',
-    'nais2://',
     'onOpenUrl',
     'preset_likes',
     'preset_downloads',
 ]
 
-// Historical sources are not shipped by Vite/Tauri. Runtime matches are
-// limited to the compatibility classifiers that ignore old remote-only keys.
-const HISTORICAL_ALLOWLIST = [
-    'legacy/**',
-]
-const DOCUMENTATION_ALLOWLIST = [
-    'docs/composition-v2/LEGACY_RUNTIME_ALLOWLIST.md',
-    'docs/composition-v2/MARKETPLACE_REMOVAL.md',
-]
 const IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST = new Set([
     'src/domain/composition/migrations/legacy-stores-to-v2.ts',
     'src/lib/auto-backup.ts',
@@ -77,9 +67,6 @@ function isAllowlisted(match) {
     ) && isStyleLabMarketplacePath(relativePath)
 
     return relativePath === gatePath
-        || relativePath === 'docs/composition-v2/LEGACY_RUNTIME_ALLOWLIST.md'
-        || relativePath === 'docs/composition-v2/MARKETPLACE_REMOVAL.md'
-        || relativePath.startsWith('legacy/')
         || IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST.has(relativePath)
         || relativePath.startsWith('tests/fixtures/legacy/')
         || relativePath.startsWith('tests/migration/')
@@ -169,15 +156,12 @@ const trackedCodexToolingFiles = [...repositoryFiles.tracked]
 const tauriConfig = JSON.parse(await readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'))
 const releaseInputIsDistOnly = tauriConfig?.build?.frontendDist === '../dist'
 const viteConfig = await readFile(path.join(root, 'vite.config.ts'), 'utf8')
-const legacySourceIsNotPublicInput = !/publicDir\s*:\s*['"](?:\.\.\/)?legacy(?:\/|['"])/i.test(viteConfig)
 const repositoryRootIsNotPublicInput = !/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i.test(viteConfig)
 const publicReleaseScript = await readFile(path.join(root, 'scripts/create-public-release.ps1'), 'utf8')
 const publicSourceExcludesCodexTooling = /['"]\.codex['"]/i.test(publicReleaseScript)
 
 console.log('Remote runtime removal search gate')
 console.log(`Search terms (${SEARCH_TERMS.length}): ${SEARCH_TERMS.join(', ')}`)
-console.log('Historical allowlist:', HISTORICAL_ALLOWLIST.join(', '))
-console.log('Documentation allowlist:', DOCUMENTATION_ALLOWLIST.join(', '))
 console.log('Ignored-key runtime allowlist:', [...IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST].join(', '))
 console.log('Ignored-key test/fixture allowlist:', IGNORED_LEGACY_KEY_TEST_ALLOWLIST.join(', '))
 console.log('Style-Lab marketplace-only allowlist:', STYLE_LAB_MARKETPLACE_ALLOWLIST.join(', '))
@@ -187,13 +171,12 @@ console.log(`Release frontend input: ${tauriConfig?.build?.frontendDist ?? '(mis
 
 if (
     !releaseInputIsDistOnly
-    || !legacySourceIsNotPublicInput
     || !repositoryRootIsNotPublicInput
     || !publicSourceExcludesCodexTooling
     || trackedCodexToolingFiles.length > 0
 ) {
     console.error(
-        'Release input must remain ../dist, Vite publicDir must not expose the repository root or legacy/**, '
+        'Release input must remain ../dist, Vite publicDir must not expose the repository root, '
         + 'public source staging must exclude .codex/**, and project-local Codex tooling must remain untracked.',
     )
     process.exit(1)

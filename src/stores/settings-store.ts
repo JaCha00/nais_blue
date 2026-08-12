@@ -143,13 +143,13 @@ function normalizeGenerationFolderPatch(folder: GenerationFolder, patch: Generat
 export const useSettingsStore = create<SettingsState>()(
     persist(
         (set) => ({
-            savePath: 'NAIS_Output',
+            savePath: 'NAI_Blue_Output',
             useAbsolutePath: false,  // Default: relative to Pictures folder
-            sceneSavePath: 'NAIS_Scene',
+            sceneSavePath: 'NAI_Blue_Scene',
             useAbsoluteScenePath: false,
-            styleLabSavePath: 'nais-style',
+            styleLabSavePath: 'nai-blue-style',
             useAbsoluteStyleLabPath: false,
-            toolsSavePath: 'nais-tools',
+            toolsSavePath: 'nai-blue-tools',
             useAbsoluteToolsPath: false,
             autoSave: true,
             customResolutions: [],
@@ -161,7 +161,7 @@ export const useSettingsStore = create<SettingsState>()(
             useStreaming: true, // Default: enabled
             generationDelay: 500, // Default: 500ms delay between batch generations
             geminiApiKey: '', // Default: empty
-            libraryPath: 'NAIS_Library', // Default: relative to Pictures folder
+            libraryPath: 'NAI_Blue_Library', // Default: relative to Pictures folder
             useAbsoluteLibraryPath: false, // Default: relative to Pictures folder
             imageFormat: 'png', // Default: PNG format
             metadataMode: DEFAULT_METADATA_MODE,
@@ -317,7 +317,7 @@ export const useSettingsStore = create<SettingsState>()(
                 : state),
         }),
         {
-            name: 'nais2-settings',
+            name: 'nai-blue-settings',
             storage: createJSONStorage(() => indexedDBStorage),
             onRehydrateStorage: () => (state, error) => {
                 if (error) {

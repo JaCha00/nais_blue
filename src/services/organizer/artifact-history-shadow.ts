@@ -43,7 +43,7 @@ type HistoryShadowPlatform = Pick<OutputPlatformAdapter, 'resolveDirectory'>
 function outputRequest(record: ArtifactRecord): OutputDestinationRequest {
     return {
         portableDirectory: record.original.file.directory,
-        workflowDefaultDirectory: 'NAIS_Output',
+        workflowDefaultDirectory: 'NAI_Blue_Output',
     }
 }
 

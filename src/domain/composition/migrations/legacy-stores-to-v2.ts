@@ -48,15 +48,15 @@ const MIGRATED_FRAGMENT_FILE_SCHEMA_VERSION = 2 as const
 const MIGRATED_FRAGMENT_SEQUENCE_SCHEMA_VERSION = 1 as const
 
 export const LEGACY_COMPOSITION_STORE_ALIASES = Object.freeze({
-    scenes: ['nais2-scenes', 'scenes', 'scene-store'],
-    scenePrompts: ['nais2-scene-prompts', 'scene-prompts', 'scenePrompts'],
-    fragments: ['nais2-wildcards', 'wildcards', 'fragments'],
-    fragmentContent: ['nais2-wildcard-content', 'wildcard-content', 'fragmentContent'],
-    characterPrompts: ['nais2-character-prompts', 'character-prompts', 'characterPrompts'],
-    characterPositions: ['nais2-character-positions', 'character-positions', 'characterPositions'],
-    generationPresets: ['nais2-presets', 'generation-presets', 'generationPresets'],
-    promptPresets: ['nais2-prompt-library', 'novelaiPromptEditorState', 'prompt-presets', 'promptPresets'],
-    assetProfile: ['nais2-asset-modules', 'asset-profile', 'assetProfile'],
+    scenes: ['nai-blue-scenes', 'scenes', 'scene-store'],
+    scenePrompts: ['nai-blue-scene-prompts', 'scene-prompts', 'scenePrompts'],
+    fragments: ['nai-blue-wildcards', 'wildcards', 'fragments'],
+    fragmentContent: ['nai-blue-wildcard-content', 'wildcard-content', 'fragmentContent'],
+    characterPrompts: ['nai-blue-character-prompts', 'character-prompts', 'characterPrompts'],
+    characterPositions: ['nai-blue-character-positions', 'character-positions', 'characterPositions'],
+    generationPresets: ['nai-blue-presets', 'generation-presets', 'generationPresets'],
+    promptPresets: ['nai-blue-prompt-library', 'novelaiPromptEditorState', 'prompt-presets', 'promptPresets'],
+    assetProfile: ['nai-blue-asset-modules', 'asset-profile', 'assetProfile'],
 } as const)
 
 const STORE_ALIASES = LEGACY_COMPOSITION_STORE_ALIASES
@@ -312,7 +312,7 @@ function collectSnapshotStores(
 
     for (const [key, payload] of Object.entries(value)) {
         if (key.startsWith('_') || key === 'stores' || key === 'snapshots' || key === 'entries') continue
-        if (KNOWN_STORE_KEYS.has(key) || key.startsWith('nais2-') || /marketplace|supabase/i.test(key)) {
+        if (KNOWN_STORE_KEYS.has(key) || key.startsWith('nai-blue-') || /marketplace|supabase/i.test(key)) {
             if (!stores.has(key)) stores.set(key, payload)
         }
     }
@@ -753,7 +753,7 @@ function collectFragmentContent(
         if (value[key] !== undefined) collectFragmentContent(value[key], result, seen)
     }
     if (isRecord(value.stores)) {
-        collectFragmentContent(value.stores.contents ?? value.stores["nais2-wildcard-content"], result, seen)
+        collectFragmentContent(value.stores.contents ?? value.stores["nai-blue-wildcard-content"], result, seen)
     }
     if (isRecord(value.objectStores)) {
         collectFragmentContent(value.objectStores.contents, result, seen)

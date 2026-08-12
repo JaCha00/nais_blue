@@ -11,7 +11,7 @@ pub mod types;
 pub use error::{Error, Result};
 
 #[cfg(target_os = "android")]
-const PLUGIN_IDENTIFIER: &str = "com.bluhair.naisblue.transfer";
+const PLUGIN_IDENTIFIER: &str = "blue.bluehair.naiblue.transfer";
 
 /// The handle links Tauri commands to the tracked Kotlin scheduler. On every
 /// non-Android target it intentionally returns a stable unsupported result.

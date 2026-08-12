@@ -262,7 +262,7 @@ export const useCharacterStore = create<CharacterState>()(
             },
         }),
         {
-            name: 'nais2-character-store',
+            name: 'nai-blue-character-store',
             storage: createJSONStorage(() => indexedDBStorage),
             // MEMORY OPTIMIZATION: Only persist filePath + thumbnail + settings, NOT base64
             partialize: (state) => ({

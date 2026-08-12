@@ -1,7 +1,7 @@
 {
   "_exportedAt": "2026-07-01T00:00:00.000Z",
   "_version": "2.2",
-  "nais2-character-rotation": {
+  "nai-blue-character-rotation": {
     "version": 0,
     "state": {
       "active": true,
@@ -35,7 +35,7 @@
       "label": "retained legacy tool state"
     }
   },
-  "nais2-character-store": {
+  "nai-blue-character-store": {
     "version": 0,
     "state": {
       "characterImages": [

@@ -28,48 +28,47 @@ describe('old store migration and backup round trip', () => {
         storage.values.set('tools-storage', legacy)
 
         const result = await copyStoreKeysRetainingSource(
-            [['tools-storage', 'nais2-tools']],
+            [['tools-storage', 'nai-blue-tools']],
             storage,
             storage,
         )
 
         expect(result).toEqual([{
             sourceKey: 'tools-storage',
-            targetKey: 'nais2-tools',
+            targetKey: 'nai-blue-tools',
             status: 'copied',
             sourceRetained: true,
         }])
         expect(storage.values.get('tools-storage')).toBe(legacy)
-        expect(storage.values.get('nais2-tools')).toBe(legacy)
+        expect(storage.values.get('nai-blue-tools')).toBe(legacy)
 
         const newer = JSON.stringify({ state: { enabled: true, count: 9 }, version: 2 })
-        storage.values.set('nais2-tools', newer)
+        storage.values.set('nai-blue-tools', newer)
         const alreadyMigrated = await copyStoreKeysRetainingSource(
-            [['tools-storage', 'nais2-tools']],
+            [['tools-storage', 'nai-blue-tools']],
             storage,
             storage,
         )
         expect(alreadyMigrated[0]?.status).toBe('target-present')
         expect(storage.values.get('tools-storage')).toBe(legacy)
-        expect(storage.values.get('nais2-tools')).toBe(newer)
+        expect(storage.values.get('nai-blue-tools')).toBe(newer)
     })
 
-    it('imports an old backup, exports canonical plus retained stores, and restores them losslessly', async () => {
+    it('imports a backup, exports canonical stores, and restores them losslessly', async () => {
         const fixture = await loadFixtureJson<Record<string, unknown>>('legacy/store-backup-roundtrip.json')
         const imported = new MemoryStorage()
         const firstRestore = await importBackupToStorage(imported, fixture, { overwrite: true })
 
         expect(firstRestore.failed).toEqual([])
         expect(firstRestore.success).toEqual(expect.arrayContaining([
-            'nais2-character-rotation',
-            'tools-storage',
-            'nais2-character-store',
+            'nai-blue-character-rotation',
+            'nai-blue-character-store',
         ]))
-        expect(FULL_BACKUP_STORE_KEYS).toContain('tools-storage')
+        expect(FULL_BACKUP_STORE_KEYS).not.toContain('tools-storage')
 
         // Provenance fixtures keep image bytes redacted. Inject synthetic bytes
         // at runtime to verify the storage boundary still preserves them.
-        imported.values.set('nais2-character-store', JSON.stringify({
+        imported.values.set('nai-blue-character-store', JSON.stringify({
             version: 0,
             state: {
                 characterImages: [{
@@ -93,11 +92,11 @@ describe('old store migration and backup round trip', () => {
         const secondRestore = await importBackupToStorage(restored, fileRoundTrip, { overwrite: true })
 
         expect(secondRestore.failed).toEqual([])
-        for (const key of ['nais2-character-rotation', 'tools-storage'] as const) {
+        for (const key of ['nai-blue-character-rotation'] as const) {
             expect(JSON.parse(restored.getItem(key) ?? 'null')).toEqual(fixture[key])
         }
 
-        const characterStore = JSON.parse(restored.getItem('nais2-character-store') ?? 'null') as {
+        const characterStore = JSON.parse(restored.getItem('nai-blue-character-store') ?? 'null') as {
             state: {
                 characterImages: Array<Record<string, unknown>>
                 vibeImages: Array<Record<string, unknown>>
@@ -117,13 +116,13 @@ describe('old store migration and backup round trip', () => {
         const result = await importBackupToStorage(storage, {
             _exportedAt: '2026-07-12T00:00:00.000Z',
             _version: '2.3',
-            'nais2-character-rotation': { state: { restEnabled: false }, version: 2 },
+            'nai-blue-character-rotation': { state: { restEnabled: false }, version: 2 },
         }, { overwrite: true })
 
         expect(result.success).toEqual([])
         expect(result.failed).toEqual([
-            'nais2-character-rotation',
-            'rollback:nais2-character-rotation',
+            'nai-blue-character-rotation',
+            'rollback:nai-blue-character-rotation',
         ])
     })
 
@@ -136,7 +135,7 @@ describe('old store migration and backup round trip', () => {
         }
 
         const result = await importBackupToStorage(storage, {
-            'nais2-scenes': { state: { presets: [] }, version: 1 },
+            'nai-blue-scenes': { state: { presets: [] }, version: 1 },
         }, { overwrite: true })
 
         expect(result.success).toEqual([])

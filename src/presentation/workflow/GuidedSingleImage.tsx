@@ -921,7 +921,7 @@ async function readResultArtifactBytes(result: GuidedResultProjection): Promise<
     const platform = createRuntimeOutputPlatformAdapter()
     const directory = await platform.resolveDirectory({
         portableDirectory: artifact.original.file.directory,
-        workflowDefaultDirectory: 'NAIS_Output',
+        workflowDefaultDirectory: 'NAI_Blue_Output',
     })
     return platform.readFile(childOutputRef(directory, artifact.original.file.fileName))
 }
@@ -946,7 +946,7 @@ function ResultStep({
     const [previewError, setPreviewError] = useState(false)
     const [previewAttempt, setPreviewAttempt] = useState(0)
     const [saving, setSaving] = useState<'image' | 'metadata' | null>(null)
-    const fileStem = `nais-guided-${draft.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 80)}`
+    const fileStem = `nai-blue-guided-${draft.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 80)}`
 
     useEffect(() => {
         setPreviewError(false)
@@ -1000,7 +1000,7 @@ function ResultStep({
             if (path === null) return
             await writeNativeTextFile(path, JSON.stringify({
                 schemaVersion: 1,
-                kind: 'nais-guided-single-image-settings',
+                kind: 'nai-blue-guided-single-image-settings',
                 draftId: draft.id,
                 sourceBatchId: draft.lastSnapshotId,
                 sourceJobId: result.sourceJobId ?? null,

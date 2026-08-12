@@ -35,8 +35,8 @@ describe('portable composition resources', () => {
         const pictures: PortablePathRef = {
             kind: 'standard',
             root: 'pictures',
-            segments: ['NAIS', 'references', 'hero.png'],
-            displayPath: 'C:\\Users\\desktop\\Pictures\\NAIS\\references\\hero.png',
+            segments: ['NAI Blue', 'references', 'hero.png'],
+            displayPath: 'C:\\Users\\desktop\\Pictures\\NAI Blue\\references\\hero.png',
         }
         const appData: PortablePathRef = {
             kind: 'standard',
@@ -54,7 +54,7 @@ describe('portable composition resources', () => {
         expect(projectPortablePathForExport(pictures)).toEqual({
             kind: 'standard',
             root: 'pictures',
-            segments: ['NAIS', 'references', 'hero.png'],
+            segments: ['NAI Blue', 'references', 'hero.png'],
         })
         expect(projectPortablePathForExport(appData)).toEqual({
             kind: 'standard',

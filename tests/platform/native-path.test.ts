@@ -14,10 +14,10 @@ describe('native path adapter', () => {
     })
 
     it('forwards every segment and returns the platform path', async () => {
-        pathApi.join.mockResolvedValue('C:\\NAIS\\Output\\image.png')
+        pathApi.join.mockResolvedValue('C:\\NAI Blue\\Output\\image.png')
 
-        await expect(joinNativePath('C:\\NAIS', 'Output', 'image.png'))
-            .resolves.toBe('C:\\NAIS\\Output\\image.png')
-        expect(pathApi.join).toHaveBeenCalledWith('C:\\NAIS', 'Output', 'image.png')
+        await expect(joinNativePath('C:\\NAI Blue', 'Output', 'image.png'))
+            .resolves.toBe('C:\\NAI Blue\\Output\\image.png')
+        expect(pathApi.join).toHaveBeenCalledWith('C:\\NAI Blue', 'Output', 'image.png')
     })
 })

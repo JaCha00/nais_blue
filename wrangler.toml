@@ -1,5 +1,5 @@
-name = "nais-transfer-executor"
-main = "cloudflare/nais-transfer-worker/src/index.ts"
+name = "nai-blue-transfer-executor"
+main = "cloudflare/nai-blue-transfer-worker/src/index.ts"
 compatibility_date = "2026-07-19"
 compatibility_flags = ["nodejs_compat"]
 
@@ -25,4 +25,4 @@ bucket_name = "prime"
 binding = "KV"
 
 [vars]
-R2_PREFIX = "nais"
+R2_PREFIX = "nai-blue"

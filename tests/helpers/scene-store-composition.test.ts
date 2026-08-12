@@ -93,7 +93,7 @@ function scene(
         queueCount: 3,
         images: [{
             id: `image:${id}`,
-            url: `NAIS_Scene/${id}.png`,
+            url: `NAI_Blue_Scene/${id}.png`,
             timestamp: NOW,
             isFavorite: true,
         }],

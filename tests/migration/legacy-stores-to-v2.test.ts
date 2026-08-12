@@ -34,7 +34,7 @@ const ASSET_PROFILE = {
 function completeLegacyInput(): LegacyStoresMigrationInput {
     return {
         indexedDbSnapshots: {
-            'nais2-scenes': {
+            'nai-blue-scenes': {
                 state: {
                     activePresetId: null,
                     presets: [{
@@ -61,10 +61,10 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                 },
                 version: 0,
             },
-            'nais2-scene-prompts': {
+            'nai-blue-scene-prompts': {
                 'scene:stable': 'separate scene prompt',
             },
-            'nais2-character-prompts': {
+            'nai-blue-character-prompts': {
                 state: {
                     positionEnabled: true,
                     characters: [
@@ -97,11 +97,11 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                 },
                 version: 0,
             },
-            'nais2-character-positions': {
+            'nai-blue-character-positions': {
                 state: { positions: { 2: { x: 0.1, y: 0.2 } }, positionEnabled: true },
                 version: 0,
             },
-            'nais2-presets': {
+            'nai-blue-presets': {
                 state: {
                     activePresetId: 'params:zero',
                     presets: [{
@@ -118,7 +118,7 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                 },
                 version: 0,
             },
-            'nais2-prompt-library': {
+            'nai-blue-prompt-library': {
                 state: {
                     activeLeftId: 'tab:one',
                     tabs: [{
@@ -133,7 +133,7 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                 },
                 version: 0,
             },
-            'nais2-wildcards': {
+            'nai-blue-wildcards': {
                 state: {
                     files: [
                         {
@@ -160,7 +160,7 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                 },
                 version: 0,
             },
-            'nais2-wildcard-content': {
+            'nai-blue-wildcard-content': {
                 stores: {
                     contents: {
                         'fragment:one': ['separate-authority'],
@@ -168,9 +168,9 @@ function completeLegacyInput(): LegacyStoresMigrationInput {
                     },
                 },
             },
-            'nais2-asset-modules': { state: { profile: ASSET_PROFILE }, version: 0 },
-            'nais2-marketplace-cache': { stale: true },
-            'nais2-future-v99': { future: true },
+            'nai-blue-asset-modules': { state: { profile: ASSET_PROFILE }, version: 0 },
+            'nai-blue-marketplace-cache': { stale: true },
+            'nai-blue-future-v99': { future: true },
         },
     }
 }
@@ -272,7 +272,7 @@ describe('legacy stores to CompositionDocument v2 migration', () => {
             contributions: [expect.objectContaining({ text: 'one, two' })],
         }))
 
-        expect(result.report.ignoredKeys).toEqual(['nais2-future-v99', 'nais2-marketplace-cache'])
+        expect(result.report.ignoredKeys).toEqual(['nai-blue-future-v99', 'nai-blue-marketplace-cache'])
         expect(result.report.issues).toEqual(expect.arrayContaining([
             expect.objectContaining({ code: 'M_LEGACY_REMOTE_KEY_IGNORED', severity: 'info' }),
             expect.objectContaining({ code: 'M_UNKNOWN_STORE_RETAINED', severity: 'info' }),
@@ -285,7 +285,7 @@ describe('legacy stores to CompositionDocument v2 migration', () => {
         const materialized = first.sidecars.scenes
         const second = migrateLegacyStoresToV2({
             indexedDbSnapshots: {
-                'nais2-scenes': {
+                'nai-blue-scenes': {
                     state: {
                         presets: materialized.presets,
                         activePresetId: materialized.activePresetId,
@@ -308,7 +308,7 @@ describe('legacy stores to CompositionDocument v2 migration', () => {
 
         const renamed = structuredClone(input)
         const snapshots = renamed.indexedDbSnapshots as Record<string, { state?: Record<string, unknown> }>
-        const characterState = snapshots['nais2-character-prompts'].state as {
+        const characterState = snapshots['nai-blue-character-prompts'].state as {
             characters: Array<Record<string, unknown>>
         }
         characterState.characters[2].name = 'A completely different display label'
@@ -322,7 +322,7 @@ describe('legacy stores to CompositionDocument v2 migration', () => {
                 files: [{ name: 'legacy.txt', contentKey: 'legacy-content', lineCount: 1 }],
             },
             indexedDbSnapshots: [{
-                dbName: 'nais2-wildcard-content',
+                dbName: 'nai-blue-wildcard-content',
                 objectStores: { contents: { 'legacy-content': ['from-separate-db'] } },
             }],
             promptPresets: {
@@ -348,7 +348,7 @@ describe('legacy stores to CompositionDocument v2 migration', () => {
     })
 
     it('marks malformed persisted JSON fatal while retaining it for rollback', () => {
-        const input = { stores: { 'nais2-scenes': '{broken-json' } }
+        const input = { stores: { 'nai-blue-scenes': '{broken-json' } }
         const result = migrateLegacyStoresToV2(input)
 
         expect(result.report.fatal).toBe(true)

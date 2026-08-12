@@ -135,7 +135,7 @@ export interface NAIMetadata {
     // Raw data for debugging
     raw?: Record<string, unknown>
 
-    // Original NAI Blue prompt sections, including imports from pre-rename chunks.
+    // Original split prompt sections, including supported external automation metadata.
     promptParts?: {
         base: string
         additional: string
@@ -159,6 +159,58 @@ function parsedJsonString(value: unknown): unknown {
     } catch {
         return value
     }
+}
+
+const EXTERNAL_AUTOMATION_LOCAL_FIELDS = ['nais3', 'nais2'] as const
+const EXTERNAL_AUTOMATION_PNG_KEYWORDS = new Set(['nais3-params'])
+
+function promptPartsFrom(value: unknown): NAIMetadata['promptParts'] | null {
+    const source = jsonRecord(value)
+    if (source === null) return null
+    const keys = ['base', 'additional', 'detail', 'negative', 'inpainting', 'workflow'] as const
+    if (!keys.some(key => typeof source[key] === 'string')) return null
+    return {
+        base: typeof source.base === 'string' ? source.base : '',
+        additional: typeof source.additional === 'string' ? source.additional : '',
+        detail: typeof source.detail === 'string' ? source.detail : '',
+        ...(typeof source.negative === 'string' ? { negative: source.negative } : {}),
+        ...(typeof source.inpainting === 'string' ? { inpainting: source.inpainting } : {}),
+        ...(typeof source.workflow === 'string' ? { workflow: source.workflow } : {}),
+    }
+}
+
+function externalAutomationPromptParts(value: Record<string, unknown>): NAIMetadata['promptParts'] | null {
+    const direct = promptPartsFrom(value.promptParts)
+    if (direct !== null) return direct
+    for (const field of EXTERNAL_AUTOMATION_LOCAL_FIELDS) {
+        const local = jsonRecord(value[field])
+        const parts = promptPartsFrom(local?.promptParts)
+        if (parts !== null) return parts
+    }
+    return null
+}
+
+function parseExternalAutomationChunk(value: string): NAIMetadata['promptParts'] | null {
+    for (const candidate of [value, (() => {
+        try {
+            const binary = atob(value)
+            return new TextDecoder().decode(Uint8Array.from(binary, char => char.charCodeAt(0)))
+        } catch {
+            return ''
+        }
+    })()]) {
+        if (!candidate) continue
+        try {
+            const parsed = jsonRecord(JSON.parse(candidate) as unknown)
+            if (parsed !== null) {
+                const parts = externalAutomationPromptParts(parsed)
+                if (parts !== null) return parts
+            }
+        } catch {
+            continue
+        }
+    }
+    return null
 }
 
 function looksLikeNaiMetadata(value: Record<string, unknown>): boolean {
@@ -188,9 +240,11 @@ function findExternalNaiMetadata(value: unknown): Record<string, unknown> | null
 
         const parameters = jsonRecord(source.parameters)
         if (parameters !== null && (typeof source.input === 'string' || looksLikeNaiMetadata(parameters))) {
+            const promptParts = externalAutomationPromptParts(source)
             return {
                 ...parameters,
                 ...(typeof source.input === 'string' ? { prompt: source.input } : {}),
+                ...(promptParts === null ? {} : { promptParts }),
             }
         }
         if (looksLikeNaiMetadata(source)) return source
@@ -631,6 +685,7 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
     let offset = 8
     let metadata: NAIMetadata | null = null
     let modelSource: string | null = null
+    let externalPromptParts: NAIMetadata['promptParts'] | null = null
 
     while (offset < bytes.length) {
         // Read chunk length (4 bytes, big-endian)
@@ -672,6 +727,8 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
                 } else if (keyword === 'Source') {
                     // Store model source temporarily, will be added after metadata is created
                     modelSource = value
+                } else if (EXTERNAL_AUTOMATION_PNG_KEYWORDS.has(keyword)) {
+                    externalPromptParts = parseExternalAutomationChunk(value)
                 }
             }
         }
@@ -692,6 +749,9 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
     // image metadata stripping is combined with a later re-embed operation.
     const naiBlue = readNaiBlueParams(bytes)
     if (naiBlue) metadata = applyNaiBlueOverlay(metadata ?? {}, naiBlue)
+    if (metadata && !metadata.promptParts && externalPromptParts) {
+        metadata.promptParts = externalPromptParts
+    }
 
     // Heuristically recover qualityToggle / ucPreset from prompt/uc text only
     // when an embedded NAI Blue chunk did not supply them (images from NAI web,
@@ -962,6 +1022,9 @@ function convertNAIFormat(data: Record<string, unknown>): NAIMetadata {
         metadata.v4_negative_prompt = data.v4_negative_prompt as NAIMetadata['v4_negative_prompt']
     }
 
+    const promptParts = promptPartsFrom(data.promptParts)
+    if (promptParts !== null) metadata.promptParts = promptParts
+
     // Reference images - Vibe Transfer
     if (data.reference_image_multiple && Array.isArray(data.reference_image_multiple) && data.reference_image_multiple.length > 0) {
         metadata.hasVibeTransfer = true
@@ -1074,7 +1137,6 @@ export async function parseMetadataFromFile(file: File): Promise<NAIMetadata | n
     const buffer = await file.arrayBuffer()
     const lowerName = file.name.toLowerCase()
     if (lowerName.endsWith('.nai-blue.json')
-        || lowerName.endsWith('.nais-blue.json')
         || lowerName.endsWith('.nais2.json')
         || file.type === 'application/json') {
         const bytes = new Uint8Array(buffer)

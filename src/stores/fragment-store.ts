@@ -18,9 +18,9 @@ export const FRAGMENT_FILE_SCHEMA_VERSION = 2 as const
 export const FRAGMENT_SEQUENCE_SCHEMA_VERSION = 1 as const
 
 // The dedicated content database is a compatibility ABI; only its metadata key is renamed.
-const CONTENT_DB_NAME = 'nais2-wildcard-content'
+const CONTENT_DB_NAME = 'nai-blue-wildcard-content'
 const CONTENT_STORE_NAME = 'contents'
-const METADATA_STORAGE_NAME = 'nais2-wildcards'
+const METADATA_STORAGE_NAME = 'nai-blue-wildcards'
 const MAX_CACHE_SIZE = 20
 
 export type FragmentId = string

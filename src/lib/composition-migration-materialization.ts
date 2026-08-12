@@ -277,10 +277,10 @@ function fragmentContentForRepository(
 function assetProfileJsonFromSource(source: CompositionMigrationSourceSnapshot): string | undefined {
     if (typeof source.assetProfileJson === 'string') return source.assetProfileJson
     if (source.assetProfileJson !== undefined) return JSON.stringify(source.assetProfileJson)
-    for (const key of ['asset-profile', 'assetProfile', 'nais2-asset-modules']) {
+    for (const key of ['asset-profile', 'assetProfile', 'nai-blue-asset-modules']) {
         const value = parseRaw(source.serializedStores[key])
         const state = unwrapPersisted(value)
-        const profile = key === 'nais2-asset-modules' ? state.profile : state
+        const profile = key === 'nai-blue-asset-modules' ? state.profile : state
         if (isRecord(profile) && Object.keys(profile).length > 0) return JSON.stringify(profile, null, 2)
     }
     return undefined
@@ -302,8 +302,8 @@ export async function materializeCompositionMigrationSidecars(input: {
             await writePersistedState(
                 dependencies,
                 journal,
-                'nais2-scenes',
-                input.source.serializedStores['nais2-scenes'] ?? null,
+                'nai-blue-scenes',
+                input.source.serializedStores['nai-blue-scenes'] ?? null,
                 1,
                 state => sceneState(state, input.sidecars.scenes),
             )
@@ -312,8 +312,8 @@ export async function materializeCompositionMigrationSidecars(input: {
             await writePersistedState(
                 dependencies,
                 journal,
-                'nais2-character-prompts',
-                input.source.serializedStores['nais2-character-prompts'] ?? null,
+                'nai-blue-character-prompts',
+                input.source.serializedStores['nai-blue-character-prompts'] ?? null,
                 2,
                 state => characterState(state, input.document),
             )
@@ -322,8 +322,8 @@ export async function materializeCompositionMigrationSidecars(input: {
             await writePersistedState(
                 dependencies,
                 journal,
-                'nais2-wildcards',
-                input.source.serializedStores['nais2-wildcards'] ?? null,
+                'nai-blue-wildcards',
+                input.source.serializedStores['nai-blue-wildcards'] ?? null,
                 2,
                 state => fragmentState(state, input.sidecars.fragments),
             )
@@ -381,8 +381,8 @@ export async function materializeCompositionMigrationSidecars(input: {
             await writePersistedState(
                 dependencies,
                 journal,
-                'nais2-prompt-library',
-                input.source.serializedStores['nais2-prompt-library'] ?? null,
+                'nai-blue-prompt-library',
+                input.source.serializedStores['nai-blue-prompt-library'] ?? null,
                 0,
                 state => promptPresetState(state, input.sidecars.promptPresets),
             )

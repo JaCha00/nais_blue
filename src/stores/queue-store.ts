@@ -56,7 +56,7 @@ export const useQueueStore = create<QueueUiState>()(persist(
         )),
     }),
     {
-        name: 'nais2-queue-ui',
+        name: 'nai-blue-queue-ui',
         version: 1,
         storage: createJSONStorage(() => indexedDBStorage),
         partialize: state => ({

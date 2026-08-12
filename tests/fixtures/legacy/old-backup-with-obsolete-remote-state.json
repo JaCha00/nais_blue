@@ -1,7 +1,7 @@
 {
   "_exportedAt": "2025-06-01T00:00:00.000Z",
   "_version": "2.3",
-  "nais2-generation": {
+  "nai-blue-generation": {
     "version": 8,
     "state": {
       "prompt": "restored local prompt",
@@ -9,7 +9,7 @@
       "seedLocked": true
     }
   },
-  "nais2-scenes": {
+  "nai-blue-scenes": {
     "version": 1,
     "state": {
       "activePresetId": "preset:fixture",
@@ -22,7 +22,7 @@
       ]
     }
   },
-  "nais2-marketplace-cache": {
+  "nai-blue-marketplace-cache": {
     "version": 1,
     "state": {
       "presets": [

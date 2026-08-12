@@ -188,7 +188,7 @@ export function StoreSnapshotRestoreDialog({ open, onOpenChange }: StoreSnapshot
                                     <SelectContent>
                                         {groups.map((group) => (
                                             <SelectItem key={group.storeKey} value={group.storeKey}>
-                                                {group.storeKey.replace(/^(?:nai-blue|nais2)-/, '')}
+                                                {group.storeKey.replace(/^nai-blue-/, '')}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

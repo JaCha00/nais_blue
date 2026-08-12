@@ -221,7 +221,7 @@ export function MetadataWorkspace() {
         if (items.length === 0) return
         try {
             await exportTextFile({
-                suggestedName: `nais-metadata-${new Date().toISOString().slice(0, 10)}.${format}`,
+                suggestedName: `nai-blue-metadata-${new Date().toISOString().slice(0, 10)}.${format}`,
                 content: format === 'json' ? serializeMetadataBatchJson(items) : serializeMetadataBatchCsv(items),
                 mimeType: format === 'json' ? 'application/json' : 'text/csv',
                 dialogTitle: t('dataHub.metadata.exportTitle', '메타데이터 결과 내보내기'),
@@ -271,7 +271,7 @@ export function MetadataWorkspace() {
                     type="file"
                     className="sr-only"
                     aria-label={t('dataHub.metadata.dropTitle', '이미지를 선택하거나 이곳에 놓으세요')}
-                    accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais-blue.json,.nais2.json,application/json"
+                    accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais2.json,application/json"
                     multiple
                     disabled={reading}
                     onChange={(event) => {
@@ -288,7 +288,7 @@ export function MetadataWorkspace() {
                         : t('dataHub.metadata.dropTitle', '이미지를 선택하거나 이곳에 놓으세요')}
                 </h2>
                 <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                    {t('dataHub.metadata.dropDescription', 'PNG, WebP, JPEG와 NAIS sidecar JSON을 한 번에 최대 500개까지 읽습니다. 원본 이미지와 Base64 데이터는 결과에 저장하지 않습니다.')}
+                    {t('dataHub.metadata.dropDescription', 'PNG, WebP, JPEG와 외부 sidecar JSON을 한 번에 최대 500개까지 읽습니다. 원본 이미지와 Base64 데이터는 결과에 저장하지 않습니다.')}
                 </p>
                 {reading && progress && (
                     <div className="mt-5 w-full max-w-md" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent}>

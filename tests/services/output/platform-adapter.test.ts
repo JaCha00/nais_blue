@@ -104,25 +104,25 @@ describe('Tauri output platform adapters', () => {
     it('uses Pictures-relative paths on desktop and preserves explicit absolute paths', async () => {
         const adapter = new DesktopOutputPlatformAdapter()
         const relative = await adapter.resolveDirectory({
-            directory: 'NAIS/Output',
+            directory: 'NAI Blue/Output',
             useAbsolutePath: false,
-            workflowDefaultDirectory: 'NAIS_Output',
+            workflowDefaultDirectory: 'NAI_Blue_Output',
         })
         const absolute = await adapter.resolveDirectory({
-            directory: 'D:\\Exports\\NAIS',
+            directory: 'D:\\Exports\\NAI Blue',
             useAbsolutePath: true,
-            workflowDefaultDirectory: 'NAIS_Output',
+            workflowDefaultDirectory: 'NAI_Blue_Output',
         })
 
         expect(relative).toEqual({
-            path: 'NAIS/Output',
-            displayPath: 'C:/Synthetic/Pictures/NAIS/Output',
+            path: 'NAI Blue/Output',
+            displayPath: 'C:/Synthetic/Pictures/NAI Blue/Output',
             baseDir: 2,
             capabilityFallbackUsed: false,
         })
         expect(absolute).toEqual({
-            path: 'D:\\Exports\\NAIS',
-            displayPath: 'D:\\Exports\\NAIS',
+            path: 'D:\\Exports\\NAI Blue',
+            displayPath: 'D:\\Exports\\NAI Blue',
             capabilityFallbackUsed: false,
         })
     })
@@ -132,16 +132,16 @@ describe('Tauri output platform adapters', () => {
         const directory = await adapter.resolveDirectory({
             directory: 'D:\\Users\\Example\\Pictures',
             useAbsolutePath: true,
-            capabilityFallbackDirectory: 'NAIS_Output/mobile',
-            workflowDefaultDirectory: 'NAIS_Output',
+            capabilityFallbackDirectory: 'NAI_Blue_Output/mobile',
+            workflowDefaultDirectory: 'NAI_Blue_Output',
         })
         const image = childOutputRef(directory, 'result.png')
         await adapter.ensureDirectory(directory)
         await adapter.writeFile(image, new Uint8Array([1, 2, 3]))
 
         expect(directory).toEqual(expect.objectContaining({
-            path: 'NAIS_Output/mobile',
-            displayPath: 'C:/Synthetic/AppData/NAIS_Output/mobile',
+            path: 'NAI_Blue_Output/mobile',
+            displayPath: 'C:/Synthetic/AppData/NAI_Blue_Output/mobile',
             baseDir: 1,
             capabilityFallbackUsed: true,
             fallbackReason: expect.any(String),
@@ -150,7 +150,7 @@ describe('Tauri output platform adapters', () => {
         expect(JSON.stringify(fsCapture.calls)).not.toContain('D:\\\\Users')
         expect(fsCapture.calls).toContainEqual({
             operation: 'writeFile',
-            path: 'NAIS_Output/mobile/result.png',
+            path: 'NAI_Blue_Output/mobile/result.png',
             options: { baseDir: 1 },
         })
     })
@@ -171,7 +171,7 @@ describe('Tauri output platform adapters', () => {
             options: { oldPathBaseDir: 1, newPathBaseDir: 1 },
         })
 
-        fsCapture.existing.add('nais2/output-journal')
+        fsCapture.existing.add('nai-blue/output-journal')
         fsCapture.entries.push(
             { name: 'txn-one.json', isFile: true, isDirectory: false, isSymlink: false },
             { name: 'txn-z.json', isFile: true, isDirectory: false, isSymlink: false },
@@ -198,7 +198,7 @@ describe('Tauri output platform adapters', () => {
 
         await expect(adapter.resolveDirectory({
             portableDirectory: { kind: 'bookmark', bookmarkId: 'output:selected', segments: [] },
-            workflowDefaultDirectory: 'NAIS_Output',
+            workflowDefaultDirectory: 'NAI_Blue_Output',
         })).rejects.toBeInstanceOf(UnresolvedOutputPathError)
         expect(JSON.stringify(fsCapture.calls)).not.toContain('D:\\Exports')
     })
@@ -206,11 +206,11 @@ describe('Tauri output platform adapters', () => {
     it('resolves Android app-data portable output without an absolute path', async () => {
         const adapter = new AppScopedOutputPlatformAdapter(createRuntimeCapabilities('android'))
         await expect(adapter.resolveDirectory({
-            portableDirectory: { kind: 'standard', root: 'app-data', segments: ['NAIS', 'Output'] },
-            workflowDefaultDirectory: 'NAIS_Output',
+            portableDirectory: { kind: 'standard', root: 'app-data', segments: ['NAI Blue', 'Output'] },
+            workflowDefaultDirectory: 'NAI_Blue_Output',
         })).resolves.toEqual({
-            path: 'NAIS/Output',
-            displayPath: 'C:/Synthetic/AppData/NAIS/Output',
+            path: 'NAI Blue/Output',
+            displayPath: 'C:/Synthetic/AppData/NAI Blue/Output',
             baseDir: 1,
             capabilityFallbackUsed: false,
         })

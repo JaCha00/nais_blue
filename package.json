@@ -31,7 +31,7 @@
     "test:characterization": "vitest run tests/characterization",
     "test:android-port": "node scripts/verify-android-port-contract.mjs",
     "test:android-transfer": "vitest run tests/services/android-transfer",
-    "test:cloudflare-transfer": "vitest run tests/services/cloudflare-transfer && tsc -p cloudflare/nais-transfer-worker/tsconfig.json",
+    "test:cloudflare-transfer": "vitest run tests/services/cloudflare-transfer && tsc -p cloudflare/nai-blue-transfer-worker/tsconfig.json",
     "qa:cloudflare-transfer:live": "node scripts/qa-cloudflare-transfer-live.mjs",
     "qa:cloudflare-transfer:rotate-live": "node scripts/rotate-cloudflare-pairing-and-qa.mjs",
     "test:release-version": "node scripts/verify-release-version.mjs",

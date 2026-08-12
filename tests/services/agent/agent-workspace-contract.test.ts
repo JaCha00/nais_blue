@@ -87,11 +87,11 @@ describe('agent workspace contract', () => {
             activePresetId: preset.id,
             presets: [preset],
             directories: {
-                output: { path: 'NAIS_Output', useAbsolutePath: false },
-                scene: { path: 'NAIS_Scenes', useAbsolutePath: false },
-                styleLab: { path: 'NAIS_StyleLab', useAbsolutePath: false },
-                tools: { path: 'NAIS_Tools', useAbsolutePath: false },
-                library: { path: 'NAIS_Library', useAbsolutePath: false },
+                output: { path: 'NAI_Blue_Output', useAbsolutePath: false },
+                scene: { path: 'NAI_Blue_Scene', useAbsolutePath: false },
+                styleLab: { path: 'nai-blue-style', useAbsolutePath: false },
+                tools: { path: 'nai-blue-tools', useAbsolutePath: false },
+                library: { path: 'NAI_Blue_Library', useAbsolutePath: false },
             },
             assetProfile: createDefaultAssetProfile('2026-07-26T00:00:00.000Z'),
         })
@@ -122,12 +122,12 @@ describe('agent workspace contract', () => {
             status: 'ready',
             action: {
                 type: 'paths.patch',
-                patch: { output: { path: 'D:\\NAIS Output', useAbsolutePath: true } },
+                patch: { output: { path: 'D:\\NAI Blue Output', useAbsolutePath: true } },
             },
         })
         expect(request?.action).toEqual({
             type: 'paths.patch',
-            patch: { output: { path: 'D:\\NAIS Output', useAbsolutePath: true } },
+            patch: { output: { path: 'D:\\NAI Blue Output', useAbsolutePath: true } },
         })
 
         expect(() => parseAgentEditRequest({

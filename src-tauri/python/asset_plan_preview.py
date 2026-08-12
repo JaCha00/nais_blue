@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 DEFAULT_TARGET = "main.base"
-DEFAULT_OUTPUT_DIRECTORY = "NAIS_Output"
+DEFAULT_OUTPUT_DIRECTORY = "NAI_Blue_Output"
 DEFAULT_FILENAME_TEMPLATE = "{profile}_{seed}_{datetime:YYYYMMDD-HHmmss}"
 DEFAULT_FILENAME_MAX_LENGTH = 180
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1F]')
@@ -349,7 +349,7 @@ def _sanitize_filename(value: str, fallback: str) -> str:
 
 
 def _fallback_filename(now: datetime) -> str:
-    return f"NAIS_{int(now.timestamp() * 1000)}"
+    return f"NAI_Blue_{int(now.timestamp() * 1000)}"
 
 
 def _path_value(source: dict[str, Any], path: str) -> Any:

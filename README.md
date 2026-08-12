@@ -43,7 +43,7 @@ Open the prompt module library from Guided or Advanced generation. Modules can b
 
 ### Import image metadata
 
-Drop a PNG, WebP, JPEG, `.nai-blue.json` sidecar, or supported metadata-extraction JSON into the prompt import surface. NAI Blue maps main and character prompts into the same editor format. Pre-rename sidecars remain readable for existing libraries.
+Drop a PNG, WebP, JPEG, `.nai-blue.json` sidecar, or supported metadata-extraction JSON into the prompt import surface. NAI Blue maps main and character prompts into the same editor format. For migration from other automation tools, it reads NAIS2 and NAIS3 metadata; those identifiers are recognized only at the import boundary and are never written as NAI Blue data.
 
 ### Output folders and R2
 
