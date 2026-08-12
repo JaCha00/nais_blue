@@ -3,7 +3,12 @@ import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
 import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
+import {
+    discardGeneratedProviderOriginal,
+    releaseGeneratedOutputToR2,
+} from '@/services/r2/generated-release'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import { decodeMainJobSnapshot } from './main-job-snapshot-codec'
@@ -19,6 +24,11 @@ import {
     hydrateGenerationParams,
 } from './queue-resource-materializer'
 import { createSerializedProgressReporter } from './serialized-progress-reporter'
+import {
+    DEFAULT_RIGHTS_OWNER,
+    isRightsEffectiveDate,
+    isRightsOwner,
+} from '@/domain/workflow/bluehair-rights-policy'
 
 function decodeImageBytes(imageData: string): Uint8Array {
     const encoded = imageData.replace(/^data:image\/[^;]+;base64,/, '')
@@ -92,6 +102,14 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         const historyId = `queue-history:${job.id}`
         let sequenceConflict = false
         let artifactRegistration: QueueArtifactRegistration | null = null
+        const hasPrivateRelease = payload.mainWorkflow.metadataMode === 'strip-and-sidecar'
+        const rightsEffectiveDate = payload.mainWorkflow.output.rightsXmpEnabled === true
+            && isRightsEffectiveDate(payload.mainWorkflow.output.rightsEffectiveDate)
+            ? payload.mainWorkflow.output.rightsEffectiveDate
+            : null
+        const rightsOwner = isRightsOwner(payload.mainWorkflow.output.rightsOwner)
+            ? payload.mainWorkflow.output.rightsOwner
+            : DEFAULT_RIGHTS_OWNER
         const output = await getRuntimeOutputWriter().write({
             transactionId,
             sourceJobId: job.id,
@@ -110,12 +128,22 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             },
             imageBytes: bytes,
             imageDataUrl,
+            preserveProviderOriginal: hasPrivateRelease,
             terminalWorkflowCommit: true,
             metadata: {
                 params: { ...params, sentPayloadSummary: result.sentPayloadSummary, sourceJobId: job.id },
                 imageFormat: payload.mainWorkflow.imageFormat,
                 metadataMode: payload.mainWorkflow.metadataMode,
                 includeWebpCompatibilitySidecar: true,
+                ...(rightsEffectiveDate === null
+                    ? {}
+                    : {
+                        rightsXmp: {
+                            owner: rightsOwner,
+                            effectiveDate: rightsEffectiveDate,
+                            metadataDate: new Date().toISOString(),
+                        },
+                    }),
             },
             generateThumbnail: createThumbnail,
             canCommit: context.canCommit,
@@ -169,6 +197,44 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             throw error
         })
         if (output.status === 'cancelled') return
+        if (hasPrivateRelease) {
+            let releaseVerified = payload.mainWorkflow.output.autoR2UploadProfileId == null
+            if (payload.mainWorkflow.output.autoR2UploadProfileId != null) {
+                try {
+                    const release = await releaseGeneratedOutputToR2({
+                        profileId: payload.mainWorkflow.output.autoR2UploadProfileId,
+                        sourceJobId: job.id,
+                        imageFormat: payload.mainWorkflow.imageFormat,
+                        output: output.result,
+                    })
+                    releaseVerified = release.status === 'uploaded'
+                    if (!releaseVerified) {
+                        reportDiagnostic(new Error(`Generated R2 release did not complete: ${release.status}`), {
+                            operation: 'r2.generated-release',
+                            stage: release.status,
+                            jobId: job.id,
+                        })
+                    }
+                } catch (error) {
+                    reportDiagnostic(error, {
+                        operation: 'r2.generated-release',
+                        stage: 'upload',
+                        jobId: job.id,
+                    })
+                }
+            }
+            if (payload.mainWorkflow.output.deleteOriginalAfterRelease === true && releaseVerified) {
+                try {
+                    await discardGeneratedProviderOriginal(output.result)
+                } catch (error) {
+                    reportDiagnostic(error, {
+                        operation: 'output.provider-original',
+                        stage: 'discard-after-release',
+                        jobId: job.id,
+                    })
+                }
+            }
+        }
         if (result.encodedVibes && result.encodedVibes.length > 0) {
             presentation.updateEncodedVibes(result.encodedVibes)
         }

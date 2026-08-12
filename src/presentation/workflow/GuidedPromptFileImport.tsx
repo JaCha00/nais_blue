@@ -13,6 +13,13 @@ export interface GuidedPromptImportValue {
     positive: string
     negative: string
     sourceName: string
+    characters?: readonly GuidedPromptImportCharacter[]
+}
+
+export interface GuidedPromptImportCharacter {
+    prompt: string
+    negative: string
+    position: { x: number; y: number }
 }
 
 interface JsonRecord {
@@ -38,6 +45,25 @@ function metadataPrompts(metadata: NAIMetadata): { positive: string; negative: s
         || stringValue(metadata.v4_negative_prompt?.caption?.base_caption)
         || stringValue(metadata.negativePrompt)
     return { positive, negative }
+}
+
+function coordinate(value: unknown): number {
+    return typeof value === 'number' && Number.isFinite(value)
+        ? Math.max(0.1, Math.min(0.9, value))
+        : 0.5
+}
+
+function metadataCharacters(metadata: NAIMetadata): GuidedPromptImportCharacter[] {
+    const positive = metadata.v4_prompt?.caption?.char_captions ?? []
+    const negative = metadata.v4_negative_prompt?.caption?.char_captions ?? []
+    return positive.map((character, index) => ({
+        prompt: stringValue(character.char_caption),
+        negative: stringValue(negative[index]?.char_caption),
+        position: {
+            x: coordinate(character.centers?.[0]?.x),
+            y: coordinate(character.centers?.[0]?.y),
+        },
+    })).filter(character => character.prompt.length > 0 || character.negative.length > 0)
 }
 
 function jsonPrompts(value: unknown): { positive: string; negative: string } | null {
@@ -93,7 +119,12 @@ export async function readGuidedPromptImportFile(file: File): Promise<GuidedProm
     if (!prompts || (!prompts.positive && !prompts.negative)) {
         throw new TypeError('No prompt metadata was found')
     }
-    return { ...prompts, sourceName: file.name }
+    const characters = metadata === null ? [] : metadataCharacters(metadata)
+    return {
+        ...prompts,
+        sourceName: file.name,
+        ...(characters.length === 0 ? {} : { characters }),
+    }
 }
 
 export function GuidedPromptFileImport({
@@ -142,7 +173,7 @@ export function GuidedPromptFileImport({
                         {t('guided.promptImport.title', '이미지·JSON에서 프롬프트 불러오기')}
                     </h2>
                     <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                        {t('guided.promptImport.description', '파일을 놓거나 탐색기로 골라 이미지 메타데이터의 긍정·제외 프롬프트를 읽습니다.')}
+                        {t('guided.promptImport.description', '파일을 놓거나 탐색기로 골라 이미지 메타데이터의 긍정·제외·캐릭터 프롬프트를 읽습니다.')}
                     </p>
                 </div>
                 <PromptModuleCreator
@@ -204,6 +235,11 @@ export function GuidedPromptFileImport({
                 <div className="mt-4 border-t border-border/55 pt-4">
                     <p className="text-sm font-semibold">{imported.sourceName}</p>
                     <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{imported.positive || imported.negative}</p>
+                    {imported.characters && imported.characters.length > 0 && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {t('guided.promptImport.characterCount', '캐릭터 프롬프트 {{count}}개 포함', { count: imported.characters.length })}
+                        </p>
+                    )}
                     <div className="mt-4 flex flex-wrap gap-2">
                         <Button type="button" onClick={() => onReplace(imported)}>{t('guided.promptImport.replace', '현재 프롬프트 교체')}</Button>
                         <Button type="button" variant="outline" onClick={() => onAppend(imported)}>{t('guided.promptImport.append', '현재 내용 뒤에 추가')}</Button>

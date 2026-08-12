@@ -1,3 +1,10 @@
+import {
+    DEFAULT_RIGHTS_OWNER,
+    MAX_RIGHTS_OWNER_LENGTH,
+    isRightsEffectiveDate,
+    isRightsOwner,
+} from './bluehair-rights-policy'
+
 export const WORKFLOW_DRAFT_STORE_KEY = 'nais2-workflow-drafts'
 export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
 export const BATCH_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
@@ -42,6 +49,16 @@ export interface SingleImageOutputSettings {
     readonly imageFormat: 'png' | 'webp'
     readonly metadataMode: SingleImageMetadataMode
     readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+    /** Explicit, job-local consent. Missing on legacy drafts means disabled. */
+    readonly autoR2UploadProfileId?: string | null
+    /** Explicit consent to discard the provider original after the release is verified. */
+    readonly deleteOriginalAfterRelease?: boolean
+    /** Optional public rights notice added only after deep-cleaning. */
+    readonly rightsXmpEnabled?: boolean
+    /** Job-local owner label. Missing on older drafts means bluehair.blue. */
+    readonly rightsOwner?: string
+    /** User-specified YYYY-MM-DD. Never inferred from the system clock. */
+    readonly rightsEffectiveDate?: string | null
 }
 
 export interface WorkflowCharacterPrompt {
@@ -139,6 +156,8 @@ export type SingleImageDraftIssueCode =
     | 'resolution-invalid'
     | 'generation-settings-invalid'
     | 'output-invalid'
+    | 'rights-owner-invalid'
+    | 'rights-effective-date-required'
     | 'credential-invalid'
 
 export interface CreateSingleImageDraftInput {
@@ -239,6 +258,20 @@ function isOutputSettings(value: unknown): value is SingleImageOutputSettings {
         && (value.imageFormat === 'png' || value.imageFormat === 'webp')
         && typeof value.metadataMode === 'string'
         && METADATA_MODES.has(value.metadataMode as SingleImageMetadataMode)
+        && (value.autoR2UploadProfileId === undefined
+            || value.autoR2UploadProfileId === null
+            || isBoundedId(value.autoR2UploadProfileId))
+        && (value.deleteOriginalAfterRelease === undefined
+            || typeof value.deleteOriginalAfterRelease === 'boolean')
+        && (value.rightsXmpEnabled === undefined
+            || typeof value.rightsXmpEnabled === 'boolean')
+        && (value.rightsOwner === undefined
+            || (typeof value.rightsOwner === 'string'
+                && value.rightsOwner.length <= MAX_RIGHTS_OWNER_LENGTH
+                && !/[\u0000-\u001f\u007f\u2028\u2029]/.test(value.rightsOwner)))
+        && (value.rightsEffectiveDate === undefined
+            || value.rightsEffectiveDate === null
+            || (typeof value.rightsEffectiveDate === 'string' && value.rightsEffectiveDate.length <= 10))
         && (value.collisionPolicy === 'unique'
             || value.collisionPolicy === 'overwrite'
             || value.collisionPolicy === 'error')
@@ -291,6 +324,11 @@ function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDr
         imageFormat: input.output?.imageFormat ?? 'png',
         metadataMode: input.output?.metadataMode ?? 'embedded',
         collisionPolicy: input.output?.collisionPolicy ?? 'unique',
+        autoR2UploadProfileId: input.output?.autoR2UploadProfileId ?? null,
+        deleteOriginalAfterRelease: input.output?.deleteOriginalAfterRelease ?? false,
+        rightsXmpEnabled: input.output?.rightsXmpEnabled ?? false,
+        rightsOwner: input.output?.rightsOwner ?? DEFAULT_RIGHTS_OWNER,
+        rightsEffectiveDate: input.output?.rightsEffectiveDate ?? null,
     }
     if (!isOutputSettings(output)) throw new TypeError('Workflow draft output settings are invalid')
     return Object.freeze({
@@ -373,6 +411,14 @@ export function listSingleImageDraftIssues(draft: SingleImageDraft): SingleImage
     else if (!isResolution(draft.payload.resolution)) issues.push('resolution-invalid')
     if (!isGenerationSettings(draft.payload.generation)) issues.push('generation-settings-invalid')
     if (!isOutputSettings(draft.payload.output)) issues.push('output-invalid')
+    else if (draft.payload.output.rightsXmpEnabled === true
+        && !isRightsOwner(draft.payload.output.rightsOwner ?? DEFAULT_RIGHTS_OWNER)) {
+        issues.push('rights-owner-invalid')
+    } else if (draft.payload.output.rightsXmpEnabled === true
+        && (draft.payload.output.metadataMode !== 'strip-and-sidecar'
+            || !isRightsEffectiveDate(draft.payload.output.rightsEffectiveDate))) {
+        issues.push('rights-effective-date-required')
+    }
     if (!isCredentialPolicy(draft.payload.credentialPolicy)) issues.push('credential-invalid')
     return issues
 }

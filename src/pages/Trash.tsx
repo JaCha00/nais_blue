@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import { readNativeBinaryFile } from '@/platform/native-file-system'
-import { FileImage, FolderTree, Image as ImageIcon, RotateCcw, Trash2 } from 'lucide-react'
+import { FileImage, FileText, FolderTree, Image as ImageIcon, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -20,6 +20,10 @@ import {
 } from '@/services/trash/asset-trash-service'
 import { imageDataUrlFromBytes } from '@/services/trash/image-data-url'
 import { toast } from '@/components/ui/use-toast'
+import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
+import type { TrashedWorkflowDraft } from '@/application/workflow/workflow-draft-repository'
+import { announceGuidedDraftChange } from '@/presentation/workflow/guided-draft-events'
+import { summarizeWorkflowDraftPrompt } from '@/presentation/workflow/workflow-draft-summary'
 
 function imageSource(image: TrashedImage): string {
     return image.url.startsWith('data:') ? image.url : toNativeAssetUrl(image.url)
@@ -73,9 +77,13 @@ export default function Trash() {
     const items = useTrashStore(state => state.items)
     const remove = useTrashStore(state => state.remove)
     const removeMany = useTrashStore(state => state.removeMany)
+    const draftRepository = useMemo(() => getWorkflowDraftRepository(), [])
+    const [draftItems, setDraftItems] = useState<readonly TrashedWorkflowDraft[]>([])
     const [selected, setSelected] = useState<TrashItem | null>(null)
     const [pendingPurge, setPendingPurge] = useState<TrashItem | 'all' | null>(null)
     const [pendingRestore, setPendingRestore] = useState<TrashItem | null>(null)
+    const [pendingDraftPurge, setPendingDraftPurge] = useState<TrashedWorkflowDraft | null>(null)
+    const [pendingDraftRestore, setPendingDraftRestore] = useState<TrashedWorkflowDraft | null>(null)
     const [metadataImage, setMetadataImage] = useState<string | undefined>()
     const [metadataOpen, setMetadataOpen] = useState(false)
 
@@ -84,8 +92,15 @@ export default function Trash() {
         void pruneExpiredTrashItems(useTrashStore.getState().items).then(expiredIds => {
             if (!disposed && expiredIds.length > 0) removeMany(expiredIds)
         })
+        void (async () => {
+            await draftRepository.pruneExpiredTrash(Date.now())
+            const drafts = await draftRepository.listTrash()
+            if (!disposed) setDraftItems(drafts)
+        })().catch(() => {
+            if (!disposed) setDraftItems([])
+        })
         return () => { disposed = true }
-    }, [removeMany])
+    }, [draftRepository, removeMany])
 
     const sortedItems = useMemo(
         () => [...items].sort((left, right) => right.deletedAt - left.deletedAt),
@@ -115,8 +130,16 @@ export default function Trash() {
         const removedIds = outcomes.filter(outcome => outcome.result.success).map(outcome => outcome.id)
         const failedCount = outcomes.length - removedIds.length
         removeMany(removedIds)
+        let draftFailedCount = 0
+        if (target === 'all') {
+            const draftOutcomes = await Promise.all(draftItems.map(item => (
+                draftRepository.permanentlyDeleteFromTrash(item.draft.id).catch(() => false)
+            )))
+            draftFailedCount = draftOutcomes.filter(success => !success).length
+            setDraftItems(current => current.filter((_, index) => !draftOutcomes[index]))
+        }
         if (target !== 'all' && removedIds.includes(target.id) && selected?.id === target.id) setSelected(null)
-        if (failedCount > 0) {
+        if (failedCount + draftFailedCount > 0) {
             toast({
                 title: t('trash.deleteFailed', '일부 항목을 영구 삭제하지 못했습니다.'),
                 description: t('trash.deleteFailedDescription', '파일 접근이 가능해지면 휴지통에서 다시 시도하세요.'),
@@ -124,6 +147,15 @@ export default function Trash() {
             })
         }
         setPendingPurge(null)
+    }
+
+    const purgeDraft = async () => {
+        if (!pendingDraftPurge) return
+        const id = pendingDraftPurge.draft.id
+        const removed = await draftRepository.permanentlyDeleteFromTrash(id).catch(() => false)
+        if (removed) setDraftItems(current => current.filter(item => item.draft.id !== id))
+        else toast({ title: t('trash.deleteFailed', '일부 항목을 영구 삭제하지 못했습니다.'), variant: 'destructive' })
+        setPendingDraftPurge(null)
     }
 
     /**
@@ -155,6 +187,25 @@ export default function Trash() {
         setPendingRestore(null)
     }
 
+    const restoreDraft = async () => {
+        if (!pendingDraftRestore) return
+        const id = pendingDraftRestore.draft.id
+        const result = await draftRepository.restoreFromTrash(id).catch(() => ({ status: 'missing' as const }))
+        if (result.status === 'restored') {
+            setDraftItems(current => current.filter(item => item.draft.id !== id))
+            announceGuidedDraftChange()
+            toast({ title: t('trash.draftRestored', '초안을 내 작업으로 복원했어요.'), variant: 'success' })
+        } else {
+            toast({
+                title: result.status === 'conflict'
+                    ? t('trash.restoreConflict', '같은 항목이 이미 있어 복원하지 않았습니다.')
+                    : t('trash.restoreFailed', '복원하지 못했습니다.'),
+                variant: 'destructive',
+            })
+        }
+        setPendingDraftRestore(null)
+    }
+
     return (
         <div className="flex h-full min-h-0 flex-col">
             <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 border-b px-4 py-2 sm:px-6">
@@ -171,7 +222,7 @@ export default function Trash() {
                     variant="outline"
                     className="h-11 shrink-0 text-destructive hover:text-destructive"
                     onClick={() => setPendingPurge('all')}
-                    disabled={items.length === 0}
+                    disabled={items.length === 0 && draftItems.length === 0}
                 >
                     <Trash2 className="mr-2 h-4 w-4" />
                     {t('trash.empty', '휴지통 비우기')}
@@ -179,13 +230,58 @@ export default function Trash() {
             </header>
 
             <main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-                {sortedItems.length === 0 ? (
+                {sortedItems.length === 0 && draftItems.length === 0 ? (
                     <div className="flex min-h-72 flex-col items-center justify-center text-center text-muted-foreground">
                         <Trash2 className="mb-3 h-10 w-10 opacity-50" />
                         <p>{t('trash.emptyState', '휴지통이 비어 있습니다.')}</p>
                     </div>
                 ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-8">
+                        {draftItems.length > 0 && (
+                            <section aria-labelledby="trash-drafts-heading">
+                                <h2 id="trash-drafts-heading" className="mb-3 text-sm font-semibold">
+                                    {t('trash.workflowDrafts', '워크플로우 초안')}
+                                </h2>
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                    {draftItems.map(item => {
+                                        const draft = item.draft
+                                        const title = summarizeWorkflowDraftPrompt(draft)
+                                            ?? (draft.kind === 'batch-image'
+                                                ? t('guided.activity.batchUntitled', '이미지 여러 장 만들기')
+                                                : t('guided.activity.singleUntitled', '이미지 한 장 만들기'))
+                                        return (
+                                            <Card key={draft.id}>
+                                                <CardHeader className="flex-row items-start gap-3 py-4">
+                                                    <FileText className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                                    <div className="min-w-0">
+                                                        <CardTitle className="line-clamp-2 break-words text-base leading-snug">{title}</CardTitle>
+                                                        <p className="mt-2 text-xs text-muted-foreground">
+                                                            {draft.kind === 'batch-image'
+                                                                ? t('trash.batchDraft', '여러 장 초안')
+                                                                : t('trash.singleDraft', '한 장 초안')}
+                                                            {' · '}{t('trash.draftStep', '단계 {{step}}', { step: draft.currentNodeId })}
+                                                        </p>
+                                                        <p className="mt-1 text-xs text-muted-foreground">
+                                                            {t('trash.expires', '만료: {{date}}', { date: new Date(item.expiresAt).toLocaleDateString() })}
+                                                        </p>
+                                                    </div>
+                                                </CardHeader>
+                                                <CardContent className="flex justify-end gap-1 border-t p-2">
+                                                    <Button variant="ghost" size="sm" className="h-11" onClick={() => setPendingDraftRestore(item)}>
+                                                        <RotateCcw className="mr-2 h-4 w-4" />
+                                                        {t('trash.restore', '복원')}
+                                                    </Button>
+                                                    <Button variant="ghost" size="sm" className="h-11 text-destructive hover:text-destructive" onClick={() => setPendingDraftPurge(item)}>
+                                                        {t('trash.deletePermanently', '영구 삭제')}
+                                                    </Button>
+                                                </CardContent>
+                                            </Card>
+                                        )
+                                    })}
+                                </div>
+                            </section>
+                        )}
+                        {sortedItems.length > 0 && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {sortedItems.map(item => {
                             const preview = firstImage(item)
                             const itemKind = item.kind === 'image'
@@ -246,6 +342,7 @@ export default function Trash() {
                                 </Card>
                             )
                         })}
+                        </div>}
                     </div>
                 )}
             </main>
@@ -273,6 +370,15 @@ export default function Trash() {
                 onConfirm={restore}
             />
             <ConfirmDialog
+                open={pendingDraftRestore !== null}
+                onOpenChange={open => { if (!open) setPendingDraftRestore(null) }}
+                title={t('trash.confirmDraftRestoreTitle', '이 초안을 내 작업으로 복원할까요?')}
+                description={t('trash.confirmDraftRestoreDescription', '같은 초안이 이미 있으면 덮어쓰지 않고 복원을 중단합니다.')}
+                confirmText={t('trash.restore', '복원')}
+                cancelText={t('common.cancel', '취소')}
+                onConfirm={restoreDraft}
+            />
+            <ConfirmDialog
                 open={pendingPurge !== null}
                 onOpenChange={open => { if (!open) setPendingPurge(null) }}
                 title={pendingPurge === 'all'
@@ -283,6 +389,16 @@ export default function Trash() {
                 cancelText={t('common.cancel', '취소')}
                 variant="destructive"
                 onConfirm={purge}
+            />
+            <ConfirmDialog
+                open={pendingDraftPurge !== null}
+                onOpenChange={open => { if (!open) setPendingDraftPurge(null) }}
+                title={t('trash.confirmDeleteTitle', '이 항목을 영구 삭제할까요?')}
+                description={t('trash.confirmDeleteDescription', '이 작업은 되돌릴 수 없습니다.')}
+                confirmText={t('trash.deletePermanently', '영구 삭제')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={purgeDraft}
             />
         </div>
     )

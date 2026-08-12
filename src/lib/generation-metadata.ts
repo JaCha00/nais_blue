@@ -141,6 +141,11 @@ function summarizeOutputPolicy(params: GenerationParams): Nais2OutputPolicySumma
         ...(requested?.collisionPolicy === undefined
             ? {}
             : { collisionPolicy: requested.collisionPolicy }),
+        ...(requested?.rightsXmp === undefined ? {} : { rightsXmp: requested.rightsXmp }),
+        ...(requested?.rightsOwner === undefined ? {} : { rightsOwner: requested.rightsOwner }),
+        ...(requested?.rightsEffectiveDate === undefined
+            ? {}
+            : { rightsEffectiveDate: requested.rightsEffectiveDate }),
     }
 }
 

@@ -112,4 +112,38 @@ describe('IndexedDB workflow draft repository', () => {
             payload: { count: 4 },
         })
     })
+
+    it('atomically moves an exact draft revision to trash and restores it', async () => {
+        const persistence = new MemoryCasPersistence()
+        const repository = new IndexedDbWorkflowDraftRepository(persistence)
+        const draft = createSingleImageDraft({ id: 'draft:trash', now: NOW, seed: 42 })
+        await repository.commit({ expectedRevision: null, draft })
+
+        await expect(repository.moveToTrash(draft.id, draft.revision, Date.parse(LATER))).resolves.toMatchObject({
+            status: 'trashed',
+            item: { draft: { id: draft.id }, deletedAt: Date.parse(LATER) },
+        })
+        await expect(repository.get(draft.id)).resolves.toBeNull()
+        await expect(repository.listTrash()).resolves.toMatchObject([{ draft: { id: draft.id } }])
+
+        await expect(repository.restoreFromTrash(draft.id)).resolves.toEqual({ status: 'restored', draft })
+        await expect(repository.get(draft.id)).resolves.toEqual(draft)
+        await expect(repository.listTrash()).resolves.toEqual([])
+    })
+
+    it('does not trash a draft when the visible revision is stale', async () => {
+        const persistence = new MemoryCasPersistence()
+        const repository = new IndexedDbWorkflowDraftRepository(persistence)
+        const draft = createSingleImageDraft({ id: 'draft:stale-trash', now: NOW, seed: 42 })
+        await repository.commit({ expectedRevision: null, draft })
+        const updated = reviseSingleImageDraft(draft, { updatedAt: LATER, currentNodeId: 'prompt' })
+        await repository.commit({ expectedRevision: 0, draft: updated })
+
+        await expect(repository.moveToTrash(draft.id, 0, Date.parse(LATER))).resolves.toEqual({
+            status: 'conflict',
+            current: updated,
+        })
+        await expect(repository.get(draft.id)).resolves.toEqual(updated)
+        await expect(repository.listTrash()).resolves.toEqual([])
+    })
 })

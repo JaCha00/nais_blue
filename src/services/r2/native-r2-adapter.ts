@@ -112,6 +112,15 @@ export async function scanNativeR2Artifacts(localRoot: string, prefix: string): 
     return invokeNative('r2_scan_local_artifacts', { localRoot, prefix })
 }
 
+/** Public image profiles fail closed: prompt-bearing JSON and arbitrary files stay local. */
+export function filterNativeR2ArtifactsForProfile(
+    profile: R2ProfileV2,
+    artifacts: readonly NativeR2ScannedArtifact[],
+): NativeR2ScannedArtifact[] {
+    if (profile.publicMode === 'private') return [...artifacts]
+    return artifacts.filter(artifact => artifact.contentType.startsWith('image/'))
+}
+
 export interface NativeR2UploadAdapter {
     headObject(profile: R2ProfileV2, remoteKey: string): Promise<NativeR2HeadResult>
     putObject(profile: R2ProfileV2, job: {

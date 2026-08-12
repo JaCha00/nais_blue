@@ -69,8 +69,12 @@ export interface OutputWriteResult {
     file: OutputFileRef
     directory: ResolvedOutputDirectory
     sidecarPath?: string
+    sidecarFile?: OutputFileRef
     diagnosticSidecarPath?: string
     artifactSidecarPath?: string
+    /** Provider response before pixel/chunk purification; always stored under a scanner-excluded directory. */
+    providerOriginalPath?: string
+    providerOriginalFile?: OutputFileRef
     /** SHA-256 of the exact final image bytes, after any metadata preparation. */
     contentChecksum?: string
     /** Opt-in durable facts for Queue/ArtifactRecord linkage and retry recovery. */
@@ -101,6 +105,8 @@ export interface OutputWriterRequest {
      * Existing output callers avoid the extra digest and keep their result shape.
      */
     includeFinalImageFacts?: boolean
+    /** Retain the provider response until the release coordinator explicitly discards it. */
+    preserveProviderOriginal?: boolean
     generateThumbnail?: (imageDataUrl: string) => Promise<string>
     canCommit: () => boolean
     commitWorkflow: (result: OutputWriteResult) => void | Promise<void>
@@ -118,7 +124,7 @@ export type OutputWriterOutcome =
     | { status: 'cancelled' }
 
 interface JournalArtifact {
-    kind: 'image' | 'sidecar' | 'diagnostic' | 'artifact-sidecar'
+    kind: 'image' | 'sidecar' | 'diagnostic' | 'artifact-sidecar' | 'provider-original'
     temp: OutputFileRef
     final: OutputFileRef
     backup?: OutputFileRef
@@ -207,6 +213,8 @@ function tempName(fileName: string, transactionId: string, kind: JournalArtifact
 function backupName(fileName: string, transactionId: string): string {
     return `.${fileName}.nais2-txn-${transactionId}.backup`
 }
+
+const PRIVATE_ORIGINAL_DIRECTORY = '._nais-private'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -360,7 +368,8 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
             || (entry.kind !== 'image'
                 && entry.kind !== 'sidecar'
                 && entry.kind !== 'diagnostic'
-                && entry.kind !== 'artifact-sidecar')) {
+                && entry.kind !== 'artifact-sidecar'
+                && entry.kind !== 'provider-original')) {
             throw new Error('Invalid output recovery journal artifact')
         }
         return {
@@ -397,15 +406,24 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
     const sidecar = journal.artifacts.find(artifact => artifact.kind === 'sidecar')
     const diagnostic = journal.artifacts.find(artifact => artifact.kind === 'diagnostic')
     const artifactSidecar = journal.artifacts.find(artifact => artifact.kind === 'artifact-sidecar')
+    const providerOriginal = journal.artifacts.find(artifact => artifact.kind === 'provider-original')
     return {
         transactionId: journal.transactionId,
         fileName: journal.fileName,
         path: image.final.displayPath,
         file: image.final,
         directory: journal.directory,
-        ...(sidecar === undefined ? {} : { sidecarPath: sidecar.final.displayPath }),
+        ...(sidecar === undefined
+            ? {}
+            : { sidecarPath: sidecar.final.displayPath, sidecarFile: sidecar.final }),
         ...(diagnostic === undefined ? {} : { diagnosticSidecarPath: diagnostic.final.displayPath }),
         ...(artifactSidecar === undefined ? {} : { artifactSidecarPath: artifactSidecar.final.displayPath }),
+        ...(providerOriginal === undefined
+            ? {}
+            : {
+                providerOriginalPath: providerOriginal.final.displayPath,
+                providerOriginalFile: providerOriginal.final,
+            }),
         ...(journal.contentChecksum === undefined ? {} : { contentChecksum: journal.contentChecksum }),
         ...(journal.finalImage === undefined ? {} : { finalImage: journal.finalImage }),
         capabilityFallbackUsed: journal.directory.capabilityFallbackUsed,
@@ -505,6 +523,13 @@ export class OutputWriter {
             await this.platform.ensureDirectory(directory)
             if (!request.canCommit()) return { status: 'cancelled' }
 
+            const stripsImageMetadata = request.metadata?.metadataMode === 'strip-and-sidecar'
+                || request.metadata?.metadataMode === 'strip-only'
+            const preserveProviderOriginal = request.preserveProviderOriginal === true && stripsImageMetadata
+            const privateOriginalDirectory = childOutputRef(directory, PRIVATE_ORIGINAL_DIRECTORY)
+            if (preserveProviderOriginal) await this.platform.ensureDirectory(privateOriginalDirectory)
+            if (!request.canCommit()) return { status: 'cancelled' }
+
             const fallback = `NAIS_${this.now().getTime()}.${request.destination.extension}`
             const requestedFileName = ensureImageFileExtension(
                 request.destination.fileName ?? fallback,
@@ -522,6 +547,8 @@ export class OutputWriter {
                         return true
                     }
                 }
+                if (preserveProviderOriginal
+                    && await this.platform.exists(childOutputRef(privateOriginalDirectory, candidate))) return true
                 return request.artifactSidecarBytes !== undefined
                     && await this.platform.exists(childOutputRef(directory, toArtifactSidecarPath(candidate)))
             })
@@ -539,8 +566,6 @@ export class OutputWriter {
             // Privacy modes depend on the pixel re-encoder to remove provider
             // chunks and stealth payloads before MetadataWriter optionally adds
             // the explicit NAIS sidecar. Centralizing here covers every workflow.
-            const stripsImageMetadata = request.metadata?.metadataMode === 'strip-and-sidecar'
-                || request.metadata?.metadataMode === 'strip-only'
             const cleanImage = stripsImageMetadata
                 ? await this.purgeImageMetadata(request.imageDataUrl, request.destination.extension)
                 : null
@@ -604,6 +629,14 @@ export class OutputWriter {
                     committed: false,
                 })
             }
+            if (preserveProviderOriginal) {
+                artifacts.push({
+                    kind: 'provider-original',
+                    temp: childOutputRef(privateOriginalDirectory, tempName(fileName, transactionId, 'provider-original')),
+                    final: childOutputRef(privateOriginalDirectory, fileName),
+                    committed: false,
+                })
+            }
 
             mark('stage-temp-output')
             const timestamp = this.now().toISOString()
@@ -655,6 +688,10 @@ export class OutputWriter {
             if (artifactSidecarArtifact !== undefined && request.artifactSidecarBytes !== undefined) {
                 await this.platform.writeFile(artifactSidecarArtifact.temp, request.artifactSidecarBytes)
             }
+            const providerOriginalArtifact = artifacts.find(artifact => artifact.kind === 'provider-original')
+            if (providerOriginalArtifact !== undefined) {
+                await this.platform.writeFile(providerOriginalArtifact.temp, request.imageBytes)
+            }
             journal.phase = 'metadata-written'
             await this.persistJournal(journal)
             if (!request.canCommit()) return this.cancelStaged(journal)
@@ -675,7 +712,7 @@ export class OutputWriter {
             for (const artifact of artifacts) {
                 if (await this.platform.exists(artifact.final)) {
                     artifact.backup = childOutputRef(
-                        directory,
+                        artifact.kind === 'provider-original' ? privateOriginalDirectory : directory,
                         backupName(artifact.final.path.split(/[\\/]/).pop() ?? fileName, transactionId),
                     )
                 }
@@ -712,13 +749,21 @@ export class OutputWriter {
                 path: imageFinal.displayPath,
                 file: imageFinal,
                 directory,
-                ...(sidecarArtifact === undefined ? {} : { sidecarPath: sidecarArtifact.final.displayPath }),
+                ...(sidecarArtifact === undefined
+                    ? {}
+                    : { sidecarPath: sidecarArtifact.final.displayPath, sidecarFile: sidecarArtifact.final }),
                 ...(diagnosticArtifact === undefined
                     ? {}
                     : { diagnosticSidecarPath: diagnosticArtifact.final.displayPath }),
                 ...(artifactSidecarArtifact === undefined
                     ? {}
                     : { artifactSidecarPath: artifactSidecarArtifact.final.displayPath }),
+                ...(providerOriginalArtifact === undefined
+                    ? {}
+                    : {
+                        providerOriginalPath: providerOriginalArtifact.final.displayPath,
+                        providerOriginalFile: providerOriginalArtifact.final,
+                    }),
                 ...(contentChecksum === undefined ? {} : { contentChecksum }),
                 ...(finalImage === undefined ? {} : { finalImage }),
                 ...(thumbnailDataUrl === undefined ? {} : { thumbnailDataUrl }),

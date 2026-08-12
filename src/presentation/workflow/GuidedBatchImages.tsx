@@ -33,12 +33,14 @@ import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/use-toast'
 import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationBatch, GenerationBatchSummary, GenerationJob } from '@/domain/queue/types'
 import {
     createBatchImageDraft,
     isBatchImageDraft,
     isBatchImageDraftReady,
+    listBatchImageDraftIssues,
     reviseBatchImageDraft,
     type BatchImageDraft,
     type BatchImageMode,
@@ -72,6 +74,9 @@ import {
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
+import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
+import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
+import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
 
 export type GuidedBatchOptionId = 'sameSettings' | 'variations' | 'scenes' | 'queue'
 
@@ -377,10 +382,32 @@ function PromptStep({ draft, positive, negative, characterPrompts, disabled, onP
                 onReplace={value => {
                     if (value.positive) onPositive(value.positive)
                     if (value.negative) onNegative(value.negative)
+                    if (value.characters?.length) onCharacterPrompts({
+                        positionEnabled: true,
+                        items: value.characters.map((character, index) => ({
+                            id: `guided-character-${crypto.randomUUID()}`,
+                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+                            prompt: character.prompt,
+                            negative: character.negative,
+                            enabled: character.prompt.trim().length > 0,
+                            position: { ...character.position },
+                        })),
+                    })
                 }}
                 onAppend={value => {
                     if (value.positive) onPositive(appendPromptModuleLine(positive, value.positive))
                     if (value.negative) onNegative(appendPromptModuleLine(negative, value.negative))
+                    if (value.characters?.length) onCharacterPrompts({
+                        positionEnabled: true,
+                        items: [...characterPrompts.items, ...value.characters.map((character, index) => ({
+                            id: `guided-character-${crypto.randomUUID()}`,
+                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+                            prompt: character.prompt,
+                            negative: character.negative,
+                            enabled: character.prompt.trim().length > 0,
+                            position: { ...character.position },
+                        }))],
+                    })
                 }}
                 onModuleCreated={draft.payload.batchMode === 'variations' ? appendReference : undefined}
             />
@@ -391,7 +418,28 @@ function PromptStep({ draft, positive, negative, characterPrompts, disabled, onP
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">{draft.payload.batchMode === 'variations'
                     ? t('guided.batch.variation.fixedDescription', '여기에 직접 적거나 “고정 문구 한 줄 불러오기”를 누른 내용은 모든 이미지에 그대로 반복됩니다.')
                     : t('guided.batch.prompt.commonDescription', '직접 적거나 저장한 모듈의 한 줄을 불러와 공통 프롬프트를 만드세요.')}</p>
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex flex-wrap justify-end gap-3">
+                    <StructuredPromptModuleLibrary
+                        disabled={disabled}
+                        currentParts={{
+                            base: positive,
+                            negative,
+                            character: characterPrompts.items[0]?.prompt,
+                            'character-negative': characterPrompts.items[0]?.negative,
+                        }}
+                        onInsert={(parts, module) => {
+                            const next = insertStructuredPartsIntoWorkflow({
+                                positive,
+                                negative,
+                                characters: characterPrompts,
+                                parts,
+                                moduleName: module.name,
+                            })
+                            if (next.positive !== positive) onPositive(next.positive)
+                            if (next.negative !== negative) onNegative(next.negative)
+                            if (next.characters !== characterPrompts) onCharacterPrompts(next.characters)
+                        }}
+                    />
                     <PromptModulePicker
                         disabled={disabled}
                         showManageAction={false}
@@ -669,6 +717,21 @@ function SettingsStep({ draft, disabled, imageCount, estimatedAnlas, pricingBasi
                     </div>
                 </div>
             </section>
+            <GuidedMetadataPolicy
+                value={draft.payload.output.metadataMode}
+                disabled={disabled}
+                autoR2UploadProfileId={draft.payload.output.autoR2UploadProfileId}
+                deleteOriginalAfterRelease={draft.payload.output.deleteOriginalAfterRelease}
+                rightsXmpEnabled={draft.payload.output.rightsXmpEnabled}
+                rightsOwner={draft.payload.output.rightsOwner}
+                rightsEffectiveDate={draft.payload.output.rightsEffectiveDate}
+                onChange={metadataMode => onOutput({ metadataMode })}
+                onAutoR2UploadProfileIdChange={autoR2UploadProfileId => onOutput({ autoR2UploadProfileId })}
+                onDeleteOriginalAfterReleaseChange={deleteOriginalAfterRelease => onOutput({ deleteOriginalAfterRelease })}
+                onRightsXmpEnabledChange={rightsXmpEnabled => onOutput({ rightsXmpEnabled })}
+                onRightsOwnerChange={rightsOwner => onOutput({ rightsOwner })}
+                onRightsEffectiveDateChange={rightsEffectiveDate => onOutput({ rightsEffectiveDate })}
+            />
             <div className="flex flex-wrap items-baseline justify-between gap-2 border-y border-primary/35 py-4">
                 <span className="text-sm font-medium">{t('guided.batch.settings.estimate', '현재 설정의 최대 예상 비용')}</span>
                 <span className="font-mono text-xl font-semibold text-primary">{estimatedAnlas.toLocaleString()} Anlas</span>
@@ -1310,7 +1373,38 @@ export function GuidedBatchImages() {
         return draft.lastSnapshotId !== null
     }
     const goTo = async (target: BatchRouteNodeId) => {
-        if (target === nodeId || !canVisit(target)) return
+        if (target === nodeId) return
+        if (!canVisit(target)) {
+            if (target === 'review') {
+                const reviewDraft = {
+                    ...draft,
+                    payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts },
+                }
+                const issue = listBatchImageDraftIssues(reviewDraft)[0]
+                toast({
+                    title: t('guided.batch.review.blockedTitle', '검토 전에 한 가지만 확인해 주세요.'),
+                    description: issue === 'character-prompt-invalid'
+                        ? t('guided.batch.review.blockedCharacter', '활성 캐릭터의 외형 프롬프트를 입력하거나 해당 캐릭터를 비활성화해 주세요.')
+                        : issue === 'rights-owner-invalid'
+                            ? t('guided.batch.review.blockedRightsOwner', '설정에서 XMP 소유자명을 올바르게 입력해 주세요.')
+                        : issue === 'rights-effective-date-required'
+                            ? t('guided.batch.review.blockedRightsDate', '권리 XMP를 사용하려면 설정에서 효력 시작일을 직접 입력해 주세요.')
+                        : t('guided.batch.review.blockedGeneral', '비어 있거나 올바르지 않은 항목이 있어 해당 단계로 돌아갑니다.'),
+                    variant: 'destructive',
+                })
+                const blockingNode: BatchImageNodeId = issue === 'model-required'
+                    ? 'model'
+                    : issue === 'prompt-required' || issue === 'character-prompt-invalid'
+                        ? 'prompt'
+                        : issue === 'count-invalid'
+                            ? 'count'
+                            : issue === 'scenes-required' || issue === 'scene-invalid'
+                                ? 'scenes'
+                                : 'settings'
+                if (blockingNode !== nodeId) await goTo(blockingNode)
+            }
+            return
+        }
         try {
             if (editableTimerRef.current !== null) { clearTimeout(editableTimerRef.current); editableTimerRef.current = null }
             await saveEditable()
@@ -1367,11 +1461,20 @@ export function GuidedBatchImages() {
         navigate(`/guided-preview/batch/${revised.id}/${target}`)
     }
 
+    const nextNode = nodes[nodes.indexOf(nodeId) + 1]
     const footer = nodeId === 'result'
         ? <span className="text-sm text-muted-foreground">{t('guided.batch.result.footer', '완성된 결과부터 자동으로 표시해요.')}</span>
         : nodeId === 'review'
             ? <span className="text-sm text-muted-foreground">{t('guided.batch.review.footer', '실행 전 설정과 비용을 한 번 더 확인해 주세요.')}</span>
-            : <Button type="button" onClick={() => void goTo(nodes[nodes.indexOf(nodeId) + 1]!)} disabled={saveStatus === 'saving' || !canVisit(nodes[nodes.indexOf(nodeId) + 1]!)}>{t('guided.batch.continue', '계속')}</Button>
+            : <Button
+                type="button"
+                onClick={() => { if (nextNode) void goTo(nextNode) }}
+                disabled={saveStatus === 'saving' || nextNode === undefined || (nextNode !== 'review' && !canVisit(nextNode))}
+            >
+                {nextNode === 'review'
+                    ? t('guided.batch.reviewSettings', '설정 검토')
+                    : t('guided.batch.continue', '계속')}
+            </Button>
     const copy = {
         model: [t('guided.batch.steps.model.title', '어떤 모델로 여러 장을 만들까요?'), t('guided.batch.steps.model.description', '표현 범위와 결과의 안정성을 보고 골라 주세요.')],
         prompt: [t('guided.batch.steps.prompt.title', '공통 프롬프트와 모듈을 정해 볼까요?'), t('guided.batch.steps.prompt.description', '폴더에 저장한 모듈을 그대로 불러오거나, 무작위·순차 참조로 연결할 수 있어요.')],

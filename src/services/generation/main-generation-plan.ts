@@ -2,6 +2,7 @@ import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragme
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import { ensureImageFileExtension } from '@/services/output/filename-policy'
 import type { GenerationParams } from '@/services/novelai-types'
+import { DEFAULT_RIGHTS_OWNER } from '@/domain/workflow/bluehair-rights-policy'
 
 /**
  * Credential-free Main plan consumed by both the transitional direct runner
@@ -24,6 +25,11 @@ export interface PreparedMainGeneration {
         readonly portableDirectory?: GenerationParams['portableOutputDirectory']
         readonly fileName?: string
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+        readonly autoR2UploadProfileId: string | null
+        readonly deleteOriginalAfterRelease: boolean
+        readonly rightsXmpEnabled: boolean
+        readonly rightsOwner: string
+        readonly rightsEffectiveDate: string | null
     }
 }
 
@@ -41,6 +47,11 @@ export interface PrepareMainGenerationOptions {
         readonly portableDirectory?: GenerationParams['portableOutputDirectory']
         readonly fileName?: string | null
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+        readonly autoR2UploadProfileId?: string | null
+        readonly deleteOriginalAfterRelease?: boolean
+        readonly rightsXmpEnabled?: boolean
+        readonly rightsOwner?: string
+        readonly rightsEffectiveDate?: string | null
     }
 }
 
@@ -65,6 +76,11 @@ export function prepareMainGeneration(
             : { portableDirectory: options.output.portableDirectory }),
         ...(fileName === null ? {} : { fileName }),
         collisionPolicy: options.output.collisionPolicy,
+        autoR2UploadProfileId: options.output.autoR2UploadProfileId ?? null,
+        deleteOriginalAfterRelease: options.output.deleteOriginalAfterRelease ?? false,
+        rightsXmpEnabled: options.output.rightsXmpEnabled ?? false,
+        rightsOwner: options.output.rightsOwner ?? DEFAULT_RIGHTS_OWNER,
+        rightsEffectiveDate: options.output.rightsEffectiveDate ?? null,
     })
     return Object.freeze({
         params: options.params,

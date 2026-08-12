@@ -52,6 +52,21 @@ describe('Guided prompt file import', () => {
         await expect(readGuidedPromptImportFile(invalid as unknown as globalThis.File)).rejects.toThrow('No prompt metadata')
     })
 
+    it('reads prompts and characters preserved by an image metadata release sidecar', async () => {
+        const fixture = await source('tests/fixtures/image-metadata-release-v2.json')
+        const file = new File([fixture], 'released-image.json', { type: 'application/json' })
+
+        await expect(readGuidedPromptImportFile(file as unknown as globalThis.File)).resolves.toMatchObject({
+            positive: 'portrait, moonlight',
+            negative: 'text, watermark',
+            characters: [{
+                prompt: '1girl, silver hair',
+                negative: 'different hairstyle',
+                position: { x: 0.3, y: 0.5 },
+            }],
+        })
+    })
+
     it('normalizes imported text and preserves one module candidate per line', () => {
         expect(promptModuleSourceLine('portrait,\n  blue light')).toBe('portrait, blue light')
         expect(promptModuleLines('silver hair\n# note\n\nblue hair')).toEqual(['silver hair', 'blue hair'])

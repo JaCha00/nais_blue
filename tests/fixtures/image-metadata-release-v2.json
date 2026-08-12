@@ -1,0 +1,17 @@
+{
+  "schema": "prime-city-image-release/v2",
+  "source": {
+    "stealth_payloads": [
+      {
+        "parsed_json": {
+          "Description": "portrait, moonlight",
+          "Software": "NovelAI",
+          "Comment": "{\"prompt\":\"portrait, moonlight\",\"uc\":\"text, watermark\",\"v4_prompt\":{\"use_coords\":true,\"caption\":{\"base_caption\":\"portrait, moonlight\",\"char_captions\":[{\"char_caption\":\"1girl, silver hair\",\"centers\":[{\"x\":0.3,\"y\":0.5}]}]}},\"v4_negative_prompt\":{\"caption\":{\"base_caption\":\"text, watermark\",\"char_captions\":[{\"char_caption\":\"different hairstyle\",\"centers\":[{\"x\":0.3,\"y\":0.5}]}]}}}"
+        }
+      }
+    ]
+  },
+  "output": {
+    "metadata_policy": "rights-xmp-only"
+  }
+}

@@ -244,6 +244,11 @@ export function createWorkflowDraftMainBatchPlanner(
                         useAbsolutePath: output.useAbsolutePath,
                         capabilityFallbackDirectory: output.capabilityFallbackDirectory,
                         collisionPolicy: output.collisionPolicy,
+                        autoR2UploadProfileId: output.autoR2UploadProfileId ?? null,
+                        deleteOriginalAfterRelease: output.deleteOriginalAfterRelease ?? false,
+                        rightsXmpEnabled: output.rightsXmpEnabled ?? false,
+                        rightsOwner: output.rightsOwner,
+                        rightsEffectiveDate: output.rightsEffectiveDate ?? null,
                     },
                 }))
             }

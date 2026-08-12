@@ -254,6 +254,30 @@ describe('OutputWriter fault containment', () => {
         },
     )
 
+    it('keeps the provider original in a scanner-excluded private directory while publishing purified bytes', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const cleanBytes = new Uint8Array([9, 8, 7])
+        const outputWriter = new OutputWriter(
+            adapter,
+            new DeterministicMetadataWriter(),
+            () => 'txn-private-original',
+            () => new Date(FIXED_NOW),
+            async () => ({ bytes: cleanBytes, dataUrl: 'data:image/png;base64,CQgH' }),
+        )
+
+        const outcome = await outputWriter.write(request({
+            metadata: { ...metadataRequest(), metadataMode: 'strip-and-sidecar' },
+            preserveProviderOriginal: true,
+        }))
+
+        expect(outcome.status).toBe('committed')
+        if (outcome.status !== 'committed') throw new Error('Expected the output transaction to commit')
+        expect(bytesEqual(adapter.file('output/result.png'), cleanBytes)).toBe(true)
+        expect(bytesEqual(adapter.file('output/._nais-private/result.png'), IMAGE_BYTES)).toBe(true)
+        expect(outcome.result.providerOriginalPath).toBe('/app-data/output/._nais-private/result.png')
+        expectNoTransactionArtifacts(adapter)
+    })
+
     it('uses a pre-bound queue transaction and exposes its files-committed recovery link', async () => {
         const adapter = new InMemoryOutputAdapter()
         const outputWriter = writer(adapter, 'factory-id-must-not-win')

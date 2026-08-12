@@ -92,6 +92,8 @@ export interface NAIMetadata {
 
     // V4 specific
     v4_prompt?: {
+        use_coords?: boolean
+        use_order?: boolean
         caption?: {
             base_caption?: string
             char_captions?: Array<{
@@ -145,6 +147,76 @@ export interface NAIMetadata {
         inpainting?: string
         workflow?: string
     }
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : null
+}
+
+function parsedJsonString(value: unknown): unknown {
+    if (typeof value !== 'string') return value
+    try {
+        return JSON.parse(value) as unknown
+    } catch {
+        return value
+    }
+}
+
+function looksLikeNaiMetadata(value: Record<string, unknown>): boolean {
+    return typeof value.prompt === 'string'
+        || typeof value.uc === 'string'
+        || typeof value.negative_prompt === 'string'
+        || jsonRecord(value.v4_prompt) !== null
+        || jsonRecord(value.v4_negative_prompt) !== null
+}
+
+/**
+ * Finds a preserved NovelAI payload without treating unrelated JSON fields as
+ * prompts. The bounded traversal covers image-metadata-release sidecars at
+ * `source.stealth_payloads[].parsed_json.Comment` and direct NAI request JSON.
+ */
+function findExternalNaiMetadata(value: unknown): Record<string, unknown> | null {
+    const seen = new Set<object>()
+    let remaining = 128
+
+    const visit = (candidate: unknown, depth: number): Record<string, unknown> | null => {
+        if (depth > 8 || remaining <= 0) return null
+        const parsed = parsedJsonString(candidate)
+        const source = jsonRecord(parsed)
+        if (source === null || seen.has(source)) return null
+        seen.add(source)
+        remaining -= 1
+
+        const parameters = jsonRecord(source.parameters)
+        if (parameters !== null && (typeof source.input === 'string' || looksLikeNaiMetadata(parameters))) {
+            return {
+                ...parameters,
+                ...(typeof source.input === 'string' ? { prompt: source.input } : {}),
+            }
+        }
+        if (looksLikeNaiMetadata(source)) return source
+
+        const comment = visit(source.Comment ?? source.comment, depth + 1)
+        if (comment !== null) return comment
+
+        for (const key of ['parsed_json', 'metadata', 'settings', 'payload', 'source', 'container_metadata']) {
+            const nested = visit(source[key], depth + 1)
+            if (nested !== null) return nested
+        }
+
+        const stealthPayloads = source.stealth_payloads
+        if (Array.isArray(stealthPayloads)) {
+            for (const payload of stealthPayloads) {
+                const nested = visit(payload, depth + 1)
+                if (nested !== null) return nested
+            }
+        }
+        return null
+    }
+
+    return visit(value, 0)
 }
 
 
@@ -544,6 +616,16 @@ function metadataFromNais2(nais2: Nais2Params): NAIMetadata {
 export function parseNais2SidecarMetadata(sidecar: Uint8Array | string): NAIMetadata | null {
     const nais2 = readNaisBlueSidecar(sidecar)
     return nais2 ? metadataFromNais2(nais2) : null
+}
+
+/** Normalizes direct NAI JSON and preserved image-release audit sidecars. */
+export function parseExternalMetadataJson(json: string): NAIMetadata | null {
+    try {
+        const source = findExternalNaiMetadata(JSON.parse(json) as unknown)
+        return source === null ? null : convertNAIFormat(source)
+    } catch {
+        return null
+    }
 }
 
 /**
@@ -996,7 +1078,9 @@ export async function parseMetadataFromFile(file: File): Promise<NAIMetadata | n
     const buffer = await file.arrayBuffer()
     const lowerName = file.name.toLowerCase()
     if (lowerName.endsWith('.nais-blue.json') || lowerName.endsWith('.nais2.json') || file.type === 'application/json') {
-        return parseNais2SidecarMetadata(new Uint8Array(buffer))
+        const bytes = new Uint8Array(buffer)
+        const json = new TextDecoder().decode(bytes)
+        return parseExternalMetadataJson(json) ?? parseNais2SidecarMetadata(bytes)
     }
     return parseNAIMetadata(buffer)
 }

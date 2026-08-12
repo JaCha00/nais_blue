@@ -10,6 +10,7 @@
 
 import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
 import type { RandomTraceEntry } from '@/domain/composition/types'
+import { isRightsOwner } from '@/domain/workflow/bluehair-rights-policy'
 
 export interface Nais2PromptParts {
     base: string
@@ -41,6 +42,9 @@ export interface Nais2OutputPolicySummary {
     writesThumbnail?: boolean
     filenameTemplateId?: string
     collisionPolicy?: 'unique' | 'overwrite' | 'error'
+    rightsXmp?: boolean
+    rightsOwner?: string
+    rightsEffectiveDate?: string
 }
 
 export interface Nais2ResolvedParams {
@@ -289,6 +293,9 @@ function isOutputPolicySummary(value: unknown): value is Nais2OutputPolicySummar
         'writesThumbnail',
         'filenameTemplateId',
         'collisionPolicy',
+        'rightsXmp',
+        'rightsOwner',
+        'rightsEffectiveDate',
     ])
     if (Object.keys(value).some(key => !allowedKeys.has(key))) return false
     return (value.imageFormat === 'png' || value.imageFormat === 'webp')
@@ -300,6 +307,10 @@ function isOutputPolicySummary(value: unknown): value is Nais2OutputPolicySummar
         && (value.filenameTemplateId === undefined || typeof value.filenameTemplateId === 'string')
         && (value.collisionPolicy === undefined
             || ['unique', 'overwrite', 'error'].includes(String(value.collisionPolicy)))
+        && (value.rightsXmp === undefined || typeof value.rightsXmp === 'boolean')
+        && (value.rightsOwner === undefined || isRightsOwner(value.rightsOwner))
+        && (value.rightsEffectiveDate === undefined
+            || (typeof value.rightsEffectiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.rightsEffectiveDate)))
 }
 
 function isNais2ParamsV2(value: Record<string, unknown>): boolean {

@@ -6,6 +6,8 @@ export type R2ConflictPolicy = typeof R2_CONFLICT_POLICIES[number]
 
 export type R2PublicMode = 'private' | 'r2-dev' | 'custom'
 
+export const DEFAULT_R2_PROFILE_ID = 'asset-profile-default-r2'
+
 export interface R2ProfileV2 {
     readonly schemaVersion: 2
     readonly id: string

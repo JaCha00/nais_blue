@@ -24,10 +24,11 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { createR2ProfileV2, type R2ConflictPolicy, type R2ProfileV2, type R2PublicMode, type R2Transport } from '@/domain/r2/types'
+import { createR2ProfileV2, DEFAULT_R2_PROFILE_ID, type R2ConflictPolicy, type R2ProfileV2, type R2PublicMode, type R2Transport } from '@/domain/r2/types'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import {
     scanNativeR2Artifacts,
+    filterNativeR2ArtifactsForProfile,
     nativeR2CredentialStatus,
     storeNativeR2Credential,
     testNativeR2Connection,
@@ -36,8 +37,6 @@ import {
 import { type R2UploadMode } from '@/services/r2/r2-upload-coordinator'
 import { getRuntimeR2UploadCoordinator, getRuntimeR2UploadRepository } from '@/services/r2/runtime'
 import type { AssetProfile } from '@/types/asset-profile'
-
-const DEFAULT_PROFILE_ID = 'asset-profile-default-r2'
 
 function Field({
     label,
@@ -123,7 +122,7 @@ function SetupStep({
 
 function initialProfile(profile: AssetProfile): R2ProfileV2 {
     return createR2ProfileV2({
-        id: DEFAULT_PROFILE_ID,
+        id: DEFAULT_R2_PROFILE_ID,
         name: 'Default R2',
         accountId: profile.r2.accountId ?? '',
         jurisdiction: null,
@@ -167,7 +166,7 @@ export function NativeR2SetupPanel({
     const nativeEnabled = foreground.supported && profile.transport === 'native-s3'
 
     useEffect(() => {
-        void getRuntimeR2UploadRepository().getProfile(DEFAULT_PROFILE_ID).then(saved => {
+        void getRuntimeR2UploadRepository().getProfile(DEFAULT_R2_PROFILE_ID).then(saved => {
             if (saved) setProfile(saved)
         })
     }, [])
@@ -286,7 +285,10 @@ export function NativeR2SetupPanel({
                 throw new Error('current-session은 generation output의 명시적 artifact set이 필요합니다. Directory scan은 delta/full-sync/dry-run에서만 사용하세요.')
             }
             const coordinator = getRuntimeR2UploadCoordinator()
-            const artifacts = await scanNativeR2Artifacts(localRoot, profile.prefix)
+            const artifacts = filterNativeR2ArtifactsForProfile(
+                profile,
+                await scanNativeR2Artifacts(localRoot, profile.prefix),
+            )
             const plan = await coordinator.plan(profile, artifacts, mode)
             setPlanSummary(`찾은 파일 ${plan.total}개 · 완료된 파일 ${plan.alreadyCompleted}개 · 이번 작업 ${plan.jobs.length}개`)
             if (mode !== 'dry-run') {

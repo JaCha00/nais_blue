@@ -32,6 +32,7 @@ import {
     SINGLE_IMAGE_NODE_IDS,
     isSingleImageDraft,
     isSingleImageDraftReady,
+    listSingleImageDraftIssues,
     reviseSingleImageDraft,
     type ReviseSingleImageDraftInput,
     type SingleImageDraft,
@@ -84,6 +85,9 @@ import {
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
+import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
+import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
+import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
 
 type DraftPatch = Omit<ReviseSingleImageDraftInput, 'updatedAt'>
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -356,18 +360,62 @@ function PromptStep({
                 onReplace={value => {
                     if (value.positive) onPositiveChange(value.positive)
                     if (value.negative) onNegativeChange(value.negative)
+                    if (value.characters?.length) onCharacterPromptsChange({
+                        positionEnabled: true,
+                        items: value.characters.map((character, index) => ({
+                            id: `guided-character-${crypto.randomUUID()}`,
+                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+                            prompt: character.prompt,
+                            negative: character.negative,
+                            enabled: character.prompt.trim().length > 0,
+                            position: { ...character.position },
+                        })),
+                    })
                 }}
                 onAppend={value => {
                     if (value.positive) onPositiveChange(appendPromptModuleLine(positive, value.positive))
                     if (value.negative) onNegativeChange(appendPromptModuleLine(negative, value.negative))
+                    if (value.characters?.length) onCharacterPromptsChange({
+                        positionEnabled: true,
+                        items: [...characterPrompts.items, ...value.characters.map((character, index) => ({
+                            id: `guided-character-${crypto.randomUUID()}`,
+                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+                            prompt: character.prompt,
+                            negative: character.negative,
+                            enabled: character.prompt.trim().length > 0,
+                            position: { ...character.position },
+                        }))],
+                    })
                 }}
             />
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-3">
+                <StructuredPromptModuleLibrary
+                    disabled={disabled}
+                    currentParts={{
+                        base: positive,
+                        negative,
+                        character: characterPrompts.items[0]?.prompt,
+                        'character-negative': characterPrompts.items[0]?.negative,
+                    }}
+                    onInsert={(parts, module) => {
+                        const next = insertStructuredPartsIntoWorkflow({
+                            positive,
+                            negative,
+                            characters: characterPrompts,
+                            parts,
+                            moduleName: module.name,
+                        })
+                        if (next.positive !== positive) onPositiveChange(next.positive)
+                        if (next.negative !== negative) onNegativeChange(next.negative)
+                        if (next.characters !== characterPrompts) onCharacterPromptsChange(next.characters)
+                    }}
+                />
                 <PromptModulePicker
                     disabled={disabled}
                     showManageAction={false}
                     allowInlineManage
                     createSourceText={positive}
+                    triggerLabel={t('guided.promptModules.legacyTrigger', '한 줄 모듈 불러오기')}
                     onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
                 />
             </div>
@@ -606,6 +654,22 @@ function SettingsStep({
                     </div>
                 </div>
             </section>
+
+            <GuidedMetadataPolicy
+                value={draft.payload.output.metadataMode}
+                disabled={disabled}
+                autoR2UploadProfileId={draft.payload.output.autoR2UploadProfileId}
+                deleteOriginalAfterRelease={draft.payload.output.deleteOriginalAfterRelease}
+                rightsXmpEnabled={draft.payload.output.rightsXmpEnabled}
+                rightsOwner={draft.payload.output.rightsOwner}
+                rightsEffectiveDate={draft.payload.output.rightsEffectiveDate}
+                onChange={metadataMode => onOutputPatch({ metadataMode })}
+                onAutoR2UploadProfileIdChange={autoR2UploadProfileId => onOutputPatch({ autoR2UploadProfileId })}
+                onDeleteOriginalAfterReleaseChange={deleteOriginalAfterRelease => onOutputPatch({ deleteOriginalAfterRelease })}
+                onRightsXmpEnabledChange={rightsXmpEnabled => onOutputPatch({ rightsXmpEnabled })}
+                onRightsOwnerChange={rightsOwner => onOutputPatch({ rightsOwner })}
+                onRightsEffectiveDateChange={rightsEffectiveDate => onOutputPatch({ rightsEffectiveDate })}
+            />
 
             <section className="grid divide-y divide-border/55 border-y border-border/55 sm:grid-cols-2 sm:divide-x sm:divide-y-0" aria-label={t('guided.single.settings.accountAndCost', '계정과 예상 비용')}>
                 <div className="px-2 py-5 sm:px-5">
@@ -1336,7 +1400,40 @@ export function GuidedSingleImage() {
         return draft.status === 'queued' || (draft.status === 'completed' && resultProjection !== null)
     }
     const goTo = async (target: GuidedSingleImageNodeId) => {
-        if (target === nodeId || !canVisit(target)) return
+        if (target === nodeId) return
+        if (!canVisit(target)) {
+            if (target === 'review') {
+                const reviewDraft = {
+                    ...draft,
+                    payload: {
+                        ...draft.payload,
+                        prompt: { positive, negative },
+                        characterPrompts,
+                    },
+                }
+                const issue = listSingleImageDraftIssues(reviewDraft)[0]
+                toast({
+                    title: t('guided.single.review.blockedTitle', '검토 전에 한 가지만 확인해 주세요.'),
+                    description: issue === 'character-prompt-invalid'
+                        ? t('guided.single.review.blockedCharacter', '활성 캐릭터의 외형 프롬프트를 입력하거나 해당 캐릭터를 비활성화해 주세요.')
+                        : issue === 'rights-owner-invalid'
+                            ? t('guided.single.review.blockedRightsOwner', '설정에서 XMP 소유자명을 올바르게 입력해 주세요.')
+                        : issue === 'rights-effective-date-required'
+                            ? t('guided.single.review.blockedRightsDate', '권리 XMP를 사용하려면 설정에서 효력 시작일을 직접 입력해 주세요.')
+                        : t('guided.single.review.blockedGeneral', '비어 있거나 올바르지 않은 항목이 있어 해당 단계로 돌아갑니다.'),
+                    variant: 'destructive',
+                })
+                const blockingNode: SingleImageNodeId = issue === 'model-required'
+                    ? 'model'
+                    : issue === 'prompt-required' || issue === 'character-prompt-invalid'
+                        ? 'prompt'
+                        : issue === 'resolution-required' || issue === 'resolution-invalid'
+                            ? 'resolution'
+                            : 'settings'
+                if (blockingNode !== nodeId) await goTo(blockingNode)
+            }
+            return
+        }
         try {
             if (promptTimerRef.current !== null) {
                 clearTimeout(promptTimerRef.current)
@@ -1446,7 +1543,7 @@ export function GuidedSingleImage() {
             return <Button onClick={() => void goTo('settings')} disabled={draft.payload.resolution === null || saveStatus === 'saving'}>{t('guided.single.continue', '계속')}</Button>
         }
         if (nodeId === 'settings') {
-            return <Button onClick={() => void goTo('review')} disabled={activeTokenCount === 0 || saveStatus === 'saving'}>{t('guided.single.reviewSettings', '설정 검토')}</Button>
+            return <Button onClick={() => void goTo('review')} disabled={saveStatus === 'saving'}>{t('guided.single.reviewSettings', '설정 검토')}</Button>
         }
         if (nodeId === 'result') {
             return <span className="text-sm text-muted-foreground">{t('guided.single.result.footer', '결과는 자동 저장되며, 설정은 언제든 다시 다듬을 수 있어요.')}</span>

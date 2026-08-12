@@ -6,6 +6,11 @@ import {
 } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
+import {
+    DEFAULT_RIGHTS_OWNER,
+    isRightsEffectiveDate,
+    isRightsOwner,
+} from '@/domain/workflow/bluehair-rights-policy'
 import { ensureImageFileExtension } from '@/services/output/filename-policy'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import { createGenerationJobSnapshot } from './job-snapshot'
@@ -21,6 +26,12 @@ export interface MainQueueOutputSnapshot {
     readonly portableDirectory?: PreparedMainGeneration['output']['portableDirectory']
     readonly fileName: string
     readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+    /** Optional on V1 snapshots created before release automation existed. */
+    readonly autoR2UploadProfileId?: string | null
+    readonly deleteOriginalAfterRelease?: boolean
+    readonly rightsXmpEnabled?: boolean
+    readonly rightsOwner?: string
+    readonly rightsEffectiveDate?: string | null
 }
 
 export interface MainQueueWorkflowSnapshot {
@@ -89,6 +100,11 @@ export function encodeMainJobSnapshot(
                     : { portableDirectory: prepared.output.portableDirectory }),
                 fileName,
                 collisionPolicy: prepared.output.collisionPolicy,
+                autoR2UploadProfileId: prepared.output.autoR2UploadProfileId,
+                deleteOriginalAfterRelease: prepared.output.deleteOriginalAfterRelease,
+                rightsXmpEnabled: prepared.output.rightsXmpEnabled,
+                rightsOwner: prepared.output.rightsOwner,
+                rightsEffectiveDate: prepared.output.rightsEffectiveDate,
             },
         },
     }
@@ -138,6 +154,22 @@ export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueu
         || typeof candidate.mainWorkflow.output.useAbsolutePath !== 'boolean'
         || typeof candidate.mainWorkflow.output.capabilityFallbackDirectory !== 'string'
         || typeof candidate.mainWorkflow.output.fileName !== 'string'
+        || (candidate.mainWorkflow.output.autoR2UploadProfileId !== undefined
+            && candidate.mainWorkflow.output.autoR2UploadProfileId !== null
+            && typeof candidate.mainWorkflow.output.autoR2UploadProfileId !== 'string')
+        || (candidate.mainWorkflow.output.deleteOriginalAfterRelease !== undefined
+            && typeof candidate.mainWorkflow.output.deleteOriginalAfterRelease !== 'boolean')
+        || (candidate.mainWorkflow.output.rightsXmpEnabled !== undefined
+            && typeof candidate.mainWorkflow.output.rightsXmpEnabled !== 'boolean')
+        || (candidate.mainWorkflow.output.rightsOwner !== undefined
+            && !isRightsOwner(candidate.mainWorkflow.output.rightsOwner))
+        || (candidate.mainWorkflow.output.rightsEffectiveDate !== undefined
+            && candidate.mainWorkflow.output.rightsEffectiveDate !== null
+            && typeof candidate.mainWorkflow.output.rightsEffectiveDate !== 'string')
+        || (candidate.mainWorkflow.output.rightsXmpEnabled === true
+            && (candidate.mainWorkflow.metadataMode !== 'strip-and-sidecar'
+                || !isRightsOwner(candidate.mainWorkflow.output.rightsOwner ?? DEFAULT_RIGHTS_OWNER)
+                || !isRightsEffectiveDate(candidate.mainWorkflow.output.rightsEffectiveDate)))
         || !['unique', 'overwrite', 'error'].includes(
             String(candidate.mainWorkflow.output.collisionPolicy),
         )) {

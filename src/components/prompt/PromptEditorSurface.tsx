@@ -10,6 +10,9 @@ import {
 } from '@/components/fragments/PromptModulePicker'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useCharacterPromptStore } from '@/stores/character-prompt-store'
+import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
+import { appendStructuredPromptText } from '@/presentation/workflow/structured-prompt-insertion'
 
 type PromptSlot = 'base' | 'additional' | 'detail' | 'negative'
 
@@ -31,6 +34,9 @@ export function PromptEditorSurface() {
     const setAdditionalPrompt = useGenerationDraftStore(state => state.setAdditionalPrompt)
     const setDetailPrompt = useGenerationDraftStore(state => state.setDetailPrompt)
     const setNegativePrompt = useGenerationDraftStore(state => state.setNegativePrompt)
+    const characters = useCharacterPromptStore(state => state.characters)
+    const addCharacter = useCharacterPromptStore(state => state.addCharacter)
+    const setPositionEnabled = useCharacterPromptStore(state => state.setPositionEnabled)
 
     const promptSlots = [
         {
@@ -89,9 +95,43 @@ export function PromptEditorSurface() {
                 aria-labelledby={`${editorPanelId}-${activePrompt.id}-tab`}
                 className="flex min-h-0 flex-col"
             >
-                <div className="flex min-h-11 items-center justify-end border-b border-border/45 px-2">
+                <div className="flex min-h-11 flex-wrap items-center justify-end gap-3 border-b border-border/45 px-2 py-1">
+                    <StructuredPromptModuleLibrary
+                        currentParts={{
+                            base: basePrompt,
+                            detail: detailPrompt,
+                            additional: additionalPrompt,
+                            negative: negativePrompt,
+                            character: characters.find(character => character.enabled)?.prompt,
+                            'character-negative': characters.find(character => character.enabled)?.negative,
+                        }}
+                        triggerLabel={t('promptModuleLibrary.triggerShort', '구조화 모듈')}
+                        triggerClassName="shrink-0"
+                        onInsert={(parts, module) => {
+                            let character = ''
+                            let characterNegative = ''
+                            for (const part of parts) {
+                                if (part.kind === 'base') setBasePrompt(appendStructuredPromptText(basePrompt, part.content))
+                                else if (part.kind === 'detail') setDetailPrompt(appendStructuredPromptText(detailPrompt, part.content))
+                                else if (part.kind === 'additional') setAdditionalPrompt(appendStructuredPromptText(additionalPrompt, part.content))
+                                else if (part.kind === 'negative') setNegativePrompt(appendStructuredPromptText(negativePrompt, part.content))
+                                else if (part.kind === 'character') character = appendStructuredPromptText(character, part.content)
+                                else characterNegative = appendStructuredPromptText(characterNegative, part.content)
+                            }
+                            if (parts.some(part => part.kind === 'character' || part.kind === 'character-negative')) {
+                                addCharacter({
+                                    name: module.name,
+                                    prompt: character,
+                                    negative: characterNegative,
+                                    enabled: true,
+                                    position: { x: 0.5, y: 0.5 },
+                                })
+                                setPositionEnabled(true)
+                            }
+                        }}
+                    />
                     <PromptModulePicker
-                        triggerLabel={t('guided.promptModules.triggerShort', '모듈 불러오기')}
+                        triggerLabel={t('guided.promptModules.legacyTriggerShort', '한 줄 모듈')}
                         triggerClassName="shrink-0"
                         onSelectLine={line => activePrompt.setValue(
                             appendPromptModuleLine(activePrompt.value, line),

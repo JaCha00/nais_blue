@@ -8,6 +8,7 @@ Phase 01 이후 engine 비교의 workflow source of truth는 각 workflow의 `cu
 
 | Fixture | 출처 | 모델 | 캡처 날짜 | 변환 | 민감정보 제거 |
 | --- | --- | --- | --- | --- | --- |
+| `image-metadata-release-v2.json` | 사용자 제공 release/v2 sidecar 구조를 고정 합성 값으로 정리한 외부 메타데이터 import contract | `nai-diffusion-4-5-full` | 2026-08-12 | 예 | 예 |
 | `metadata/data-hub-sample.nais-blue.json` | Data Hub production parser와 대량 읽기 contract를 위한 합성 Metadata v2 sidecar | `nai-diffusion-4-5-full` | 2026-07-26 | 아니오 | 예 |
 | `payload/v4-5-text.request.json` | current NAI verifier/request contract | `nai-diffusion-4-5-full` | 2026-07-11 | 예 | 예 |
 | `payload/v4-5-text.expected.json` | current payload builder local characterization | `nai-diffusion-4-5-full` | 2026-07-11 | 예 | 예 |

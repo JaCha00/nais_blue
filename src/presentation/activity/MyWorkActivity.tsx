@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { BriefcaseBusiness, Circle, Clock3, Plus } from 'lucide-react'
+import { BriefcaseBusiness, Circle, Clock3, Plus, Trash2 } from 'lucide-react'
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
 import { QueueActivityLinkView } from '@/components/layout/QueueActivityLink'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { toast } from '@/components/ui/use-toast'
 import type { QueueActivitySummary } from '@/domain/queue/types'
 import type {
     WorkflowDraft,
@@ -16,6 +18,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useLayoutStore } from '@/stores/layout-store'
 import {
     GUIDED_DRAFTS_CHANGED_EVENT,
+    announceGuidedDraftChange,
     announceGuidedQueueActivityRefresh,
 } from '@/presentation/workflow/guided-draft-events'
 import {
@@ -23,6 +26,7 @@ import {
     resolveGuidedActivityTargetNode,
     type GuidedActivityStatus,
 } from './activity-status'
+import { summarizeWorkflowDraftPrompt } from '@/presentation/workflow/workflow-draft-summary'
 
 const ACTIVITY_REFRESH_MS = 5_000
 const MAX_VISIBLE_DRAFTS = 5
@@ -179,6 +183,44 @@ function CredentialActivityRows() {
 function DraftActivityRows({ drafts }: { drafts: readonly ActivityDraft[] }) {
     const { t } = useTranslation()
     const closeSupportSheet = useLayoutStore(state => state.closeSupportSheet)
+    const repository = useMemo(() => getWorkflowDraftRepository(), [])
+    const [pendingDelete, setPendingDelete] = useState<WorkflowDraft | null>(null)
+    const [deleting, setDeleting] = useState(false)
+
+    const deleteDraft = async () => {
+        if (!pendingDelete) return
+        setDeleting(true)
+        try {
+            const result = await repository.moveToTrash(
+                pendingDelete.id,
+                pendingDelete.revision,
+                Date.now(),
+            )
+            if (result.status === 'trashed') {
+                setPendingDelete(null)
+                announceGuidedDraftChange()
+                toast({
+                    title: t('guided.activity.movedToTrash', '초안을 휴지통으로 옮겼어요.'),
+                    variant: 'success',
+                })
+            } else {
+                setPendingDelete(null)
+                announceGuidedDraftChange()
+                toast({
+                    title: t('guided.activity.deleteConflict', '초안이 다른 화면에서 변경되어 삭제하지 않았어요.'),
+                    description: t('guided.activity.deleteConflictHelp', '최신 상태를 확인한 뒤 다시 시도해 주세요.'),
+                    variant: 'destructive',
+                })
+            }
+        } catch {
+            toast({
+                title: t('guided.activity.deleteFailed', '초안을 휴지통으로 옮기지 못했어요.'),
+                variant: 'destructive',
+            })
+        } finally {
+            setDeleting(false)
+        }
+    }
 
     const statusLabel = (status: GuidedActivityStatus) => t(
         `guided.activity.status.${status}`,
@@ -209,8 +251,8 @@ function DraftActivityRows({ drafts }: { drafts: readonly ActivityDraft[] }) {
                         {t('guided.activity.noDrafts', '새 작업을 시작하면 여기에 기록할게요.')}
                     </p>
                 ) : drafts.map(({ draft, status }) => {
-                    const title = draft.payload.prompt.positive.trim()
-                        || (draft.kind === 'batch-image'
+                    const title = summarizeWorkflowDraftPrompt(draft)
+                        ?? (draft.kind === 'batch-image'
                             ? t('guided.activity.batchUntitled', '이미지 여러 장 만들기')
                             : t('guided.activity.singleUntitled', '이미지 한 장 만들기'))
                     const targetNode = resolveGuidedActivityTargetNode(draft.currentNodeId, status)
@@ -224,20 +266,34 @@ function DraftActivityRows({ drafts }: { drafts: readonly ActivityDraft[] }) {
                         ? `/guided-preview/batch/${draft.id}/${targetNode}`
                         : `/guided-preview/work/${draft.id}/${targetNode}`
                     return (
-                        <Link
-                            key={draft.id}
-                            to={href}
-                            onClick={closeSupportSheet}
-                            className="group flex min-h-20 items-start gap-3 py-3 focus-ring"
-                        >
-                            <Clock3 className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block line-clamp-2 break-words text-sm font-medium leading-snug">{title}</span>
-                                <span className="mt-1 block break-words text-xs leading-snug text-muted-foreground">
-                                    {statusLabel(status)} · {stepLabel}
+                        <div key={draft.id} className="flex min-h-20 items-start gap-1 py-3">
+                            <Link
+                                to={href}
+                                onClick={closeSupportSheet}
+                                className="group flex min-w-0 flex-1 items-start gap-3 focus-ring"
+                            >
+                                <Clock3 className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />
+                                <span className="min-w-0 flex-1">
+                                    <span className="block line-clamp-2 break-words text-sm font-medium leading-snug">{title}</span>
+                                    <span className="mt-1 block break-words text-xs leading-snug text-muted-foreground">
+                                        {statusLabel(status)} · {stepLabel}
+                                        {draft.payload.characterPrompts.items.length > 0
+                                            ? ` · ${t('guided.activity.characterCount', '캐릭터 {{count}}명', { count: draft.payload.characterPrompts.items.length })}`
+                                            : ''}
+                                    </span>
                                 </span>
-                            </span>
-                        </Link>
+                            </Link>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => setPendingDelete(draft)}
+                                aria-label={t('guided.activity.deleteDraftNamed', '{{name}} 초안 삭제', { name: title })}
+                            >
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                        </div>
                     )
                 })}
             </div>
@@ -247,6 +303,16 @@ function DraftActivityRows({ drafts }: { drafts: readonly ActivityDraft[] }) {
                     {t('guided.activity.startAnother', '다른 작업 시작')}
                 </Link>
             </Button>
+            <ConfirmDialog
+                open={pendingDelete !== null}
+                onOpenChange={open => { if (!open && !deleting) setPendingDelete(null) }}
+                title={t('guided.activity.confirmDeleteTitle', '이 초안을 삭제할까요?')}
+                description={t('guided.activity.confirmDeleteDescription', '초안은 휴지통으로 이동하며 30일 동안 복원할 수 있어요. 실행 중인 대기열 작업은 취소되지 않습니다.')}
+                confirmText={t('guided.activity.moveToTrash', '휴지통으로 이동')}
+                cancelText={t('common.cancel', '취소')}
+                variant="destructive"
+                onConfirm={deleteDraft}
+            />
         </section>
     )
 }

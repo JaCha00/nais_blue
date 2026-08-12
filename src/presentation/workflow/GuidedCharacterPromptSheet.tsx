@@ -1,4 +1,5 @@
-import { Eye, EyeOff, Plus, Trash2, Users } from 'lucide-react'
+import { useRef, useState, type DragEvent } from 'react'
+import { Eye, EyeOff, ImagePlus, MapPin, Plus, RotateCcw, Trash2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
@@ -17,6 +18,8 @@ import type {
     WorkflowCharacterPrompt,
     WorkflowCharacterPrompts,
 } from '@/domain/workflow/single-image-draft'
+import { cn } from '@/lib/utils'
+import { readGuidedPromptImportFile } from './GuidedPromptFileImport'
 
 interface GuidedCharacterPromptSheetProps {
     value: WorkflowCharacterPrompts
@@ -38,9 +41,14 @@ export function GuidedCharacterPromptSheet({
 }: GuidedCharacterPromptSheetProps) {
     const { t } = useTranslation()
     const enabledCount = value.items.filter(character => character.enabled).length
+    const importInputRef = useRef<HTMLInputElement>(null)
+    const [importing, setImporting] = useState(false)
+    const [dragging, setDragging] = useState(false)
+    const [importMessage, setImportMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
     const addCharacter = () => onChange({
         ...value,
+        positionEnabled: true,
         items: [...value.items, {
             id: `guided-character-${crypto.randomUUID()}`,
             prompt: '',
@@ -51,6 +59,7 @@ export function GuidedCharacterPromptSheet({
     })
     const updateCharacter = (id: string, patch: Partial<WorkflowCharacterPrompt>) => onChange({
         ...value,
+        ...(patch.position === undefined ? {} : { positionEnabled: true }),
         items: value.items.map(character => (
             character.id === id ? { ...character, ...patch } : character
         )),
@@ -59,6 +68,36 @@ export function GuidedCharacterPromptSheet({
         ...value,
         items: value.items.filter(character => character.id !== id),
     })
+
+    const importCharacters = async (file: File | undefined) => {
+        if (!file || importing || disabled) return
+        setImporting(true)
+        setImportMessage(null)
+        try {
+            const imported = await readGuidedPromptImportFile(file)
+            if (!imported.characters?.length) throw new TypeError('No character prompts')
+            const additions = imported.characters.map((character, index): WorkflowCharacterPrompt => ({
+                id: `guided-character-${crypto.randomUUID()}`,
+                name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+                prompt: character.prompt,
+                negative: character.negative,
+                enabled: character.prompt.trim().length > 0,
+                position: { ...character.position },
+            }))
+            onChange({ positionEnabled: true, items: [...value.items, ...additions] })
+            setImportMessage({
+                kind: 'success',
+                text: t('guided.characters.imported', '캐릭터 프롬프트 {{count}}개를 추가했어요.', { count: additions.length }),
+            })
+        } catch {
+            setImportMessage({
+                kind: 'error',
+                text: t('guided.characters.importError', '이 파일에서 캐릭터 프롬프트를 찾지 못했어요.'),
+            })
+        } finally {
+            setImporting(false)
+        }
+    }
 
     return (
         <Sheet>
@@ -95,6 +134,61 @@ export function GuidedCharacterPromptSheet({
                         {t('guided.characters.description', '현재 작업에만 적용할 캐릭터의 외형과 제외 요소를 정하세요.')}
                     </SheetDescription>
                 </SheetHeader>
+
+                <div className="shrink-0 border-b border-border/70 py-3">
+                    <input
+                        ref={importInputRef}
+                        type="file"
+                        className="sr-only"
+                        tabIndex={-1}
+                        accept="image/png,image/webp,image/jpeg,.json,application/json"
+                        disabled={disabled || importing}
+                        onChange={event => {
+                            void importCharacters(event.target.files?.[0])
+                            event.target.value = ''
+                        }}
+                    />
+                    <button
+                        type="button"
+                        disabled={disabled || importing}
+                        onClick={() => importInputRef.current?.click()}
+                        onDragEnter={event => { event.preventDefault(); if (!disabled) setDragging(true) }}
+                        onDragOver={event => event.preventDefault()}
+                        onDragLeave={event => {
+                            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+                        }}
+                        onDrop={(event: DragEvent<HTMLButtonElement>) => {
+                            event.preventDefault()
+                            setDragging(false)
+                            void importCharacters(event.dataTransfer.files[0])
+                        }}
+                        className={cn(
+                            'flex min-h-16 w-full items-center gap-3 border border-dashed px-3 py-2 text-left transition-colors focus-ring',
+                            dragging ? 'border-primary bg-primary/[0.055]' : 'border-border/80 hover:border-primary/60',
+                            (disabled || importing) && 'cursor-not-allowed opacity-55',
+                        )}
+                    >
+                        <ImagePlus className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                        <span className="min-w-0">
+                            <span className="block text-sm font-semibold">
+                                {importing
+                                    ? t('guided.characters.importing', '캐릭터 메타데이터를 읽는 중…')
+                                    : t('guided.characters.import', '이미지·JSON에서 캐릭터만 추가')}
+                            </span>
+                            <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                                {t('guided.characters.importHelp', '파일을 놓아도 메인 프롬프트는 바꾸지 않아요.')}
+                            </span>
+                        </span>
+                    </button>
+                    {importMessage && (
+                        <p
+                            className={cn('mt-2 text-xs', importMessage.kind === 'error' ? 'text-destructive' : 'text-success')}
+                            role={importMessage.kind === 'error' ? 'alert' : 'status'}
+                        >
+                            {importMessage.text}
+                        </p>
+                    )}
+                </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                     {value.items.length === 0 ? (
@@ -185,6 +279,58 @@ export function GuidedCharacterPromptSheet({
                                                 className="mt-3 min-h-28 bg-card text-base"
                                                 placeholder={t('guided.characters.negativePlaceholder', '예: alternate costume, different hairstyle')}
                                             />
+                                        </details>
+
+                                        <details className="mt-4 border-t border-border/55 pt-3">
+                                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium">
+                                                <span className="flex items-center gap-2">
+                                                    <MapPin className="h-4 w-4 text-primary" aria-hidden="true" />
+                                                    {t('guided.characters.position', '화면 위치')}
+                                                </span>
+                                                <span className="font-mono text-xs text-muted-foreground">
+                                                    X {character.position.x.toFixed(1)} · Y {character.position.y.toFixed(1)}
+                                                </span>
+                                            </summary>
+                                            <div className="mt-3 space-y-3">
+                                                {(['x', 'y'] as const).map(axis => (
+                                                    <label key={axis} className="grid grid-cols-[1rem_minmax(0,1fr)_3rem] items-center gap-2 text-xs">
+                                                        <span className="font-mono uppercase">{axis}</span>
+                                                        <input
+                                                            type="range"
+                                                            min={0.1}
+                                                            max={0.9}
+                                                            step={0.1}
+                                                            value={Math.max(0.1, Math.min(0.9, character.position[axis]))}
+                                                            disabled={disabled}
+                                                            onChange={event => updateCharacter(character.id, {
+                                                                position: {
+                                                                    ...character.position,
+                                                                    [axis]: Number(event.target.value),
+                                                                },
+                                                            })}
+                                                            className="w-full accent-primary"
+                                                            aria-label={t('guided.characters.positionAxis', '{{axis}} 위치', { axis: axis.toUpperCase() })}
+                                                        />
+                                                        <span className="text-right font-mono">{character.position[axis].toFixed(1)}</span>
+                                                    </label>
+                                                ))}
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <p className="text-xs leading-5 text-muted-foreground">
+                                                        {t('guided.characters.positionHelp', '0.5는 중앙이에요. 여러 인물이라면 겹치지 않도록 좌우 위치를 직접 확인해 주세요.')}
+                                                    </p>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="shrink-0"
+                                                        disabled={disabled || (character.position.x === 0.5 && character.position.y === 0.5)}
+                                                        onClick={() => updateCharacter(character.id, { position: { x: 0.5, y: 0.5 } })}
+                                                    >
+                                                        <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                                                        {t('guided.characters.positionReset', '중앙')}
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         </details>
                                     </section>
                                 )

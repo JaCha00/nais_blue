@@ -9,6 +9,8 @@ import {
 } from '@/lib/nais2-png-meta'
 import type { GenerationParams } from '@/services/novelai-types'
 import { requireRuntimeCapability } from '@/platform/capabilities'
+import type { RightsXmpRequest } from '@/domain/workflow/bluehair-rights-policy'
+import { embedRightsXmp } from '@/lib/bluehair-rights-xmp'
 
 export type DiagnosticSidecarPolicy =
     | { enabled?: false }
@@ -25,6 +27,7 @@ export interface MetadataWriteRequest {
     fallbackPromptParts?: Nais2PromptParts
     includeWebpCompatibilitySidecar?: boolean
     diagnostic?: DiagnosticSidecarPolicy
+    rightsXmp?: RightsXmpRequest
 }
 
 export interface PreparedMetadataArtifacts {
@@ -56,19 +59,25 @@ export class MetadataWriter implements OutputMetadataWriter {
         if (request === undefined) return { imageBytes }
 
         const metadataMode = request.metadataMode ?? request.params.metadataMode
+        if (request.rightsXmp !== undefined && metadataMode !== 'strip-and-sidecar') {
+            throw new TypeError('Rights XMP requires strip-and-sidecar metadata mode')
+        }
         const effectiveParams: GenerationParams = {
             ...request.params,
             imageFormat: request.imageFormat,
             metadataMode,
-            ...(request.params.outputPolicySummary === undefined
-                ? {}
-                : {
-                    outputPolicySummary: {
-                        ...request.params.outputPolicySummary,
-                        imageFormat: request.imageFormat,
-                        metadataMode: metadataMode ?? 'embedded',
-                    },
-                }),
+            outputPolicySummary: {
+                ...request.params.outputPolicySummary,
+                imageFormat: request.imageFormat,
+                metadataMode: metadataMode ?? 'embedded',
+                ...(request.rightsXmp === undefined
+                    ? {}
+                    : {
+                        rightsXmp: true,
+                        rightsOwner: request.rightsXmp.owner,
+                        rightsEffectiveDate: request.rightsXmp.effectiveDate,
+                    }),
+            },
         }
         const params = buildNais2Params(effectiveParams, request.fallbackPromptParts)
         const shouldEmbed = request.imageFormat === 'png'
@@ -76,9 +85,12 @@ export class MetadataWriter implements OutputMetadataWriter {
             && metadataMode !== 'strip-and-sidecar'
             && metadataMode !== 'strip-only'
         if (shouldEmbed) requireRuntimeCapability('embeddedPngMetadataWrite')
-        const preparedImage = shouldEmbed
+        const embeddedImage = shouldEmbed
             ? base64ToBytes(embedNaisBlueParams(bytesToBase64(imageBytes), params))
             : imageBytes
+        const preparedImage = request.rightsXmp === undefined
+            ? embeddedImage
+            : embedRightsXmp(embeddedImage, request.imageFormat, request.rightsXmp)
         const writeSidecar = shouldWriteNais2Sidecar(
             metadataMode,
             request.imageFormat,
