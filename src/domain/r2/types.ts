@@ -7,6 +7,38 @@ export type R2ConflictPolicy = typeof R2_CONFLICT_POLICIES[number]
 export type R2PublicMode = 'private' | 'r2-dev' | 'custom'
 
 export const DEFAULT_R2_PROFILE_ID = 'asset-profile-default-r2'
+export const MAX_R2_PREFIX_LENGTH = 900
+
+export function normalizeR2Prefix(value: string | null | undefined): string | null {
+    if (value == null) return null
+    const normalized = value.replace(/\\/gu, '/').replace(/^\/+|\/+$/gu, '')
+    if (!normalized) return null
+    const segments = normalized.split('/').filter(Boolean)
+    if (segments.some(segment => segment === '.' || segment === '..' || /[\u0000-\u001f\u007f]/u.test(segment))) {
+        throw new TypeError('R2 prefix contains an unsafe path segment')
+    }
+    const result = segments.join('/')
+    if (result.length > MAX_R2_PREFIX_LENGTH) throw new TypeError('R2 prefix is too long')
+    return result
+}
+
+export function isResolvedR2Prefix(value: unknown): value is string {
+    if (value === '') return true
+    if (typeof value !== 'string') return false
+    try {
+        return normalizeR2Prefix(value) === value
+    } catch {
+        return false
+    }
+}
+
+export function isR2BucketName(value: unknown): value is string {
+    return typeof value === 'string'
+        && value.length >= 3
+        && value.length <= 63
+        && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u.test(value)
+        && !/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(value)
+}
 
 export interface R2ProfileV2 {
     readonly schemaVersion: 2

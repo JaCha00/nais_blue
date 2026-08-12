@@ -206,6 +206,8 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                         sourceJobId: job.id,
                         imageFormat: payload.mainWorkflow.imageFormat,
                         output: output.result,
+                        bucket: payload.mainWorkflow.output.r2Bucket,
+                        prefix: payload.mainWorkflow.output.r2Prefix,
                     })
                     releaseVerified = release.status === 'uploaded'
                     if (!releaseVerified) {

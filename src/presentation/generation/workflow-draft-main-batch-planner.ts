@@ -56,8 +56,15 @@ function requestedCount(draft: MainWorkflowDraft): number {
 }
 
 function batchPromptInputs(draft: MainWorkflowDraft): readonly BatchPromptInput[] {
+    const commonPrompt = draft.payload.output.folderCommonPrompt?.trim() ?? ''
+    const withCommonPrompt = (prompt: string) => [commonPrompt, prompt].filter(Boolean).join(', ')
     if (draft.kind === 'single-image') {
-        return [{ ...draft.payload.prompt, seed: draft.payload.generation.seed, ordinal: 0 }]
+        return [{
+            positive: withCommonPrompt(draft.payload.prompt.positive),
+            negative: draft.payload.prompt.negative,
+            seed: draft.payload.generation.seed,
+            ordinal: 0,
+        }]
     }
     const inputs: BatchPromptInput[] = []
     const append = (positive: string, negative: string, count: number) => {
@@ -72,12 +79,12 @@ function batchPromptInputs(draft: MainWorkflowDraft): readonly BatchPromptInput[
         }
     }
     if (draft.payload.batchMode !== 'scenes') {
-        append(draft.payload.prompt.positive, draft.payload.prompt.negative, draft.payload.count)
+        append(withCommonPrompt(draft.payload.prompt.positive), draft.payload.prompt.negative, draft.payload.count)
         return inputs
     }
     for (const scene of draft.payload.scenes) {
         append(
-            [draft.payload.prompt.positive, scene.positive].filter(Boolean).join(', '),
+            withCommonPrompt([draft.payload.prompt.positive, scene.positive].filter(Boolean).join(', ')),
             [draft.payload.prompt.negative, scene.negative].filter(Boolean).join(', '),
             scene.count,
         )
@@ -244,7 +251,11 @@ export function createWorkflowDraftMainBatchPlanner(
                         useAbsolutePath: output.useAbsolutePath,
                         capabilityFallbackDirectory: output.capabilityFallbackDirectory,
                         collisionPolicy: output.collisionPolicy,
+                        generationFolderId: output.generationFolderId ?? null,
+                        generationFolderPath: output.generationFolderPath ?? null,
                         autoR2UploadProfileId: output.autoR2UploadProfileId ?? null,
+                        r2Bucket: output.r2Bucket ?? null,
+                        r2Prefix: output.r2Prefix ?? null,
                         deleteOriginalAfterRelease: output.deleteOriginalAfterRelease ?? false,
                         rightsXmpEnabled: output.rightsXmpEnabled ?? false,
                         rightsOwner: output.rightsOwner,

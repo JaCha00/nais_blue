@@ -25,7 +25,11 @@ export interface PreparedMainGeneration {
         readonly portableDirectory?: GenerationParams['portableOutputDirectory']
         readonly fileName?: string
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+        readonly generationFolderId: string | null
+        readonly generationFolderPath: string | null
         readonly autoR2UploadProfileId: string | null
+        readonly r2Bucket: string | null
+        readonly r2Prefix: string | null
         readonly deleteOriginalAfterRelease: boolean
         readonly rightsXmpEnabled: boolean
         readonly rightsOwner: string
@@ -47,7 +51,11 @@ export interface PrepareMainGenerationOptions {
         readonly portableDirectory?: GenerationParams['portableOutputDirectory']
         readonly fileName?: string | null
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+        readonly generationFolderId?: string | null
+        readonly generationFolderPath?: string | null
         readonly autoR2UploadProfileId?: string | null
+        readonly r2Bucket?: string | null
+        readonly r2Prefix?: string | null
         readonly deleteOriginalAfterRelease?: boolean
         readonly rightsXmpEnabled?: boolean
         readonly rightsOwner?: string
@@ -76,7 +84,11 @@ export function prepareMainGeneration(
             : { portableDirectory: options.output.portableDirectory }),
         ...(fileName === null ? {} : { fileName }),
         collisionPolicy: options.output.collisionPolicy,
+        generationFolderId: options.output.generationFolderId ?? null,
+        generationFolderPath: options.output.generationFolderPath ?? null,
         autoR2UploadProfileId: options.output.autoR2UploadProfileId ?? null,
+        r2Bucket: options.output.r2Bucket ?? null,
+        r2Prefix: options.output.r2Prefix ?? null,
         deleteOriginalAfterRelease: options.output.deleteOriginalAfterRelease ?? false,
         rightsXmpEnabled: options.output.rightsXmpEnabled ?? false,
         rightsOwner: options.output.rightsOwner ?? DEFAULT_RIGHTS_OWNER,

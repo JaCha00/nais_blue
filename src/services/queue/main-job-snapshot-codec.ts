@@ -5,6 +5,7 @@ import {
     type AnlasCostConsentSnapshot,
 } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
     DEFAULT_RIGHTS_OWNER,
@@ -26,8 +27,12 @@ export interface MainQueueOutputSnapshot {
     readonly portableDirectory?: PreparedMainGeneration['output']['portableDirectory']
     readonly fileName: string
     readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+    readonly generationFolderId?: string | null
+    readonly generationFolderPath?: string | null
     /** Optional on V1 snapshots created before release automation existed. */
     readonly autoR2UploadProfileId?: string | null
+    readonly r2Bucket?: string | null
+    readonly r2Prefix?: string | null
     readonly deleteOriginalAfterRelease?: boolean
     readonly rightsXmpEnabled?: boolean
     readonly rightsOwner?: string
@@ -100,7 +105,11 @@ export function encodeMainJobSnapshot(
                     : { portableDirectory: prepared.output.portableDirectory }),
                 fileName,
                 collisionPolicy: prepared.output.collisionPolicy,
+                generationFolderId: prepared.output.generationFolderId,
+                generationFolderPath: prepared.output.generationFolderPath,
                 autoR2UploadProfileId: prepared.output.autoR2UploadProfileId,
+                r2Bucket: prepared.output.r2Bucket,
+                r2Prefix: prepared.output.r2Prefix,
                 deleteOriginalAfterRelease: prepared.output.deleteOriginalAfterRelease,
                 rightsXmpEnabled: prepared.output.rightsXmpEnabled,
                 rightsOwner: prepared.output.rightsOwner,
@@ -154,9 +163,21 @@ export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueu
         || typeof candidate.mainWorkflow.output.useAbsolutePath !== 'boolean'
         || typeof candidate.mainWorkflow.output.capabilityFallbackDirectory !== 'string'
         || typeof candidate.mainWorkflow.output.fileName !== 'string'
+        || (candidate.mainWorkflow.output.generationFolderId !== undefined
+            && candidate.mainWorkflow.output.generationFolderId !== null
+            && typeof candidate.mainWorkflow.output.generationFolderId !== 'string')
+        || (candidate.mainWorkflow.output.generationFolderPath !== undefined
+            && candidate.mainWorkflow.output.generationFolderPath !== null
+            && typeof candidate.mainWorkflow.output.generationFolderPath !== 'string')
         || (candidate.mainWorkflow.output.autoR2UploadProfileId !== undefined
             && candidate.mainWorkflow.output.autoR2UploadProfileId !== null
             && typeof candidate.mainWorkflow.output.autoR2UploadProfileId !== 'string')
+        || (candidate.mainWorkflow.output.r2Bucket !== undefined
+            && candidate.mainWorkflow.output.r2Bucket !== null
+            && !isR2BucketName(candidate.mainWorkflow.output.r2Bucket))
+        || (candidate.mainWorkflow.output.r2Prefix !== undefined
+            && candidate.mainWorkflow.output.r2Prefix !== null
+            && !isResolvedR2Prefix(candidate.mainWorkflow.output.r2Prefix))
         || (candidate.mainWorkflow.output.deleteOriginalAfterRelease !== undefined
             && typeof candidate.mainWorkflow.output.deleteOriginalAfterRelease !== 'boolean')
         || (candidate.mainWorkflow.output.rightsXmpEnabled !== undefined

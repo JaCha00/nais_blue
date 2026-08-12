@@ -7,6 +7,7 @@ import type {
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { GenerationParams } from '@/services/novelai-api'
+import { resolveGenerationFolder, type ResolvedGenerationFolder } from '@/domain/generation-folders'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import {
@@ -578,18 +579,48 @@ function diagnosticsFor(
     }
 }
 
+function applyGenerationFolderPolicy(
+    scene: SceneCard,
+    capturedFolder?: ResolvedGenerationFolder | null,
+): SceneCard {
+    if (!scene.generationFolderId) return scene
+    const folder = capturedFolder === undefined
+        ? (() => {
+            const settings = useSettingsStore.getState()
+            return resolveGenerationFolder(
+                settings.generationFolders,
+                scene.generationFolderId,
+                { directory: settings.sceneSavePath, useAbsolutePath: settings.useAbsoluteScenePath },
+            )
+        })()
+        : capturedFolder
+    if (!folder) return scene
+    const prompts = resolveScenePrompts(scene)
+    return {
+        ...scene,
+        prompts: {
+            ...prompts,
+            base: [folder.commonPrompt.trim(), prompts.base].filter(Boolean).join(', '),
+        },
+        ...(capturedFolder !== undefined && folder.r2.autoUpload
+            ? { metadataMode: 'strip-and-sidecar' as const }
+            : {}),
+    }
+}
+
 export async function previewSceneComposition(
     scene: SceneCard,
     options: { scenePrompt?: string; seed?: number; now?: Date } = {},
 ): Promise<SceneCompositionResolution> {
+    const preparedScene = applyGenerationFolderPolicy(scene)
     const authorityMode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
     if (authorityMode === 'legacy') {
         throw new Error('Composition preview is unavailable while legacy authority is active')
     }
-    const sceneGeneration = resolveSceneGeneration(scene)
+    const sceneGeneration = resolveSceneGeneration(preparedScene)
     const seed = options.seed ?? (sceneGeneration.seed || 1)
     const now = options.now ?? new Date()
-    const captured = await resolveSceneRuntimeComposition(scene, {
+    const captured = await resolveSceneRuntimeComposition(preparedScene, {
         mode: 'preview',
         seed,
         now,
@@ -603,11 +634,12 @@ export async function previewSceneComposition(
 // Legacy prompt assembly is isolated in legacy-build-scene-params.ts for rollback.
 export async function buildSceneGenerationParams(
     scene: SceneCard,
-    options: { sessionId?: number; requestId?: string; now?: Date; presetId?: string } = {},
+    options: { sessionId?: number; requestId?: string; now?: Date; presetId?: string; generationFolder?: ResolvedGenerationFolder | null } = {},
 ): Promise<SceneGenerationBuildResult> {
+    const preparedScene = applyGenerationFolderPolicy(scene, options.generationFolder)
     const mode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
     if (mode === 'legacy') {
-        const legacy = await buildLegacySceneGenerationParams(scene, { presetId: options.presetId })
+        const legacy = await buildLegacySceneGenerationParams(preparedScene, { presetId: options.presetId })
         return {
             success: true,
             ...legacy,
@@ -620,9 +652,9 @@ export async function buildSceneGenerationParams(
     }
 
     if (mode === 'shadow') {
-        const legacy = await buildLegacySceneGenerationParams(scene, { presetId: options.presetId })
+        const legacy = await buildLegacySceneGenerationParams(preparedScene, { presetId: options.presetId })
         const now = options.now ?? new Date()
-        const captured = await resolveSceneRuntimeComposition(scene, {
+        const captured = await resolveSceneRuntimeComposition(preparedScene, {
             mode: 'preview',
             seed: legacy.params.seed,
             now,
@@ -654,10 +686,10 @@ export async function buildSceneGenerationParams(
         }
     }
 
-    const sceneGeneration = resolveSceneGeneration(scene)
+    const sceneGeneration = resolveSceneGeneration(preparedScene)
     const seed = selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
     const now = options.now ?? new Date()
-    const captured = await resolveSceneRuntimeComposition(scene, {
+    const captured = await resolveSceneRuntimeComposition(preparedScene, {
         mode: 'generate',
         seed,
         now,
@@ -674,7 +706,7 @@ export async function buildSceneGenerationParams(
         }
     }
     const params = await materializeV2GenerationParams(
-        scene,
+        preparedScene,
         resolution.result.plan,
         'v2',
         now,

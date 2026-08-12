@@ -3,6 +3,7 @@ import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragme
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { JsonValue } from '@/domain/composition/types'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 import type {
     SaveSceneResultContext,
     SaveSceneResultOptions,
@@ -124,7 +125,30 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
         || typeof candidate.sceneWorkflow.finalPrompt !== 'string'
         || typeof candidate.sceneWorkflow.mimeType !== 'string'
         || !isRecord(candidate.sceneWorkflow.saveContext)
-        || !isRecord(candidate.sceneWorkflow.outputContext)) {
+        || typeof candidate.sceneWorkflow.saveContext.activePresetId !== 'string'
+        || typeof candidate.sceneWorkflow.saveContext.sceneSavePath !== 'string'
+        || !isRecord(candidate.sceneWorkflow.outputContext)
+        || typeof candidate.sceneWorkflow.outputContext.useAbsoluteScenePath !== 'boolean'
+        || typeof candidate.sceneWorkflow.outputContext.metadataMode !== 'string'
+        || !['embedded', 'sidecar-only', 'strip-and-sidecar', 'strip-only'].includes(candidate.sceneWorkflow.outputContext.metadataMode)
+        || typeof candidate.sceneWorkflow.outputContext.presetName !== 'string'
+        || typeof candidate.sceneWorkflow.outputContext.sceneName !== 'string'
+        || (candidate.sceneWorkflow.outputContext.presetPathSegments !== undefined
+            && (!Array.isArray(candidate.sceneWorkflow.outputContext.presetPathSegments)
+                || !candidate.sceneWorkflow.outputContext.presetPathSegments.every(segment => typeof segment === 'string')))
+        || (candidate.sceneWorkflow.outputContext.directory !== undefined
+            && typeof candidate.sceneWorkflow.outputContext.directory !== 'string')
+        || (candidate.sceneWorkflow.outputContext.capabilityFallbackDirectory !== undefined
+            && typeof candidate.sceneWorkflow.outputContext.capabilityFallbackDirectory !== 'string')
+        || (candidate.sceneWorkflow.outputContext.autoR2UploadProfileId !== undefined
+            && candidate.sceneWorkflow.outputContext.autoR2UploadProfileId !== null
+            && typeof candidate.sceneWorkflow.outputContext.autoR2UploadProfileId !== 'string')
+        || (candidate.sceneWorkflow.outputContext.r2Bucket !== undefined
+            && candidate.sceneWorkflow.outputContext.r2Bucket !== null
+            && !isR2BucketName(candidate.sceneWorkflow.outputContext.r2Bucket))
+        || (candidate.sceneWorkflow.outputContext.r2Prefix !== undefined
+            && candidate.sceneWorkflow.outputContext.r2Prefix !== null
+            && !isResolvedR2Prefix(candidate.sceneWorkflow.outputContext.r2Prefix))) {
         return invalidSnapshot()
     }
     return candidate as unknown as SceneQueueSnapshotParameters

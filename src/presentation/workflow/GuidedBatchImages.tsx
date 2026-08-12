@@ -76,7 +76,9 @@ import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
 import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
 import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
+import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
+import { outputPatchFromGenerationFolder } from './generation-folder-selection'
 
 export type GuidedBatchOptionId = 'sameSettings' | 'variations' | 'scenes' | 'queue'
 
@@ -684,21 +686,35 @@ function SettingsStep({ draft, disabled, imageCount, estimatedAnlas, pricingBasi
             <section className="border-y border-border/55 py-5" aria-labelledby="guided-batch-output-heading">
                 <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
                     <div>
-                        <label id="guided-batch-output-heading" htmlFor="guided-batch-output-directory" className="text-sm font-semibold">
+                        <h2 id="guided-batch-output-heading" className="text-sm font-semibold">
                             {t('guided.batch.settings.outputDirectory', '저장 폴더')}
-                        </label>
+                        </h2>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            {t('guided.batch.settings.outputHelp', '상대 경로는 앱의 기본 이미지 폴더 아래에 만들어져요.')}
+                            {t('guided.batch.settings.outputHelp', '작업별 저장 위치와 자동 업로드 대상을 선택하세요.')}
                         </p>
-                        <Input
-                            id="guided-batch-output-directory"
-                            className="mt-3"
-                            value={directory}
-                            disabled={disabled}
-                            onChange={event => setDirectory(event.target.value)}
-                            onBlur={commitDirectory}
-                            onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                        />
+                        <div className="mt-3">
+                            <GenerationFolderPicker
+                                value={draft.payload.output.generationFolderId}
+                                disabled={disabled}
+                                allowManual
+                                onChange={selection => onOutput(outputPatchFromGenerationFolder(
+                                    selection,
+                                    draft.payload.output.metadataMode,
+                                ))}
+                            />
+                        </div>
+                        {draft.payload.output.generationFolderId == null && (
+                            <Input
+                                id="guided-batch-output-directory"
+                                className="mt-3"
+                                value={directory}
+                                disabled={disabled}
+                                onChange={event => setDirectory(event.target.value)}
+                                onBlur={commitDirectory}
+                                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                                aria-label={t('guided.batch.settings.directOutputDirectory', '직접 입력 저장 경로')}
+                            />
+                        )}
                     </div>
                     <div>
                         <label htmlFor="guided-batch-output-format" className="text-sm font-semibold">
@@ -765,7 +781,11 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
         }] : []),
         { label: t('guided.batch.review.count', '생성 수'), value: t('guided.batch.review.countValue', '{{count}}장', { count: requestedCount(draft) }), node: draft.payload.batchMode === 'scenes' ? 'scenes' as const : 'count' as const },
         { label: t('guided.batch.review.settings', '설정'), value: `${draft.payload.resolution?.width ?? '—'} × ${draft.payload.resolution?.height ?? '—'} · ${draft.payload.generation.steps} Steps`, node: 'settings' as const },
-        { label: t('guided.batch.review.output', '저장'), value: `${draft.payload.output.directory} · ${draft.payload.output.imageFormat.toUpperCase()}`, node: 'settings' as const },
+        {
+            label: t('guided.batch.review.output', '저장'),
+            value: `${draft.payload.output.generationFolderPath ? `${draft.payload.output.generationFolderPath} · ` : ''}${draft.payload.output.directory} · ${draft.payload.output.imageFormat.toUpperCase()}`,
+            node: 'settings' as const,
+        },
     ]
     return (
         <div className="space-y-6">

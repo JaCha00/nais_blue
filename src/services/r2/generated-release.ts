@@ -1,4 +1,10 @@
-import { DEFAULT_R2_PROFILE_ID, type NativeR2ScannedArtifact } from '@/domain/r2/types'
+import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
+import {
+    isR2BucketName,
+    isResolvedR2Prefix,
+    type NativeR2ScannedArtifact,
+    type R2ProfileV2,
+} from '@/domain/r2/types'
 import { sha256Bytes } from '@/lib/binary-digest'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import type { OutputWriteResult } from '@/services/output/output-writer'
@@ -19,6 +25,44 @@ function remoteKey(prefix: string, fileName: string): string {
 }
 
 /**
+ * Upload jobs store only a profile ID, so every generated release uses an
+ * immutable, content-addressed profile. A later edit to the default profile
+ * can therefore never redirect an already queued upload to another bucket.
+ */
+export function deriveGeneratedReleaseProfile(
+    base: R2ProfileV2,
+    target: { readonly bucket?: string | null; readonly prefix?: string | null },
+    now = new Date().toISOString(),
+): R2ProfileV2 {
+    const bucket = target.bucket?.trim() || base.bucket.trim()
+    const prefix = target.prefix ?? base.prefix
+    if (!isR2BucketName(bucket) || !isResolvedR2Prefix(prefix)) {
+        throw new TypeError('Generated R2 release target is invalid')
+    }
+    const identity = JSON.stringify([
+        base.accountId,
+        base.jurisdiction,
+        base.endpoint,
+        bucket,
+        prefix,
+        base.credentialRef,
+        base.transport,
+        base.conflictPolicy,
+        base.publicMode,
+        base.publicBaseUrl,
+    ])
+    return {
+        ...base,
+        id: `generated-release-${sha256Utf8(identity).slice(0, 40)}`,
+        name: `${base.name} · ${bucket}${prefix ? `/${prefix}` : ''}`,
+        bucket,
+        prefix,
+        createdAt: now,
+        updatedAt: now,
+    }
+}
+
+/**
  * Uploads only the exact verified output set. Public profiles never receive the
  * prompt-bearing sidecar; private profiles require and upload the pair.
  */
@@ -27,20 +71,28 @@ export async function releaseGeneratedOutputToR2(input: {
     readonly sourceJobId: string
     readonly imageFormat: 'png' | 'webp'
     readonly output: OutputWriteResult
+    readonly bucket?: string | null
+    readonly prefix?: string | null
 }): Promise<GeneratedR2ReleaseResult> {
     if (!runtimeCapabilities.r2ForegroundUpload.supported) {
         return { status: 'unavailable', reason: 'runtime' }
     }
-    if (input.profileId !== DEFAULT_R2_PROFILE_ID) {
+    const repository = getRuntimeR2UploadRepository()
+    const baseProfile = await repository.getProfile(input.profileId)
+    if (!baseProfile
+        || baseProfile.transport !== 'native-s3'
+        || !baseProfile.accountId.trim()
+        || !baseProfile.bucket.trim()) {
         return { status: 'unavailable', reason: 'profile' }
     }
-
-    const repository = getRuntimeR2UploadRepository()
-    const profile = await repository.getProfile(input.profileId)
-    if (!profile
-        || profile.transport !== 'native-s3'
-        || !profile.accountId.trim()
-        || !profile.bucket.trim()) {
+    let profile: R2ProfileV2
+    try {
+        profile = deriveGeneratedReleaseProfile(baseProfile, {
+            bucket: input.bucket,
+            prefix: input.prefix,
+        })
+        await repository.putProfile(profile)
+    } catch {
         return { status: 'unavailable', reason: 'profile' }
     }
     const credential = await nativeR2CredentialStatus(profile.credentialRef).catch(() => null)

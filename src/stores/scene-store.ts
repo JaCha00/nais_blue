@@ -90,6 +90,8 @@ export interface SceneCard {
     height?: number
     /** Scene-level output policy; undefined keeps the global Settings policy for legacy cards. */
     metadataMode?: MetadataMode
+    /** Optional shared generation-folder plan selected specifically for this scene. */
+    generationFolderId?: string
     excludePinned?: boolean // Rotation-only: skip pinned characters for this scene.
     compositionRef?: SceneCompositionRef
     createdAt: number
@@ -193,7 +195,7 @@ interface SceneState {
     renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
     updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
-    updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean, metadataMode?: MetadataMode }) => void
+    updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean, metadataMode?: MetadataMode, generationFolderId?: string | undefined }) => void
     updateSceneGeneration: (presetId: string, sceneId: string, generation: Partial<SceneGenerationConfig>) => void
     setSceneCompositionRef: (presetId: string, sceneId: string, ref: SceneCompositionRef | undefined) => void
     resetSceneToRecipe: (presetId: string, sceneId: string) => void

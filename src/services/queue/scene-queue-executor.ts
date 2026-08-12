@@ -4,6 +4,8 @@ import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
 import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
 import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { releaseGeneratedOutputToR2 } from '@/services/r2/generated-release'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import {
@@ -82,6 +84,7 @@ export async function executeSceneQueueJob(
         throw new QueueExecutionError('transient', 'Fragment sequence changed before durable reservation')
     }
     let artifactRegistration: QueueArtifactRegistration | null = null
+    const autoR2UploadProfileId = payload.sceneWorkflow.outputContext.autoR2UploadProfileId
     try {
         const saved = await saveSceneResult(
             payload.sceneWorkflow.scene,
@@ -98,6 +101,35 @@ export async function executeSceneQueueJob(
                 sourceJobId: job.id,
                 outputTransactionId: transactionId,
                 outputContext: payload.sceneWorkflow.outputContext,
+                ...(autoR2UploadProfileId == null
+                    ? {}
+                    : {
+                        afterSave: async output => {
+                            try {
+                                const release = await releaseGeneratedOutputToR2({
+                                    profileId: autoR2UploadProfileId,
+                                    sourceJobId: job.id,
+                                    imageFormat: payload.sceneWorkflow.mimeType === 'image/webp' ? 'webp' : 'png',
+                                    output,
+                                    bucket: payload.sceneWorkflow.outputContext.r2Bucket,
+                                    prefix: payload.sceneWorkflow.outputContext.r2Prefix,
+                                })
+                                if (release.status !== 'uploaded') {
+                                    reportDiagnostic(new Error(`Generated R2 release did not complete: ${release.status}`), {
+                                        operation: 'r2.generated-release',
+                                        stage: release.status,
+                                        jobId: job.id,
+                                    })
+                                }
+                            } catch (error) {
+                                reportDiagnostic(error, {
+                                    operation: 'r2.generated-release',
+                                    stage: 'upload',
+                                    jobId: job.id,
+                                })
+                            }
+                        },
+                    }),
                 ...(sequenceLease === null ? {} : { beforeFinalize: () => sequenceLease.commit() }),
                 registerArtifact: async output => {
                     artifactRegistration = await registerQueueArtifact(job, artifactReference, output)

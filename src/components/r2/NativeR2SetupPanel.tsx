@@ -21,6 +21,7 @@ import {
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { ExternalUrlLink } from '@/components/ui/external-url-link'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -398,7 +399,7 @@ export function NativeR2SetupPanel({
                     ready={Boolean(profile.accountId.trim())}
                     guide={<>
                         <p>Cloudflare 대시보드의 R2 화면에서 <span className="font-medium text-foreground">Account ID</span>를 찾아 그대로 복사하세요. 이메일이나 계정 이름이 아닙니다.</p>
-                        <a className="inline-flex max-w-full flex-wrap items-center gap-1 break-words font-medium text-primary hover:underline" href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare 대시보드 열기 <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></a>
+                        <ExternalUrlLink className="focus-ring inline-flex max-w-full flex-wrap items-center gap-1 rounded-control break-words text-left font-medium text-primary hover:underline" href="https://dash.cloudflare.com/">Cloudflare 대시보드 열기 <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></ExternalUrlLink>
                     </>}
                 >
                     <Field label="Cloudflare Account ID" htmlFor="r2-account-id" hint="앞뒤 공백 없이 Account ID 전체를 붙여 넣으세요.">
@@ -436,20 +437,20 @@ export function NativeR2SetupPanel({
 
                 {setupPage === 1 && <>
                 <SetupStep
-                    label="3. 버킷과 저장 폴더 지정"
-                    description="이미지를 넣을 R2 버킷과 그 안의 폴더를 정합니다."
-                    guideTitle="버킷 이름을 정확히 입력하세요"
+                    label="3. 기본 업로드 위치 확인"
+                    description="여기서는 연결 확인에 사용할 기본값만 정합니다. 생성 폴더마다 다른 버킷과 프리픽스를 지정할 수 있습니다."
+                    guideTitle="폴더별 설정이 우선합니다"
                     ready={Boolean(profile.bucket.trim())}
                     guide={<>
-                        <p><span className="font-medium text-foreground">버킷 이름</span>에는 R2에서 이미 만들어 둔 버킷 이름을 대소문자까지 동일하게 입력하세요.</p>
-                        <p><span className="font-medium text-foreground">버킷 안 폴더</span>는 선택 사항입니다. 비우면 버킷의 맨 위에 저장됩니다. 예: <span className="font-mono">nais/images</span></p>
+                        <p><span className="font-medium text-foreground">버킷 이름</span>에는 연결 확인에 사용할 버킷을 정확히 입력하세요.</p>
+                        <p>이미지 생성 시 선택한 폴더의 버킷·프리픽스가 있으면 이 기본값보다 우선합니다. 비워 둔 항목만 이 값을 사용합니다.</p>
                     </>}
                 >
                     <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="R2 버킷 이름" htmlFor="r2-bucket">
+                        <Field label="기본 R2 버킷" htmlFor="r2-bucket">
                             <Input id="r2-bucket" value={profile.bucket} onChange={event => update('bucket', event.target.value)} placeholder="예: nais-images" autoComplete="off" />
                         </Field>
-                        <Field label="버킷 안 폴더 (선택)" htmlFor="r2-prefix">
+                        <Field label="기본 프리픽스 (선택)" htmlFor="r2-prefix">
                             <Input id="r2-prefix" value={profile.prefix} onChange={event => update('prefix', event.target.value)} placeholder="예: generated/2026" />
                         </Field>
                     </div>

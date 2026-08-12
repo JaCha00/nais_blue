@@ -37,7 +37,7 @@ import {
     readNativeDirectory as readDir,
 } from '@/platform/native-file-system'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
+import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { toast } from '@/components/ui/use-toast'
 import { sanitizePathComponent } from '@/lib/scene-output-path'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
@@ -938,32 +938,52 @@ export default function SceneDetail() {
                 disabled={effectiveSceneGenerating || effectiveSceneCancelling}
             />
 
-            {/* This policy feeds both request metadata embedding and output persistence for direct/queued generation. */}
-            <div className="flex min-w-0 items-center justify-between gap-4 rounded-panel border border-border bg-card px-4 py-3">
-                <div className="min-w-0">
-                    <p className="text-sm font-semibold">{t('scene.metadataPolicy.title', '이미지 메타데이터')}</p>
+            {/* Two late-stage output decisions stay together and remain compact. */}
+            <section className="space-y-4 rounded-panel border border-border bg-card px-4 py-4" aria-label={t('scene.output.title', '씬 출력 설정')}>
+                <div>
+                    <p className="text-sm font-semibold">{t('scene.output.folder', '이미지 생성 폴더')}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                        {scene.metadataMode === 'strip-only'
-                            ? t('scene.metadataPolicy.purgeDescription', '일반 메타데이터와 Stealth pnginfo를 제거한 출력만 저장합니다.')
-                            : t('scene.metadataPolicy.preserveDescription', '프롬프트와 생성 설정을 이미지에 보존합니다.')}
+                        {t('scene.output.folderHelp', '이 씬의 로컬 저장 위치와 R2 버킷·프리픽스를 선택합니다.')}
                     </p>
+                    <div className="mt-3">
+                        <GenerationFolderPicker
+                            value={scene.generationFolderId}
+                            allowManual
+                            disabled={effectiveSceneGenerating || effectiveSceneCancelling}
+                            onChange={selection => updateSceneSettings(activePresetId, scene.id, {
+                                generationFolderId: selection?.folder.id,
+                                ...(selection?.folder.r2.autoUpload && selection.r2Ready ? { metadataMode: 'strip-and-sidecar' } : {}),
+                            })}
+                        />
+                    </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                    <span className="hidden text-xs text-muted-foreground sm:inline">
-                        {scene.metadataMode === 'strip-only'
-                            ? t('scene.metadataPolicy.purge', '즉각 삭제')
-                            : t('scene.metadataPolicy.preserve', '보존')}
-                    </span>
-                    <Switch
-                        checked={scene.metadataMode !== 'strip-only'}
+                <div className="grid gap-3 border-t border-border/55 pt-4 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.65fr)] sm:items-end">
+                    <div>
+                        <p className="text-sm font-semibold">{t('scene.metadataPolicy.title', '이미지 메타데이터')}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                            {scene.metadataMode === 'strip-and-sidecar'
+                                ? t('scene.metadataPolicy.cleanDescription', '공유 이미지는 정화하고 private 생성 정보는 sidecar로 분리합니다.')
+                                : scene.metadataMode === 'strip-only'
+                                    ? t('scene.metadataPolicy.purgeDescription', '메타데이터를 제거하며 복구용 sidecar를 만들지 않습니다.')
+                                    : t('scene.metadataPolicy.preserveDescription', '프롬프트와 생성 설정을 이미지 또는 sidecar에 보존합니다.')}
+                        </p>
+                    </div>
+                    <select
+                        value={scene.metadataMode ?? 'embedded'}
                         onChange={event => updateSceneSettings(activePresetId, scene.id, {
-                            metadataMode: event.currentTarget.checked ? 'embedded' : 'strip-only',
+                            metadataMode: event.target.value as NonNullable<typeof scene.metadataMode>,
                         })}
                         disabled={effectiveSceneGenerating || effectiveSceneCancelling}
-                        aria-label={t('scene.metadataPolicy.toggle', '메타데이터 보존 또는 즉각 삭제')}
-                    />
+                        className="min-h-11 border-x-0 border-y border-input bg-background px-3 text-sm"
+                        aria-label={t('scene.metadataPolicy.title', '이미지 메타데이터')}
+                    >
+                        <option value="embedded">{t('guided.metadata.embedded', '이미지에 포함')}</option>
+                        <option value="sidecar-only">{t('guided.metadata.sidecar', '이미지 유지 + sidecar')}</option>
+                        <option value="strip-and-sidecar">{t('guided.metadata.clean', '공유용 정화 + sidecar · 권장')}</option>
+                        {scene.metadataMode === 'strip-only' && <option value="strip-only">{t('guided.metadata.stripOnly', '정화만 · 비권장')}</option>}
+                    </select>
                 </div>
-            </div>
+            </section>
 
             <Card className="mt-1 flex min-h-[20rem] min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
                 <CardHeader className="min-w-0 shrink-0 gap-2 border-b border-border p-3 sm:p-4">

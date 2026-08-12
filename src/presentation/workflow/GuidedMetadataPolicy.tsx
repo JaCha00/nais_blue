@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
 import { CloudUpload, FileJson, LockKeyhole, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DEFAULT_R2_PROFILE_ID, type R2ProfileV2 } from '@/domain/r2/types'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import type { SingleImageMetadataMode } from '@/domain/workflow/single-image-draft'
 import {
     DEFAULT_RIGHTS_OWNER,
@@ -13,9 +12,7 @@ import {
     isRightsEffectiveDate,
     isRightsOwner,
 } from '@/domain/workflow/bluehair-rights-policy'
-import { runtimeCapabilities } from '@/platform/capabilities'
-import { nativeR2CredentialStatus } from '@/services/r2/native-r2-adapter'
-import { getRuntimeR2UploadRepository } from '@/services/r2/runtime'
+import { useDefaultR2Readiness } from '@/hooks/useDefaultR2Readiness'
 
 const MODES: readonly SingleImageMetadataMode[] = [
     'embedded',
@@ -53,38 +50,7 @@ export function GuidedMetadataPolicy({
     onRightsEffectiveDateChange(value: string | null): void
 }) {
     const { t } = useTranslation()
-    const [r2State, setR2State] = useState<
-        | { status: 'loading' }
-        | { status: 'unavailable'; reason: 'runtime' | 'profile' | 'credential' }
-        | { status: 'ready'; profile: R2ProfileV2 }
-    >({ status: 'loading' })
-
-    useEffect(() => {
-        let active = true
-        if (!runtimeCapabilities.r2ForegroundUpload.supported) {
-            setR2State({ status: 'unavailable', reason: 'runtime' })
-            return () => { active = false }
-        }
-        void (async () => {
-            const profile = await getRuntimeR2UploadRepository().getProfile(DEFAULT_R2_PROFILE_ID)
-            if (!active) return
-            if (!profile
-                || profile.transport !== 'native-s3'
-                || profile.accountId.trim().length === 0
-                || profile.bucket.trim().length === 0) {
-                setR2State({ status: 'unavailable', reason: 'profile' })
-                return
-            }
-            const credential = await nativeR2CredentialStatus(profile.credentialRef).catch(() => null)
-            if (!active) return
-            setR2State(credential?.available
-                ? { status: 'ready', profile }
-                : { status: 'unavailable', reason: 'credential' })
-        })().catch(() => {
-            if (active) setR2State({ status: 'unavailable', reason: 'profile' })
-        })
-        return () => { active = false }
-    }, [])
+    const r2State = useDefaultR2Readiness()
 
     const descriptions: Record<SingleImageMetadataMode, string> = {
         embedded: t('guided.metadata.embeddedHelp', '편집 정보를 이미지 안에 유지합니다. 개인 보관과 다시 불러오기에 편리해요.'),

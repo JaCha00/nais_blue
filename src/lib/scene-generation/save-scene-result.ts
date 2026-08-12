@@ -34,6 +34,8 @@ export interface SaveSceneResultOptions {
     registerArtifact?: (result: OutputWriteResult) => Promise<SceneOutputArtifactLineage | null>
     /** Reverses only a record created by the current failed output workflow. */
     rollbackArtifact?: () => void | Promise<void>
+    /** Post-commit work such as R2 release. Failure never rolls back a verified local output. */
+    afterSave?: (result: OutputWriteResult) => void | Promise<void>
     /** Immutable enqueue-time output context for durable execution. */
     outputContext?: {
         useAbsoluteScenePath: boolean
@@ -41,6 +43,14 @@ export interface SaveSceneResultOptions {
         presetName: string
         presetPathSegments?: string[]
         sceneName: string
+        generationFolderId?: string | null
+        generationFolderPath?: string | null
+        /** Exact folder captured at enqueue time; when present no preset/scene suffix is appended. */
+        directory?: string
+        capabilityFallbackDirectory?: string
+        autoR2UploadProfileId?: string | null
+        r2Bucket?: string | null
+        r2Prefix?: string | null
     }
 }
 
@@ -64,7 +74,16 @@ function sceneOutputDirectory(params: {
     sceneName: string
     rotationCharacterId?: string
     rotationCharacterFolderName?: string
+    exactDirectory?: string
+    exactCapabilityFallbackDirectory?: string
 }): { directory: string; capabilityFallbackDirectory: string; nestedSegments: string[] } {
+    if (params.exactDirectory?.trim()) {
+        return {
+            directory: params.exactDirectory,
+            capabilityFallbackDirectory: params.exactCapabilityFallbackDirectory?.trim() || 'NAIS_Scene',
+            nestedSegments: [],
+        }
+    }
     const safePresetPath = (params.presetPathSegments?.length
         ? params.presetPathSegments
         : [params.presetName || 'Default'])
@@ -145,6 +164,8 @@ export async function saveSceneResult(
         sceneName,
         rotationCharacterId: ctx.rotationCharacterId,
         rotationCharacterFolderName: ctx.rotationCharacterFolderName,
+        exactDirectory: options.outputContext?.directory,
+        exactCapabilityFallbackDirectory: options.outputContext?.capabilityFallbackDirectory,
     })
     let sessionInvalid = false
     let finalizeRejected = false
@@ -159,9 +180,9 @@ export async function saveSceneResult(
                 : { transactionId: options.outputTransactionId }),
             ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
             terminalWorkflowCommit: options.sourceJobId !== undefined,
-            includeFinalImageFacts: options.registerArtifact !== undefined,
+            includeFinalImageFacts: options.registerArtifact !== undefined || options.afterSave !== undefined,
             destination: {
-                ...(params.portableOutputDirectory === undefined
+                ...(params.portableOutputDirectory === undefined || options.outputContext?.directory !== undefined
                     ? {}
                     : {
                         portableDirectory: params.portableOutputDirectory.kind === 'standard'
@@ -192,6 +213,8 @@ export async function saveSceneResult(
             },
             imageBytes: binaryData,
             imageDataUrl: dataUrl,
+            preserveProviderOriginal: options.outputContext?.autoR2UploadProfileId != null
+                && effectiveMetadataMode === 'strip-and-sidecar',
             metadata: {
                 params: metadataParams,
                 imageFormat: fileExt,
@@ -254,6 +277,13 @@ export async function saveSceneResult(
                 output.result.capabilityFallbackReason,
                 output.result.capabilityFallbackAlternative,
             )
+        }
+        if (options.afterSave !== undefined) {
+            try {
+                await options.afterSave(output.result)
+            } catch (error) {
+                console.warn('[SceneGeneration] Result was saved but post-save release failed.', error)
+            }
         }
     } catch (error) {
         if (sessionInvalid || finalizeRejected || !canSave()) return false

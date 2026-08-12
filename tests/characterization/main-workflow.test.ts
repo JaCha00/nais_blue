@@ -8,6 +8,7 @@ import { buildNais2Params, redactSentPayloadForMetadata } from '@/lib/generation
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { NaiTransportTimeoutError } from '@/services/nai/transport'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
+import { createDefaultGenerationFolder, type GenerationFolder } from '@/domain/generation-folders'
 
 import { assertDeepEqual, loadFixtureJson } from '../helpers'
 import {
@@ -409,6 +410,7 @@ function resetStores(): void {
             runtimeCapture.calls.push('anlas:refresh-slot-1')
         },
     })
+    const defaultGenerationFolder = createDefaultGenerationFolder('NAIS_Output', false, new Date(FIXED_TIME).toISOString())
     stores.useSettingsStore.setState({
         autoSave: false,
         useStreaming: false,
@@ -417,6 +419,8 @@ function resetStores(): void {
         metadataMode: 'embedded',
         savePath: 'NAIS_Output',
         useAbsolutePath: false,
+        generationFolders: [defaultGenerationFolder],
+        activeGenerationFolderId: defaultGenerationFolder.id,
     })
     stores.useGenerationStore.setState({
         basePrompt: '',
@@ -1683,6 +1687,58 @@ describe('Main workflow golden characterization', () => {
         expect(runtimeCapture.requests).toHaveLength(2)
         expect(runtimeCapture.params.map(params => params.seed)).toEqual([FIXED_SEED, FIXED_SEED])
         expect(stores.useGenerationStore.getState().history).toHaveLength(2)
+    })
+
+    it('keeps one selected generation folder for the entire batch even if live settings change', async () => {
+        const now = new Date(FIXED_TIME).toISOString()
+        const capturedFolder: GenerationFolder = {
+            schemaVersion: 1,
+            id: 'generation-folder-prime',
+            name: 'Prime',
+            parentId: null,
+            rootDirectory: 'Prime_Output',
+            useAbsolutePath: false,
+            commonPrompt: 'folder common',
+            r2: { autoUpload: false, bucket: null, prefix: null },
+            createdAt: now,
+            updatedAt: now,
+        }
+        const laterFolder: GenerationFolder = {
+            ...capturedFolder,
+            id: 'generation-folder-later',
+            name: 'Later',
+            rootDirectory: 'Later_Output',
+            commonPrompt: 'later common',
+        }
+        stores.useSettingsStore.setState({
+            autoSave: true,
+            generationFolders: [capturedFolder, laterFolder],
+            activeGenerationFolderId: capturedFolder.id,
+        })
+        stores.useGenerationStore.setState({
+            compositionMode: 'legacy',
+            basePrompt: 'subject',
+            batchCount: 2,
+        })
+        runtimeCapture.fetchOverride = async (input: string | URL | Request, init?: RequestInit) => {
+            runtimeCapture.requests.push({
+                mode: 'non-streaming',
+                endpoint: String(input),
+                payload: JSON.parse(String(init?.body)) as Record<string, unknown>,
+            })
+            stores.useSettingsStore.setState({ activeGenerationFolderId: laterFolder.id })
+            return new Response(runtimeCapture.zipBytes, { status: 200 })
+        }
+
+        await stores.useGenerationStore.getState().generate()
+
+        expect(runtimeCapture.params.map(item => item.prompt)).toEqual([
+            'folder common, subject',
+            'folder common, subject',
+        ])
+        expect(runtimeCapture.writes).toHaveLength(2)
+        expect(runtimeCapture.writes.every(write => write.location.startsWith('Prime_Output/'))).toBe(true)
+        expect(runtimeCapture.writes.some(write => write.location.startsWith('Later_Output/'))).toBe(false)
     })
 
     it('keeps source-image infill transport-derived and preserves manual character positions in v2', async () => {

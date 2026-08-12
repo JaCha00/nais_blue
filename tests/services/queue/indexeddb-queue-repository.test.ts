@@ -325,6 +325,33 @@ describe('normalized IndexedDB durable queue repository', () => {
         queue.close()
     })
 
+    it('projects the immutable output folder without exposing the full snapshot', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-directory-projection'))
+        const fixedSnapshot = createGenerationJobSnapshot({
+            prompt: { positive: 'prompt', negative: '' },
+            parameters: { seed: 7 },
+            outputPolicy: {
+                workflow: 'main',
+                output: { directory: 'D:\\Images\\Prime\\01' },
+            },
+            resources: [],
+            resumability: 'resumable',
+        })
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [jobInput({ snapshot: fixedSnapshot })],
+        })
+
+        const page = await queue.listJobProjections({ batchId: 'batch:1' })
+        expect(page.items[0]).toMatchObject({ outputDirectory: 'D:\\Images\\Prime\\01' })
+        expect(page.items[0]).not.toHaveProperty('snapshot')
+        queue.close()
+    })
+
     it('orders the oldest batch before a newer batch ordinal while preserving priority', async () => {
         const factory = new IDBFactory()
         const queue = repository(factory, databaseName('cross-batch-order'))

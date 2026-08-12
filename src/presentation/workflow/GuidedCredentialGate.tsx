@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ExternalLink, KeyRound, LoaderCircle, ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { ExternalUrlLink } from '@/components/ui/external-url-link'
 import { Input } from '@/components/ui/input'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { useAuthStore } from '@/stores/auth-store'
@@ -90,15 +91,13 @@ export function GuidedCredentialGate({ children }: { children: ReactNode }) {
                             </p>
                         )}
                         <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
-                            <a
+                            <ExternalUrlLink
                                 href={NOVELAI_TOKEN_GUIDE_URL}
-                                target="_blank"
-                                rel="noreferrer"
                                 className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline focus-ring"
                             >
                                 {t('guided.credential.openGuide', '공식 발급 안내 보기')}
                                 <ExternalLink className="ml-1.5 h-3.5 w-3.5" aria-hidden="true" />
-                            </a>
+                            </ExternalUrlLink>
                             <Button type="submit" disabled={candidate.trim().length === 0 || isLoading}>
                                 {isLoading && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                                 {t('guided.credential.connect', '확인하고 연결')}

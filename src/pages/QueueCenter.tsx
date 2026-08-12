@@ -649,6 +649,7 @@ export default function QueueCenter() {
                                         </div>
                                         <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
                                             <span>{workflowLabel(job.workflow)}{job.sceneId ? ` · ${job.sceneId}` : ''}</span>
+                                            {job.outputDirectory && <span className="max-w-56 truncate" title={job.outputDirectory}>{t('generationFolders.queueFolder', '폴더 · {{path}}', { path: job.outputDirectory })}</span>}
                                             <span>{t('queue.attempt', 'Attempt {{current}}/{{max}}', { current: job.attemptCount, max: job.maxAttempts })}</span>
                                             <span>{stageLabel(job.progress.stage)} · {percent}%</span>
                                         </div>

@@ -87,7 +87,9 @@ import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
 import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
 import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
+import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
+import { outputPatchFromGenerationFolder } from './generation-folder-selection'
 
 type DraftPatch = Omit<ReviseSingleImageDraftInput, 'updatedAt'>
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -618,23 +620,35 @@ function SettingsStep({
             <section className="border-y border-border/55 py-5" aria-labelledby="guided-output-heading">
                 <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
                     <div>
-                        <label id="guided-output-heading" htmlFor="guided-output-directory" className="text-sm font-semibold">
+                        <h2 id="guided-output-heading" className="text-sm font-semibold">
                             {t('guided.single.settings.outputDirectory', '저장 폴더')}
-                        </label>
+                        </h2>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            {t('guided.single.settings.outputHelp', '상대 경로는 앱의 기본 이미지 폴더 아래에 만들어져요.')}
+                            {t('guided.single.settings.outputHelp', '작업별 저장 위치와 자동 업로드 대상을 선택하세요.')}
                         </p>
-                        <Input
-                            id="guided-output-directory"
-                            className="mt-3"
-                            value={directory}
-                            disabled={disabled}
-                            onChange={event => setDirectory(event.target.value)}
-                            onBlur={commitDirectory}
-                            onKeyDown={event => {
-                                if (event.key === 'Enter') event.currentTarget.blur()
-                            }}
-                        />
+                        <div className="mt-3">
+                            <GenerationFolderPicker
+                                value={draft.payload.output.generationFolderId}
+                                disabled={disabled}
+                                allowManual
+                                onChange={selection => onOutputPatch(outputPatchFromGenerationFolder(
+                                    selection,
+                                    draft.payload.output.metadataMode,
+                                ))}
+                            />
+                        </div>
+                        {draft.payload.output.generationFolderId == null && (
+                            <Input
+                                id="guided-output-directory"
+                                className="mt-3"
+                                value={directory}
+                                disabled={disabled}
+                                onChange={event => setDirectory(event.target.value)}
+                                onBlur={commitDirectory}
+                                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
+                                aria-label={t('guided.single.settings.directOutputDirectory', '직접 입력 저장 경로')}
+                            />
+                        )}
                     </div>
                     <div>
                         <label htmlFor="guided-output-format" className="text-sm font-semibold">
@@ -811,7 +825,9 @@ function ReviewStep({
                         : t('guided.single.review.noAccount', '사용 가능한 계정 없음')}
                 </ReviewRow>
                 <ReviewRow label={t('guided.single.review.output', '저장')} onEdit={submitted ? undefined : () => onEdit('settings')}>
-                    {draft.payload.output.directory} · {draft.payload.output.imageFormat.toUpperCase()} · {t('guided.single.review.autosave', '자동 저장')}
+                    {draft.payload.output.generationFolderPath
+                        ? `${draft.payload.output.generationFolderPath} · ${draft.payload.output.directory}`
+                        : draft.payload.output.directory} · {draft.payload.output.imageFormat.toUpperCase()} · {t('guided.single.review.autosave', '자동 저장')}
                 </ReviewRow>
                 <ReviewRow label={t('guided.single.review.cost', '최대 비용')}>
                     <span className="font-semibold">

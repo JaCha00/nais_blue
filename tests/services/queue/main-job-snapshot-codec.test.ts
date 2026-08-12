@@ -131,4 +131,37 @@ describe('Main Job Snapshot codec', () => {
             expect(error).toMatchObject({ kind: 'fatal' })
         }
     })
+
+    it('round-trips the captured generation folder and R2 target without consulting live settings', () => {
+        const base = prepared()
+        const snapshot = encodeMainJobSnapshot({
+            ...base,
+            metadataMode: 'strip-and-sidecar',
+            output: {
+                ...base.output,
+                directory: 'D:\\Images\\Prime\\01',
+                useAbsolutePath: true,
+                generationFolderId: 'folder-01',
+                generationFolderPath: 'Prime / 01',
+                autoR2UploadProfileId: 'asset-profile-default-r2',
+                r2Bucket: 'scene-bucket',
+                r2Prefix: 'prime/bluehair/01',
+            },
+        }, dehydrated).snapshot
+
+        expect(decodeMainJobSnapshot(snapshot).mainWorkflow.output).toMatchObject({
+            directory: 'D:\\Images\\Prime\\01',
+            generationFolderId: 'folder-01',
+            generationFolderPath: 'Prime / 01',
+            autoR2UploadProfileId: 'asset-profile-default-r2',
+            r2Bucket: 'scene-bucket',
+            r2Prefix: 'prime/bluehair/01',
+        })
+
+        const malformed = JSON.parse(JSON.stringify(snapshot)) as GenerationJobSnapshot
+        const parameters = malformed.parameters as Record<string, unknown>
+        const workflow = parameters.mainWorkflow as { output: { r2Bucket: string } }
+        workflow.output.r2Bucket = 'Invalid_Bucket'
+        expect(() => decodeMainJobSnapshot(malformed)).toThrowError(QueueExecutionError)
+    })
 })

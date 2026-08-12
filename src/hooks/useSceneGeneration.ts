@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '@/components/ui/use-toast'
-import { useSceneStore, type SceneCard } from '@/stores/scene-store'
+import { getScenePresetPathSegments, useSceneStore, type SceneCard } from '@/stores/scene-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAuthStore, type ApiSlot } from '@/stores/auth-store'
@@ -19,6 +19,10 @@ import {
 } from '@/lib/scene-generation/request-cancellation'
 import { useQueueStore } from '@/stores/queue-store'
 import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
+import { resolveGenerationFolder } from '@/domain/generation-folders'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
+import { gateGenerationFolderAutoUpload, getDefaultR2Readiness } from '@/services/r2/readiness'
+import { releaseGeneratedOutputToR2 } from '@/services/r2/generated-release'
 
 const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
@@ -146,10 +150,40 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
 
     try {
         const resolveStartedAt = Date.now()
+        const settingsSnapshot = useSettingsStore.getState()
+        const preliminaryFolder = resolveGenerationFolder(
+            settingsSnapshot.generationFolders,
+            scene.generationFolderId,
+            {
+                directory: settingsSnapshot.sceneSavePath,
+                useAbsolutePath: settingsSnapshot.useAbsoluteScenePath,
+            },
+        )
+        const r2Readiness = preliminaryFolder?.r2.autoUpload
+            ? await getDefaultR2Readiness()
+            : null
+        const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
+        const resolvedFolder = baseR2Profile === null
+            ? preliminaryFolder
+            : resolveGenerationFolder(
+                settingsSnapshot.generationFolders,
+                scene.generationFolderId,
+                {
+                    directory: settingsSnapshot.sceneSavePath,
+                    useAbsolutePath: settingsSnapshot.useAbsoluteScenePath,
+                    r2Bucket: baseR2Profile.bucket,
+                    r2Prefix: baseR2Profile.prefix,
+                },
+            )
+        const generationFolder = gateGenerationFolderAutoUpload(
+            resolvedFolder,
+            r2Readiness?.status === 'ready',
+        )
         const built = await buildSceneGenerationParams(scene, {
             sessionId: ctx.sessionId,
             requestId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
             now: new Date(resolveStartedAt),
+            generationFolder,
         })
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
@@ -221,10 +255,61 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
         let sequenceConflict = false
         const activeSequenceLease = sequenceLease
+        const sceneState = useSceneStore.getState()
+        const preset = sceneState.presets.find(candidate => candidate.id === ctx.activePresetId)
+        const outputContext = generationFolder === null
+            ? undefined
+            : {
+                useAbsoluteScenePath: generationFolder.useAbsolutePath,
+                metadataMode: generationFolder.r2.autoUpload
+                    ? 'strip-and-sidecar' as const
+                    : scene.metadataMode ?? settingsSnapshot.metadataMode,
+                presetName: preset?.name || 'Default',
+                presetPathSegments: getScenePresetPathSegments(sceneState.presets, ctx.activePresetId),
+                sceneName: scene.name,
+                generationFolderId: generationFolder.id,
+                generationFolderPath: generationFolder.path,
+                directory: generationFolder.directory,
+                capabilityFallbackDirectory: generationFolder.useAbsolutePath ? 'NAIS_Scene' : generationFolder.directory,
+                autoR2UploadProfileId: generationFolder.r2.autoUpload ? DEFAULT_R2_PROFILE_ID : null,
+                r2Bucket: generationFolder.r2.bucket,
+                r2Prefix: generationFolder.r2.prefix,
+            }
+        const sourceJobId = `scene-direct-${ctx.sessionId}-${scene.id}-${params.seed}`
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
             presentation: sceneResultPresentation,
             canSave: () => isSessionAlive(ctx.sessionId),
             sentPayloadSummary: result.sentPayloadSummary,
+            ...(outputContext === undefined ? {} : { outputContext }),
+            ...(generationFolder?.r2.autoUpload
+                ? {
+                    afterSave: async output => {
+                        try {
+                            const release = await releaseGeneratedOutputToR2({
+                                profileId: DEFAULT_R2_PROFILE_ID,
+                                sourceJobId,
+                                imageFormat: mimeType === 'image/webp' ? 'webp' : 'png',
+                                output,
+                                bucket: generationFolder.r2.bucket,
+                                prefix: generationFolder.r2.prefix,
+                            })
+                            if (release.status !== 'uploaded') {
+                                reportDiagnostic(new Error(`Generated R2 release did not complete: ${release.status}`), {
+                                    operation: 'r2.generated-release',
+                                    stage: release.status,
+                                    jobId: sourceJobId,
+                                })
+                            }
+                        } catch (error) {
+                            reportDiagnostic(error, {
+                                operation: 'r2.generated-release',
+                                stage: 'upload',
+                                jobId: sourceJobId,
+                            })
+                        }
+                    },
+                }
+                : {}),
             ...(activeSequenceLease === null
                 ? {}
                 : {

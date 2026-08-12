@@ -170,6 +170,8 @@ export interface GenerationJobProjection {
     readonly batchId: string
     readonly workflow: GenerationWorkflow
     readonly sceneId: string | null
+    /** Enqueue-time output destination; absent only on legacy/foreign snapshots. */
+    readonly outputDirectory?: string | null
     readonly state: GenerationJobState
     readonly createdAt: string
     readonly updatedAt: string

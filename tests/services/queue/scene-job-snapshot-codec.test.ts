@@ -117,4 +117,30 @@ describe('Scene Job Snapshot codec', () => {
             expect(error).toMatchObject({ kind: 'fatal' })
         }
     })
+
+    it('round-trips the enqueue-time folder and R2 destination', () => {
+        const snapshot = encodeSceneJobSnapshot(input({
+            outputContext: {
+                useAbsoluteScenePath: true,
+                metadataMode: 'strip-and-sidecar',
+                presetName: 'Preset A',
+                presetPathSegments: ['Preset A'],
+                sceneName: 'Opening',
+                generationFolderId: 'folder-01',
+                generationFolderPath: 'Prime / 01',
+                directory: 'D:\\Images\\Prime\\01',
+                capabilityFallbackDirectory: 'NAIS_Scene',
+                autoR2UploadProfileId: 'asset-profile-default-r2',
+                r2Bucket: 'scene-bucket',
+                r2Prefix: 'prime/bluehair/01',
+            },
+        }), dehydrated).snapshot
+
+        expect(decodeSceneJobSnapshot(snapshot).sceneWorkflow.outputContext).toMatchObject({
+            generationFolderId: 'folder-01',
+            directory: 'D:\\Images\\Prime\\01',
+            r2Bucket: 'scene-bucket',
+            r2Prefix: 'prime/bluehair/01',
+        })
+    })
 })

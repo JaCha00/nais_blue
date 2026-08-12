@@ -227,6 +227,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function projectionOutputDirectory(snapshot: GenerationJobSnapshot): string | null {
+    const policy = snapshot.outputPolicy
+    if (!isRecord(policy)) return null
+    if (policy.workflow === 'main' && isRecord(policy.output) && typeof policy.output.directory === 'string') {
+        return policy.output.directory
+    }
+    if (policy.workflow !== 'scene' || !isRecord(policy.outputContext)) return null
+    if (typeof policy.outputContext.directory === 'string') return policy.outputContext.directory
+    if (!isRecord(policy.saveContext) || typeof policy.saveContext.sceneSavePath !== 'string') return null
+    const segments = Array.isArray(policy.outputContext.presetPathSegments)
+        ? policy.outputContext.presetPathSegments.filter((value): value is string => typeof value === 'string')
+        : typeof policy.outputContext.presetName === 'string'
+            ? [policy.outputContext.presetName]
+            : []
+    if (typeof policy.outputContext.sceneName === 'string') segments.push(policy.outputContext.sceneName)
+    return [policy.saveContext.sceneSavePath, ...segments].filter(Boolean).join('/')
+}
+
 function assertTimestamp(value: unknown, field: string): asserts value is string {
     if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', `${field} must be an ISO timestamp`)
@@ -2220,6 +2238,7 @@ export class IndexedDBQueueRepository {
                 batchId: job.batchId,
                 workflow: job.workflow,
                 sceneId: job.sceneId,
+                outputDirectory: projectionOutputDirectory(job.snapshot),
                 state: job.state,
                 createdAt: job.createdAt,
                 updatedAt: job.updatedAt,
@@ -2361,6 +2380,7 @@ function projectStoredJob(stored: StoredJobRecord): GenerationJobProjection {
         batchId: stored.batchId,
         workflow: stored.workflow,
         sceneId: stored.sceneId,
+        outputDirectory: projectionOutputDirectory(stored.snapshot),
         state: stored.state,
         createdAt: stored.createdAt,
         updatedAt: stored.updatedAt,

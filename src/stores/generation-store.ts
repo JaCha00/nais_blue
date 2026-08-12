@@ -45,6 +45,8 @@ import {
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
+import { DEFAULT_GENERATION_FOLDER_ID, resolveGenerationFolder } from '@/domain/generation-folders'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import type { CompositionEngineIssue, CompositionEnginePlan } from '@/domain/composition/engine'
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import { materializeCharacterResourcesForNai } from '@/lib/composition/character-resource-adapter'
@@ -61,6 +63,8 @@ import {
     prepareMainGeneration,
     type PreparedMainGeneration,
 } from '@/services/generation/main-generation-plan'
+import { releaseGeneratedOutputToR2 } from '@/services/r2/generated-release'
+import { gateGenerationFolderAutoUpload, getDefaultR2Readiness } from '@/services/r2/readiness'
 
 export type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 
@@ -1052,6 +1056,41 @@ export const useGenerationStore = create<GenerationState>()(
                     return
                 }
 
+                // Capture the output plan once. Neither a folder edit nor an R2
+                // profile edit may redirect later items in this batch.
+                const outputSettingsSnapshot = useSettingsStore.getState()
+                const preliminaryFolder = resolveGenerationFolder(
+                    outputSettingsSnapshot.generationFolders,
+                    outputSettingsSnapshot.activeGenerationFolderId,
+                    {
+                        directory: outputSettingsSnapshot.savePath,
+                        useAbsolutePath: outputSettingsSnapshot.useAbsolutePath,
+                    },
+                )
+                const r2Readiness = preliminaryFolder?.r2.autoUpload
+                    ? await getDefaultR2Readiness()
+                    : null
+                const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
+                const resolvedFolder = baseR2Profile === null
+                    ? preliminaryFolder
+                    : resolveGenerationFolder(
+                        outputSettingsSnapshot.generationFolders,
+                        outputSettingsSnapshot.activeGenerationFolderId,
+                        {
+                            directory: outputSettingsSnapshot.savePath,
+                            useAbsolutePath: outputSettingsSnapshot.useAbsolutePath,
+                            r2Bucket: baseR2Profile.bucket,
+                            r2Prefix: baseR2Profile.prefix,
+                        },
+                    )
+                const generationFolder = gateGenerationFolderAutoUpload(
+                    resolvedFolder,
+                    r2Readiness?.status === 'ready',
+                )
+                const effectiveBasePrompt = [generationFolder?.commonPrompt.trim(), basePrompt]
+                    .filter(Boolean)
+                    .join(', ')
+
                 // Create new AbortController and session ID
                 const abortController = new AbortController()
                 const sessionId = Date.now()
@@ -1100,7 +1139,7 @@ export const useGenerationStore = create<GenerationState>()(
                             set({ seed: Math.floor(Math.random() * 4294967295) })
                         }
 
-                        const settings = useSettingsStore.getState()
+                        const settings = outputSettingsSnapshot
                         const { width: finalWidth, height: finalHeight } = await resolveMainSourceDimensions(
                             sourceImage,
                             selectedResolution,
@@ -1139,7 +1178,7 @@ export const useGenerationStore = create<GenerationState>()(
                             const fragment = await buildMainFragmentInput(
                                 compositionMode === 'v2' ? 'generate' : 'preview',
                                 [
-                                    basePrompt,
+                                    effectiveBasePrompt,
                                     inpaintingPrompt,
                                     additionalPrompt,
                                     detailPrompt,
@@ -1178,7 +1217,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 profile: assetProfile,
                                 selectedRecipeId,
                                 prompt: {
-                                    base: basePrompt,
+                                    base: effectiveBasePrompt,
                                     inpainting: inpaintingPrompt,
                                     additional: additionalPrompt,
                                     detail: detailPrompt,
@@ -1326,11 +1365,16 @@ export const useGenerationStore = create<GenerationState>()(
                         let legacyNegative = ''
                         if (compositionMode !== 'v2') {
                             if (modulePromptsActive) {
-                                legacyPrompt = readStringParam(modulePlan?.generationParams.prompt)
+                                const folderPrompt = generationFolder?.commonPrompt.trim()
+                                    ? await legacyFragmentSession!.process(removeComments(generationFolder.commonPrompt))
+                                    : ''
+                                legacyPrompt = [folderPrompt, readStringParam(modulePlan?.generationParams.prompt)]
+                                    .filter(Boolean)
+                                    .join(', ')
                                 legacyNegative = readStringParam(modulePlan?.generationParams.negative_prompt)
                             } else {
                                 legacyPrompt = [
-                                    removeComments(basePrompt),
+                                    removeComments(effectiveBasePrompt),
                                     removeComments(inpaintingPrompt),
                                     removeComments(additionalPrompt),
                                     removeComments(detailPrompt),
@@ -1362,7 +1406,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 prompt: legacyPrompt,
                                 negativePrompt: legacyNegative,
                                 originalPrompts: {
-                                    base: basePrompt,
+                                    base: effectiveBasePrompt,
                                     additional: additionalPrompt,
                                     detail: detailPrompt,
                                     negative: negativePrompt,
@@ -1448,6 +1492,9 @@ export const useGenerationStore = create<GenerationState>()(
                             }
                         }
                         const v2Output = compositionMode === 'v2' ? compositionOutput : null
+                        if (generationFolder?.r2.autoUpload) {
+                            generationParams = { ...generationParams, metadataMode: 'strip-and-sidecar' }
+                        }
                         // Reset progress
                         set({ streamProgress: 0 })
 
@@ -1458,7 +1505,10 @@ export const useGenerationStore = create<GenerationState>()(
                             savePath,
                             autoSave: liveAutoSave,
                             useAbsolutePath,
-                        } = useSettingsStore.getState()
+                        } = outputSettingsSnapshot
+                        const explicitOutputFolder = generationFolder?.id === DEFAULT_GENERATION_FOLDER_ID
+                            ? null
+                            : generationFolder
                         const preparedGeneration = prepareMainGeneration({
                             params: generationParams,
                             fallbackImageFormat: settings.imageFormat,
@@ -1467,17 +1517,29 @@ export const useGenerationStore = create<GenerationState>()(
                             sequenceCommitProposal: generationSequenceProposal,
                             output: {
                                 autoSave: v2Output?.autoSave ?? liveAutoSave,
-                                directory: v2Output?.directory
+                                directory: explicitOutputFolder?.directory
+                                    || v2Output?.directory
                                     || modulePlan?.output.directory
                                     || savePath,
-                                useAbsolutePath: v2Output?.useAbsolutePath ?? useAbsolutePath,
-                                capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
+                                useAbsolutePath: explicitOutputFolder?.useAbsolutePath
+                                    ?? v2Output?.useAbsolutePath
+                                    ?? useAbsolutePath,
+                                capabilityFallbackDirectory: explicitOutputFolder
+                                    ? explicitOutputFolder.useAbsolutePath ? 'NAIS_Output' : explicitOutputFolder.directory
+                                    : v2Output?.capabilityFallbackDirectory
                                     || savePath,
                                 ...(v2Output?.portableDirectory === undefined
                                     ? {}
                                     : { portableDirectory: v2Output.portableDirectory }),
                                 fileName: v2Output?.fileName ?? modulePlan?.output.fileName,
                                 collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                                generationFolderId: generationFolder?.id ?? null,
+                                generationFolderPath: generationFolder?.path ?? null,
+                                autoR2UploadProfileId: generationFolder?.r2.autoUpload
+                                    ? DEFAULT_R2_PROFILE_ID
+                                    : null,
+                                r2Bucket: generationFolder?.r2.bucket ?? null,
+                                r2Prefix: generationFolder?.r2.prefix ?? null,
                             },
                         })
                         const {
@@ -1611,7 +1673,13 @@ export const useGenerationStore = create<GenerationState>()(
                                     const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
                                     const fileName = preparedOutput.fileName
                                         ?? `NAIS_${typePrefix}${Date.now()}.${fileExt}`
+                                    const sourceJobId = `main-direct-${sessionId}-${i + 1}`
+                                    const autoR2UploadProfileId = preparedOutput.autoR2UploadProfileId
+                                    const shouldReleaseToR2 = autoR2UploadProfileId !== null
+                                        && effectiveMetadataMode === 'strip-and-sidecar'
                                     const output = await getRuntimeOutputWriter().write({
+                                        sourceJobId,
+                                        includeFinalImageFacts: true,
                                         destination: {
                                             ...(preparedOutput.portableDirectory === undefined
                                                 ? {}
@@ -1626,6 +1694,7 @@ export const useGenerationStore = create<GenerationState>()(
                                         },
                                         imageBytes: bytes,
                                         imageDataUrl: imageUrl,
+                                        preserveProviderOriginal: shouldReleaseToR2,
                                         metadata: {
                                             params: resultParams,
                                             imageFormat,
@@ -1653,6 +1722,31 @@ export const useGenerationStore = create<GenerationState>()(
                                         },
                                     })
                                     if (output.status === 'cancelled') break
+                                    if (shouldReleaseToR2 && autoR2UploadProfileId !== null) {
+                                        try {
+                                            const release = await releaseGeneratedOutputToR2({
+                                                profileId: autoR2UploadProfileId,
+                                                sourceJobId,
+                                                imageFormat,
+                                                output: output.result,
+                                                bucket: preparedOutput.r2Bucket,
+                                                prefix: preparedOutput.r2Prefix,
+                                            })
+                                            if (release.status !== 'uploaded') {
+                                                reportDiagnostic(new Error(`Generated R2 release did not complete: ${release.status}`), {
+                                                    operation: 'r2.generated-release',
+                                                    stage: release.status,
+                                                    jobId: sourceJobId,
+                                                })
+                                            }
+                                        } catch (releaseError) {
+                                            reportDiagnostic(releaseError, {
+                                                operation: 'r2.generated-release',
+                                                stage: 'upload',
+                                                jobId: sourceJobId,
+                                            })
+                                        }
+                                    }
                                     if (output.result.capabilityFallbackUsed) {
                                         toast({
                                             title: i18n.t(

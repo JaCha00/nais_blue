@@ -6,6 +6,7 @@ import { FragmentPromptDialog } from '@/components/fragments/FragmentPromptDialo
 import { SourceImagePanel } from '@/components/layout/SourceImagePanel'
 import { CharacterSettingsDialog } from '@/components/character/CharacterSettingsDialog'
 import { CharacterPromptPanel } from '@/components/character/CharacterPromptPanel'
+import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { PromptGeneratorDialog } from '@/components/prompt/PromptGeneratorDialog'
 import { PromptEditorSurface } from '@/components/prompt/PromptEditorSurface'
 import { PromptGenerationControls } from '@/components/prompt/PromptGenerationControls'
@@ -47,6 +48,7 @@ import { AVAILABLE_MODELS } from '@/stores/generation-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
+import { useSettingsStore } from '@/stores/settings-store'
 import { ResolutionSelector } from '@/components/ui/ResolutionSelector'
 import {
     assessGenerationStepQuality,
@@ -106,6 +108,8 @@ export function PromptPanel() {
 
     // Zustand 선택적 구독 - characterPromptStore
     const characterCount = useCharacterPromptStore(state => state.characters.filter(c => c.enabled).length)
+    const activeGenerationFolderId = useSettingsStore(state => state.activeGenerationFolderId)
+    const setActiveGenerationFolder = useSettingsStore(state => state.setActiveGenerationFolder)
 
     const [promptGenOpen, setPromptGenOpen] = useState(false)
     const [fragmentDialogOpen, setFragmentDialogOpen] = useState(false)
@@ -509,6 +513,18 @@ export function PromptPanel() {
                     setAdditionalPrompt(newValue)
                 }}
             />
+
+            {!isSceneMode && (
+                <section className="mb-3 border-y border-border/60 py-2" aria-label={t('generationFolders.current', '이미지 생성 폴더')}>
+                    <GenerationFolderPicker
+                        value={activeGenerationFolderId}
+                        disabled={isGenerating}
+                        onChange={selection => {
+                            if (selection) setActiveGenerationFolder(selection.folder.id)
+                        }}
+                    />
+                </section>
+            )}
 
             <PromptGenerationControls isSceneMode={isSceneMode} />
 

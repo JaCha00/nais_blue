@@ -2,6 +2,8 @@ import type {
     QueueBatchOrigin,
     QueueResourceRecord,
 } from '@/domain/queue/types'
+import { resolveGenerationFolder } from '@/domain/generation-folders'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
 import type { SaveSceneResultContext } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
@@ -26,6 +28,7 @@ import {
     getRuntimeQueueResourceMaterializer,
     type MaterializedQueueResource,
 } from './queue-resource-materializer'
+import { gateGenerationFolderAutoUpload, getDefaultR2Readiness } from '@/services/r2/readiness'
 
 let sceneEnqueueInFlight: Promise<CreateBatchAndEnqueueResult | null> | null = null
 
@@ -102,6 +105,15 @@ async function enqueueSceneQueueTargetsOnce(
     const operationId = useQueueStore.getState().beginEnqueueOperation('scene')
 
     const settings = useSettingsStore.getState()
+    const needsR2 = selected.some(({ scene }) => {
+        const folder = resolveGenerationFolder(settings.generationFolders, scene.generationFolderId, {
+            directory: settings.sceneSavePath,
+            useAbsolutePath: settings.useAbsoluteScenePath,
+        })
+        return folder?.r2.autoUpload === true
+    })
+    const r2Readiness = needsR2 ? await getDefaultR2Readiness() : null
+    const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
     const rotation = useRotationStore.getState()
     const rotationCharacterId = rotation.active && rotation.snapshot
         ? rotation.characterIds[rotation.currentIndex]
@@ -113,6 +125,20 @@ async function enqueueSceneQueueTargetsOnce(
 
     try {
         for (const { target, preset, scene } of selected) {
+            const resolvedFolder = resolveGenerationFolder(
+                settings.generationFolders,
+                scene.generationFolderId,
+                {
+                    directory: settings.sceneSavePath,
+                    useAbsolutePath: settings.useAbsoluteScenePath,
+                    r2Bucket: baseR2Profile?.bucket,
+                    r2Prefix: baseR2Profile?.prefix,
+                },
+            )
+            const generationFolder = gateGenerationFolderAutoUpload(
+                resolvedFolder,
+                r2Readiness?.status === 'ready',
+            )
             const saveContext: SaveSceneResultContext = {
                 activePresetId: preset.id,
                 sceneSavePath: settings.sceneSavePath,
@@ -127,17 +153,35 @@ async function enqueueSceneQueueTargetsOnce(
                     }),
             }
             const outputContext: SceneQueueWorkflowSnapshot['outputContext'] = {
-                useAbsoluteScenePath: settings.useAbsoluteScenePath,
-                metadataMode: scene.metadataMode ?? settings.metadataMode,
+                useAbsoluteScenePath: generationFolder?.useAbsolutePath ?? settings.useAbsoluteScenePath,
+                metadataMode: generationFolder?.r2.autoUpload
+                    ? 'strip-and-sidecar'
+                    : scene.metadataMode ?? settings.metadataMode,
                 presetName: preset.name || 'Default',
                 presetPathSegments: getScenePresetPathSegments(sceneState.presets, preset.id),
                 sceneName: '',
+                ...(generationFolder === null
+                    ? {}
+                    : {
+                        generationFolderId: generationFolder.id,
+                        generationFolderPath: generationFolder.path,
+                        directory: generationFolder.directory,
+                        capabilityFallbackDirectory: generationFolder.useAbsolutePath
+                            ? 'NAIS_Scene'
+                            : generationFolder.directory,
+                        autoR2UploadProfileId: generationFolder.r2.autoUpload
+                            ? DEFAULT_R2_PROFILE_ID
+                            : null,
+                        r2Bucket: generationFolder.r2.bucket,
+                        r2Prefix: generationFolder.r2.prefix,
+                    }),
             }
             for (let count = 0; count < target.count; count += 1) {
                 const built = await buildSceneGenerationParams(scene, {
                     requestId: `durable-enqueue:${preset.id}:${scene.id}:${count}`,
                     now: new Date(),
                     presetId: preset.id,
+                    generationFolder,
                 })
                 sceneState.recordSceneCompositionResult(scene.id, {
                     mode: built.mode,

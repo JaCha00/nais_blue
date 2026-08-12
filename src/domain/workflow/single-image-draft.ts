@@ -4,6 +4,7 @@ import {
     isRightsEffectiveDate,
     isRightsOwner,
 } from './bluehair-rights-policy'
+import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 
 export const WORKFLOW_DRAFT_STORE_KEY = 'nais2-workflow-drafts'
 export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
@@ -49,8 +50,16 @@ export interface SingleImageOutputSettings {
     readonly imageFormat: 'png' | 'webp'
     readonly metadataMode: SingleImageMetadataMode
     readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+    /** Folder plan selected for this job. The resolved path is copied below. */
+    readonly generationFolderId?: string | null
+    readonly generationFolderPath?: string | null
+    /** Folder-local prompt copied into the job so later folder edits cannot change it. */
+    readonly folderCommonPrompt?: string
     /** Explicit, job-local consent. Missing on legacy drafts means disabled. */
     readonly autoR2UploadProfileId?: string | null
+    /** Resolved R2 destination copied into the job at selection time. */
+    readonly r2Bucket?: string | null
+    readonly r2Prefix?: string | null
     /** Explicit consent to discard the provider original after the release is verified. */
     readonly deleteOriginalAfterRelease?: boolean
     /** Optional public rights notice added only after deep-cleaning. */
@@ -258,9 +267,23 @@ function isOutputSettings(value: unknown): value is SingleImageOutputSettings {
         && (value.imageFormat === 'png' || value.imageFormat === 'webp')
         && typeof value.metadataMode === 'string'
         && METADATA_MODES.has(value.metadataMode as SingleImageMetadataMode)
+        && (value.generationFolderId === undefined
+            || value.generationFolderId === null
+            || isBoundedId(value.generationFolderId))
+        && (value.generationFolderPath === undefined
+            || value.generationFolderPath === null
+            || (typeof value.generationFolderPath === 'string' && value.generationFolderPath.length <= 2_000))
+        && (value.folderCommonPrompt === undefined
+            || (typeof value.folderCommonPrompt === 'string' && value.folderCommonPrompt.length <= 20_000))
         && (value.autoR2UploadProfileId === undefined
             || value.autoR2UploadProfileId === null
             || isBoundedId(value.autoR2UploadProfileId))
+        && (value.r2Bucket === undefined
+            || value.r2Bucket === null
+            || isR2BucketName(value.r2Bucket))
+        && (value.r2Prefix === undefined
+            || value.r2Prefix === null
+            || isResolvedR2Prefix(value.r2Prefix))
         && (value.deleteOriginalAfterRelease === undefined
             || typeof value.deleteOriginalAfterRelease === 'boolean')
         && (value.rightsXmpEnabled === undefined
@@ -324,7 +347,12 @@ function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDr
         imageFormat: input.output?.imageFormat ?? 'png',
         metadataMode: input.output?.metadataMode ?? 'embedded',
         collisionPolicy: input.output?.collisionPolicy ?? 'unique',
+        generationFolderId: input.output?.generationFolderId ?? null,
+        generationFolderPath: input.output?.generationFolderPath ?? null,
+        folderCommonPrompt: input.output?.folderCommonPrompt ?? '',
         autoR2UploadProfileId: input.output?.autoR2UploadProfileId ?? null,
+        r2Bucket: input.output?.r2Bucket ?? null,
+        r2Prefix: input.output?.r2Prefix ?? null,
         deleteOriginalAfterRelease: input.output?.deleteOriginalAfterRelease ?? false,
         rightsXmpEnabled: input.output?.rightsXmpEnabled ?? false,
         rightsOwner: input.output?.rightsOwner ?? DEFAULT_RIGHTS_OWNER,
