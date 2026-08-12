@@ -365,7 +365,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
             // 파일 저장 다이얼로그
             const filePath = await saveNativeFileDialog({
                 title: t('settingsPage.backup.export'),
-                defaultPath: `nais2-backup-${new Date().toISOString().split('T')[0]}.json`,
+                defaultPath: `nai-blue-backup-${new Date().toISOString().split('T')[0]}.json`,
                 filters: [{ name: 'JSON', extensions: ['json'] }]
             })
             
@@ -711,7 +711,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 {t('settingsPage.version.title', 'Version')}
                                             </label>
                                             <p className="text-xs text-muted-foreground">
-                                                NAIS blue v{appVersion}
+                                                NAI Blue v{appVersion}
                                             </p>
                                         </div>
                                         {!isMobileRuntime && (
@@ -1581,7 +1581,7 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                     {Object.entries(storeSizes).filter(([, size]) => size > 0).map(([key, size]) => (
                                         <div key={key} className="flex items-center justify-between py-1">
                                             <span className="text-muted-foreground">
-                                                {key.replace('nais2-', '')}
+                                                {key.replace(/^(?:nai-blue|nais2)-/, '')}
                                             </span>
                                             <span className={cn(
                                                 "font-mono",

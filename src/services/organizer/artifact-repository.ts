@@ -9,6 +9,7 @@ import {
     type DistributionVariant,
 } from '@/domain/organizer/types'
 
+// Physical database names stay stable so organizer history survives the rename.
 export const ORGANIZER_ARTIFACT_DATABASE_NAME = 'nais2-organizer-artifacts'
 export const ORGANIZER_ARTIFACT_DATABASE_VERSION = 1
 

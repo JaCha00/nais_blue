@@ -44,7 +44,7 @@ export function promptModuleSourceLine(value: string): string {
 
 function safeSuggestedName(value: string | undefined): string {
     const candidate = (value ?? '')
-        .replace(/\.(?:nais-blue|nais2)\.json$/i, '')
+        .replace(/\.(?:nai-blue|nais-blue|nais2)\.json$/i, '')
         .replace(/\.[^.]+$/, '')
         .replace(/[\\/<>*]/g, '-')
         .trim()

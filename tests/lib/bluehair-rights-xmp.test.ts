@@ -10,7 +10,7 @@ import {
     embedRightsXmp,
     readRightsXmp,
 } from '@/lib/bluehair-rights-xmp'
-import { readNais2Sidecar } from '@/lib/nais2-png-meta'
+import { readNaiBlueSidecar } from '@/lib/nai-blue-metadata'
 import { MetadataWriter } from '@/services/output/metadata-writer'
 import type { GenerationParams } from '@/services/novelai-types'
 
@@ -111,7 +111,7 @@ describe('rights XMP', () => {
             metadataMode: 'strip-and-sidecar',
             rightsXmp: RIGHTS,
         })
-        const sidecar = readNais2Sidecar(prepared.sidecarBytes!)
+        const sidecar = readNaiBlueSidecar(prepared.sidecarBytes!)
 
         expect(readRightsXmp(prepared.imageBytes, 'png')).not.toBeNull()
         expect(sidecar).toMatchObject({

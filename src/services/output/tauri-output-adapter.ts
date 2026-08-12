@@ -34,7 +34,8 @@ import type {
     ResolvedOutputDirectory,
 } from './platform-adapter'
 
-const JOURNAL_DIRECTORY = 'nais2/output-journal'
+const JOURNAL_DIRECTORY = 'nai-blue/output-journal'
+const PRE_RENAME_JOURNAL_DIRECTORY = 'nais2/output-journal'
 const JOURNAL_SUFFIX = '.json'
 
 export class UnresolvedOutputPathError extends Error {
@@ -153,11 +154,11 @@ abstract class TauriOutputPlatformAdapter implements OutputPlatformAdapter {
         return remove(file.path, optionsFor(file))
     }
 
-    private journalRef(transactionId: string): OutputFileRef {
+    private journalRef(transactionId: string, directory = JOURNAL_DIRECTORY): OutputFileRef {
         const fileName = `${transactionId}${JOURNAL_SUFFIX}`
         return {
-            path: `${JOURNAL_DIRECTORY}/${fileName}`,
-            displayPath: `${JOURNAL_DIRECTORY}/${fileName}`,
+            path: `${directory}/${fileName}`,
+            displayPath: `${directory}/${fileName}`,
             baseDir: BaseDirectory.AppData,
         }
     }
@@ -188,23 +189,33 @@ abstract class TauriOutputPlatformAdapter implements OutputPlatformAdapter {
     }
 
     async readJournal(transactionId: string): Promise<Uint8Array | null> {
-        const file = this.journalRef(transactionId)
-        if (!await exists(file.path, { baseDir: BaseDirectory.AppData })) return null
-        return readFile(file.path, { baseDir: BaseDirectory.AppData })
+        for (const directory of [JOURNAL_DIRECTORY, PRE_RENAME_JOURNAL_DIRECTORY]) {
+            const file = this.journalRef(transactionId, directory)
+            if (await exists(file.path, { baseDir: BaseDirectory.AppData })) {
+                return readFile(file.path, { baseDir: BaseDirectory.AppData })
+            }
+        }
+        return null
     }
 
     async removeJournal(transactionId: string): Promise<void> {
         await removeIfExists(this.journalRef(transactionId))
+        await removeIfExists(this.journalRef(transactionId, PRE_RENAME_JOURNAL_DIRECTORY))
         await removeIfExists(this.journalTempRef(transactionId))
     }
 
     async listJournalIds(): Promise<string[]> {
-        if (!await exists(JOURNAL_DIRECTORY, { baseDir: BaseDirectory.AppData })) return []
-        const entries = await readDir(JOURNAL_DIRECTORY, { baseDir: BaseDirectory.AppData })
-        return entries
-            .filter(entry => entry.isFile && entry.name.endsWith(JOURNAL_SUFFIX))
-            .map(entry => entry.name.slice(0, -JOURNAL_SUFFIX.length))
-            .sort()
+        const ids = new Set<string>()
+        for (const directory of [JOURNAL_DIRECTORY, PRE_RENAME_JOURNAL_DIRECTORY]) {
+            if (!await exists(directory, { baseDir: BaseDirectory.AppData })) continue
+            const entries = await readDir(directory, { baseDir: BaseDirectory.AppData })
+            for (const entry of entries) {
+                if (entry.isFile && entry.name.endsWith(JOURNAL_SUFFIX)) {
+                    ids.add(entry.name.slice(0, -JOURNAL_SUFFIX.length))
+                }
+            }
+        }
+        return [...ids].sort()
     }
 }
 

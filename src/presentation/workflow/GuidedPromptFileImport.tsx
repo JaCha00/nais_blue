@@ -194,7 +194,7 @@ export function GuidedPromptFileImport({
                 type="file"
                 className="sr-only"
                 tabIndex={-1}
-                accept="image/png,image/webp,image/jpeg,.nais-blue.json,.nais2.json,application/json"
+                accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais-blue.json,.nais2.json,application/json"
                 disabled={disabled || loading}
                 onChange={event => {
                     void read(event.target.files?.[0])

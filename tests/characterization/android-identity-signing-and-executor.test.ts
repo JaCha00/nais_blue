@@ -42,15 +42,15 @@ describe('current Android identity, signing, and transfer executor', () => {
     })
 
     it('uses the current plugin namespace and installs the Cloudflare executor with a closed fallback', () => {
-        const gradle = read('src-tauri/plugins/nais-android-transfer/android/build.gradle.kts')
+        const gradle = read('src-tauri/plugins/nai-blue-android-transfer/android/build.gradle.kts')
         const execution = read(
-            'src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferExecution.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferExecution.kt',
         )
         const notifications = read(
-            'src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferNotifications.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/TransferNotifications.kt',
         )
         const plugin = read(
-            'src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt',
+            'src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt',
         )
 
         expect(gradle).toContain('namespace = "com.bluhair.naisblue.transfer"')

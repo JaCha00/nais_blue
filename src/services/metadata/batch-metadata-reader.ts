@@ -102,6 +102,7 @@ function supportedFile(file: File): boolean {
         || name.endsWith('.webp')
         || name.endsWith('.jpg')
         || name.endsWith('.jpeg')
+        || name.endsWith('.nai-blue.json')
         || name.endsWith('.nais-blue.json')
         || name.endsWith('.nais2.json')
 }

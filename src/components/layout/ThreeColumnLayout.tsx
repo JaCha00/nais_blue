@@ -310,7 +310,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
             {/* Three opaque surface tones carry the workspace hierarchy; only form controls draw edges. */}
             <div className="flex min-w-0 flex-1 gap-3 overflow-hidden p-3">
                 <aside
-                    id="nais2-prompt-dock"
+                    id="nai-blue-prompt-dock"
                     className={cn(
                         "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden border-y border-border/45 bg-card/80 2xl:flex min-[1800px]:w-[500px]",
                         !leftSidebarVisible && "2xl:hidden"
@@ -333,7 +333,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 )}
                                 aria-label={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}
                                 aria-expanded={promptPanelIsDocked ? leftSidebarVisible : leftSheetOpen}
-                                aria-controls={promptPanelIsDocked ? 'nais2-prompt-dock' : 'nais2-prompt-sheet'}
+                                aria-controls={promptPanelIsDocked ? 'nai-blue-prompt-dock' : 'nai-blue-prompt-sheet'}
                             >
                                 <PanelLeft className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -361,7 +361,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 )}
                                 aria-label={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}
                                 aria-expanded={historyPanelIsDocked ? rightSidebarVisible : rightSheetOpen}
-                                aria-controls={historyPanelIsDocked ? 'nais2-history-dock' : 'nais2-history-sheet'}
+                                aria-controls={historyPanelIsDocked ? 'nai-blue-history-dock' : 'nai-blue-history-sheet'}
                             >
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -375,7 +375,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                     className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card min-[1180px]:w-auto min-[1180px]:gap-2 min-[1180px]:px-3"
                                     aria-label={t('guided.activity.title', '내 작업')}
                                     aria-expanded={activitySheetOpen}
-                                    aria-controls="nais2-activity-sheet"
+                                    aria-controls="nai-blue-activity-sheet"
                                 >
                                     <BriefcaseBusiness className="h-4 w-4" aria-hidden="true" />
                                     <span className="hidden text-sm font-medium min-[1180px]:inline">
@@ -398,7 +398,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 </div>
 
                 <aside
-                    id="nais2-history-dock"
+                    id="nai-blue-history-dock"
                     className={cn(
                         "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden border-y border-border/45 bg-card/80 2xl:block",
                         (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
@@ -416,7 +416,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 onOpenChange={(open) => open ? openSupportSheet('prompt') : closeSupportSheet()}
             >
                 <SheetContent
-                    id="nais2-prompt-sheet"
+                    id="nai-blue-prompt-sheet"
                     side="left"
                     showOverlay={false}
                     closeLabel={t('common.close', '닫기')}
@@ -443,7 +443,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 onOpenChange={(open) => open ? openSupportSheet('history') : closeSupportSheet()}
             >
                 <SheetContent
-                    id="nais2-history-sheet"
+                    id="nai-blue-history-sheet"
                     side="right"
                     closeLabel={t('common.close', '닫기')}
                     className="flex !w-full !max-w-none flex-col gap-0 sm:!w-[400px] sm:!max-w-[400px]"
@@ -468,7 +468,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 onOpenChange={(open) => open ? openSupportSheet('activity') : closeSupportSheet()}
             >
                 <SheetContent
-                    id="nais2-activity-sheet"
+                    id="nai-blue-activity-sheet"
                     side="right"
                     closeLabel={t('common.close', '닫기')}
                     className="flex !w-full !max-w-none flex-col gap-0 sm:!w-[400px] sm:!max-w-[400px]"

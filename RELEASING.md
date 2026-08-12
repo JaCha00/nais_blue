@@ -1,129 +1,103 @@
-# Android APK release
+# NAI Blue release guide
 
-NAIS blue uses a generated Tauri Android project, but its release identity and the
-scripts that recreate signing are tracked. `src-tauri/gen/android` remains
-ignored; every clean build runs `tauri android init`, applies the managed Gradle
-patch, verifies the APK, installs it on an emulator, and only then exposes the
-artifact.
+NAI Blue releases are built from an immutable `v<package version>` tag on `main`.
+The public version line was reset to `1.0.0`; this is a version-label reset only.
+Do not reset features, persisted stores, the application identifier, credential
+services, or legacy-read compatibility when preparing a release.
 
 ## Release identity
 
-Phase 12 establishes a new, independent Android application identity:
+- Repository: `bluehair-blue/NAI-Blue`
+- Desktop product: `NAI Blue`
+- Application identifier: `com.bluhair.naisblue` (intentionally stable)
+- Android application ID: `com.bluhair.naisblue` (intentionally stable)
+- Android signer certificate SHA-256: pinned in `android-release-policy.json`
+- Android version name: package version
+- Android version code: explicit monotonic value from
+  `android-release-policy.json`, independent of the reset display version
 
-- release/debug application ID: `com.bluhair.naisblue`
-- signer certificate SHA-256:
-  `6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65`
-- Android version code scheme: `major * 1,000,000 + minor * 1,000 + patch`
+Keeping the install identity stable lets an existing installation and its
+operating-system credentials continue across the rename. Compatibility keys
+whose serialized names predate NAI Blue may be read by migration code, but new
+data must use the current names.
 
-These values, minimum SDK, and required ABIs are pinned in
-`android-release-policy.json`. Debug device QA and release artifacts use the
-same user-owned signer when the process-scoped signing environment is present.
+## Required release checks
 
-This is the first release for the final package ID, so no retired-package APK is
-installed as an update baseline. Existing retired app data is not migrated or
-cleared. If an install reports a signer collision, stop and obtain explicit
-approval before uninstalling anything.
-
-## GitHub Actions
-
-`.github/workflows/android.yml` provides three gates:
-
-- pull requests, `main` pushes, and standalone manual runs create an x86_64
-  debug APK with the final application ID and install/launch it on an emulator;
-- a `v*` tag runs the desktop workflow first, then calls the Android workflow
-  to build a signed APK;
-- the signing job deletes its key material before a separate no-secret emulator
-  job tests the update, after which a write-only job uploads the Android assets
-  and publishes the cross-platform draft Release.
-
-The signed job treats this package as a first install, then launches it and
-verifies signer/package metadata. Future releases can add an immutable baseline
-only after a public artifact exists for this exact application ID.
-
-Configure these `android-release` Environment secrets before enabling signed
-builds. Keeping the Android key in the protected Environment ensures the
-signing job cannot read it until the required reviewer approves the deployment:
-
-- `NAIS_KEYSTORE_BASE64`: Base64 encoding of the exact pinned release keystore
-- `NAIS_KEYSTORE_PASSWORD`: keystore and key password
-
-The tracked policy supplies the non-secret `release` alias. The
-`android-release` GitHub Environment must require a reviewer and allow only
-`v*` tag deployments. Its production signing secrets must not also remain at
-repository scope. The active tag ruleset must reject tag updates and deletions.
-Ordinary branch and manual Android runs never receive the release key.
-
-The workflow pins JDK 17, Android API 36, Build Tools 36.1.0, NDK
-29.0.14206865, and all four Rust Android targets. It uses the lockfile's local
-Tauri CLI rather than installing a different global version. Release workflow
-Actions are pinned to reviewed commit SHAs instead of floating tags.
-
-Tag names must exactly match `v<package.json version>`, and the tagged commit
-must already belong to `main`. The preflight also requires npm, Tauri, and Cargo
-version sources to agree and requires the Android version code to be newer than
-the pinned update baseline. Existing assets are verified on a retry and never
-replaced with different content; release a new version instead.
-
-## Local signed build
-
-Keep the keystore outside the repository and shared workspace:
+Use Node.js 24 LTS. Before tagging, run:
 
 ```powershell
-$env:APK_RELEASE_KEYSTORE_PATH = "$env:USERPROFILE\.nais2\nais2-release.jks"
+npm ci
+npm run lint
+npm run test:release-version
+npm run test:android-release-contract
+npm run test:composition
+npm run build
+npm run tauri build
+```
+
+The release version must agree in `package.json`, `package-lock.json`,
+`src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. The Android display
+version must agree too, while its version code must be strictly newer than the
+published baseline recorded in `android-release-policy.json`.
+
+Review the generated installers, updater metadata, signatures, and hashes. The
+Windows updater uses NSIS so an existing pre-rename installation can accept the
+reset display version through the app's explicit downgrade-compatible updater
+check.
+
+## Tag and GitHub Actions
+
+After all changes are committed and `main` is pushed:
+
+```powershell
+git tag -a v1.0.0 -m "NAI Blue 1.0.0"
+git push origin v1.0.0
+```
+
+`.github/workflows/build.yml` verifies that the tag matches the version sources
+and belongs to `main`, then builds desktop artifacts as a draft release.
+`.github/workflows/android.yml` builds and verifies the signed universal APK,
+uploads it, and publishes the cross-platform release.
+
+The protected `android-release` GitHub Environment must provide:
+
+- `NAIS_KEYSTORE_BASE64`
+- `NAIS_KEYSTORE_PASSWORD`
+
+These existing secret names are retained as release-infrastructure
+compatibility. They are not product branding and must never be printed or
+committed. The environment should require a reviewer and permit only immutable
+`v*` tag deployments.
+
+## Local Android fallback
+
+Keep the release keystore outside the repository:
+
+```powershell
+$env:APK_RELEASE_KEYSTORE_PATH = "$env:USERPROFILE\.nai-blue\nai-blue-release.jks"
 $env:APK_RELEASE_KEY_PASSWORD = '<password>'
 npm run release:android:apk
 ```
 
-The normal command requires both secrets in the current process and refuses an
-in-project keystore. An explicit legacy build can pass `-AllowProjectSecrets`
-directly to `scripts/release-android.ps1`, but this is only a migration escape
-hatch for the existing ignored `nais-release-key` and `.env`. The alias and
-expected certificate are read from `android-release-policy.json`; a substituted
-keystore fails before the APK is published.
-
-For local Phase 12 verification, `scripts/build-android-signed-local.ps1` reads
-the ignored `.env` without interpreting Windows backslashes, copies the source
-keystore to an OS temporary file, sets Gradle signing values only in the child
-process, and deletes the copy in `finally`. The `.env` alias was characterized as
-stale; the sole keytool-verified user key and tracked policy alias are `release`.
-
-The command verifies version agreement, initializes Android when necessary,
-applies the idempotent signing patch, reads CI signing credentials from
-process-scoped environment variables without writing the password into the
-generated Gradle project, builds a universal APK, and checks:
-
-- APK signature validity and the pinned signer certificate;
-- package ID, version name, derived version code, min/target SDK, and four ABIs;
-- 16 KiB zip alignment;
-- rejection of `*-unsigned.apk` outputs.
-
-It writes:
+The command verifies the signer, package ID, explicit version code, min/target
+SDK, supported ABIs, and 16 KiB alignment. Its output is:
 
 ```text
-release-artifacts/android/NAIS-blue_<version>-universal.apk
-release-artifacts/android/NAIS-blue_<version>-universal.apk.sha256
+release-artifacts/android/NAI-Blue_<version>-universal.apk
+release-artifacts/android/NAI-Blue_<version>-universal.apk.sha256
 ```
 
-To include a connected-device install and launch check for an existing APK:
+`npm run release:android:github` is a guarded fallback. It requires a clean tree
+and matching local and remote immutable tags, refuses to replace an existing
+asset, and verifies the downloaded hash.
 
-```powershell
-npm run test:android-release -- --apk <path-to-apk> --install
-```
+## Security and rollback rules
 
-The device gate runs `adb install -r`, starts the launch activity, confirms the
-process remains alive, and checks the crash buffer. An exact adb failure such as
-`INSTALL_FAILED_UPDATE_INCOMPATIBLE` remains visible in the command output.
+Never commit a keystore, Base64 key export, `.env`, generated
+`keystore.properties`, token, or private metadata sidecar. If signing material
+is exposed, stop the release and plan a signing-key migration.
 
-Local GitHub publication remains available as a guarded fallback:
-
-```powershell
-npm run release:android:github
-```
-
-It requires a clean tree plus matching local and remote immutable tags, refuses
-duplicate assets, downloads the uploaded APK, and compares its SHA-256. CI is
-the normal path for future tag releases.
-
-Never commit a keystore, Base64 key export, `.env`, or
-`src-tauri/gen/android/keystore.properties`. If signing material is exposed,
-stop releases and plan an Android signing-key migration before rotating it.
+Do not delete or move a published tag and do not replace a published asset with
+different bytes. Publish a new version instead. A rollback must preserve the
+stable application identity and data migrations; never uninstall or clear user
+data as part of an automated recovery.

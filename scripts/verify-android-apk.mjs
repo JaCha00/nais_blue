@@ -4,7 +4,10 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
+import {
+    resolveAndroidUpdateBaselineVersionCode,
+    resolveAndroidVersionCode,
+} from './android-update-baseline.mjs'
 
 function option(name) {
     const index = process.argv.indexOf(name)
@@ -115,12 +118,6 @@ function discoverApk(projectRoot, mode) {
         )
     }
     return matches[0]
-}
-
-function expectedVersionCode(version) {
-    const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version)
-    if (!match) throw new Error(`Unsupported release version for Android versionCode: ${version}`)
-    return Number(match[1]) * 1_000_000 + Number(match[2]) * 1_000 + Number(match[3])
 }
 
 function cargoPackageVersion(cargoToml) {
@@ -294,15 +291,15 @@ if (metadata.applicationId !== expectedApplicationId) {
 if (metadata.versionName !== packageJson.version) {
     throw new Error(`APK versionName ${metadata.versionName} does not match ${packageJson.version}`)
 }
-if (metadata.versionCode !== expectedVersionCode(packageJson.version)) {
+const configuredVersionCode = resolveAndroidVersionCode(policy, packageJson.version)
+if (metadata.versionCode !== configuredVersionCode) {
     throw new Error(`APK versionCode ${metadata.versionCode} does not match the configured version`)
 }
-const baselineTag = resolveAndroidUpdateBaseline(policy, packageJson.version)
-if (baselineTag !== null) {
-    const baselineVersion = baselineTag.replace(/^v/, '')
-    if (metadata.versionCode <= expectedVersionCode(baselineVersion)) {
+const baselineVersionCode = resolveAndroidUpdateBaselineVersionCode(policy, packageJson.version)
+if (baselineVersionCode !== null) {
+    if (metadata.versionCode <= baselineVersionCode) {
         throw new Error(
-            `APK versionCode ${metadata.versionCode} must be newer than update baseline ${baselineTag}`,
+            `APK versionCode ${metadata.versionCode} must be newer than update baseline ${baselineVersionCode}`,
         )
     }
 }

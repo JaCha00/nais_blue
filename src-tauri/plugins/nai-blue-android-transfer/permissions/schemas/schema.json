@@ -403,10 +403,10 @@
           "markdownDescription": "Denies the status command without any pre-configured scope."
         },
         {
-          "description": "Allows the NAIS UI to control bounded Android R2 and paired-LAN transfers.\n#### This default permission set includes:\n\n- `allow-schedule`\n- `allow-pause`\n- `allow-resume`\n- `allow-cancel`\n- `allow-retry`\n- `allow-checkpoint`\n- `allow-status`\n- `allow-recover`\n- `allow-configure-cloudflare`",
+          "description": "Allows the NAI Blue UI to control bounded Android R2 and paired-LAN transfers.\n#### This default permission set includes:\n\n- `allow-schedule`\n- `allow-pause`\n- `allow-resume`\n- `allow-cancel`\n- `allow-retry`\n- `allow-checkpoint`\n- `allow-status`\n- `allow-recover`\n- `allow-configure-cloudflare`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows the NAIS UI to control bounded Android R2 and paired-LAN transfers.\n#### This default permission set includes:\n\n- `allow-schedule`\n- `allow-pause`\n- `allow-resume`\n- `allow-cancel`\n- `allow-retry`\n- `allow-checkpoint`\n- `allow-status`\n- `allow-recover`\n- `allow-configure-cloudflare`"
+          "markdownDescription": "Allows the NAI Blue UI to control bounded Android R2 and paired-LAN transfers.\n#### This default permission set includes:\n\n- `allow-schedule`\n- `allow-pause`\n- `allow-resume`\n- `allow-cancel`\n- `allow-retry`\n- `allow-checkpoint`\n- `allow-status`\n- `allow-recover`\n- `allow-configure-cloudflare`"
         }
       ]
     }

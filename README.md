@@ -1,138 +1,103 @@
-# NAIS blue - NovelAI Image Studio
+# NAI Blue
 
 <p align="center">
-  <img src="public/Nais_Blue.png" alt="NAIS blue Logo" width="128" height="128">
+  <img src="public/nai-blue.png" alt="NAI Blue logo" width="128" height="128">
 </p>
 
 <p align="center">
-  <b>A powerful desktop application for NovelAI image generation</b>
+  A desktop and Android workspace for building, organizing, and running NovelAI image-generation workflows.
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/YQbP2xbr">
-    <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white" alt="Discord Server">
-  </a>
-</p>
-
-<p align="center">
-  <a href="./README.md">English</a> •
-  <a href="./README.ko.md">한국어</a> •
+  <a href="./README.md">English</a> ·
+  <a href="./README.ko.md">한국어</a> ·
   <a href="./README.ja.md">日本語</a>
 </p>
 
----
+> NAI Blue is an independent community client and is not affiliated with or endorsed by NovelAI.
 
-## 📖 Overview
+## Install
 
-**NAIS blue (NovelAI Image Studio)** is a feature-rich desktop application built with Tauri and React that provides an intuitive interface for generating AI images using the NovelAI API.
+Download the installer for your platform from [GitHub Releases](https://github.com/bluehair-blue/NAI-Blue/releases/latest).
 
----
+- Windows: use the `x64-setup.exe` installer. The MSI is also provided for managed environments.
+- macOS: use the build that matches Apple Silicon (`aarch64`) or Intel (`x64`). If Gatekeeper reports that the app is damaged, run `xattr -cr "/Applications/NAI Blue.app"` in Terminal after confirming that the file came from this repository.
+- Android: install the signed universal APK. Android may ask you to allow installs from the app that opened the APK.
 
-## ✨ Features
+## First run
 
-### 🎨 Main Mode - Image Generation
-- **Text-to-Image Generation** with streaming preview
-- **Advanced Parameters**: Models, resolution, steps, CFG, samplers, SMEA
-- **Vibe Transfer** & **Character Reference (Director Tools)**
-- **Seed Control** & **Metadata Management**
+1. Open NAI Blue and stay in the **Guided** surface for the initial setup.
+2. Connect your NovelAI account in the account/API step and verify the token.
+3. Choose **Single image** or **Batch images**.
+4. Build the positive, negative, and character prompts. Character positions start at the center (`0.5, 0.5`) and can be adjusted per task.
+5. Choose an output folder and metadata policy, then review the settings before adding the job to the queue.
+6. Follow progress in **Queue**. Each queued job shows its destination folder.
 
-### 🎬 Scene Mode - Batch Generation
-- **Scene Cards** with drag-and-drop reordering
-- **Per-Scene Settings** & **Queue System** (1-99)
-- **Scene Presets** & **Batch Export** (JSON/ZIP)
+Credentials are stored through the operating system credential vault on supported desktop platforms. Do not paste a NovelAI token, R2 secret, or private sidecar into an issue.
 
-### 🛠️ Smart Tools
-| Tool | Description |
-|------|-------------|
-| **Image to Image** | Transform images with AI |
-| **Inpainting** | Selectively edit image areas |
-| **Background Removal** | Remove backgrounds with an external Hugging Face Space |
-| **Mosaic Effect** | Apply mosaic/blur effects |
-| **Style Analysis** | Identify likely artist and style tags with Kaloscope on Hugging Face |
-| **4K Upscale** | 4x resolution upscale |
+## Everyday workflows
 
-### 📚 Additional Features
-- **Library**: Image gallery with metadata viewer
-- **Data Hub**: Read generation metadata from up to 500 images at once
-- **AI Agent Workspace**: Review and safely edit prompts, parameters, and app data on desktop
-- **Android · Desktop Sync**: Session-only TLS sync for prompt presets and generation parameters (tokens, images, and absolute paths are excluded)
-- **Fragment Prompts**: Save & reuse prompt snippets
-- **Multi-language**: English, 한국어, 日本語
-- **WebView**: Embedded NovelAI browser
+### Prompt modules
 
----
+Open the prompt module library from Guided or Advanced generation. Modules can be organized in folders and contain base, detail, additional, negative, character, and character-negative parts. Select only the parts you want when inserting a module; character positions remain task-specific.
 
-## 📥 Installation
+### Import image metadata
 
-### Download
-Download from [Releases](../../releases).
+Drop a PNG, WebP, JPEG, `.nai-blue.json` sidecar, or supported metadata-extraction JSON into the prompt import surface. NAI Blue maps main and character prompts into the same editor format. Pre-rename sidecars remain readable for existing libraries.
 
-#### macOS Note
-If you see **"NAIS blue is damaged and can't be opened"** error, run this command in Terminal:
+### Output folders and R2
+
+Create generation folders before enqueueing work. Each folder can define its local destination, common prompt, R2 profile, bucket, prefix, and automatic-upload preference. Child folders inherit the parent prefix unless they explicitly override it.
+
+R2 controls remain disabled until a profile passes setup. Use the **Set up R2** action, verify the connection, then enable automatic upload on the folders that need it. Deleting the local original is always an explicit, separate choice.
+
+### Image cleanup and sidecars
+
+The metadata step offers embedded metadata, sidecar-only, clean image plus private sidecar, and strip-only policies. The clean-image workflow re-encodes pixel data, keeps restoration metadata in a separate private sidecar, and can add the configured rights-owner XMP.
+
+## Troubleshooting and bug reports
+
+Before reporting a problem:
+
+1. Retry once with the same inputs and note the exact step that failed.
+2. Open **Settings → Advanced settings and diagnostics**.
+3. Select the related event and copy or export the **sanitized diagnostic log**.
+4. Check the latest release notes and existing [issues](https://github.com/bluehair-blue/NAI-Blue/issues).
+
+Submit a [bug report](https://github.com/bluehair-blue/NAI-Blue/issues/new?template=bug_report.yml) with:
+
+- NAI Blue version, operating system, and installation type;
+- the shortest reproducible sequence;
+- expected and actual behavior;
+- the displayed `DiagnosticCode` and sanitized log;
+- a screenshot with tokens, paths, prompts, and private metadata redacted.
+
+Never attach a NovelAI token, Cloudflare secret, signing key, raw credential backup, or unreviewed private sidecar. For a security vulnerability, do not open a public issue; use the repository's private security advisory flow.
+
+## Build and debug from source
+
+Requirements: Node.js 24 LTS, npm, Rust 1.88 or newer, and the native build tools required by Tauri. Python 3.11 is required when rebuilding the tagger sidecar.
+
 ```bash
-xattr -cr "/Applications/NAIS blue.app"
+git clone https://github.com/bluehair-blue/NAI-Blue.git
+cd NAI-Blue
+npm ci
+npm run tauri dev
 ```
 
-### Build from Source
+Useful checks:
+
 ```bash
-git clone https://github.com/JaCha00/nais_blue.git
-cd nais_blue
-npm install
-npm run tauri dev      # Development
-npm run tauri build    # Production
+npm run lint
+npm run test:composition
+npm run build
+npm run tauri build
 ```
 
----
+Release process and signing requirements are documented in [RELEASING.md](./RELEASING.md).
 
-## 🚀 Usage
+## Credits and license
 
-1. Launch NAIS blue
-2. Go to **Settings** → **API** → Enter NovelAI token (`pst-...`)
-3. Click **Verify**
-4. Start generating!
+NAI Blue continues work that began with [NAIS2](https://github.com/sunanakgo/NAIS2). Thanks to its original maintainers and contributors. The wildcard and scene workflows also learned from [NAIA2.0](https://github.com/DNT-LAB/NAIA2.0) and [SDStudio](https://github.com/sunho/SDStudio).
 
----
-
-## 🛠️ Tech Stack
-
-| Technology | Purpose |
-|------------|---------|
-| **Tauri 2.0** | Desktop framework |
-| **React 18** | Frontend UI |
-| **TypeScript** | Type safety |
-| **TailwindCSS** | Styling |
-| **Zustand** | State management |
-| **i18next** | Internationalization |
-
----
-
-## 📁 Project Structure
-
-```
-nais_blue/
-├── src/                    # Frontend
-│   ├── components/         # React components
-│   ├── pages/              # Main pages
-│   ├── stores/             # State stores
-│   └── i18n/               # Translations
-└── src-tauri/              # Rust backend
-```
-
----
-
-## 🔑 API Token
-
-Your NovelAI token is stored locally only and never shared with third parties.
-
-Style analysis and background removal send the selected image to third-party Hugging Face Spaces only after explicit first-use consent. The NovelAI token is never included in that transfer.
-
----
-
-## 🙏 Credits
-
-- [NAIA2.0](https://github.com/DNT-LAB/NAIA2.0) - Wildcard system reference
-- [SDStudio](https://github.com/sunho/SDStudio) - Scene mode reference
-
----
-
-<p align="center">Made with ❤️ for the NovelAI community</p>
+Licensed under [GPL-3.0](./LICENSE).

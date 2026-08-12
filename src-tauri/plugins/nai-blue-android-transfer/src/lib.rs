@@ -55,7 +55,7 @@ impl<R: Runtime, T: Manager<R>> AndroidTransferExt<R> for T {
 /// Registers only scheduling/control commands. A transport executor must be
 /// connected separately before the application's capability may report support.
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
-    tauri::plugin::Builder::new("nais-android-transfer")
+    tauri::plugin::Builder::new("nai-blue-android-transfer")
         .setup(|app, _api| {
             #[cfg(target_os = "android")]
             let transfer = AndroidTransfer {

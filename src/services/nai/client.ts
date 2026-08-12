@@ -1,11 +1,11 @@
 import JSZip from 'jszip'
 import { invoke } from '@tauri-apps/api/core'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import { embedNaisBlueParams } from '@/lib/nais2-png-meta'
+import { embedNaiBlueParams } from '@/lib/nai-blue-metadata'
 import {
-    buildNais2Params,
+    buildNaiBlueParams,
     redactSentPayloadForMetadata,
-    shouldEmbedNais2Params,
+    shouldEmbedNaiBlueParams,
 } from '@/lib/generation-metadata'
 import { adaptGenerationParams } from '@/services/nai/adapter'
 import { NAI_ENDPOINTS } from '@/services/nai/endpoints'
@@ -51,8 +51,8 @@ function observeTransportStage(
 }
 
 function taggedImage(base64: string, params: GenerationParams): string {
-    return shouldEmbedNais2Params(params.metadataMode)
-        ? embedNaisBlueParams(base64, buildNais2Params(params))
+    return shouldEmbedNaiBlueParams(params.metadataMode)
+        ? embedNaiBlueParams(base64, buildNaiBlueParams(params))
         : base64
 }
 

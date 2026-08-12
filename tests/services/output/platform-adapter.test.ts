@@ -161,13 +161,13 @@ describe('Tauri output platform adapters', () => {
 
         expect(fsCapture.calls).toContainEqual({
             operation: 'writeFile',
-            path: 'nais2/output-journal/.txn-one.tmp',
+            path: 'nai-blue/output-journal/.txn-one.tmp',
             options: { baseDir: 1 },
         })
         expect(fsCapture.calls).toContainEqual({
             operation: 'rename',
-            path: 'nais2/output-journal/.txn-one.tmp',
-            to: 'nais2/output-journal/txn-one.json',
+            path: 'nai-blue/output-journal/.txn-one.tmp',
+            to: 'nai-blue/output-journal/txn-one.json',
             options: { oldPathBaseDir: 1, newPathBaseDir: 1 },
         })
 

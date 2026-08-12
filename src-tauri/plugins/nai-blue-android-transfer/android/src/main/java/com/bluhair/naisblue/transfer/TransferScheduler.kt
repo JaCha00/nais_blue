@@ -82,7 +82,7 @@ class TransferScheduler(private val context: Context) {
         val remainingBytes = max(0, status.sizeBytes - status.checkpointBytes)
         val info = JobInfo.Builder(
             jobId(ticket.transferId),
-            ComponentName(applicationContext, NaisTransferJobService::class.java),
+            ComponentName(applicationContext, NaiBlueTransferJobService::class.java),
         )
             .setExtras(extras)
             .setRequiredNetwork(network)
@@ -103,7 +103,7 @@ class TransferScheduler(private val context: Context) {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
         val input = Data.Builder().putString(EXTRA_TRANSFER_ID, transferId).build()
-        val request = OneTimeWorkRequestBuilder<NaisTransferWorker>()
+        val request = OneTimeWorkRequestBuilder<NaiBlueTransferWorker>()
             .setInputData(input)
             .setConstraints(constraints)
             .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)

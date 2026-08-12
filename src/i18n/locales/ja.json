@@ -1,6 +1,6 @@
 {
     "app": {
-        "name": "NAIS blue",
+        "name": "NAI Blue",
         "description": "NovelAI 統合スタジオ"
     },
     "generationFolders": {
@@ -319,7 +319,7 @@
             "title": "画像メタデータ",
             "description": "この作業の画像とプロンプト情報の保存方法を選びます。",
             "embeddedHelp": "編集情報を画像内に保持します。個人保管や再読み込みに便利です。",
-            "sidecarHelp": "受け取った画像を保ち、編集情報をローカルの .nais-blue.json にも保存します。",
+            "sidecarHelp": "受け取った画像を保ち、編集情報をローカルの .nai-blue.json にも保存します。",
             "cleanHelp": "共有用画像を浄化し、元の生成情報をprivate sidecarに分離します。",
             "stripOnlyHelp": "復元用sidecarを残さず画像メタデータを削除する従来設定です。",
             "embedded": "画像に含める",
@@ -893,7 +893,7 @@
             "error": "Vault の確認が必要"
         },
         "passphrase": "Vault パスフレーズ",
-        "passphraseSessionOnly": "パスフレーズは現在のセッションだけで使用し、NAIS blue は保存しません。",
+        "passphraseSessionOnly": "パスフレーズは現在のセッションだけで使用し、NAI Blue は保存しません。",
         "create": "Vault を作成",
         "unlock": "Vault を解除",
         "unlocked": "Credential vault を解除しました",
@@ -922,7 +922,7 @@
         "legacyBackupWarningDescription": "旧バージョンの backup は機密ファイルとして扱ってください。クリーンアップは認証情報フィールドを含む管理対象 backup 全体を永久削除します。",
         "cleanupAction": "安全でない管理 backup を削除",
         "cleanupConfirmation": "安全でない管理 backup を永久削除しますか？",
-        "cleanupConfirmationDescription": "値を表示せず NAIS blue 管理の local/disk backup を検査し、旧 NovelAI または R2 認証情報フィールドを含む backup artifact 全体を削除します。元に戻せません。",
+        "cleanupConfirmationDescription": "値を表示せず NAI Blue 管理の local/disk backup を検査し、旧 NovelAI または R2 認証情報フィールドを含む backup artifact 全体を削除します。元に戻せません。",
         "cleanupComplete": "旧認証 backup のクリーンアップ完了",
         "cleanupIncomplete": "一部の旧 backup をクリーンアップできませんでした",
         "cleanupResult": "検査 {{inspected}}、削除 {{deleted}}、失敗 {{failed}}。",
@@ -1296,7 +1296,7 @@
         "footer": "この画面にはAPIトークンや元画像のデータを表示しません。",
         "metadata": {
             "chooseResult": "一覧から画像を選ぶと、プロンプトと生成設定がここに表示されます。",
-            "noMetadataDetail": "読み取れるNAI/NAIS blueメタデータがありません。",
+            "noMetadataDetail": "読み取れるNAI/NAI Blueメタデータがありません。",
             "readComplete": "読み取り完了",
             "prompt": "プロンプト",
             "emptyPrompt": "プロンプトなし",
@@ -2175,7 +2175,7 @@
     },
     "settingsPage": {
         "title": "設定",
-        "description": "NAIS blueアプリケーションの設定を管理します",
+        "description": "NAI Blueアプリケーションの設定を管理します",
         "sections": {
             "general": "一般",
             "appearance": "外観",
@@ -2336,7 +2336,7 @@
             "createSnapshot": "スナップショット作成",
             "creatingSnapshot": "作成中...",
             "restoreSnapshots": "スナップショット復元",
-            "restoreSnapshotsDesc": "NAIS blueが作成した全体自動スナップショットを復元します。",
+            "restoreSnapshotsDesc": "NAI Blueが作成した全体自動スナップショットを復元します。",
             "loadingSnapshots": "スナップショットを読み込み中...",
             "snapshotCount": "{{count}}件のスナップショット",
             "snapshotEmpty": "ディスクスナップショットはまだありません。",
@@ -2747,7 +2747,7 @@
         },
         "analyze": {
             "title": "PNG作家タグ解析",
-            "description": "NAI/NAIS blue PNGメタデータからartistタグと重みを抽出します。",
+            "description": "NAI/NAI Blue PNGメタデータからartistタグと重みを抽出します。",
             "selectPng": "PNG選択",
             "selectImages": "PNG/WebP選択",
             "addToArtists": "作家一覧に追加",

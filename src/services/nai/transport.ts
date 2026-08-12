@@ -149,7 +149,7 @@ function endpointUrl(endpoint: NaiGenerationEndpoint): string {
 function requestHeaders(request: NaiTransportRequest): Record<string, string> {
     return {
         'Content-Type': 'application/json',
-        'User-Agent': 'NAIS-blue_Client/1.0',
+        'User-Agent': 'NAI-Blue/1.0',
         Authorization: `Bearer ${request.token.trim()}`,
         ...(request.endpoint === 'stream' ? { Accept: 'application/x-msgpack' } : {}),
     }

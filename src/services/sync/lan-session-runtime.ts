@@ -16,7 +16,7 @@ import { IndexedDBSyncOutboxRepository } from './outbox-repository'
 import { sanitizeSyncPayload } from './sanitizer'
 
 const LOCAL_SYNC_USER_ID = 'nais-local-user'
-const DEVICE_ID_KEY = 'nais2-lan-device-id'
+const DEVICE_ID_KEY = 'nai-blue-lan-device-id'
 const DEFAULT_PORT = 41_921
 const HOST_POLL_MS = 750
 const CLIENT_IDLE_DELAY_MS = 350
@@ -78,6 +78,7 @@ function runtimeErrorCode(error: unknown): string {
 
 function deviceId(): string {
     const existing = globalThis.localStorage?.getItem(DEVICE_ID_KEY)
+        ?? globalThis.localStorage?.getItem('nais2-lan-device-id')
     if (existing && /^device:[a-f0-9-]{36}$/i.test(existing)) return existing
     const created = `device:${crypto.randomUUID()}`
     globalThis.localStorage?.setItem(DEVICE_ID_KEY, created)
@@ -86,7 +87,7 @@ function deviceId(): string {
 
 function deviceName(): string {
     const platform = getRuntimePlatform()
-    return platform === 'android' ? 'NAIS blue Android' : `NAIS blue ${platform}`
+    return platform === 'android' ? 'NAI Blue Android' : `NAI Blue ${platform}`
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -221,7 +222,7 @@ export class LanSessionRuntime {
             }
             this.publish({
                 phase: 'connected',
-                peerName: 'NAIS blue Desktop',
+                peerName: 'NAI Blue Desktop',
                 errorCode: null,
             })
             // Give the host poller one turn to observe the admitted certificate

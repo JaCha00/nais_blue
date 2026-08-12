@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = process.cwd()
-const PLUGIN = resolve(ROOT, 'src-tauri/plugins/nais-android-transfer')
+const PLUGIN = resolve(ROOT, 'src-tauri/plugins/nai-blue-android-transfer')
 
 async function source(path: string): Promise<string> {
     return readFile(resolve(PLUGIN, path), 'utf8')
@@ -19,9 +19,9 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
             readFile(resolve(ROOT, 'src/platform/capabilities.ts'), 'utf8'),
         ])
 
-        expect(cargo).toContain('tauri-plugin-nais-android-transfer = { path = "plugins/nais-android-transfer" }')
-        expect(lib).toContain('.plugin(tauri_plugin_nais_android_transfer::init())')
-        expect(mobileCapability).toContain('"nais-android-transfer:default"')
+        expect(cargo).toContain('tauri-plugin-nai-blue-android-transfer = { path = "plugins/nai-blue-android-transfer" }')
+        expect(lib).toContain('.plugin(tauri_plugin_nai_blue_android_transfer::init())')
+        expect(mobileCapability).toContain('"nai-blue-android-transfer:default"')
         expect(runtimeCapabilities).toContain("secureLanSyncTransport: platform === 'android' || nativeR2Desktop")
         expect(runtimeCapabilities).toContain('NO_SECURE_LAN_SYNC_RUNTIME')
         expect(runtimeCapabilities).toContain('lanBlobTransfer: NO_LAN_BLOB_TRANSFER')
@@ -36,7 +36,7 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
             source('android/src/main/AndroidManifest.xml'),
         ])
 
-        expect(cargo).toContain('links = "tauri-plugin-nais-android-transfer"')
+        expect(cargo).toContain('links = "tauri-plugin-nai-blue-android-transfer"')
         expect(build).toContain('.android_path("android")')
         expect(gradle).toContain('androidx.work:work-runtime-ktx:2.11.2')
         expect(gradle).toContain('Apache-2.0')
@@ -51,7 +51,7 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
             expect(manifest).toContain(permission)
         }
         expect(manifest).toContain('android.permission.BIND_JOB_SERVICE')
-        expect(manifest).toContain('NaisTransferJobService')
+        expect(manifest).toContain('NaiBlueTransferJobService')
         expect(manifest).toContain('TransferActionReceiver')
         expect(manifest).toContain('androidx.work.impl.foreground.SystemForegroundService')
     })
@@ -59,8 +59,8 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
     it('uses UIDT on API 34+ and a foreground WorkManager fallback on API 24-33', async () => {
         const [scheduler, jobService, worker, notifications] = await Promise.all([
             source('android/src/main/java/com/bluhair/naisblue/transfer/TransferScheduler.kt'),
-            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferJobService.kt'),
-            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferWorker.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaiBlueTransferJobService.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaiBlueTransferWorker.kt'),
             source('android/src/main/java/com/bluhair/naisblue/transfer/TransferNotifications.kt'),
         ])
 
@@ -124,7 +124,7 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
     it('keeps explicit single-owner guards across UIDT recovery and WorkManager', async () => {
         const [scheduler, worker, repository, plugin, execution, manifest] = await Promise.all([
             source('android/src/main/java/com/bluhair/naisblue/transfer/TransferScheduler.kt'),
-            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferWorker.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaiBlueTransferWorker.kt'),
             source('android/src/main/java/com/bluhair/naisblue/transfer/TransferTicketStore.kt'),
             source('android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt'),
             source('android/src/main/java/com/bluhair/naisblue/transfer/TransferExecution.kt'),

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import JSZip from 'jszip'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GenerationParams } from '@/services/novelai-types'
-import { readNais2Params, readNais2Sidecar } from '@/lib/nais2-png-meta'
+import { readNaiBlueParams, readNaiBlueSidecar } from '@/lib/nai-blue-metadata'
 import type { StyleLabGenerationBuildResult } from '@/lib/style-lab/build-style-lab-params'
 import type { StyleCombination } from '@/stores/style-lab-store'
 
@@ -14,7 +14,7 @@ import {
     summarizeCapturedRequest,
     summarizeGenerationParams,
     summarizeMetadata,
-    summarizeNais2Metadata,
+    summarizeNaiBlueMetadata,
 } from './workflow-capture'
 
 const runtimeCapture = vi.hoisted(() => ({
@@ -68,7 +68,7 @@ vi.mock('@/lib/image-utils', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => {
     const key = (location: string, baseDir?: unknown) => `${String(baseDir ?? 'absolute')}:${location}`
-    const isJournal = (location: string, baseDir?: unknown) => baseDir === 2 && location.startsWith('nais2/output-journal')
+    const isJournal = (location: string, baseDir?: unknown) => baseDir === 2 && location.startsWith('nai-blue/output-journal')
     return {
         BaseDirectory: { Picture: 1, AppData: 2 },
         exists: async (location: string, options?: { baseDir?: unknown }) => {
@@ -196,7 +196,7 @@ function base64Bytes(value: string): Uint8Array {
     return Uint8Array.from(atob(value.replace(/^data:image\/[^;]+;base64,/, '')), character => character.charCodeAt(0))
 }
 
-function readRawNais2Params(bytes: Uint8Array): unknown {
+function readRawNaiBlueParams(bytes: Uint8Array): unknown {
     let offset = 8
     while (offset + 12 <= bytes.length) {
         const length = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(offset, false)
@@ -204,7 +204,7 @@ function readRawNais2Params(bytes: Uint8Array): unknown {
         if (type === 'tEXt') {
             const data = bytes.subarray(offset + 8, offset + 8 + length)
             const separator = data.indexOf(0)
-            if (separator > 0 && new TextDecoder('latin1').decode(data.subarray(0, separator)) === 'nais-blue-params') {
+            if (separator > 0 && new TextDecoder('latin1').decode(data.subarray(0, separator)) === 'nai-blue-params') {
                 const encoded = new TextDecoder('latin1').decode(data.subarray(separator + 1))
                 return JSON.parse(new TextDecoder().decode(base64Bytes(encoded)))
             }
@@ -467,7 +467,7 @@ function summarizePreview(index: number, label: string): Record<string, unknown>
     const location = typeof event?.detail.path === 'string' ? event.detail.path : ''
     const eventData = event?.detail.data
     const embeddedMetadata = typeof eventData === 'string'
-        ? summarizeNais2Metadata(readNais2Params(base64Bytes(eventData)))
+        ? summarizeNaiBlueMetadata(readNaiBlueParams(base64Bytes(eventData)))
         : null
     expect(embeddedMetadata).toEqual(metadata)
 
@@ -513,7 +513,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
     const request = runtimeCapture.requests[0]
     const event = runtimeCapture.events[0]
     const write = runtimeCapture.writes.find(item => /\.(png|webp)$/i.test(item.location))
-    const sidecarWrite = runtimeCapture.writes.find(item => item.location.endsWith('.nais-blue.json'))
+    const sidecarWrite = runtimeCapture.writes.find(item => item.location.endsWith('.nai-blue.json'))
     const history = runtime.useGenerationStore.getState().history[0]
     if (!params || !request || !event || !write || !history) {
         throw new Error('Missing Style Lab filesystem capture')
@@ -524,7 +524,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
         ? history.sentPayloadSummary
         : undefined
     const metadata = summarizeMetadata(params, sentPayloadSummary)
-    const persistedMetadata = summarizeNais2Metadata(sidecarWrite ? readNais2Sidecar(sidecarWrite.data) : null)
+    const persistedMetadata = summarizeNaiBlueMetadata(sidecarWrite ? readNaiBlueSidecar(sidecarWrite.data) : null)
     const expectedResolvedPath = `C:/Synthetic/Pictures/${write.location}`
 
     expect(metadata.sentPayloadHash).toBe(hashCapturedPayload(request))
@@ -538,7 +538,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
         targetSegments: write.location.split('/').slice(0, -1),
         baseDirectoryUsed: write.baseDirPresent,
         generatedFileCount: runtimeCapture.writes.filter(item => /\.(png|webp)$/i.test(item.location)).length,
-        sidecarFileCount: runtimeCapture.writes.filter(item => item.location.endsWith('.nais-blue.json')).length,
+        sidecarFileCount: runtimeCapture.writes.filter(item => item.location.endsWith('.nai-blue.json')).length,
         eventIncludesImageData: Boolean(event.detail.data),
         resolvedPathMatchesMockPlatformRoot: event.detail.path === expectedResolvedPath,
         historyUrlMatchesEvent: history.url === event.detail.path,
@@ -549,7 +549,7 @@ function summarizeFilesystemOutput(): Record<string, unknown> {
             promptParts: metadata.promptParts,
             sentPayloadMatchesTransport: true,
             configuredMetadataModeIgnoredByStyleParams: params.metadataMode === undefined,
-            embeddedInWrittenImage: readNais2Params(write.data) !== null,
+            embeddedInWrittenImage: readNaiBlueParams(write.data) !== null,
             embeddedMatchesPlanned: persistedMetadata !== null,
         },
         callOrder: [...runtimeCapture.calls],
@@ -781,7 +781,7 @@ describe('Style Lab Composition v2 production caller contract', () => {
             const eventData = runtimeCapture.events[index]?.detail.data
             expect(typeof eventData).toBe('string')
             const embeddedBytes = typeof eventData === 'string' ? base64Bytes(eventData) : null
-            const rawEmbedded = embeddedBytes === null ? null : readRawNais2Params(embeddedBytes)
+            const rawEmbedded = embeddedBytes === null ? null : readRawNaiBlueParams(embeddedBytes)
             expect(params.metadataMode).toBe('strip-and-sidecar')
             expect(rawEmbedded).toBeNull()
         }

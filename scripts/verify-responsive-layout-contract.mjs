@@ -327,7 +327,7 @@ async function collectCompositionShellReport(page, route) {
 
         return {
             layout: visibleRect('[data-testid="composition-workspace-layout"]'),
-            promptDock: visibleRect('#nais2-prompt-dock'),
+            promptDock: visibleRect('#nai-blue-prompt-dock'),
             dock: visibleRect('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]', 'fixed'),
             commandBar: visibleRect('[data-testid="composition-command-bar"]'),
             moduleTrigger: visibleRect('[data-testid="composition-command-bar"] [data-testid="composition-open-modules"]'),
@@ -713,7 +713,7 @@ async function assertWideCompositionPanelAccess(page, route, viewport) {
 
 async function assertWideCompositionCoreLoop(page, route, viewport) {
     const context = `${route} core loop @ ${viewport.width}x${viewport.height}`
-    const promptDock = page.locator('#nais2-prompt-dock')
+    const promptDock = page.locator('#nai-blue-prompt-dock')
     const promptEditor = promptDock.locator('[data-testid="prompt-editor-surface"] textarea')
     const workspaceSelector = route === '/advanced'
         ? '[data-testid="main-result-canvas"]'
@@ -751,7 +751,7 @@ async function assertWideCompositionCoreLoop(page, route, viewport) {
         }
 
         return {
-            promptDock: visibleInViewport('#nais2-prompt-dock'),
+            promptDock: visibleInViewport('#nai-blue-prompt-dock'),
             workspace: visibleInViewport(targetSelector),
         }
     }, workspaceSelector)
@@ -865,7 +865,7 @@ async function main() {
                     const report = await page.evaluate(() => {
                         const main = document.querySelector('main')
                         const centerPanel = main?.parentElement
-                        const asides = Array.from(document.querySelectorAll('#nais2-prompt-dock, #nais2-history-dock')).map((aside) => {
+                        const asides = Array.from(document.querySelectorAll('#nai-blue-prompt-dock, #nai-blue-history-dock')).map((aside) => {
                             const rect = aside.getBoundingClientRect()
                             const style = getComputedStyle(aside)
                             return {
@@ -1071,8 +1071,8 @@ async function main() {
                         assert.ok(report.mainDock.actionHeight >= 44, `/ @ ${viewport.width}px generate action is below 44px`)
 
                         if (viewport.width === 390) {
-                            await page.locator('button[aria-controls="nais2-prompt-sheet"]').click()
-                            const promptSheet = page.locator('#nais2-prompt-sheet')
+                            await page.locator('button[aria-controls="nai-blue-prompt-sheet"]').click()
+                            const promptSheet = page.locator('#nai-blue-prompt-sheet')
                             await promptSheet.waitFor({ state: 'visible' })
                             const promptReport = await promptSheet.evaluate((sheet) => {
                                 const action = sheet.querySelector('[data-testid="prompt-generate-action"]')
@@ -1100,8 +1100,8 @@ async function main() {
                             await page.keyboard.press('Escape')
                             await promptSheet.waitFor({ state: 'hidden' })
 
-                            await page.locator('button[aria-controls="nais2-history-sheet"]').click()
-                            const historySheet = page.locator('#nais2-history-sheet')
+                            await page.locator('button[aria-controls="nai-blue-history-sheet"]').click()
+                            const historySheet = page.locator('#nai-blue-history-sheet')
                             await historySheet.waitFor({ state: 'visible' })
                             const historyReport = await historySheet.evaluate((sheet) => {
                                 const refresh = sheet.querySelector('[data-testid="history-refresh"]')

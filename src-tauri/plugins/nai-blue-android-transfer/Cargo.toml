@@ -1,11 +1,11 @@
 [package]
-name = "tauri-plugin-nais-android-transfer"
+name = "tauri-plugin-nai-blue-android-transfer"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.88"
-links = "tauri-plugin-nais-android-transfer"
+links = "tauri-plugin-nai-blue-android-transfer"
 license = "MIT"
-description = "Secret-free Android scheduling boundary for NAIS Phase 12 transfers"
+description = "Secret-free Android scheduling boundary for NAI Blue transfers"
 
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]

@@ -111,7 +111,7 @@ async function writeWorkspaceText(path: string, content: string): Promise<void> 
 }
 
 function workspaceGuide(): string {
-    return `# NAIS blue Agent Workspace
+    return `# NAI Blue Agent Workspace
 
 This directory is a local desktop-only bridge. It never contains API credentials or image bytes.
 

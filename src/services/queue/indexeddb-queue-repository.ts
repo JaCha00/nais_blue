@@ -37,6 +37,7 @@ import {
     hashGenerationJobSnapshot,
 } from './job-snapshot'
 
+// Physical database names stay stable so generation jobs survive the rename.
 export const QUEUE_DATABASE_NAME = 'nais2-durable-generation-queue'
 export const QUEUE_DATABASE_VERSION = 5
 

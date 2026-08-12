@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap
  * checkpoint/outcome handling with WorkManager. Stops become durable retries.
  */
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
-class NaisTransferJobService : JobService() {
+class NaiBlueTransferJobService : JobService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<String, Job>()
 
@@ -42,7 +42,7 @@ class NaisTransferJobService : JobService() {
         jobs[transferId] = scope.launch {
             val shouldReschedule = try {
                 runTransfer(store, transferId) { status ->
-                    TransferNotifications.update(this@NaisTransferJobService, status)
+                    TransferNotifications.update(this@NaiBlueTransferJobService, status)
                 } == TransferRunResult.RETRY
             } catch (cancelled: CancellationException) {
                 store.markInterrupted(transferId)

@@ -38,7 +38,7 @@ updates:
           - patch
 
   - package-ecosystem: gradle
-    directory: /src-tauri/plugins/nais-android-transfer/android
+    directory: /src-tauri/plugins/nai-blue-android-transfer/android
     schedule:
       interval: weekly
       day: monday

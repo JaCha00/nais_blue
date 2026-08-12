@@ -7,6 +7,8 @@ import {
     resolveCollisionFileName,
     toArtifactSidecarPath,
     toDiagnosticSidecarPath,
+    toPreRenameArtifactSidecarPath,
+    toPreRenameSidecarPath,
     toSidecarFileName,
     type OutputCollisionPolicy,
 } from './filename-policy'
@@ -132,7 +134,7 @@ interface JournalArtifact {
 }
 
 interface OutputRecoveryJournal {
-    format: 'nais2-output-transaction'
+    format: 'nai-blue-output-transaction'
     version: 1
     transactionId: string
     sourceJobId?: string
@@ -207,14 +209,14 @@ function randomTransactionId(): string {
 }
 
 function tempName(fileName: string, transactionId: string, kind: JournalArtifact['kind']): string {
-    return `.${fileName}.nais2-txn-${transactionId}.${kind}.tmp`
+    return `.${fileName}.nai-blue-txn-${transactionId}.${kind}.tmp`
 }
 
 function backupName(fileName: string, transactionId: string): string {
-    return `.${fileName}.nais2-txn-${transactionId}.backup`
+    return `.${fileName}.nai-blue-txn-${transactionId}.backup`
 }
 
-const PRIVATE_ORIGINAL_DIRECTORY = '._nais-private'
+const PRIVATE_ORIGINAL_DIRECTORY = '._nai-blue-private'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -331,7 +333,8 @@ function parseFileRef(value: unknown): OutputFileRef {
 function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
     const value = JSON.parse(new TextDecoder().decode(bytes)) as unknown
     if (!isRecord(value)
-        || value.format !== 'nais2-output-transaction'
+        || (value.format !== 'nai-blue-output-transaction'
+            && value.format !== 'nais2-output-transaction')
         || value.version !== 1
         || typeof value.transactionId !== 'string'
         || typeof value.createdAt !== 'string'
@@ -381,7 +384,7 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         } satisfies JournalArtifact
     })
     return {
-        format: 'nais2-output-transaction',
+        format: 'nai-blue-output-transaction',
         version: 1,
         transactionId: value.transactionId,
         ...(typeof value.sourceJobId === 'string' ? { sourceJobId: value.sourceJobId } : {}),
@@ -543,14 +546,26 @@ export class OutputWriter {
                     const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
                         || request.metadata.metadataMode === 'strip-and-sidecar'
                         || request.metadata.imageFormat === 'webp'
-                    if (sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))) {
-                        return true
+                    if (sidecarNeeded) {
+                        const currentSidecarExists = await this.platform.exists(
+                            childOutputRef(directory, toSidecarFileName(candidate)),
+                        )
+                        const previousSidecarExists = await this.platform.exists(
+                            childOutputRef(directory, toPreRenameSidecarPath(candidate)),
+                        )
+                        if (currentSidecarExists || previousSidecarExists) return true
                     }
                 }
                 if (preserveProviderOriginal
                     && await this.platform.exists(childOutputRef(privateOriginalDirectory, candidate))) return true
-                return request.artifactSidecarBytes !== undefined
-                    && await this.platform.exists(childOutputRef(directory, toArtifactSidecarPath(candidate)))
+                if (request.artifactSidecarBytes === undefined) return false
+                const currentArtifactExists = await this.platform.exists(
+                    childOutputRef(directory, toArtifactSidecarPath(candidate)),
+                )
+                const previousArtifactExists = await this.platform.exists(
+                    childOutputRef(directory, toPreRenameArtifactSidecarPath(candidate)),
+                )
+                return currentArtifactExists || previousArtifactExists
             })
             const transactionId = request.transactionId ?? this.createTransactionId()
             if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
@@ -641,7 +656,7 @@ export class OutputWriter {
             mark('stage-temp-output')
             const timestamp = this.now().toISOString()
             journal = {
-                format: 'nais2-output-transaction',
+                format: 'nai-blue-output-transaction',
                 version: 1,
                 transactionId,
                 ...(request.sourceJobId === undefined ? {} : { sourceJobId: request.sourceJobId }),

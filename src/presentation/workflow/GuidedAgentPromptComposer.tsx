@@ -21,9 +21,9 @@ export interface GuidedAgentPromptInput {
 
 export function renderGuidedAgentPrompt(input: GuidedAgentPromptInput): string {
     const target = `프리셋 "${input.presetName}" (ID: ${input.presetId})`
-    const workspace = input.workspacePath || 'NAIS blue Agent Workspace'
+    const workspace = input.workspacePath || 'NAI Blue Agent Workspace'
     const common = [
-        '당신은 NAIS blue의 로컬 프롬프트 편집 에이전트입니다.',
+        '당신은 NAI Blue의 로컬 프롬프트 편집 에이전트입니다.',
         `작업 폴더: ${workspace}`,
         `대상: ${target}`,
         `현재 snapshot revision: ${input.revision}`,

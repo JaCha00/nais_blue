@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { readNais2Params } from '@/lib/nais2-png-meta'
+import { readNaiBlueParams } from '@/lib/nai-blue-metadata'
 import type { GenerateImageResult, GenerationParams } from '@/services/novelai-types'
 
 const LIVE_ENABLED = process.env.NAI_LIVE === '1'
@@ -52,7 +52,7 @@ function verifyResult(result: GenerateImageResult): void {
 
     const bytes = new Uint8Array(Buffer.from(result.imageData!, 'base64'))
     expect([...bytes.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
-    const metadata = readNais2Params(bytes)
+    const metadata = readNaiBlueParams(bytes)
     expect(metadata?.version).toBe(2)
     if (metadata?.version === 2) {
         expect(metadata.engineVersion).toBe('composition-v2-live-smoke')

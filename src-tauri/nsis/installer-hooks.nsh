@@ -5,8 +5,9 @@
   ; Wait a moment for processes to fully terminate
   Sleep 500
   ; Also kill the main app if running (to ensure clean install/update)
+  nsExec::ExecToLog 'taskkill /F /T /IM NAI-Blue.exe'
+  ; Pre-rename binaries are closed so an in-place update can replace locked files.
   nsExec::ExecToLog 'taskkill /F /T /IM Nais_blue.exe'
-  ; The previous QA build used nais2.exe, so one transition release must close it too.
   nsExec::ExecToLog 'taskkill /F /T /IM nais2.exe'
   ; Wait for file handles to be released
   Sleep 1500

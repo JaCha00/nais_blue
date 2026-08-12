@@ -1,5 +1,5 @@
 """
-PyInstaller spec file for NAIS blue Tagger Server Sidecar (Lightweight)
+PyInstaller spec file for NAI Blue Tagger Server Sidecar (Lightweight)
 
 Build command:
     pyinstaller tagger_server.spec --clean --noconfirm

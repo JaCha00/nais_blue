@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ProjectRoot,
-    [string]$Repository = 'JaCha00/nais_blue',
+    [string]$Repository = 'bluehair-blue/NAI-Blue',
     [string]$Tag,
     [switch]$Publish,
     [switch]$AllowProjectSecrets
@@ -351,7 +351,7 @@ function Publish-AndroidRelease {
             throw "GitHub Release upload failed for $ReleaseTag."
         }
     } else {
-        & $gh.Source release create $ReleaseTag $ApkPath $ChecksumPath --repo $Repo --verify-tag --draft --title "NAIS blue $ReleaseTag" --notes 'Android APK was built and signed locally. No GitHub Actions build was used.'
+        & $gh.Source release create $ReleaseTag $ApkPath $ChecksumPath --repo $Repo --verify-tag --draft --title "NAI Blue $ReleaseTag" --notes 'Android APK was built and signed locally. No GitHub Actions build was used.'
         if ($LASTEXITCODE -ne 0) {
             throw "GitHub Release creation failed for $ReleaseTag."
         }
@@ -508,7 +508,7 @@ if (Test-Path -LiteralPath $keystorePropertiesPath) {
 }
 
 $artifactRoot = Join-Path $ProjectRoot 'release-artifacts\android'
-$artifactName = "NAIS-blue_$version-universal.apk"
+$artifactName = "NAI-Blue_$version-universal.apk"
 $artifactPath = Join-Path $artifactRoot $artifactName
 $checksumPath = "$artifactPath.sha256"
 $signingEnvironment = @{

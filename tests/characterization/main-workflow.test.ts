@@ -3,8 +3,8 @@ import JSZip from 'jszip'
 import { encode } from '@msgpack/msgpack'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GenerationParams } from '@/services/novelai-types'
-import { readNais2Params } from '@/lib/nais2-png-meta'
-import { buildNais2Params, redactSentPayloadForMetadata } from '@/lib/generation-metadata'
+import { readNaiBlueParams } from '@/lib/nai-blue-metadata'
+import { buildNaiBlueParams, redactSentPayloadForMetadata } from '@/lib/generation-metadata'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { NaiTransportTimeoutError } from '@/services/nai/transport'
 import { useDiagnosticsStore } from '@/stores/diagnostics-store'
@@ -17,7 +17,7 @@ import {
     summarizeCapturedRequest,
     summarizeGenerationParams,
     summarizeMetadata,
-    summarizeNais2Metadata,
+    summarizeNaiBlueMetadata,
 } from './workflow-capture'
 
 const runtimeCapture = vi.hoisted(() => ({
@@ -78,9 +78,9 @@ vi.mock('@/lib/image-utils', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => {
     const BaseDirectory = { Picture: 1, AppData: 2 }
     const key = (location: string, baseDir?: unknown) => `${String(baseDir ?? 'absolute')}::${location}`
-    const isJournalPath = (location: string) => location.startsWith('nais2/output-journal/')
+    const isJournalPath = (location: string) => location.startsWith('nai-blue/output-journal/')
     const committedKind = (location: string): string | null => {
-        const match = location.match(/\.nais2-txn-[^.]+\.(image|sidecar|diagnostic)\.tmp$/)
+        const match = location.match(/\.nai-blue-txn-[^.]+\.(image|sidecar|diagnostic)\.tmp$/)
         return match?.[1] ?? null
     }
     const captureCommittedWrite = (
@@ -520,14 +520,14 @@ function summarizeOutput(): Record<string, unknown> {
     }
 
     if (output.policy === 'filesystem') {
-        const imageWrite = runtimeCapture.writes.find(write => !write.location.endsWith('.nais-blue.json'))
+        const imageWrite = runtimeCapture.writes.find(write => !write.location.endsWith('.nai-blue.json'))
         if (!imageWrite || typeof location !== 'string') throw new Error('Missing Main filesystem output capture')
         const expectedResolvedPath = `C:/Synthetic/Pictures/${imageWrite.location}`
         expect(location).toBe(expectedResolvedPath)
         output.targetSegments = imageWrite.location.split('/').slice(0, -1)
         output.baseDirectoryUsed = imageWrite.baseDirPresent
-        output.generatedFileCount = runtimeCapture.writes.filter(write => !write.location.endsWith('.nais-blue.json')).length
-        output.sidecarFileCount = runtimeCapture.writes.filter(write => write.location.endsWith('.nais-blue.json')).length
+        output.generatedFileCount = runtimeCapture.writes.filter(write => !write.location.endsWith('.nai-blue.json')).length
+        output.sidecarFileCount = runtimeCapture.writes.filter(write => write.location.endsWith('.nai-blue.json')).length
         output.resolvedPathMatchesMockPlatformRoot = location === expectedResolvedPath
     }
 
@@ -545,11 +545,11 @@ async function runScenario(name: string): Promise<Record<string, unknown>> {
     const expectedPayloadHash = `sha256:${sha256Utf8(redactSentPayloadForMetadata(JSON.stringify(request.payload)))}`
     expect(history?.sentPayloadSummary).toBe(expectedPayloadHash)
     const plannedMetadata = summarizeMetadata(generationParams, history?.sentPayloadSummary)
-    expect(buildNais2Params({ ...generationParams, sentPayloadSummary: history?.sentPayloadSummary }).redactedPayloadHash)
+    expect(buildNaiBlueParams({ ...generationParams, sentPayloadSummary: history?.sentPayloadSummary }).redactedPayloadHash)
         .toBe(expectedPayloadHash)
     const eventData = runtimeCapture.events.at(-1)?.detail.data
-    const embeddedParams = typeof eventData === 'string' ? readNais2Params(base64Bytes(eventData)) : null
-    const embeddedMetadata = summarizeNais2Metadata(embeddedParams)
+    const embeddedParams = typeof eventData === 'string' ? readNaiBlueParams(base64Bytes(eventData)) : null
+    const embeddedMetadata = summarizeNaiBlueMetadata(embeddedParams)
     const shouldEmbed = generationParams.metadataMode !== 'sidecar-only'
         && generationParams.metadataMode !== 'strip-and-sidecar'
     if (shouldEmbed) {
@@ -557,11 +557,11 @@ async function runScenario(name: string): Promise<Record<string, unknown>> {
         expect(embeddedParams?.redactedPayloadHash).toBe(expectedPayloadHash)
     }
     else expect(embeddedMetadata).toBeNull()
-        const sidecarWrite = runtimeCapture.writes.find(write => write.location.endsWith('.nais-blue.json'))
+        const sidecarWrite = runtimeCapture.writes.find(write => write.location.endsWith('.nai-blue.json'))
     const sidecarParams = sidecarWrite
         ? JSON.parse(new TextDecoder().decode(sidecarWrite.data))
         : null
-    const sidecarMetadata = summarizeNais2Metadata(sidecarParams)
+    const sidecarMetadata = summarizeNaiBlueMetadata(sidecarParams)
     if (sidecarMetadata) expect(sidecarMetadata).toEqual(plannedMetadata)
     if (sidecarParams) expect(sidecarParams.redactedPayloadHash).toBe(expectedPayloadHash)
     const fixturePromptParts = { ...(plannedMetadata.promptParts as Record<string, unknown>) }
@@ -1198,9 +1198,9 @@ describe('Main workflow golden characterization', () => {
 
         expect(runtimeCapture.writes.map(write => write.location)).toEqual([
             `V2/Gallery/fixed_${FIXED_SEED}.webp`,
-            `V2/Gallery/fixed_${FIXED_SEED}.nais-blue.json`,
+            `V2/Gallery/fixed_${FIXED_SEED}.nai-blue.json`,
         ])
-        expect([...runtimeCapture.files.keys()].some(location => location.includes('nais2/output-journal')))
+        expect([...runtimeCapture.files.keys()].some(location => location.includes('nai-blue/output-journal')))
             .toBe(false)
         expect(runtimeCapture.events[0].detail.path)
             .toBe(`C:/Synthetic/Pictures/V2/Gallery/fixed_${FIXED_SEED}.webp`)
@@ -1611,7 +1611,7 @@ describe('Main workflow golden characterization', () => {
         }
 
         expect(runtimeCapture.params[0].prompt).toBe('step fragment')
-        const metadata = buildNais2Params(runtimeCapture.params[0])
+        const metadata = buildNaiBlueParams(runtimeCapture.params[0])
         expect(metadata.assetModulePlan).toMatchObject({
             recipeId: 'step-fragment-recipe',
             promptGroups: { 'main.base': 'step fragment' },

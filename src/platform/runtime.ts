@@ -2,10 +2,10 @@ import type { RuntimePlatform } from './capabilities'
 
 export type NaisRuntimePlatform = Exclude<RuntimePlatform, 'desktop' | 'web'>
 
-declare const __NAIS_BLUE_TAURI_PLATFORM__: string | undefined
+declare const __NAI_BLUE_TAURI_PLATFORM__: string | undefined
 
-const buildPlatform = typeof __NAIS_BLUE_TAURI_PLATFORM__ === 'string'
-    ? __NAIS_BLUE_TAURI_PLATFORM__.toLowerCase()
+const buildPlatform = typeof __NAI_BLUE_TAURI_PLATFORM__ === 'string'
+    ? __NAI_BLUE_TAURI_PLATFORM__.toLowerCase()
     : ''
 
 const userAgent = typeof navigator === 'undefined'

@@ -1,136 +1,103 @@
-# NAIS blue - NovelAI Image Studio
+# NAI Blue
 
 <p align="center">
-  <img src="public/Nais_Blue.png" alt="NAIS blue ロゴ" width="128" height="128">
+  <img src="public/nai-blue.png" alt="NAI Blue ロゴ" width="128" height="128">
 </p>
 
 <p align="center">
-  <b>NovelAI画像生成のための強力なデスクトップアプリケーション</b>
+  NovelAIの画像生成ワークフローを作成・整理・実行するデスクトップ／Androidワークスペース
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/NX8fmMZb">
-    <img src="https://img.shields.io/badge/Discord-%E3%82%B3%E3%83%9F%E3%83%A5%E3%83%8B%E3%83%86%E3%82%A3%E5%8F%82%E5%8A%A0-5865F2?logo=discord&logoColor=white" alt="Discord Server">
-  </a>
-</p>
-
-<p align="center">
-  <a href="./README.md">English</a> •
-  <a href="./README.ko.md">한국어</a> •
+  <a href="./README.md">English</a> ·
+  <a href="./README.ko.md">한국어</a> ·
   <a href="./README.ja.md">日本語</a>
 </p>
 
----
+> NAI Blueは独立したコミュニティクライアントであり、NovelAIとの提携または公式な承認を受けた製品ではありません。
 
-## 📖 概要
+## インストール
 
-**NAIS blue (NovelAI Image Studio)** は、TauriとReactで構築された機能豊富なデスクトップアプリケーションで、NovelAI APIを使用したAI画像生成のための直感的なインターフェースを提供します。
+[GitHub Releases](https://github.com/bluehair-blue/NAI-Blue/releases/latest)から環境に合うファイルをダウンロードしてください。
 
----
+- Windows: 通常は`x64-setup.exe`を使用します。管理環境向けのMSIも提供しています。
+- macOS: Apple Siliconは`aarch64`、Intel Macは`x64`を選びます。このリポジトリから取得したことを確認した上で「壊れている」と表示される場合は、ターミナルで`xattr -cr "/Applications/NAI Blue.app"`を実行してください。
+- Android: 署名済みuniversal APKをインストールします。APKを開いたアプリに「不明なアプリのインストール」権限が必要な場合があります。
 
-## ✨ 機能
+## 初回設定
 
-### 🎨 メインモード - 画像生成
-- **テキストから画像生成**: ストリーミングプレビュー対応
-- **高度なパラメータ**: モデル、解像度、ステップ、CFG、サンプラー、SMEA
-- **Vibe Transfer** & **キャラクターリファレンス (Director Tools)**
-- **シードコントロール** & **メタデータ管理**
+1. NAI Blueを起動し、最初の設定は**Guided**画面で進めます。
+2. アカウント／APIステップでNovelAIアカウントを接続し、トークンを検証します。
+3. **1枚生成**または**複数画像**を選びます。
+4. メイン、ネガティブ、キャラクタープロンプトを編集します。キャラクター位置の初期値は中央の`0.5, 0.5`で、タスクごとに変更できます。
+5. 出力フォルダーとメタデータ方針を選び、設定を確認してキューへ追加します。
+6. **キュー**で進捗と各ジョブの保存先を確認します。
 
-### 🎬 シーンモード - バッチ生成
-- **シーンカード**: ドラッグ＆ドロップで並び替え
-- **シーン別設定** & **キューシステム** (1-99)
-- **シーンプリセット** & **一括エクスポート** (JSON/ZIP)
+対応デスクトップ環境では認証情報をOSの資格情報保管庫に保存します。NovelAIトークン、R2 secret、private sidecarをIssueへ添付しないでください。
 
-### 🛠️ スマートツール
-| ツール | 説明 |
-|--------|------|
-| **Image to Image** | AIで画像を変換 |
-| **インペインティング** | 画像の特定領域を選択的に編集 |
-| **背景除去** | 画像の背景を除去 |
-| **モザイク効果** | モザイク/ブラー効果を適用 |
-| **タグ分析** | 画像タグを抽出 |
-| **4Kアップスケール** | 4倍解像度アップスケール |
+## 主な使い方
 
-### 📚 追加機能
-- **ライブラリ**: メタデータビューア付き画像ギャラリー
-- **データハブ**: 最大500枚の画像から生成メタデータを一括読み取り
-- **AIエージェントワークスペース**: デスクトップでプロンプト・パラメータ・アプリデータを確認して安全に編集
-- **Android · デスクトップ同期**: プロンプトプリセットと生成パラメータをTLSでセッション同期（トークン・画像・絶対パスは除外）
-- **フラグメントプロンプト**: プロンプトスニペットの保存と再利用
-- **多言語対応**: English, 한국어, 日本語
-- **ウェブビュー**: 内蔵NovelAIブラウザ
+### プロンプトモジュール
 
----
+Guidedまたは高度な生成画面からプロンプトモジュールライブラリを開きます。フォルダーで分類し、ベース、詳細、追加、ネガティブ、キャラクター、キャラクターネガティブの各パートを保存できます。挿入時は必要なパートだけを選択でき、キャラクター座標はモジュールではなく現在のタスクに属します。
 
-## 📥 インストール
+### 画像メタデータの読み込み
 
-### ダウンロード
-[Releases](../../releases)からダウンロードしてください。
+プロンプト読み込み領域へPNG、WebP、JPEG、`.nai-blue.json` sidecar、または対応するメタデータ抽出JSONをドロップします。メインとキャラクタープロンプトは同じ編集形式へ変換されます。名称変更前のsidecarも既存ライブラリ向けに引き続き読み込めます。
 
-#### macOS注意
-**「NAIS blueは壊れているため開けません」** エラーが表示された場合、ターミナルで以下のコマンドを実行してください：
+### 生成フォルダーとR2
+
+キューへ追加する前に生成フォルダーを作成します。フォルダーごとにローカル保存先、共通プロンプト、R2プロファイル、バケット、プレフィックス、自動アップロードを設定できます。子フォルダーは明示的に上書きしない限り親のプレフィックスを継承します。
+
+R2プロファイルの設定と接続確認が終わるまではR2操作を選べません。**R2を設定**から接続を検証し、必要なフォルダーだけ自動アップロードを有効にしてください。ローカル原本の削除は常に独立した明示的な選択です。
+
+### 画像クリーンアップとsidecar
+
+メタデータステップでは、画像への埋め込み、sidecarのみ、クリーン画像＋private sidecar、完全削除を選べます。クリーンアップはピクセルだけを再エンコードし、復元用メタデータをprivate sidecarへ分離します。設定した権利所有者のXMPも追加できます。
+
+## デバッグと不具合報告
+
+報告前に次を確認してください。
+
+1. 同じ入力でもう一度だけ試し、失敗した正確なステップを記録します。
+2. **設定 → 高度な設定と診断**を開きます。
+3. 関連イベントを選び、**サニタイズ済み診断ログ**をコピーまたは書き出します。
+4. 最新リリースノートと既存の[Issue](https://github.com/bluehair-blue/NAI-Blue/issues)を確認します。
+
+[バグ報告](https://github.com/bluehair-blue/NAI-Blue/issues/new?template=bug_report.yml)には次を含めてください。
+
+- NAI Blueのバージョン、OS、インストール方法
+- 最短の再現手順
+- 期待した動作と実際の動作
+- 表示された`DiagnosticCode`とサニタイズ済みログ
+- トークン、パス、プロンプト、privateメタデータを隠したスクリーンショット
+
+NovelAIトークン、Cloudflare secret、署名鍵、生のcredential backup、未確認のprivate sidecarは添付しないでください。脆弱性は公開Issueではなく、リポジトリの非公開Security Advisoryから報告してください。
+
+## ソースからのビルドとデバッグ
+
+Node.js 24 LTS、npm、Rust 1.88以降、Tauriに必要なネイティブビルドツールを用意してください。Tagger sidecarを再ビルドする場合はPython 3.11も必要です。
+
 ```bash
-xattr -cr "/Applications/NAIS blue.app"
+git clone https://github.com/bluehair-blue/NAI-Blue.git
+cd NAI-Blue
+npm ci
+npm run tauri dev
 ```
 
-### ソースからビルド
+主な確認コマンド：
+
 ```bash
-git clone https://github.com/JaCha00/nais_blue.git
-cd nais_blue
-npm install
-npm run tauri dev      # 開発モード
-npm run tauri build    # プロダクションビルド
+npm run lint
+npm run test:composition
+npm run build
+npm run tauri build
 ```
 
----
+リリースと署名の手順は[RELEASING.md](./RELEASING.md)を参照してください。
 
-## 🚀 使用方法
+## クレジットとライセンス
 
-1. NAIS blueを起動
-2. **設定** → **API** → NovelAIトークンを入力 (`pst-...`)
-3. **確認**をクリック
-4. 画像生成開始！
+NAI Blueは[NAIS2](https://github.com/sunanakgo/NAIS2)から始まった取り組みを引き継いでいます。原作者とコントリビューターに感謝します。ワイルドカードとシーンのワークフローでは[NAIA2.0](https://github.com/DNT-LAB/NAIA2.0)および[SDStudio](https://github.com/sunho/SDStudio)も参考にしています。
 
----
-
-## 🛠️ 技術スタック
-
-| 技術 | 用途 |
-|------|------|
-| **Tauri 2.0** | デスクトップフレームワーク |
-| **React 18** | フロントエンドUI |
-| **TypeScript** | 型安全性 |
-| **TailwindCSS** | スタイリング |
-| **Zustand** | 状態管理 |
-| **i18next** | 国際化 |
-
----
-
-## 📁 プロジェクト構成
-
-```
-nais_blue/
-├── src/                    # フロントエンド
-│   ├── components/         # Reactコンポーネント
-│   ├── pages/              # メインページ
-│   ├── stores/             # 状態ストア
-│   └── i18n/               # 翻訳
-└── src-tauri/              # Rustバックエンド
-```
-
----
-
-## 🔑 APIトークン
-
-NovelAIトークンはローカルにのみ保存され、第三者と共有されることはありません。
-
----
-
-## 🙏 クレジット
-
-- [NAIA2.0](https://github.com/DNT-LAB/NAIA2.0) - ワイルドカードシステム参考
-- [SDStudio](https://github.com/sunho/SDStudio) - シーンモード参考
-
----
-
-<p align="center">NovelAIコミュニティのために ❤️ で作成</p>
+[GPL-3.0](./LICENSE)で提供します。

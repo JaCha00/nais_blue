@@ -9,13 +9,15 @@
     "x86",
     "x86_64"
   ],
-  "versionCodeScheme": "semver-major-minor-patch",
+  "versionCodeScheme": "explicit-monotonic",
+  "versionCode": 2011004,
   "signing": {
     "keyAlias": "release",
     "certificateSha256": "6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65"
   },
   "updateBaseline": {
-    "tag": "v2.8.3"
+    "tag": "v2.11.3",
+    "versionCode": 2011003
   },
   "firstReleaseForApplicationId": false,
   "firstReleaseVersion": "2.8.3"

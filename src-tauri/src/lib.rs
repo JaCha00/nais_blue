@@ -689,7 +689,7 @@ fn record_diagnostic_event(event: serde_json::Value) -> Result<(), String> {
         return Err("Diagnostic event exceeded the bounded log size".to_string());
     }
 
-    log::error!(target: "nais2_diagnostic", "{}", serialized);
+    log::error!(target: "nai_blue_diagnostic", "{}", serialized);
     Ok(())
 }
 
@@ -763,7 +763,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         // The tracked Android scheduler owns notification/control lifecycle;
         // its executor remains unavailable until the process-safe transfer gate closes.
-        .plugin(tauri_plugin_nais_android_transfer::init())
+        .plugin(tauri_plugin_nai_blue_android_transfer::init())
         // Production file logging intentionally accepts only the structured,
         // redacted diagnostic target emitted by record_diagnostic_event.
         .plugin(
@@ -773,7 +773,7 @@ pub fn run() {
                     file_name: Some("diagnostics".to_string()),
                 }))
                 .level(log::LevelFilter::Error)
-                .filter(|metadata| metadata.target() == "nais2_diagnostic")
+                .filter(|metadata| metadata.target() == "nai_blue_diagnostic")
                 .max_file_size(1_000_000)
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
                 .build(),

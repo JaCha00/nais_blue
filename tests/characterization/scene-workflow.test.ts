@@ -3,7 +3,7 @@ import JSZip from 'jszip'
 import { encode } from '@msgpack/msgpack'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NovelAIHttpError, type GenerationParams } from '@/services/novelai-types'
-import { readNais2Params } from '@/lib/nais2-png-meta'
+import { readNaiBlueParams } from '@/lib/nai-blue-metadata'
 import { SCENE_DIRECT_RECIPE_ID } from '@/lib/composition/scene-adapter'
 
 import {
@@ -13,7 +13,7 @@ import {
     summarizeCapturedRequest,
     summarizeGenerationParams,
     summarizeMetadata,
-    summarizeNais2Metadata,
+    summarizeNaiBlueMetadata,
 } from './workflow-capture'
 
 type FetchBehavior = 'success' | 'http-400' | 'deferred-success' | 'deferred-stream'
@@ -78,7 +78,7 @@ vi.mock('@/lib/image-utils', () => ({
 
 vi.mock('@tauri-apps/plugin-fs', () => {
     const key = (location: string, baseDir?: unknown) => `${String(baseDir ?? 'absolute')}:${location}`
-    const isJournal = (location: string, baseDir?: unknown) => baseDir === 2 && location.startsWith('nais2/output-journal')
+    const isJournal = (location: string, baseDir?: unknown) => baseDir === 2 && location.startsWith('nai-blue/output-journal')
     return {
         BaseDirectory: { Picture: 1, AppData: 2 },
         exists: async (location: string, options?: { baseDir?: unknown }) => {
@@ -520,7 +520,7 @@ function firstMetadata(): Record<string, unknown> | null {
     if (!history || !params) return null
     const metadata = summarizeMetadata(params, history.sentPayloadSummary)
     expect(metadata.sentPayloadHash).toBe(hashCapturedPayload(runtimeCapture.requests[0]))
-    const embeddedMetadata = summarizeNais2Metadata(readNais2Params(runtimeCapture.writeBytes[0]))
+    const embeddedMetadata = summarizeNaiBlueMetadata(readNaiBlueParams(runtimeCapture.writeBytes[0]))
     expect(embeddedMetadata).toEqual(metadata)
     return {
         qualityToggle: metadata.qualityToggle,

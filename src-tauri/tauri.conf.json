@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "NAIS blue",
-  "mainBinaryName": "Nais_blue",
-  "version": "2.11.3",
+  "productName": "NAI Blue",
+  "mainBinaryName": "NAI-Blue",
+  "version": "1.0.0",
   "identifier": "com.bluhair.naisblue",
   "build": {
     "frontendDist": "../dist",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "NAIS blue - NovelAI Image Studio",
+        "title": "NAI Blue - NovelAI Image Studio",
         "width": 1600,
         "height": 900,
         "resizable": true,
@@ -41,7 +41,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://github.com/JaCha00/nais_blue/releases/latest/download/latest.json"
+        "https://github.com/bluehair-blue/NAI-Blue/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwMUFGMDgxMDY4NEYyRTEKUldUaDhvUUdnZkFhb0RqeVMyOWZ4QXlJVnFyVlZiVDVibHd0bDRUbTRFeTU2TVBGYzdPK0t3UXUK"
     }

@@ -27,7 +27,7 @@ export default defineConfig({
     // the same module graph and emits the CSS consumed by desktop and Android.
     plugins: [react(), tailwindcss()],
     define: {
-        __NAIS_BLUE_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
+        __NAI_BLUE_TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? ''),
     },
     resolve: {
         alias: {

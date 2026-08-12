@@ -34,7 +34,7 @@ object TransferNotifications {
         }
         builder
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("NAIS transfer")
+            .setContentTitle("NAI Blue transfer")
             .setContentText("$progress% complete")
             .setProgress(100, progress, false)
             .setOngoing(status.state !in setOf(TransferState.CANCELLED, TransferState.SUCCEEDED, TransferState.FAILED))
@@ -140,7 +140,7 @@ object TransferNotifications {
                 "Large transfers",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Progress and controls for user-started NAIS transfers"
+                description = "Progress and controls for user-started NAI Blue transfers"
             },
         )
     }

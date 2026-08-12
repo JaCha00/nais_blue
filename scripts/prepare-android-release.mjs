@@ -38,6 +38,9 @@ function assertReleasePolicy(projectRoot, policy) {
     if (androidConfig.bundle?.android?.minSdkVersion !== policy.minSdkVersion) {
         throw new Error('Android release policy minSdkVersion does not match tauri.android.conf.json')
     }
+    if (androidConfig.bundle?.android?.versionCode !== policy.versionCode) {
+        throw new Error('Android release policy versionCode does not match tauri.android.conf.json')
+    }
 }
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))

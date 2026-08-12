@@ -16,7 +16,7 @@
     },
     {
       "path": "metadata/data-hub-sample.nais-blue.json",
-      "source": "Synthetic NAIS blue Metadata v2 sidecar created for the Data Hub production parser and responsive batch-reading contract.",
+      "source": "Synthetic NAI Blue Metadata v2 sidecar created for the Data Hub production parser and responsive batch-reading contract.",
       "model": "nai-diffusion-4-5-full",
       "captureDate": "2026-07-26",
       "captureKind": "synthetic-derived",

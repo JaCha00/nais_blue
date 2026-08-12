@@ -12,7 +12,7 @@
 
     <application>
         <service
-            android:name=".NaisTransferJobService"
+            android:name=".NaiBlueTransferJobService"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 

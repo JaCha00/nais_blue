@@ -2,7 +2,7 @@ import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
 import type { MetadataMode } from '@/lib/generation-metadata'
 import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
 import type { PortablePathRef, RandomTraceEntry } from '@/domain/composition/types'
-import type { Nais2OutputPolicySummary } from '@/lib/nais2-png-meta'
+import type { NaiBlueOutputPolicySummary } from '@/lib/nai-blue-metadata'
 
 export class NovelAIHttpError extends Error {
     readonly status: number
@@ -84,7 +84,7 @@ export interface GenerationParams {
     /** Durable queue provenance. Never sent as a provider request field. */
     sourceJobId?: string
     /** Closed, credential-free summary. Never pass an OutputPolicy object here. */
-    outputPolicySummary?: Nais2OutputPolicySummary
+    outputPolicySummary?: NaiBlueOutputPolicySummary
     /** Local platform materialization hint; the NAI request adapter never serializes it. */
     portableOutputDirectory?: PortablePathRef
     qualityToggle?: boolean

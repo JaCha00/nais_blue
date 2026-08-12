@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible NAI Blue problem without sharing secrets.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve NAI Blue. Search existing issues first and remove tokens, secrets, private metadata, prompts, and personal paths from every attachment.
+  - type: input
+    id: version
+    attributes:
+      label: NAI Blue version
+      description: Find this in Settings → Advanced settings and diagnostics.
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS Apple Silicon
+        - macOS Intel
+        - Android
+        - Web development build
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: List the shortest sequence that reproduces the problem.
+      placeholder: |
+        1. Open …
+        2. Choose …
+        3. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only DiagnosticCode and logs exported after reviewing the redaction.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed tokens, Cloudflare secrets, signing keys, private sidecars, prompts, and personal paths.
+          required: true
+        - label: This is not a security vulnerability. Security reports belong in a private GitHub Security Advisory.
+          required: true

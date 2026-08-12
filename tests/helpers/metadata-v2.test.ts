@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildNais2Params } from '@/lib/generation-metadata'
-import { parseNais2SidecarMetadata } from '@/lib/metadata-parser'
+import { buildNaiBlueParams } from '@/lib/generation-metadata'
+import { parseNaiBlueSidecarMetadata } from '@/lib/metadata-parser'
 import {
-    embedNaisBlueParams,
-    encodeNaisBlueSidecar,
-    parseNais2Params,
-    readNais2Params,
-    readNais2Sidecar,
-} from '@/lib/nais2-png-meta'
+    embedNaiBlueParams,
+    encodeNaiBlueSidecar,
+    parseNaiBlueParams,
+    readNaiBlueParams,
+    readNaiBlueSidecar,
+} from '@/lib/nai-blue-metadata'
 import type { GenerationParams } from '@/services/novelai-types'
 
 const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+4xVnAAAAAElFTkSuQmCC'
@@ -37,10 +37,10 @@ function bytesFromBase64(value: string): Uint8Array {
     return Uint8Array.from(atob(value), character => character.charCodeAt(0))
 }
 
-describe('NAIS blue Metadata v2', () => {
+describe('NAI Blue Metadata v2', () => {
     it('builds the required portable fields and omits the payload by default', () => {
         const redactedPayload = JSON.stringify({ parameters: { prompt: 'secret-ish details' } })
-        const metadata = buildNais2Params(baseParams({
+        const metadata = buildNaiBlueParams(baseParams({
             sourceJobId: 'job:durable:1',
             engineVersion: 'composition-engine-v1',
             sourceRevision: 12,
@@ -63,7 +63,7 @@ describe('NAIS blue Metadata v2', () => {
         }))
 
         expect(metadata.version).toBe(2)
-        expect(metadata.metadataName).toBe('nais-blue')
+        expect(metadata.metadataName).toBe('nai-blue')
         if (metadata.version !== 2) throw new Error('expected v2')
         expect(metadata.engineVersion).toBe('composition-engine-v1')
         expect(metadata.sourceRevision).toBe(12)
@@ -84,20 +84,20 @@ describe('NAIS blue Metadata v2', () => {
 
     it('does not hash an existing redacted payload digest twice', () => {
         const digest = `sha256:${'a'.repeat(64)}`
-        const metadata = buildNais2Params(baseParams({ sentPayloadSummary: digest }))
+        const metadata = buildNaiBlueParams(baseParams({ sentPayloadSummary: digest }))
         expect(metadata.version).toBe(2)
         if (metadata.version !== 2) throw new Error('expected v2')
         expect(metadata.redactedPayloadHash).toBe(digest)
     })
 
     it('strictly round-trips v2 through embedded metadata and sidecars', () => {
-        const metadata = buildNais2Params(baseParams())
-        const embedded = embedNaisBlueParams(TINY_PNG_BASE64, metadata)
-        expect(readNais2Params(bytesFromBase64(embedded))).toEqual(metadata)
+        const metadata = buildNaiBlueParams(baseParams())
+        const embedded = embedNaiBlueParams(TINY_PNG_BASE64, metadata)
+        expect(readNaiBlueParams(bytesFromBase64(embedded))).toEqual(metadata)
 
-        const sidecar = encodeNaisBlueSidecar(metadata)
-        expect(readNais2Sidecar(sidecar)).toEqual(metadata)
-        expect(parseNais2SidecarMetadata(sidecar)).toMatchObject({
+        const sidecar = encodeNaiBlueSidecar(metadata)
+        expect(readNaiBlueSidecar(sidecar)).toEqual(metadata)
+        expect(parseNaiBlueSidecarMetadata(sidecar)).toMatchObject({
             metadataVersion: 2,
             width: 832,
             height: 1216,
@@ -106,12 +106,12 @@ describe('NAIS blue Metadata v2', () => {
     })
 
     it('reads known legacy metadata but rejects credential-bearing policy summaries', () => {
-        expect(readNais2Sidecar('{"version":1,"qualityToggle":true}')).toEqual({
+        expect(readNaiBlueSidecar('{"version":1,"qualityToggle":true}')).toEqual({
             version: 1,
             qualityToggle: true,
         })
 
-        const valid = buildNais2Params(baseParams())
+        const valid = buildNaiBlueParams(baseParams())
         expect(valid.version).toBe(2)
         const invalid = JSON.parse(JSON.stringify(valid)) as Record<string, unknown>
         invalid.outputPolicySummary = {
@@ -119,6 +119,6 @@ describe('NAIS blue Metadata v2', () => {
             metadataMode: 'embedded',
             accessKey: 'must-not-be-readable',
         }
-        expect(parseNais2Params(invalid)).toBeNull()
+        expect(parseNaiBlueParams(invalid)).toBeNull()
     })
 })

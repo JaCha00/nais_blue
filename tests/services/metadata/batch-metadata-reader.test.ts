@@ -49,7 +49,7 @@ describe('batch metadata reader', () => {
         vi.unstubAllGlobals()
     })
 
-    it('reads a real NAIS blue sidecar through the production parser', async () => {
+    it('reads a real NAI Blue sidecar through the production parser', async () => {
         const fixture = readFileSync(
             new URL('../../fixtures/metadata/data-hub-sample.nais-blue.json', import.meta.url),
             'utf8',

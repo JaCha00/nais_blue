@@ -112,7 +112,7 @@ export function CustomTitleBar({ showWorkspaceToggles = true }: CustomTitleBarPr
                 data-tauri-drag-region
             >
                 <span className="truncate" data-tauri-drag-region>
-                    NAIS blue
+                    NAI Blue
                 </span>
             </div>
 

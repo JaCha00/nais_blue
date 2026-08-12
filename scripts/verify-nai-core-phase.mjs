@@ -307,7 +307,7 @@ check(
 check(
   'main webp writes compatibility sidecar',
   /includeWebpCompatibilitySidecar:\s*true/.test(generationStore) &&
-  /shouldWriteNais2Sidecar\(/.test(outputMetadataWriter) &&
+  /shouldWriteNaiBlueSidecar\(/.test(outputMetadataWriter) &&
   /request\.includeWebpCompatibilitySidecar \?\? true/.test(outputMetadataWriter)
 )
 check(

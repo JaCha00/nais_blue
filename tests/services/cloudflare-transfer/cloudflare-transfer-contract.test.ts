@@ -68,8 +68,8 @@ describe('Cloudflare transfer protocol', () => {
             source('cloudflare/nais-transfer-worker/src/index.ts'),
             source('wrangler.toml'),
             source('scripts/rotate-cloudflare-pairing-and-qa.mjs'),
-            source('src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareTransferExecutor.kt'),
-            source('src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareCredentialStore.kt'),
+            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareTransferExecutor.kt'),
+            source('src-tauri/plugins/nai-blue-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareCredentialStore.kt'),
         ])
 
         for (const evidence of [

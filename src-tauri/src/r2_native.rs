@@ -7,7 +7,8 @@ use std::{
 };
 
 const R2_CREDENTIAL_SERVICE: &str = "com.bluhair.naisblue.r2";
-const R2_HASH_METADATA_KEY: &str = "nais2-sha256";
+const R2_HASH_METADATA_KEY: &str = "nai-blue-sha256";
+const PRE_RENAME_R2_HASH_METADATA_KEY: &str = "nais2-sha256";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -498,7 +499,7 @@ mod desktop {
                 credential.secret_access_key,
                 None,
                 None,
-                "nais2-native-r2-vault",
+                "nai-blue-native-r2-vault",
             ))
             .endpoint_url(endpoint(profile)?)
             .force_path_style(true)
@@ -596,7 +597,11 @@ mod desktop {
                 size: output.content_length(),
                 content_sha256: output
                     .metadata()
-                    .and_then(|metadata| metadata.get(R2_HASH_METADATA_KEY))
+                    .and_then(|metadata| {
+                        metadata
+                            .get(R2_HASH_METADATA_KEY)
+                            .or_else(|| metadata.get(PRE_RENAME_R2_HASH_METADATA_KEY))
+                    })
                     .cloned(),
                 etag: output.e_tag().map(str::to_string),
             }),
@@ -639,14 +644,14 @@ mod desktop {
             .unwrap_or_default();
         let key = prefixed_key(
             &profile.prefix,
-            &format!(".nais2-connection-test/{nonce:x}"),
+            &format!(".nai-blue-connection-test/{nonce:x}"),
         )?;
         client
             .put_object()
             .bucket(&profile.bucket)
             .key(&key)
             .if_none_match("*")
-            .body(ByteStream::from_static(b"nais2-r2-probe"))
+            .body(ByteStream::from_static(b"nai-blue-r2-probe"))
             .metadata(R2_HASH_METADATA_KEY, "probe")
             .send()
             .await

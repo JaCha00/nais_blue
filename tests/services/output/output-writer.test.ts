@@ -209,6 +209,7 @@ function writer(adapter: InMemoryOutputAdapter, transactionId = 'txn-1'): Output
 }
 
 function expectNoTransactionArtifacts(adapter: InMemoryOutputAdapter): void {
+    expect(adapter.paths().filter(path => path.includes('.nai-blue-txn-'))).toEqual([])
     expect(adapter.paths().filter(path => path.includes('.nais2-txn-'))).toEqual([])
     expect([...adapter.journals.keys()]).toEqual([])
 }
@@ -273,8 +274,8 @@ describe('OutputWriter fault containment', () => {
         expect(outcome.status).toBe('committed')
         if (outcome.status !== 'committed') throw new Error('Expected the output transaction to commit')
         expect(bytesEqual(adapter.file('output/result.png'), cleanBytes)).toBe(true)
-        expect(bytesEqual(adapter.file('output/._nais-private/result.png'), IMAGE_BYTES)).toBe(true)
-        expect(outcome.result.providerOriginalPath).toBe('/app-data/output/._nais-private/result.png')
+        expect(bytesEqual(adapter.file('output/._nai-blue-private/result.png'), IMAGE_BYTES)).toBe(true)
+        expect(outcome.result.providerOriginalPath).toBe('/app-data/output/._nai-blue-private/result.png')
         expectNoTransactionArtifacts(adapter)
     })
 
@@ -672,12 +673,12 @@ describe('OutputWriter fault containment', () => {
             status: 'committed',
             result: {
                 fileName: 'result.png',
-                artifactSidecarPath: '/app-data/output/result.nais-blue.artifact.json',
+                artifactSidecarPath: '/app-data/output/result.nai-blue.artifact.json',
                 contentChecksum: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
             },
         })
         expect(bytesEqual(adapter.file('output/result.png'), IMAGE_BYTES)).toBe(true)
-        expect(bytesEqual(adapter.file('output/result.nais-blue.artifact.json'), artifactSidecar)).toBe(true)
+        expect(bytesEqual(adapter.file('output/result.nai-blue.artifact.json'), artifactSidecar)).toBe(true)
         expectNoTransactionArtifacts(adapter)
     })
 

@@ -7,6 +7,7 @@ import type {
     UploadJobState,
 } from '@/domain/r2/types'
 
+// Physical database names stay stable so pending uploads survive the rename.
 export const R2_UPLOAD_DATABASE_NAME = 'nais2-r2-upload-queue'
 export const R2_UPLOAD_DATABASE_VERSION = 1
 

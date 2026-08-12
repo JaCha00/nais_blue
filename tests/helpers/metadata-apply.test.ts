@@ -5,7 +5,7 @@ vi.mock('@/stores/preset-store', () => ({ usePresetStore: { getState: vi.fn() } 
 vi.mock('@/stores/character-prompt-store', () => ({ useCharacterPromptStore: { getState: vi.fn() } }))
 vi.mock('@/stores/character-store', () => ({ useCharacterStore: { getState: vi.fn() } }))
 
-import { buildNais2Params } from '@/lib/generation-metadata'
+import { buildNaiBlueParams } from '@/lib/generation-metadata'
 import type { NAIMetadata } from '@/lib/metadata-parser'
 import {
     createMetadataApplyPreview,
@@ -52,7 +52,7 @@ const current: MetadataApplyCurrentState = {
 }
 
 function v2Metadata(): NAIMetadata {
-    const nais2 = buildNais2Params({
+    const naiBlue = buildNaiBlueParams({
         prompt: 'portrait',
         negative_prompt: 'bad anatomy',
         model: 'nai-diffusion-4-5-full',
@@ -75,11 +75,11 @@ function v2Metadata(): NAIMetadata {
             position: { x: 0.25, y: 0.75 },
         }],
     })
-    if (nais2.version !== 2) throw new Error('expected v2')
+    if (naiBlue.version !== 2) throw new Error('expected v2')
     return {
-        nais2,
+        naiBlue,
         metadataVersion: 2,
-        promptParts: nais2.promptParts,
+        promptParts: naiBlue.promptParts,
     }
 }
 
@@ -95,8 +95,8 @@ describe('metadata repository apply preview', () => {
 
     it('validates positions before apply', () => {
         const metadata = v2Metadata()
-        if (metadata.nais2?.version !== 2) throw new Error('expected v2')
-        metadata.nais2.characters[0].positions[0].x = 1.5
+        if (metadata.naiBlue?.version !== 2) throw new Error('expected v2')
+        metadata.naiBlue.characters[0].positions[0].x = 1.5
         const preview = createMetadataApplyPreview(metadata, options, current)
         expect(preview.validation.valid).toBe(false)
         expect(preview.validation.errors).toContainEqual(expect.objectContaining({

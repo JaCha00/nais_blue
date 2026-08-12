@@ -148,7 +148,7 @@ export function GuidedHome() {
         <div className="mx-auto flex min-h-full w-full max-w-[var(--guided-content-max)] items-center px-4 py-7 sm:px-6 lg:px-10">
             <div className="grid w-full items-center gap-8 min-[900px]:grid-cols-[minmax(19rem,0.74fr)_minmax(30rem,1fr)] min-[900px]:gap-10">
                 <section aria-labelledby="guided-welcome-title">
-                    <p className="mb-2 text-sm font-semibold text-primary">NAIS blue · Guided</p>
+                    <p className="mb-2 text-sm font-semibold text-primary">NAI Blue · Guided</p>
                     <h1 id="guided-welcome-title" className="guided-display max-w-[12ch] text-foreground">
                         {t('guided.home.welcome', '어서오세요!')}
                     </h1>

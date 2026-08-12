@@ -3034,8 +3034,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "nais2"
-version = "2.11.3"
+name = "nai-blue"
+version = "1.0.0"
 dependencies = [
  "aws-sdk-s3",
  "axum",
@@ -3057,7 +3057,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-log",
- "tauri-plugin-nais-android-transfer",
+ "tauri-plugin-nai-blue-android-transfer",
  "tauri-plugin-opener",
  "tauri-plugin-process",
  "tauri-plugin-shell",
@@ -5185,7 +5185,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-nais-android-transfer"
+name = "tauri-plugin-nai-blue-android-transfer"
 version = "0.1.0"
 dependencies = [
  "serde",

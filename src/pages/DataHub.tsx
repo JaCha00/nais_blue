@@ -100,7 +100,7 @@ function MetadataDetail({ item }: { item: MetadataBatchItem | null }) {
                     <h3 className="min-w-0 truncate font-semibold">{item.fileName}</h3>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
-                    {item.error ?? t('dataHub.metadata.noMetadataDetail', '읽을 수 있는 NAI/NAIS blue 메타데이터가 없습니다.')}
+                    {item.error ?? t('dataHub.metadata.noMetadataDetail', '읽을 수 있는 NAI/NAI Blue 메타데이터가 없습니다.')}
                 </p>
             </div>
         )
@@ -271,7 +271,7 @@ export function MetadataWorkspace() {
                     type="file"
                     className="sr-only"
                     aria-label={t('dataHub.metadata.dropTitle', '이미지를 선택하거나 이곳에 놓으세요')}
-                    accept="image/png,image/webp,image/jpeg,.nais-blue.json,.nais2.json,application/json"
+                    accept="image/png,image/webp,image/jpeg,.nai-blue.json,.nais-blue.json,.nais2.json,application/json"
                     multiple
                     disabled={reading}
                     onChange={(event) => {
@@ -528,7 +528,7 @@ function PairingQrCode({ value }: { value: string }) {
     ) : (
         <img
             src={dataUrl}
-            alt="NAIS blue secure pairing QR"
+            alt="NAI Blue secure pairing QR"
             className="aspect-square w-full max-w-[280px] rounded-panel border bg-card p-2"
         />
     )

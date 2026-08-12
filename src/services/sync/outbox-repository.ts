@@ -37,6 +37,7 @@ import {
     sanitizeSyncPayload,
 } from './sanitizer'
 
+// Physical database names stay stable so queued transfers survive the rename.
 export const SYNC_OUTBOX_DATABASE_NAME = 'nais2-local-sync'
 export const SYNC_OUTBOX_DATABASE_VERSION = 2
 export const SYNC_IN_FLIGHT_LEASE_MS = 60_000

@@ -1,5 +1,5 @@
 [default]
-description = "Allows the NAIS UI to control bounded Android R2 and paired-LAN transfers."
+description = "Allows the NAI Blue UI to control bounded Android R2 and paired-LAN transfers."
 permissions = [
   "allow-schedule",
   "allow-pause",

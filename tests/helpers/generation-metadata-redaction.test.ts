@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-    buildNais2Params,
+    buildNaiBlueParams,
     cloneCompositionRandomTrace,
     redactSentPayloadForMetadata,
 } from '@/lib/generation-metadata'
@@ -31,7 +31,7 @@ describe('generation metadata payload redaction', () => {
         })
     })
 
-    it('round-trips a byte-free composition random trace into NAIS blue metadata', () => {
+    it('round-trips a byte-free composition random trace into NAI Blue metadata', () => {
         const trace = cloneCompositionRandomTrace([{
             ruleId: 'rotation:scene:one',
             streamKey: 'character-rotation:preset:one',
@@ -41,7 +41,7 @@ describe('generation metadata payload redaction', () => {
             selectedOptionIds: ['rotation:scene:one:selected'],
             extensions: { source: 'rotation-store-sequence' },
         }])
-        const metadata = buildNais2Params({
+        const metadata = buildNaiBlueParams({
             prompt: '',
             negative_prompt: '',
             model: 'nai-diffusion-4-5-full',

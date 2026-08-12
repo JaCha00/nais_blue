@@ -1,12 +1,12 @@
 import {
-    buildNais2Params,
-    shouldWriteNais2Sidecar,
+    buildNaiBlueParams,
+    shouldWriteNaiBlueSidecar,
 } from '@/lib/generation-metadata'
 import {
-    embedNaisBlueParams,
-    encodeNaisBlueSidecar,
-    type Nais2PromptParts,
-} from '@/lib/nais2-png-meta'
+    embedNaiBlueParams,
+    encodeNaiBlueSidecar,
+    type NaiBluePromptParts,
+} from '@/lib/nai-blue-metadata'
 import type { GenerationParams } from '@/services/novelai-types'
 import { requireRuntimeCapability } from '@/platform/capabilities'
 import type { RightsXmpRequest } from '@/domain/workflow/bluehair-rights-policy'
@@ -24,7 +24,7 @@ export interface MetadataWriteRequest {
     params: GenerationParams
     imageFormat: 'png' | 'webp'
     metadataMode?: GenerationParams['metadataMode']
-    fallbackPromptParts?: Nais2PromptParts
+    fallbackPromptParts?: NaiBluePromptParts
     includeWebpCompatibilitySidecar?: boolean
     diagnostic?: DiagnosticSidecarPolicy
     rightsXmp?: RightsXmpRequest
@@ -79,19 +79,19 @@ export class MetadataWriter implements OutputMetadataWriter {
                     }),
             },
         }
-        const params = buildNais2Params(effectiveParams, request.fallbackPromptParts)
+        const params = buildNaiBlueParams(effectiveParams, request.fallbackPromptParts)
         const shouldEmbed = request.imageFormat === 'png'
             && metadataMode !== 'sidecar-only'
             && metadataMode !== 'strip-and-sidecar'
             && metadataMode !== 'strip-only'
         if (shouldEmbed) requireRuntimeCapability('embeddedPngMetadataWrite')
         const embeddedImage = shouldEmbed
-            ? base64ToBytes(embedNaisBlueParams(bytesToBase64(imageBytes), params))
+            ? base64ToBytes(embedNaiBlueParams(bytesToBase64(imageBytes), params))
             : imageBytes
         const preparedImage = request.rightsXmp === undefined
             ? embeddedImage
             : embedRightsXmp(embeddedImage, request.imageFormat, request.rightsXmp)
-        const writeSidecar = shouldWriteNais2Sidecar(
+        const writeSidecar = shouldWriteNaiBlueSidecar(
             metadataMode,
             request.imageFormat,
             request.includeWebpCompatibilitySidecar ?? true,
@@ -99,11 +99,11 @@ export class MetadataWriter implements OutputMetadataWriter {
 
         return {
             imageBytes: preparedImage,
-            ...(writeSidecar ? { sidecarBytes: encodeNaisBlueSidecar(params) } : {}),
+            ...(writeSidecar ? { sidecarBytes: encodeNaiBlueSidecar(params) } : {}),
             ...(request.diagnostic?.enabled === true
                 ? {
                     diagnosticSidecarBytes: new TextEncoder().encode(JSON.stringify({
-                        format: 'nais-blue-diagnostic-sidecar',
+                        format: 'nai-blue-diagnostic-sidecar',
                         version: 1,
                         warning: 'Opt-in diagnostic data; do not redistribute without review.',
                         redactedPayload: request.diagnostic.redactedPayload,

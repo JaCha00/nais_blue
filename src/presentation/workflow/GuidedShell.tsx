@@ -57,7 +57,7 @@ export function GuidedShell({ children }: GuidedShellProps) {
             <CustomTitleBar showWorkspaceToggles={false} />
             <header className="flex min-h-14 shrink-0 items-center gap-3 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
                 <Link to="/guided-preview" className="hidden min-w-0 text-sm font-semibold tracking-[-0.02em] focus-ring min-[360px]:block">
-                    NAIS blue
+                    NAI Blue
                 </Link>
                 <div className="ml-auto flex items-center gap-1">
                     {!docked && (

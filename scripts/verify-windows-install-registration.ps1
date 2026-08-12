@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$ProductName = 'NAIS blue',
-    [string]$ExecutableName = 'Nais_blue.exe',
+    [string]$ProductName = 'NAI Blue',
+    [string]$ExecutableName = 'NAI-Blue.exe',
     [switch]$Repair
 )
 

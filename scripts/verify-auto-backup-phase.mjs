@@ -35,8 +35,8 @@ check('restore dialog lists and restores full snapshots', /listFullAutoBackups/.
 check('restore dialog restarts or reloads after restore', /relaunch/.test(restoreDialog) && /window\.location\.reload/.test(restoreDialog))
 check('Settings exposes snapshot creation and restore UI', /createFullAutoBackup/.test(settings) && /RestoreDialog/.test(settings))
 check('startup schedules disk auto-backup beside existing flow', /createFullAutoBackup/.test(main) && /Disk auto-backup/.test(main))
-check('B localStorage startup backup remains preserved', /AUTO_BACKUP_KEY\s*=\s*'nais2-auto-backup'/.test(main) && /performAutoBackup/.test(main))
-check('Prompt library remains in full export registry', /'nais2-prompt-library'/.test(indexedDb))
+check('B localStorage startup backup remains preserved', /AUTO_BACKUP_KEY\s*=\s*'nai-blue-auto-backup'/.test(main) && /performAutoBackup/.test(main))
+check('Prompt library remains in full export registry', /'nai-blue-prompt-library'/.test(indexedDb))
 
 for (const locale of ['en', 'ja', 'ko']) {
   const body = read(`src/i18n/locales/${locale}.json`)

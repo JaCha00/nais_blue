@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { readNais2Params } from '@/lib/nais2-png-meta'
+import { readNaiBlueParams } from '@/lib/nai-blue-metadata'
 import type { GenerateImageResult, GenerationParams } from '@/services/novelai-types'
 import { loadFixtureJson } from '../helpers'
 
@@ -70,7 +70,7 @@ function verifyResult(result: GenerateImageResult, matrixCase: MatrixCase): void
     const bytes = new Uint8Array(Buffer.from(result.imageData!, 'base64'))
     if (matrixCase.format === 'png') {
         expect([...bytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-        const metadata = readNais2Params(bytes)
+        const metadata = readNaiBlueParams(bytes)
         expect(metadata?.version).toBe(2)
         if (metadata?.version === 2) {
             expect(metadata.engineVersion).toBe('composition-v2-release-matrix')

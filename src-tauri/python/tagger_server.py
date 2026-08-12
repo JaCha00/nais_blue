@@ -1,5 +1,5 @@
 """
-NAIS blue Tagger Server - Lightweight Version
+NAI Blue Tagger Server - Lightweight Version
 Tag analysis using WD14 Tagger (ONNX Runtime CPU-only)
 Background removal is handled via cloud API (BRIA-RMBG-2.0) in the frontend.
 """

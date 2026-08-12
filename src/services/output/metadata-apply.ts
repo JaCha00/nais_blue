@@ -1,6 +1,6 @@
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { NAIMetadata } from '@/lib/metadata-parser'
-import type { Nais2ParamsV2 } from '@/lib/nais2-png-meta'
+import type { NaiBlueParamsV2 } from '@/lib/nai-blue-metadata'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -194,7 +194,7 @@ function normalizeLegacyModel(model: string | undefined): string | undefined {
     return undefined
 }
 
-/** Explicit compatibility boundary for NAI/legacy NAIS blue v1/A1111 metadata. */
+/** Explicit compatibility boundary for NAI, pre-rename v1, and A1111 metadata. */
 export function importLegacyMetadataCompatibility(
     metadata: NAIMetadata,
     options: MetadataApplyOptions,
@@ -234,13 +234,13 @@ export function importLegacyMetadataCompatibility(
 
 function importV2Metadata(
     metadata: NAIMetadata,
-    nais2: Nais2ParamsV2,
+    naiBlue: NaiBlueParamsV2,
     options: MetadataApplyOptions,
 ): MetadataRepositoryChangeSet {
     const generation: GenerationPatch = {}
     if (options.prompts) Object.assign(generation, promptPatch(metadata))
     if (options.parameters) {
-        const resolved = nais2.resolvedParams
+        const resolved = naiBlue.resolvedParams
         Object.assign(generation, {
             model: resolved.model,
             steps: resolved.steps,
@@ -256,17 +256,17 @@ function importV2Metadata(
         })
     }
     if (options.resolution) {
-        generation.width = nais2.resolvedParams.width
-        generation.height = nais2.resolvedParams.height
+        generation.width = naiBlue.resolvedParams.width
+        generation.height = naiBlue.resolvedParams.height
     }
-    if (options.seed) generation.seed = nais2.resolvedParams.seed
+    if (options.seed) generation.seed = naiBlue.resolvedParams.seed
 
     return {
         sourceVersion: 'v2',
         targetPresetId: options.targetPresetId,
         generation,
         characters: options.characterPrompts
-            ? nais2.characters.map(character => ({
+            ? naiBlue.characters.map(character => ({
                 stableId: character.stableId,
                 prompt: character.prompt,
                 negative: character.negative,
@@ -368,7 +368,7 @@ export function createMetadataApplyPreview(
     options: MetadataApplyOptions,
     current: MetadataApplyCurrentState = captureMetadataApplyCurrentState(options.targetPresetId),
 ): MetadataApplyPreview {
-    const embeddedMetadata = metadata.naisBlue ?? metadata.nais2
+    const embeddedMetadata = metadata.naiBlue
     const changeSet = embeddedMetadata?.version === 2
         ? importV2Metadata(metadata, embeddedMetadata, options)
         : importLegacyMetadataCompatibility(metadata, options)

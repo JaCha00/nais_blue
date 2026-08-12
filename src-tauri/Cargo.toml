@@ -1,10 +1,10 @@
 [package]
-name = "nais2"
-version = "2.11.3"
-description = "NovelAI Image Studio"
-authors = ["sunakgo"]
+name = "nai-blue"
+version = "1.0.0"
+description = "NAI Blue desktop client for NovelAI image workflows"
+authors = ["NAI Blue contributors"]
 license = "GPL-3.0"
-repository = "https://github.com/JaCha00/nais_blue"
+repository = "https://github.com/bluehair-blue/NAI-Blue"
 edition = "2021"
 rust-version = "1.88.0"
 # Resolver 3 connects the declared MSRV to transitive selection, preventing
@@ -55,7 +55,7 @@ zeroize = { version = "=1.9.0", features = ["derive"] }
 # Tracked lifecycle/control source for Android user-initiated R2/LAN transfers.
 # Its executor remains fail-closed, so registering the plugin does not enable a
 # background transfer capability or add a provider SDK to desktop/mobile.
-tauri-plugin-nais-android-transfer = { path = "plugins/nais-android-transfer" }
+tauri-plugin-nai-blue-android-transfer = { path = "plugins/nai-blue-android-transfer" }
 
 # Phase 09 native R2 transport. Pin to the newest AWS S3 SDK line whose
 # declared MSRV matches this crate's Rust 1.88 contract. SigV4, conditional

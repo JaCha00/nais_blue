@@ -1,7 +1,7 @@
 import type { GenerationParams } from '@/services/novelai-types'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
-import { buildNais2Params, redactSentPayloadForMetadata } from '@/lib/generation-metadata'
-import type { Nais2Params } from '@/lib/nais2-png-meta'
+import { buildNaiBlueParams, redactSentPayloadForMetadata } from '@/lib/generation-metadata'
+import type { NaiBlueParams } from '@/lib/nai-blue-metadata'
 import { REDACTION_MARKERS, redactSnapshot } from '../helpers'
 
 interface CapturedRequest {
@@ -142,12 +142,12 @@ export function summarizeMetadata(
     params: GenerationParams,
     sentPayloadSummary: string | undefined,
 ): Record<string, unknown> {
-    const metadata = buildNais2Params({ ...params, sentPayloadSummary })
+    const metadata = buildNaiBlueParams({ ...params, sentPayloadSummary })
 
-    return summarizeNais2Metadata(metadata)!
+    return summarizeNaiBlueMetadata(metadata)!
 }
 
-export function summarizeNais2Metadata(metadata: Nais2Params | null): Record<string, unknown> | null {
+export function summarizeNaiBlueMetadata(metadata: NaiBlueParams | null): Record<string, unknown> | null {
     if (!metadata) return null
 
     return {

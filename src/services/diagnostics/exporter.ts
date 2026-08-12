@@ -101,7 +101,7 @@ export function formatDiagnosticFull(event: DiagnosticEvent): string {
 
 export function createDiagnosticsExportJson(events: readonly DiagnosticEvent[]): string {
     return JSON.stringify({
-        format: 'nais2-diagnostics',
+        format: 'nai-blue-diagnostics',
         version: 1,
         exportedAt: new Date().toISOString(),
         events: events.map(safeEvent),
@@ -125,7 +125,7 @@ export function downloadDiagnosticsExport(events: readonly DiagnosticEvent[]): v
     const href = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = href
-    link.download = 'nais2-diagnostics.json'
+    link.download = 'nai-blue-diagnostics.json'
     link.click()
     URL.revokeObjectURL(href)
 }

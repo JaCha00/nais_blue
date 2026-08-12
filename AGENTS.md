@@ -48,12 +48,13 @@ In some cases, an appropriate heuristic produces better results than exhaustive 
 
 <!-- END AUTONOMY DIRECTIVE -->
 
-## NAIS workspace source of truth
+## NAI Blue workspace source of truth
 
 - The canonical working checkout is `E:\AI_Project_Library\projects\nais\nais_blue`.
 - Run repository searches, edits, installs, builds, and tests from that E-drive checkout.
-- Do not use a C-drive or OneDrive NAIS checkout, mirror, cache, or generated guidance as a source of truth; those project copies are legacy unless the user explicitly reactivates one.
-- Historical NAIS integration plans and documents are legacy reference material by default. The current E-drive runtime code, current user direction, and freshly passing tests take precedence.
+- Do not use a C-drive or OneDrive NAI Blue checkout, mirror, cache, or generated guidance as a source of truth; those project copies are legacy unless the user explicitly reactivates one.
+- Historical integration plans and documents are legacy reference material by default. The current E-drive runtime code, current user direction, and freshly passing tests take precedence.
 - For Composition Domain work, `docs/composition-v2/**` is phase guidance, but it never overrides observed current runtime behavior or current user direction.
-- The canonical upstream is the `origin` remote at `https://github.com/JaCha00/nais_blue.git`; the retired private review repository must not be restored as a remote or release authority.
+- The canonical upstream is the `origin` remote at `https://github.com/bluehair-blue/NAI-Blue.git`; the retired private review repository must not be restored as a remote or release authority.
+- `1.0.0` resets only the public version line and tag. Existing features, persisted data, installation identity, and migration compatibility must not be reset.
 - These rules govern project/source locations. External toolchains may remain installed elsewhere when the build explicitly requires them.

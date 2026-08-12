@@ -737,7 +737,7 @@ export default function SceneMode() {
                     // - Case A: Array format (scene_preset_export.json)
                     // - Case B: Scenes object format (NAI 에셋봇)
                     // - Case C: SDImageGenEasy presets
-                    // - Case D: Standard NAIS blue ScenePreset format
+                    // - Case D: Standard NAI Blue ScenePreset format
                     importPreset(json)
                     importedCount++
                 } catch (err) {

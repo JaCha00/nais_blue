@@ -27,7 +27,7 @@ const indexedDb = read('src/lib/indexed-db.ts')
 
 check('rotation store exists at requested store boundary', includesAll(rotationStore, [
   'export const useRotationStore',
-  "name: 'nais2-character-rotation'",
+  "name: 'nai-blue-character-rotation'",
   'createJSONStorage(() => indexedDBStorage)',
   'partialize:',
 ]))
@@ -183,7 +183,7 @@ check('rotation UI distinguishes stop/resume from full cancel', includesAll(rota
   '로테이션 완전 취소',
 ]))
 check('rotation store participates in full backup registry', includesAll(indexedDb, [
-  "'nais2-character-rotation'",
+  "'nai-blue-character-rotation'",
   'Rotation snapshots must survive app restarts and full backups.',
 ]))
 

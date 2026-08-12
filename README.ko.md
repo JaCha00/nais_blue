@@ -1,138 +1,103 @@
-# NAIS blue - NovelAI Image Studio
+# NAI Blue
 
 <p align="center">
-  <img src="public/Nais_Blue.png" alt="NAIS blue 로고" width="128" height="128">
+  <img src="public/nai-blue.png" alt="NAI Blue 로고" width="128" height="128">
 </p>
 
 <p align="center">
-  <b>NovelAI 이미지 생성을 위한 강력한 데스크톱 애플리케이션</b>
+  NovelAI 이미지 생성 작업을 작성하고 정리하며 실행하는 데스크톱·Android 작업공간
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/NX8fmMZb">
-    <img src="https://img.shields.io/badge/Discord-%EC%BB%A4%EB%AE%A4%EB%8B%88%ED%8B%B0%20%EC%B0%B8%EC%97%AC-5865F2?logo=discord&logoColor=white" alt="Discord Server">
-  </a>
-</p>
-
-<p align="center">
-  <a href="./README.md">English</a> •
-  <a href="./README.ko.md">한국어</a> •
+  <a href="./README.md">English</a> ·
+  <a href="./README.ko.md">한국어</a> ·
   <a href="./README.ja.md">日本語</a>
 </p>
 
----
+> NAI Blue는 독립 커뮤니티 클라이언트이며 NovelAI와 제휴하거나 공식 승인을 받은 제품이 아닙니다.
 
-## 📖 개요
+## 설치
 
-**NAIS blue (NovelAI Image Studio)**는 Tauri와 React로 구축된 기능이 풍부한 데스크톱 애플리케이션으로, NovelAI API를 사용한 AI 이미지 생성을 위한 직관적인 인터페이스를 제공합니다.
+[GitHub Releases](https://github.com/bluehair-blue/NAI-Blue/releases/latest)에서 운영체제에 맞는 설치 파일을 받으세요.
 
----
+- Windows: 일반적으로 `x64-setup.exe`를 사용합니다. 관리형 환경을 위한 MSI도 제공합니다.
+- macOS: Apple Silicon은 `aarch64`, Intel Mac은 `x64` 빌드를 사용합니다. 출처를 확인한 파일인데도 손상되었다는 경고가 나오면 터미널에서 `xattr -cr "/Applications/NAI Blue.app"`을 실행하세요.
+- Android: 서명된 universal APK를 설치합니다. APK를 연 앱에 ‘알 수 없는 앱 설치’ 권한을 허용해야 할 수 있습니다.
 
-## ✨ 기능
+## 처음 사용하기
 
-### 🎨 메인 모드 - 이미지 생성
-- **텍스트-이미지 생성**: 스트리밍 미리보기 지원
-- **고급 파라미터**: 모델, 해상도, 스텝, CFG, 샘플러, SMEA
-- **Vibe Transfer** & **캐릭터 레퍼런스 (Director Tools)**
-- **시드 컨트롤** & **메타데이터 관리**
+1. NAI Blue를 실행하고 최초 설정은 **Guided** 화면에서 진행합니다.
+2. 계정/API 단계에서 NovelAI 계정을 연결하고 토큰을 검증합니다.
+3. **개별 이미지** 또는 **여러 이미지** 작업을 선택합니다.
+4. 메인·네거티브·캐릭터 프롬프트를 작성합니다. 캐릭터 위치 기본값은 중앙인 `0.5, 0.5`이며 작업마다 따로 조정할 수 있습니다.
+5. 출력 폴더와 메타데이터 정책을 정한 뒤 설정을 검토하고 대기열에 추가합니다.
+6. **대기열**에서 진행 상황과 각 작업의 생성 폴더를 확인합니다.
 
-### 🎬 씬 모드 - 배치 생성
-- **씬 카드**: 드래그 앤 드롭으로 재정렬
-- **씬별 설정** & **큐 시스템** (1-99)
-- **씬 프리셋** & **일괄 내보내기** (JSON/ZIP)
+지원되는 데스크톱에서는 운영체제 자격 증명 보관소에 인증 정보를 저장합니다. NovelAI 토큰, R2 secret, private sidecar를 이슈에 붙이지 마세요.
 
-### 🛠️ 스마트 도구
-| 도구 | 설명 |
-|------|------|
-| **Image to Image** | AI로 이미지 변환 |
-| **인페인팅** | 이미지의 특정 영역 선택적 편집 |
-| **배경 제거** | Hugging Face 외부 Space에서 이미지 배경 제거 |
-| **모자이크 효과** | 모자이크/블러 효과 적용 |
-| **스타일 분석** | Hugging Face Kaloscope에서 작가·스타일 후보 분석 |
-| **4K 업스케일** | 4배 해상도 업스케일 |
+## 주요 사용 흐름
 
-### 📚 추가 기능
-- **라이브러리**: 메타데이터 뷰어가 있는 이미지 갤러리
-- **데이터 허브**: 한 번에 최대 500개 이미지의 생성 메타데이터 읽기
-- **AI 에이전트 작업공간**: 데스크톱에서 프롬프트·파라미터·앱 데이터를 검토하고 안전하게 편집
-- **Android · 데스크톱 동기화**: 프롬프트 프리셋과 생성 파라미터를 TLS로 세션 동기화(토큰·이미지·절대 경로 제외)
-- **프래그먼트 프롬프트**: 프롬프트 스니펫 저장 및 재사용
-- **다국어 지원**: English, 한국어, 日本語
-- **웹뷰**: 내장 NovelAI 브라우저
+### 프롬프트 모듈
 
----
+Guided 또는 고급 생성 화면에서 프롬프트 모듈 라이브러리를 엽니다. 폴더로 모듈을 분류하고 베이스·세부·추가·네거티브·캐릭터·캐릭터 네거티브 파트를 저장할 수 있습니다. 삽입 시 필요한 파트만 선택할 수 있으며 캐릭터 좌표는 모듈이 아니라 현재 작업에 종속됩니다.
 
-## 📥 설치
+### 이미지 메타데이터 불러오기
 
-### 다운로드
-[Releases](../../releases)에서 다운로드하세요.
+프롬프트 불러오기 영역에 PNG, WebP, JPEG, `.nai-blue.json` sidecar 또는 지원되는 메타데이터 추출 JSON을 놓으세요. 메인 프롬프트와 캐릭터 프롬프트가 동일한 편집 형식으로 변환됩니다. 이름 변경 전 sidecar도 기존 라이브러리를 위해 계속 읽을 수 있습니다.
 
-#### macOS 참고
-**"NAIS blue이(가) 손상되었기 때문에 열 수 없습니다"** 오류가 표시되면, 터미널에서 다음 명령어를 실행하세요:
+### 생성 폴더와 R2
+
+작업을 대기열에 넣기 전에 생성 폴더를 만드세요. 폴더마다 로컬 저장 위치, 공통 프롬프트, R2 프로필, 버킷, 프리픽스, 자동 업로드 여부를 설정할 수 있습니다. 하위 폴더는 명시적으로 덮어쓰지 않는 한 상위 프리픽스를 이어받습니다.
+
+R2 프로필 설정과 연결 확인이 끝나기 전에는 R2 옵션이 비활성화됩니다. **R2 설정** CTA로 이동해 연결을 검증한 뒤 필요한 폴더에서 자동 업로드를 켜세요. 로컬 원본 삭제는 항상 별도의 명시적 선택입니다.
+
+### 이미지 정화와 sidecar
+
+메타데이터 단계에서 이미지 내장, sidecar 전용, 정화 이미지와 private sidecar 분리, 완전 제거 중 하나를 고를 수 있습니다. 정화 흐름은 픽셀만 다시 인코딩하고 복원용 메타데이터를 private sidecar로 분리하며, 설정한 권리 소유자 XMP를 추가할 수 있습니다.
+
+## 디버깅 및 오류 제보
+
+제보 전 다음을 확인하세요.
+
+1. 같은 입력으로 한 번 다시 시도하고 실패한 정확한 단계를 기록합니다.
+2. **설정 → 고급 설정 및 진단**을 엽니다.
+3. 관련 이벤트를 선택하고 **정제된 진단 로그**를 복사하거나 내보냅니다.
+4. 최신 릴리즈 안내와 기존 [이슈](https://github.com/bluehair-blue/NAI-Blue/issues)를 확인합니다.
+
+[버그 리포트](https://github.com/bluehair-blue/NAI-Blue/issues/new?template=bug_report.yml)에는 다음을 포함하세요.
+
+- NAI Blue 버전, 운영체제, 설치 방식
+- 가장 짧은 재현 순서
+- 기대한 결과와 실제 결과
+- 표시된 `DiagnosticCode`와 정제된 로그
+- 토큰·경로·프롬프트·private 메타데이터를 가린 스크린샷
+
+NovelAI 토큰, Cloudflare secret, 서명 키, 원본 credential backup, 검토하지 않은 private sidecar는 첨부하지 마세요. 보안 취약점은 공개 이슈 대신 저장소의 비공개 Security Advisory로 제보하세요.
+
+## 소스 빌드와 디버깅
+
+Node.js 24 LTS, npm, Rust 1.88 이상, Tauri용 네이티브 빌드 도구가 필요합니다. 태거 sidecar를 다시 빌드할 때는 Python 3.11도 필요합니다.
+
 ```bash
-xattr -cr "/Applications/NAIS blue.app"
+git clone https://github.com/bluehair-blue/NAI-Blue.git
+cd NAI-Blue
+npm ci
+npm run tauri dev
 ```
 
-### 소스에서 빌드
+주요 검사 명령:
+
 ```bash
-git clone https://github.com/JaCha00/nais_blue.git
-cd nais_blue
-npm install
-npm run tauri dev      # 개발 모드
-npm run tauri build    # 프로덕션 빌드
+npm run lint
+npm run test:composition
+npm run build
+npm run tauri build
 ```
 
----
+릴리즈와 서명 절차는 [RELEASING.md](./RELEASING.md)를 참고하세요.
 
-## 🚀 사용법
+## 크레딧 및 라이선스
 
-1. NAIS blue 실행
-2. **설정** → **API** → NovelAI 토큰 입력 (`pst-...`)
-3. **확인** 클릭
-4. 이미지 생성 시작!
+NAI Blue는 [NAIS2](https://github.com/sunanakgo/NAIS2)에서 시작된 작업을 이어갑니다. 원 개발자와 기여자에게 감사드립니다. 와일드카드와 씬 작업 흐름은 [NAIA2.0](https://github.com/DNT-LAB/NAIA2.0), [SDStudio](https://github.com/sunho/SDStudio)도 참고했습니다.
 
----
-
-## 🛠️ 기술 스택
-
-| 기술 | 용도 |
-|------|------|
-| **Tauri 2.0** | 데스크톱 프레임워크 |
-| **React 18** | 프론트엔드 UI |
-| **TypeScript** | 타입 안전성 |
-| **TailwindCSS** | 스타일링 |
-| **Zustand** | 상태 관리 |
-| **i18next** | 국제화 |
-
----
-
-## 📁 프로젝트 구조
-
-```
-nais_blue/
-├── src/                    # 프론트엔드
-│   ├── components/         # React 컴포넌트
-│   ├── pages/              # 메인 페이지
-│   ├── stores/             # 상태 저장소
-│   └── i18n/               # 번역
-└── src-tauri/              # Rust 백엔드
-```
-
----
-
-## 🔑 API 토큰
-
-NovelAI 토큰은 로컬에만 저장되며, 제3자와 절대 공유되지 않습니다.
-
-스타일 분석과 배경 제거는 사용자가 최초 동의한 경우에만 선택한 이미지를 Hugging Face의 제3자 Space로 전송합니다. 이때 NovelAI 토큰은 전송하지 않습니다.
-
----
-
-## 🙏 크레딧
-
-- [NAIA2.0](https://github.com/DNT-LAB/NAIA2.0) - 와일드카드 시스템 참고
-- [SDStudio](https://github.com/sunho/SDStudio) - 씬 모드 참고
-
----
-
-<p align="center">NovelAI 커뮤니티를 위해 ❤️로 제작됨</p>
+[GPL-3.0](./LICENSE) 라이선스로 배포합니다.

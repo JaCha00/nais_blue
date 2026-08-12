@@ -33,3 +33,30 @@ export function resolveAndroidUpdateBaseline(policy, currentVersion) {
     }
     return tag
 }
+
+function checkedVersionCode(value, label) {
+    if (!Number.isSafeInteger(value) || value < 1 || value > 2_100_000_000) {
+        throw new Error(`${label} must be an integer between 1 and 2100000000`)
+    }
+    return value
+}
+
+export function resolveAndroidVersionCode(policy, currentVersion) {
+    if (policy.versionCodeScheme === 'explicit-monotonic') {
+        return checkedVersionCode(policy.versionCode, 'Android versionCode')
+    }
+    const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(currentVersion)
+    if (!match) throw new Error(`Unsupported Android version: ${currentVersion}`)
+    const [major, minor, patch] = match.slice(1).map(Number)
+    return checkedVersionCode(major * 1_000_000 + minor * 1_000 + patch, 'Android versionCode')
+}
+
+export function resolveAndroidUpdateBaselineVersionCode(policy, currentVersion) {
+    const tag = resolveAndroidUpdateBaseline(policy, currentVersion)
+    if (tag === null) return null
+    if (policy.updateBaseline?.versionCode !== undefined) {
+        return checkedVersionCode(policy.updateBaseline.versionCode, 'Android update baseline versionCode')
+    }
+    const [major, minor, patch] = tag.slice(1).split('.').map(Number)
+    return checkedVersionCode(major * 1_000_000 + minor * 1_000 + patch, 'Android update baseline versionCode')
+}

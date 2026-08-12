@@ -9,11 +9,11 @@ describe('production diagnostic file logging contract', () => {
 
         expect(source).toContain('fn record_diagnostic_event')
         expect(source).toContain('contains_unredacted_diagnostic_payload')
-        expect(source).toContain('target: "nais2_diagnostic"')
+        expect(source).toContain('target: "nai_blue_diagnostic"')
         expect(source).toContain('.clear_targets()')
         expect(source).toContain('TargetKind::LogDir')
         expect(source).toContain('.max_file_size(1_000_000)')
         expect(source).toContain('RotationStrategy::KeepSome(5)')
-        expect(source).toContain('metadata.target() == "nais2_diagnostic"')
+        expect(source).toContain('metadata.target() == "nai_blue_diagnostic"')
     })
 })

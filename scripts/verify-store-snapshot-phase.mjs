@@ -23,8 +23,8 @@ const main = read('src/main.tsx')
 const settings = read('src/pages/Settings.tsx')
 
 check('BACKUP_STORE_KEYS is exported', /export const BACKUP_STORE_KEYS/.test(indexedDb))
-check('BACKUP_STORE_KEYS includes prompt library', /BACKUP_STORE_KEYS[\s\S]*'nais2-prompt-library'/.test(indexedDb))
-check('BACKUP_STORE_KEYS includes character rotation', /BACKUP_STORE_KEYS[\s\S]*'nais2-character-rotation'/.test(indexedDb))
+check('BACKUP_STORE_KEYS includes prompt library', /BACKUP_STORE_KEYS[\s\S]*'nai-blue-prompt-library'/.test(indexedDb))
+check('BACKUP_STORE_KEYS includes character rotation', /BACKUP_STORE_KEYS[\s\S]*'nai-blue-character-rotation'/.test(indexedDb))
 check('exportAllData uses the full backup registry', /exportAllData[\s\S]*exportBackupFromStorage/.test(indexedDb) && /options\.storeKeys \?\? FULL_BACKUP_STORE_KEYS/.test(indexedDb))
 check('getStoreSizes uses the full backup registry', /getStoreSizes[\s\S]*for\s*\(\s*const key of FULL_BACKUP_STORE_KEYS\s*\)/.test(indexedDb))
 

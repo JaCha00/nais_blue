@@ -3,13 +3,13 @@ import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { RandomTraceEntry } from '@/domain/composition/types'
 import type {
-    Nais2CharacterMetadata,
-    Nais2OutputPolicySummary,
-    Nais2Params,
-    Nais2PromptParts,
-    Nais2ResolvedParams,
-} from '@/lib/nais2-png-meta'
-import { NAIS_BLUE_METADATA_NAME } from '@/lib/nais2-png-meta'
+    NaiBlueCharacterMetadata,
+    NaiBlueOutputPolicySummary,
+    NaiBlueParams,
+    NaiBluePromptParts,
+    NaiBlueResolvedParams,
+} from '@/lib/nai-blue-metadata'
+import { NAI_BLUE_METADATA_NAME } from '@/lib/nai-blue-metadata'
 import type { GenerationParams } from '@/services/novelai-types'
 
 export {
@@ -30,13 +30,13 @@ export function cloneCompositionRandomTrace(
     return JSON.parse(JSON.stringify(entries)) as RandomTraceEntry[]
 }
 
-export function shouldEmbedNais2Params(metadataMode: MetadataMode | undefined): boolean {
+export function shouldEmbedNaiBlueParams(metadataMode: MetadataMode | undefined): boolean {
     return metadataMode !== 'sidecar-only'
         && metadataMode !== 'strip-and-sidecar'
         && metadataMode !== 'strip-only'
 }
 
-export function shouldWriteNais2Sidecar(
+export function shouldWriteNaiBlueSidecar(
     metadataMode: MetadataMode | undefined,
     imageFormat: 'png' | 'webp' | undefined,
     includeWebpCompatibility = false,
@@ -67,8 +67,8 @@ function summarizeAssetModulePlan(plan: AssetModulePlan | undefined): Record<str
 
 function buildPromptParts(
     params: GenerationParams,
-    fallbackPromptParts?: Nais2PromptParts,
-): Nais2PromptParts {
+    fallbackPromptParts?: NaiBluePromptParts,
+): NaiBluePromptParts {
     const promptParts = params.promptParts ?? fallbackPromptParts
     return {
         base: promptParts?.base ?? params.prompt ?? '',
@@ -80,7 +80,7 @@ function buildPromptParts(
     }
 }
 
-function buildCharacterMetadata(params: GenerationParams): Nais2CharacterMetadata[] {
+function buildCharacterMetadata(params: GenerationParams): NaiBlueCharacterMetadata[] {
     return (params.characterPrompts ?? []).map((character, index) => {
         const deterministicId = sha256Utf8(JSON.stringify({
             index,
@@ -98,7 +98,7 @@ function buildCharacterMetadata(params: GenerationParams): Nais2CharacterMetadat
     })
 }
 
-function buildResolvedParams(params: GenerationParams): Nais2ResolvedParams {
+function buildResolvedParams(params: GenerationParams): NaiBlueResolvedParams {
     return {
         model: params.model,
         width: params.width,
@@ -127,7 +127,7 @@ function buildResolvedParams(params: GenerationParams): Nais2ResolvedParams {
     }
 }
 
-function summarizeOutputPolicy(params: GenerationParams): Nais2OutputPolicySummary {
+function summarizeOutputPolicy(params: GenerationParams): NaiBlueOutputPolicySummary {
     const requested = params.outputPolicySummary
     return {
         imageFormat: requested?.imageFormat ?? params.imageFormat ?? 'png',
@@ -149,10 +149,10 @@ function summarizeOutputPolicy(params: GenerationParams): Nais2OutputPolicySumma
     }
 }
 
-export function buildNais2Params(
+export function buildNaiBlueParams(
     params: GenerationParams,
-    fallbackPromptParts?: Nais2PromptParts,
-): Nais2Params {
+    fallbackPromptParts?: NaiBluePromptParts,
+): NaiBlueParams {
     const promptParts = buildPromptParts(params, fallbackPromptParts)
     const compactProvenance = params.compositionProvenanceSummary ?? {
         sourceCount: 0,
@@ -167,7 +167,7 @@ export function buildNais2Params(
 
     return {
         version: 2,
-        metadataName: NAIS_BLUE_METADATA_NAME,
+        metadataName: NAI_BLUE_METADATA_NAME,
         engineVersion: params.engineVersion
             ?? (params.compositionMode === 'v2' ? 'composition-engine-v1' : 'legacy-compatible'),
         sourceRevision: params.sourceRevision ?? null,

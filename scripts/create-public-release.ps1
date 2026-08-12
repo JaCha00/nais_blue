@@ -1,7 +1,7 @@
 param(
     [string]$ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path,
-    [string]$BuildRoot = 'C:\nais2-release-build',
-    [string]$OutputRoot = 'C:\nais2-public-release'
+    [string]$BuildRoot = 'C:\nai-blue-release-build',
+    [string]$OutputRoot = 'C:\nai-blue-public-release'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -182,9 +182,9 @@ function Assert-SourceArchiveHasNoPrivateEntries {
 
 $packageJson = Get-Content -LiteralPath (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json
 $version = [string]$packageJson.version
-$releaseRoot = Join-Path $OutputRoot "NAIS-blue-$version"
-$sourceStage = Join-Path $releaseRoot 'source\NAIS-blue-public-source'
-$sourceZip = Join-Path $releaseRoot "source\NAIS-blue_$version-public-source.zip"
+$releaseRoot = Join-Path $OutputRoot "NAI-Blue-$version"
+$sourceStage = Join-Path $releaseRoot 'source\NAI-Blue-public-source'
+$sourceZip = Join-Path $releaseRoot "source\NAI-Blue_$version-public-source.zip"
 
 if (Test-Path -LiteralPath $releaseRoot) {
     Remove-Item -LiteralPath $releaseRoot -Recurse -Force
@@ -200,32 +200,32 @@ if (-not (Test-Path -LiteralPath $taggerServerExe)) {
 
 # Tauri derives bundle filenames from the spaced productName, while the public
 # artifact contract keeps hyphenated destination names for stable download URLs.
-$bundleStem = "NAIS blue_$($version)_x64"
+$bundleStem = "NAI Blue_$($version)_x64"
 
 $files = @(
     @{
-        Source = Join-Path $buildRelease 'Nais_blue.exe'
-        Destination = Join-Path $releaseRoot 'portable\Nais_blue.exe'
+        Source = Join-Path $buildRelease 'NAI-Blue.exe'
+        Destination = Join-Path $releaseRoot 'portable\NAI-Blue.exe'
         Role = 'portable-exe'
     },
     @{
         Source = Join-Path $buildRelease "bundle\nsis\$bundleStem-setup.exe"
-        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe"
+        Destination = Join-Path $releaseRoot "installers\NAI-Blue_$($version)_x64-setup.exe"
         Role = 'nsis-installer'
     },
     @{
         Source = Join-Path $buildRelease "bundle\nsis\$bundleStem-setup.exe.sig"
-        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64-setup.exe.sig"
+        Destination = Join-Path $releaseRoot "installers\NAI-Blue_$($version)_x64-setup.exe.sig"
         Role = 'nsis-updater-signature'
     },
     @{
         Source = Join-Path $buildRelease "bundle\msi\$($bundleStem)_en-US.msi"
-        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi"
+        Destination = Join-Path $releaseRoot "installers\NAI-Blue_$($version)_x64_en-US.msi"
         Role = 'msi-installer'
     },
     @{
         Source = Join-Path $buildRelease "bundle\msi\$($bundleStem)_en-US.msi.sig"
-        Destination = Join-Path $releaseRoot "installers\NAIS-blue_$($version)_x64_en-US.msi.sig"
+        Destination = Join-Path $releaseRoot "installers\NAI-Blue_$($version)_x64_en-US.msi.sig"
         Role = 'msi-updater-signature'
     }
 )
@@ -238,15 +238,20 @@ New-Item -ItemType Directory -Force -Path $sourceStage | Out-Null
 
 $excludeDirs = @(
     '.git',
+    '.idea',
     '.omx',
     '.codex',
-    'docs\archive',
-    'docs\local',
-    'docs\_trash',
+    '.remember',
+    '.wrangler',
+    'artifacts',
+    'docs',
+    'legacy',
     'node_modules',
     'dist',
+    'release-artifacts',
+    'src-tauri\gen',
     'src-tauri\target',
-    'NAIS-blue-main',
+    'NAI-Blue-main',
     'stylelab-frontend-sources-20260628-155859'
 )
 
@@ -292,9 +297,11 @@ Assert-SourceArchiveHasNoPrivateEntries -ArchivePath $sourceZip
 Remove-Item -LiteralPath $sourceStage -Recurse -Force
 
 New-Item -ItemType Directory -Force -Path (Join-Path $releaseRoot 'docs'), (Join-Path $releaseRoot 'checksums') | Out-Null
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\ELO_AUDIT.md') -Destination (Join-Path $releaseRoot 'docs\ELO_AUDIT.md')
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\PATCHING_GUIDE.md') -Destination (Join-Path $releaseRoot 'docs\PATCHING_GUIDE.md')
-Copy-RequiredFile -Source (Join-Path $ProjectRoot 'docs\archive\release-2.7.2\PUBLIC_RELEASE.md') -Destination (Join-Path $releaseRoot 'docs\PUBLIC_RELEASE.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'README.md') -Destination (Join-Path $releaseRoot 'docs\README.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'README.ko.md') -Destination (Join-Path $releaseRoot 'docs\README.ko.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'README.ja.md') -Destination (Join-Path $releaseRoot 'docs\README.ja.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'RELEASING.md') -Destination (Join-Path $releaseRoot 'docs\RELEASING.md')
+Copy-RequiredFile -Source (Join-Path $ProjectRoot 'LICENSE') -Destination (Join-Path $releaseRoot 'docs\LICENSE')
 
 $artifactFiles = Get-ChildItem -LiteralPath $releaseRoot -Recurse -File |
     Where-Object { $_.FullName -notlike '*\checksums\SHA256SUMS.txt' -and $_.FullName -notlike '*\release-manifest.json' } |
@@ -318,7 +325,7 @@ $manifestArtifacts = foreach ($artifact in $artifactFiles) {
 }
 
 $manifest = [PSCustomObject]@{
-    product = 'NAIS blue'
+    product = 'NAI Blue'
     version = $version
     generatedAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     sourcePolicy = 'Clean public source archive excludes dependencies, build output, local caches, private keys, and personal runtime data.'

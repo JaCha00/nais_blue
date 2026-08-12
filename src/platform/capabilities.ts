@@ -1,6 +1,6 @@
 export type RuntimePlatform = 'android' | 'ios' | 'windows' | 'macos' | 'linux' | 'unknown' | 'desktop' | 'web'
 
-declare const __NAIS_BLUE_TAURI_PLATFORM__: string | undefined
+declare const __NAI_BLUE_TAURI_PLATFORM__: string | undefined
 
 export interface RuntimeCapability {
     readonly supported: boolean
@@ -58,7 +58,7 @@ const NO_LOCAL_TAGGER = unsupported(
 )
 const NO_EMBEDDED_BROWSER = unsupported(
     'The embedded browser view is available only in the installed desktop app.',
-    'Open the page in the system browser and return to NAIS blue when finished.',
+    'Open the page in the system browser and return to NAI Blue when finished.',
 )
 const NO_R2_TOOLING = unsupported(
     'R2 deploy tooling requires the installed desktop app and local Wrangler environment.',
@@ -125,8 +125,8 @@ export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCap
 // Loaded lazily to avoid a runtime.ts -> capabilities.ts cycle. runtime.ts only
 // re-exports compatibility booleans after this value has been constructed.
 const detectedPlatform = (() => {
-    const configured = typeof __NAIS_BLUE_TAURI_PLATFORM__ === 'string'
-        ? __NAIS_BLUE_TAURI_PLATFORM__.toLowerCase()
+    const configured = typeof __NAI_BLUE_TAURI_PLATFORM__ === 'string'
+        ? __NAI_BLUE_TAURI_PLATFORM__.toLowerCase()
         : ''
     const configuredNative = configured === 'android' || configured === 'ios'
         || configured === 'windows' || configured === 'macos' || configured === 'linux'

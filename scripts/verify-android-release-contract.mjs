@@ -8,7 +8,11 @@ import {
     patchAndroidKotlinToolchain,
     patchAndroidSigning,
 } from './patch-android-signing.mjs'
-import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
+import {
+    resolveAndroidUpdateBaseline,
+    resolveAndroidUpdateBaselineVersionCode,
+    resolveAndroidVersionCode,
+} from './android-update-baseline.mjs'
 
 const root = process.cwd()
 const read = path => readFileSync(join(root, path), 'utf8')
@@ -20,12 +24,15 @@ const android = JSON.parse(read('src-tauri/tauri.android.conf.json'))
 assert.equal(policy.applicationId, tauri.identifier)
 assert.equal(policy.debugApplicationIdSuffix, '')
 assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
+assert.equal(policy.versionCode, android.bundle.android.versionCode)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.deepEqual(policy.updateBaseline, { tag: 'v2.8.3' })
+assert.deepEqual(policy.updateBaseline, { tag: 'v2.11.3', versionCode: 2011003 })
 assert.equal(policy.firstReleaseForApplicationId, false)
 assert.equal(policy.firstReleaseVersion, '2.8.3')
-assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v2.8.3')
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v2.11.3')
+assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011004)
+assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), 2011003)
 assert.throws(
     () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
     /first release of an applicationId/,
@@ -142,7 +149,7 @@ assert.match(
     'The isolated installer must pass the signed-build artifact explicitly to the release verifier',
 )
 assert.ok(!workflow.includes('Download pinned update baseline'))
-assert.ok(!workflow.includes('NAIS-blue_2.8.0-baseline.apk'))
+assert.ok(!workflow.includes('NAI-Blue_2.8.0-baseline.apk'))
 
 const desktopWorkflow = read('.github/workflows/build.yml')
 for (const requiredText of [
@@ -262,7 +269,7 @@ android {
     writeFileSync(
         manifestFile,
         `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="NAIS blue" />
+    <application android:label="NAI Blue" />
 </manifest>
 `,
     )

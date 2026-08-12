@@ -2,7 +2,10 @@ import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
+import {
+    resolveAndroidUpdateBaselineVersionCode,
+    resolveAndroidVersionCode,
+} from './android-update-baseline.mjs'
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url))
 const root = resolve(scriptDirectory, '..')
@@ -48,17 +51,12 @@ function stableSemver(value, label) {
     return parts
 }
 
-function compareVersion(left, right) {
-    for (let index = 0; index < left.length; index += 1) {
-        if (left[index] !== right[index]) return left[index] - right[index]
-    }
-    return 0
-}
-
 const packageJson = readJson('package.json')
 const packageLock = readJson('package-lock.json')
 const tauriConfig = readJson('src-tauri/tauri.conf.json')
 const policy = readJson('android-release-policy.json')
+const nativeUpdater = read('src/platform/native-update.ts')
+const desktopWorkflow = read('.github/workflows/build.yml')
 const versions = new Map([
     ['package.json', packageJson.version],
     ['package-lock.json', packageLock.version],
@@ -77,21 +75,25 @@ for (const [source, version] of versions) {
     }
 }
 
-const current = stableSemver(packageJson.version, 'Release version')
-const baselineTag = resolveAndroidUpdateBaseline(policy, packageJson.version)
-if (baselineTag !== null) {
-    const baselineVersion = baselineTag.replace(/^v/, '')
-    const baseline = stableSemver(baselineVersion, 'Android update baseline')
-    if (compareVersion(current, baseline) <= 0) {
-        throw new Error(
-            `Release version ${packageJson.version} must be newer than update baseline ${baselineTag}`,
-        )
-    }
+stableSemver(packageJson.version, 'Release version')
+if (packageJson.name !== 'nai-blue' || tauriConfig.productName !== 'NAI Blue') {
+    throw new Error('Package and Tauri product names must use the NAI Blue release identity')
 }
-
-const versionCode = current[0] * 1_000_000 + current[1] * 1_000 + current[2]
-if (!Number.isSafeInteger(versionCode) || versionCode > 2_100_000_000) {
-    throw new Error(`Android versionCode is outside the supported range: ${versionCode}`)
+if (tauriConfig.identifier !== 'com.bluhair.naisblue') {
+    throw new Error('The stable application identifier must not change during the version-label reset')
+}
+if (!nativeUpdater.includes('allowDowngrades: true')) {
+    throw new Error('The reset display version requires the explicit compatible updater check')
+}
+if (!desktopWorkflow.includes('updaterJsonPreferNsis: true')) {
+    throw new Error('Windows updater metadata must prefer the NSIS upgrade path')
+}
+const versionCode = resolveAndroidVersionCode(policy, packageJson.version)
+const baselineVersionCode = resolveAndroidUpdateBaselineVersionCode(policy, packageJson.version)
+if (baselineVersionCode !== null && versionCode <= baselineVersionCode) {
+    throw new Error(
+        `Android versionCode ${versionCode} must be newer than update baseline ${baselineVersionCode}`,
+    )
 }
 
 const tag = option('--tag')

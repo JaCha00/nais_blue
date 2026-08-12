@@ -9,7 +9,7 @@ import kotlinx.coroutines.CancellationException
  * WorkManager owns API 24-33 execution and restart. ForegroundInfo connects it
  * to the same notification and durable state used by the API 34+ UIDT service.
  */
-class NaisTransferWorker(
+class NaiBlueTransferWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
