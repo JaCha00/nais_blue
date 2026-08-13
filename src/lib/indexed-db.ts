@@ -20,6 +20,8 @@ const DB_NAME = 'nai-blue-db'
 const STORE_NAME = 'keyval'
 const DB_TIMEOUT_MS = 10000 // 10초 타임아웃
 
+export const STRUCTURED_PROMPT_MODULE_STORE_KEY = 'nai-blue-structured-prompt-modules' as const
+
 // Central backup registry used by full exports, size diagnostics, and the
 // store snapshot layer so new persisted stores are added in one place.
 export const BACKUP_STORE_KEYS = [
@@ -35,6 +37,7 @@ export const BACKUP_STORE_KEYS = [
     'nai-blue-theme',
     'nai-blue-wildcards',
     'nai-blue-prompt-library',
+    STRUCTURED_PROMPT_MODULE_STORE_KEY,
     'nai-blue-layout',
     'nai-blue-library',
     'nai-blue-tools',

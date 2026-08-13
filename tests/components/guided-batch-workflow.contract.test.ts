@@ -76,11 +76,15 @@ describe('Guided batch production contract', () => {
     })
 
     it('persists the visible output folder and format without coupling them to cost consent', async () => {
-        const component = await source('src/presentation/workflow/GuidedBatchImages.tsx')
+        const [component, outputStep] = await Promise.all([
+            source('src/presentation/workflow/GuidedBatchImages.tsx'),
+            source('src/presentation/workflow/GuidedOutputDestinationStep.tsx'),
+        ])
 
-        expect(component).toContain('guided-batch-output-directory')
-        expect(component).toContain('onOutput({ directory: value })')
-        expect(component).toContain("onOutput({ imageFormat: event.target.value as SingleImageOutputSettings['imageFormat'] })")
+        expect(outputStep).toContain('if (next !== value.directory) onChange({ directory: next })')
+        expect(outputStep).toContain("imageFormat: event.target.value as SingleImageOutputSettings['imageFormat']")
+        expect(outputStep).toContain('outputPatchFromGenerationFolder')
+        expect(component).toContain('<GuidedOutputDestinationStep')
         expect(component).toContain('output: { ...current.payload.output, ...patch }')
         expect(component).toContain("t('guided.batch.review.output'")
     })

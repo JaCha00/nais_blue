@@ -93,6 +93,7 @@ export function renderFilenameTemplate(params: RenderFilenameTemplateParams = {}
     try {
         const rendered = template.replace(TOKEN_PATTERN, (_match: string, path: string, format?: string) => {
             if (path === 'datetime') return format ? formatDate(now, format) : now.toISOString()
+            if (path === 'timestamp') return String(now.getTime())
             return formatTemplateValue(getPathValue({ ...context, datetime: now }, path), format, now)
         })
         return sanitizeFilenamePart(rendered, fallback, params.maxLength)

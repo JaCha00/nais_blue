@@ -634,12 +634,15 @@ export async function previewSceneComposition(
 // Legacy prompt assembly is isolated in legacy-build-scene-params.ts for rollback.
 export async function buildSceneGenerationParams(
     scene: SceneCard,
-    options: { sessionId?: number; requestId?: string; now?: Date; presetId?: string; generationFolder?: ResolvedGenerationFolder | null } = {},
+    options: { sessionId?: number; requestId?: string; now?: Date; presetId?: string; generationFolder?: ResolvedGenerationFolder | null; seed?: number } = {},
 ): Promise<SceneGenerationBuildResult> {
     const preparedScene = applyGenerationFolderPolicy(scene, options.generationFolder)
     const mode = effectiveSceneCompositionMode(useSceneStore.getState().sceneCompositionMode)
     if (mode === 'legacy') {
-        const legacy = await buildLegacySceneGenerationParams(preparedScene, { presetId: options.presetId })
+        const legacy = await buildLegacySceneGenerationParams(preparedScene, {
+            presetId: options.presetId,
+            seed: options.seed,
+        })
         return {
             success: true,
             ...legacy,
@@ -652,7 +655,10 @@ export async function buildSceneGenerationParams(
     }
 
     if (mode === 'shadow') {
-        const legacy = await buildLegacySceneGenerationParams(preparedScene, { presetId: options.presetId })
+        const legacy = await buildLegacySceneGenerationParams(preparedScene, {
+            presetId: options.presetId,
+            seed: options.seed,
+        })
         const now = options.now ?? new Date()
         const captured = await resolveSceneRuntimeComposition(preparedScene, {
             mode: 'preview',
@@ -687,7 +693,7 @@ export async function buildSceneGenerationParams(
     }
 
     const sceneGeneration = resolveSceneGeneration(preparedScene)
-    const seed = selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
+    const seed = options.seed ?? selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
     const now = options.now ?? new Date()
     const captured = await resolveSceneRuntimeComposition(preparedScene, {
         mode: 'generate',

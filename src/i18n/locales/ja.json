@@ -313,7 +313,32 @@
             "moduleSaved": "モジュール {{path}} を保存しました。",
             "replace": "現在のプロンプトを置換",
             "append": "現在の内容の後ろに追加",
-            "characterCount": "キャラクター {{count}}人を含む"
+            "characterCount": "キャラクター {{count}}人を含む",
+            "catalog": {
+                "defaultFolder": "読み込んだスタイル",
+                "detected": "スタイル {{count}}件が見つかりました。必要な項目だけ、またはすべてを一括で保存できます。",
+                "individualAction": "個別に選択・保存",
+                "allAction": "すべて保存",
+                "individualTitle": "スタイルを個別に選択",
+                "individualHelp": "1件を選び、現在の作業に読み込むかモジュール保管庫に保存します。",
+                "allTitle": "カタログをすべて保存",
+                "allHelp": "{{count}}件をモジュール保管庫へ一括追加します。",
+                "progress": "{{records}}件を確認 · {{percent}}%",
+                "search": "タイトルまたはIDを検索",
+                "items": "スタイル項目",
+                "narrowResults": "{{shown}} / {{total}}件を表示 · 検索語で絞り込んでください。",
+                "noResults": "一致する項目がありません。",
+                "chooseItem": "左側で項目を選択してください。",
+                "emptyPositive": "ポジティブプロンプトなし",
+                "folder": "保存フォルダー",
+                "storageHelp": "同じ項目を同じフォルダーへ再保存するとスキップします。複数キャラクターのテキストは1つのパートに段落ごとに保持し、座標はモジュールではなく各作業で0.5を基準に設定します。",
+                "invalidFolder": "保存先フォルダーのパスを確認してください。",
+                "saveError": "モジュールを保存できませんでした。保存領域とフォルダーパスを確認してください。",
+                "saved": "{{created}}件を保存 · 既存の{{skipped}}件をスキップ",
+                "chooseForPrompt": "この項目を読み込む",
+                "saveAllConfirm": "{{count}}件をすべて保存",
+                "saveOne": "選択項目を保存"
+            }
         },
         "metadata": {
             "title": "画像メタデータ",
@@ -347,6 +372,13 @@
             "privateUpload": "非公開プロファイルには浄化済み画像とprivate sidecarを一緒にアップロードします。",
             "publicUpload": "公開プロファイルには浄化済み画像だけをアップロードし、プロンプトsidecarはローカルに残します。",
             "localOnly": "自動アップロードを選ばない場合、画像とsidecarはローカルだけに保存されます。"
+        },
+        "output": {
+            "folderTitle": "保存フォルダー",
+            "folderHelp": "フォルダーに割り当てた保存先とR2対象を一緒に読み込みます。必要なら、この作業だけ別のフォルダーを選べます。",
+            "manualPath": "直接入力する保存パス",
+            "formatTitle": "画像形式",
+            "formatHelp": "PNGは互換性が高く、WebPはファイルサイズを抑えるのに適しています。"
         },
         "workflows": {
             "home": "作業ホーム",
@@ -552,7 +584,12 @@
                 "prompt": { "short": "プロンプト", "title": "共通プロンプトとモジュールを決めましょう", "description": "保存済みモジュールをそのまま読み込むか、ランダム・順次参照として接続できます。" },
                 "count": { "short": "枚数", "title": "何枚作りますか？", "description": "各項目は独立した永続キュー作業として保存され、別画面へ移動しても続行します。" },
                 "scenes": { "short": "シーン", "title": "どのシーンを作りますか？", "description": "シーンごとにプロンプトと枚数を決め、まとめてキューへ送れます。" },
-                "settings": { "short": "生成設定", "title": "共通の生成設定を確認しましょう", "description": "推奨解像度と28 Stepsは基本料金範囲です。変更すると見積もりをすぐ更新します。" },
+                "resolution": { "short": "解像度", "title": "どのサイズで作りますか？", "description": "共通解像度を選ぶと、全枚数の最大予想コストをすぐ計算します。" },
+                "settings": { "short": "品質", "title": "結果をどの程度細かく仕上げますか？", "description": "28 Stepsと推奨サンプラーで十分に始められます。必要な場合だけ詳細調整を開いてください。" },
+                "output": { "short": "保存先", "title": "完成画像をどこへ保存しますか？", "description": "この一括作業の保存フォルダーと画像形式を選びます。フォルダー別R2対象も一緒に読み込みます。" },
+                "metadata": { "short": "情報保存", "title": "生成情報をどのように保存しますか？", "description": "個人保管、sidecar分離、共有用浄化から、この一括作業に合うものを選びます。" },
+                "rights": { "short": "権利表示", "title": "共有画像に権利表示を追加しますか？", "description": "任意です。有効にすると、所有者名と発効日はこの一括作業にだけ適用されます。" },
+                "delivery": { "short": "転送", "title": "浄化後はどこまで処理しますか？", "description": "自動アップロードと浄化前原本の保管をそれぞれ選びます。" },
                 "review": { "short": "最終確認", "title": "キューへ入れる前に確認しましょう", "description": "設定はスナップショットとして固定され、同じ下書きを再送しても二重実行されません。" },
                 "result": { "short": "結果", "title": "完成した画像を確認しましょう", "description": "完成した順に結果が表示され、別のワークフローへ移動しても生成は続きます。" }
             },
@@ -612,6 +649,7 @@
                 "resolution": "解像度",
                 "stepsHelp": "28までは基本範囲です。増やすと指示に従いやすくなる場合がありますが、高いほど良いとは限りません。",
                 "samplerHelp": "おすすめ値のままでも十分です。",
+                "advanced": "詳細調整・任意",
                 "cfgHelp": "高いほどプロンプトを強く反映しますが、画像が荒くなる場合があります。",
                 "outputDirectory": "保存フォルダー",
                 "outputHelp": "このジョブの保存先と自動アップロード先を選択します。",
@@ -628,8 +666,12 @@
                 "scenePrompts": "シーン別プロンプト",
                 "count": "生成枚数",
                 "countValue": "{{count}}枚",
-                "settings": "設定",
+                "resolution": "解像度",
+                "settings": "生成設定",
                 "output": "保存",
+                "metadata": "メタデータ",
+                "r2On": "R2へ自動アップロード",
+                "r2Off": "ローカルのみ",
                 "edit": "修正",
                 "costConsent": "最大 {{cost}} Anlasでキューへ追加します。",
                 "queueHelp": "同じアカウントでは一度に一つの画像作業を実行し、次の作業は自動で続きます。",
@@ -733,9 +775,29 @@
                     "description": "用途に近い比率を選んでください。3つとも 1024² ピクセルの範囲内です。"
                 },
                 "settings": {
-                    "short": "生成設定",
+                    "short": "品質",
                     "title": "この設定を整えましょうか？",
                     "description": "おすすめ値はそのままでも十分です。仕上がりを変えたいときだけ調整してみましょう。"
+                },
+                "output": {
+                    "short": "保存先",
+                    "title": "完成画像をどこへ保存しますか？",
+                    "description": "保存フォルダーと画像形式だけを選びます。フォルダーに接続したアップロード先も一緒に読み込みます。"
+                },
+                "metadata": {
+                    "short": "情報保存",
+                    "title": "生成情報をどのように保存しますか？",
+                    "description": "個人保管、sidecar分離、共有用浄化から、この作業に合うものを選びます。"
+                },
+                "rights": {
+                    "short": "権利表示",
+                    "title": "共有画像に権利表示を追加しますか？",
+                    "description": "任意です。有効にすると、所有者名と発効日はこの作業にだけ適用されます。"
+                },
+                "delivery": {
+                    "short": "転送",
+                    "title": "浄化後はどこまで処理しますか？",
+                    "description": "自動アップロードと浄化前原本の保管をそれぞれ選びます。"
                 },
                 "review": {
                     "short": "最終確認",
@@ -803,6 +865,13 @@
                 "noAccount": "利用可能なアカウントなし",
                 "output": "保存",
                 "autosave": "自動保存",
+                "metadata": "メタデータ",
+                "rightsOn": "権利XMPを使用",
+                "rightsOff": "権利XMPを使用しない",
+                "r2On": "R2へ自動アップロード",
+                "r2Off": "ローカルのみ",
+                "originalDiscard": "検証後に原本を破棄",
+                "originalKeep": "原本を保管",
                 "cost": "最大コスト",
                 "free": "0 Anlas",
                 "maxAnlas": "最大 {{cost}} Anlas",
@@ -2082,6 +2151,10 @@
         "trigger": "構造化モジュールを読み込む",
         "triggerShort": "構造化モジュール",
         "search": "フォルダーまたはモジュールを検索",
+        "searchCopyTarget": "コピー先モジュールを検索",
+        "narrowResults": "{{shown}} / {{total}}件を表示 · 検索語で絞り込んでください。",
+        "narrowCopyResults": "{{shown}} / {{total}}件を表示 · 検索語で絞り込んでください。",
+        "noSearchResults": "一致するモジュールがありません。",
         "newFolder": "フォルダーを追加",
         "newFolderHelp": "スラッシュ（/）を使うと、サブフォルダーを一度に作成できます。",
         "folderExample": "例: キャラクター/ファンタジー",

@@ -39,6 +39,7 @@ export interface SceneQueueTarget {
     readonly presetId: string
     readonly sceneId: string
     readonly count: number
+    readonly fileNames?: readonly string[]
 }
 
 interface ResolvedSceneQueueTarget {
@@ -54,10 +55,15 @@ function normalizeSceneQueueTargets(targets: readonly SceneQueueTarget[]): Scene
         const count = Math.max(1, Math.floor(target.count))
         const key = `${target.presetId}:${target.sceneId}`
         const previous = normalized.get(key)
+        const fileNames = [
+            ...(previous?.fileNames ?? []),
+            ...Array.from({ length: count }, (_, index) => target.fileNames?.[index]?.trim() ?? ''),
+        ]
         normalized.set(key, {
             presetId: target.presetId,
             sceneId: target.sceneId,
             count: Math.min(999, (previous?.count ?? 0) + count),
+            ...(fileNames.some(Boolean) ? { fileNames: fileNames.slice(0, 999) } : {}),
         })
     }
     return [...normalized.values()]
@@ -72,19 +78,26 @@ export function enqueueCurrentSceneQueue(): Promise<CreateBatchAndEnqueueResult 
         presetId,
         sceneId: scene.id,
         count: scene.queueCount,
+        ...(scene.queuedFileNames === undefined
+            ? {}
+            : { fileNames: scene.queuedFileNames.slice(0, scene.queueCount) }),
     }))
-    return enqueueSceneQueueTargets(targets, { origin: 'legacy-conversion' })
+    return enqueueSceneQueueTargets(targets, {
+        origin: 'legacy-conversion',
+        consumePendingEntries: true,
+    })
 }
 
 export function enqueueSceneQueueTargets(
     targets: readonly SceneQueueTarget[],
-    options: { origin?: QueueBatchOrigin } = {},
+    options: { origin?: QueueBatchOrigin; consumePendingEntries?: boolean } = {},
 ): Promise<CreateBatchAndEnqueueResult | null> {
     const normalizedTargets = normalizeSceneQueueTargets(targets)
     if (normalizedTargets.length === 0) return Promise.resolve(null)
     sceneEnqueueInFlight ??= enqueueSceneQueueTargetsOnce(
         normalizedTargets,
         options.origin ?? 'fresh',
+        options.consumePendingEntries === true,
     ).finally(() => {
         sceneEnqueueInFlight = null
     })
@@ -94,6 +107,7 @@ export function enqueueSceneQueueTargets(
 async function enqueueSceneQueueTargetsOnce(
     targets: readonly SceneQueueTarget[],
     origin: QueueBatchOrigin,
+    consumePendingEntries: boolean,
 ): Promise<CreateBatchAndEnqueueResult | null> {
     const sceneState = useSceneStore.getState()
     const selected: ResolvedSceneQueueTarget[] = targets.flatMap(target => {
@@ -177,11 +191,18 @@ async function enqueueSceneQueueTargetsOnce(
                     }),
             }
             for (let count = 0; count < target.count; count += 1) {
+                const seed = useSceneStore.getState().consumeSceneGenerationSeed(preset.id, scene.id)
+                const filenameTemplate = target.fileNames?.[count]?.trim() || scene.filenameTemplate?.trim()
+                const jobOutputContext = {
+                    ...outputContext,
+                    ...(filenameTemplate ? { filenameTemplate } : {}),
+                }
                 const built = await buildSceneGenerationParams(scene, {
-                    requestId: `durable-enqueue:${preset.id}:${scene.id}:${count}`,
+                    requestId: `durable-enqueue:${operationId}:${preset.id}:${scene.id}:${count}`,
                     now: new Date(),
                     presetId: preset.id,
                     generationFolder,
+                    seed,
                 })
                 sceneState.recordSceneCompositionResult(scene.id, {
                     mode: built.mode,
@@ -200,7 +221,7 @@ async function enqueueSceneQueueTargetsOnce(
                     finalPrompt: built.finalPrompt,
                     mimeType: built.mimeType,
                     saveContext,
-                    outputContext: { ...outputContext, sceneName: scene.name },
+                    outputContext: { ...jobOutputContext, sceneName: scene.name },
                     streaming: settings.useStreaming,
                     sequenceCommitProposal: built.sequenceCommitProposal,
                     planHash: built.planHash,
@@ -238,6 +259,11 @@ async function enqueueSceneQueueTargetsOnce(
         jobs,
         resources: [...resources.values()],
     })
+    if (consumePendingEntries) {
+        for (const { target } of selected) {
+            useSceneStore.getState().consumeSceneQueueEntries(target.presetId, target.sceneId, target.count)
+        }
+    }
     useQueueStore.getState().completeEnqueueOperation('scene', operationId)
     return result
 }

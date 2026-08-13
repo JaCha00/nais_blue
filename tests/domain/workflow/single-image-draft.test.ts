@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+    BATCH_IMAGE_NODE_IDS,
+    batchImageNodePath,
     createBatchImageDraft,
     SINGLE_IMAGE_NODE_IDS,
     createSingleImageDraft,
@@ -13,6 +15,7 @@ import {
     listSingleImageDraftIssues,
     reviseBatchImageDraft,
     reviseSingleImageDraft,
+    singleImageNodePath,
 } from '@/domain/workflow/single-image-draft'
 
 const NOW = '2026-08-08T00:00:00.000Z'
@@ -52,7 +55,66 @@ describe('single-image workflow draft', () => {
         ])
         expect(isSingleImageDraftReady(draft)).toBe(false)
         expect(isSingleImageDraft(draft)).toBe(true)
-        expect(SINGLE_IMAGE_NODE_IDS).toEqual(['model', 'prompt', 'resolution', 'settings', 'review'])
+        expect(SINGLE_IMAGE_NODE_IDS).toEqual([
+            'model',
+            'prompt',
+            'resolution',
+            'settings',
+            'output',
+            'metadata',
+            'rights',
+            'delivery',
+            'review',
+        ])
+    })
+
+    it('keeps ordinary storage short and reveals release decisions only for purified output', () => {
+        expect(singleImageNodePath('embedded')).toEqual([
+            'model',
+            'prompt',
+            'resolution',
+            'settings',
+            'output',
+            'metadata',
+            'review',
+        ])
+        expect(singleImageNodePath('strip-and-sidecar')).toEqual([
+            'model',
+            'prompt',
+            'resolution',
+            'settings',
+            'output',
+            'metadata',
+            'rights',
+            'delivery',
+            'review',
+        ])
+    })
+
+    it('blocks release when rights XMP is enabled without a user-supplied date', () => {
+        const created = createSingleImageDraft({
+            id: 'draft:rights',
+            now: NOW,
+            seed: 42,
+            output: {
+                metadataMode: 'strip-and-sidecar',
+                rightsXmpEnabled: true,
+                rightsOwner: 'bluehair.blue',
+                rightsEffectiveDate: null,
+            },
+        })
+        const draft = reviseSingleImageDraft(created, {
+            updatedAt: LATER,
+            payload: {
+                ...created.payload,
+                model: 'nai-diffusion-4-5-full',
+                prompt: { positive: 'portrait', negative: '' },
+                resolution: { width: 832, height: 1216 },
+            },
+        })
+
+        expect(listSingleImageDraftIssues(draft)).toEqual(['rights-effective-date-required'])
+        expect(isSingleImageDraftReady(draft)).toBe(false)
     })
 
     it('advances an immutable revision only after typed generation inputs are valid', () => {
@@ -116,6 +178,32 @@ describe('single-image workflow draft', () => {
 })
 
 describe('batch-image workflow draft', () => {
+    it('uses the selected batch method while sharing the staged output path', () => {
+        expect(BATCH_IMAGE_NODE_IDS).toContain('resolution')
+        expect(batchImageNodePath('variations', 'embedded')).toEqual([
+            'model',
+            'prompt',
+            'count',
+            'resolution',
+            'settings',
+            'output',
+            'metadata',
+            'review',
+        ])
+        expect(batchImageNodePath('scenes', 'strip-and-sidecar')).toEqual([
+            'model',
+            'prompt',
+            'scenes',
+            'resolution',
+            'settings',
+            'output',
+            'metadata',
+            'rights',
+            'delivery',
+            'review',
+        ])
+    })
+
     it('creates a detached resumable draft without treating missing choices as valid', () => {
         const draft = createBatchImageDraft({
             id: 'batch:1',

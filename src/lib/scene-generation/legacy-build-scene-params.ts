@@ -15,6 +15,7 @@ import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragme
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { resolveAssetModulePlan, type AssetModulePlan } from '@/lib/asset-modules/resolver'
+import { generateRandomSeed } from '@/lib/utils'
 
 export interface SceneGenerationBuildResult {
     params: GenerationParams
@@ -89,23 +90,19 @@ export async function resolveLegacySceneAssetModulePlan(
 // It keeps B's existing scene parameter sources together: generation settings,
 // character/vibe image memory, scene text, and rotation pinned-character state.
 export function selectSceneGenerationSeed(seedLocked: boolean, seed: number): number {
-    let finalSeed = seedLocked ? seed : Math.floor(Math.random() * 4294967295)
-    if (finalSeed === 0) {
-        finalSeed = Math.floor(Math.random() * 4294967295)
-    }
-    return finalSeed
+    return seedLocked && seed !== 0 ? seed : generateRandomSeed()
 }
 
 export async function buildLegacySceneGenerationParams(
     scene: SceneCard,
-    _options: { presetId?: string } = {},
+    options: { presetId?: string; seed?: number } = {},
 ): Promise<SceneGenerationBuildResult> {
     const genState = useGenerationStore.getState()
     const fragmentSession = createWildcardResolutionSession()
     const scenePrompts = resolveScenePrompts(scene)
     const sceneGeneration = resolveSceneGeneration(scene)
 
-    const finalSeed = selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
+    const finalSeed = options.seed ?? selectSceneGenerationSeed(sceneGeneration.seedLocked, sceneGeneration.seed)
 
     // Scene is the prompt-module authority. Asset recipes and Main prompt-panel
     // values are intentionally excluded from Scene generation.

@@ -38,6 +38,7 @@ import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consen
 import type { GenerationBatch, GenerationBatchSummary, GenerationJob } from '@/domain/queue/types'
 import {
     createBatchImageDraft,
+    batchImageNodePath,
     isBatchImageDraft,
     isBatchImageDraftReady,
     listBatchImageDraftIssues,
@@ -74,11 +75,14 @@ import {
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
-import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
+import {
+    GuidedDeliveryStep,
+    GuidedMetadataStep,
+    GuidedRightsStep,
+} from './GuidedMetadataPolicy'
+import { GuidedOutputDestinationStep } from './GuidedOutputDestinationStep'
 import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
-import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
-import { outputPatchFromGenerationFolder } from './generation-folder-selection'
 
 export type GuidedBatchOptionId = 'sameSettings' | 'variations' | 'scenes' | 'queue'
 
@@ -122,10 +126,11 @@ function nextTimestamp(draft: BatchImageDraft): string {
     return new Date(Math.max(Date.now(), Date.parse(draft.updatedAt) + 1)).toISOString()
 }
 
-function activeNodes(mode: BatchImageMode): readonly BatchRouteNodeId[] {
-    return mode === 'scenes'
-        ? ['model', 'prompt', 'scenes', 'settings', 'review', 'result']
-        : ['model', 'prompt', 'count', 'settings', 'review', 'result']
+function activeNodes(
+    mode: BatchImageMode,
+    metadataMode: SingleImageOutputSettings['metadataMode'],
+): readonly BatchRouteNodeId[] {
+    return [...batchImageNodePath(mode, metadataMode), 'result']
 }
 
 function requestedCount(draft: BatchImageDraft): number {
@@ -195,7 +200,7 @@ function BatchStepFrame({
 }) {
     const { t } = useTranslation()
     const titleRef = useRef<HTMLHeadingElement>(null)
-    const nodes = activeNodes(draft.payload.batchMode)
+    const nodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
     const index = nodes.indexOf(nodeId)
 
     useEffect(() => titleRef.current?.focus(), [nodeId])
@@ -614,31 +619,17 @@ function ScenesStep({ scenes, disabled, onChange }: {
     )
 }
 
-function SettingsStep({ draft, disabled, imageCount, estimatedAnlas, pricingBasis, onResolution, onGeneration, onOutput }: {
+function ResolutionStep({ draft, disabled, imageCount, estimatedAnlas, pricingBasis, onResolution }: {
     draft: BatchImageDraft
     disabled: boolean
     imageCount: number
     estimatedAnlas: number
     pricingBasis: 'all-active-opus' | 'paid'
     onResolution(width: number, height: number): void
-    onGeneration(patch: Partial<SingleImageGenerationSettings>): void
-    onOutput(patch: Partial<SingleImageOutputSettings>): void
 }) {
     const { t } = useTranslation()
     const generation = draft.payload.generation
     const resolution = draft.payload.resolution ?? RESOLUTION_OPTIONS[0]
-    const [directory, setDirectory] = useState(draft.payload.output.directory)
-
-    useEffect(() => setDirectory(draft.payload.output.directory), [draft.payload.output.directory])
-
-    const commitDirectory = () => {
-        const value = directory.trim()
-        if (value.length === 0) {
-            setDirectory(draft.payload.output.directory)
-            return
-        }
-        if (value !== draft.payload.output.directory) onOutput({ directory: value })
-    }
 
     return (
         <div className="space-y-8">
@@ -666,92 +657,53 @@ function SettingsStep({ draft, disabled, imageCount, estimatedAnlas, pricingBasi
                 disabled={disabled}
                 onChange={onResolution}
             />
+        </div>
+    )
+}
 
-            <div className="divide-y divide-border/70 border-y border-border/70">
-                <label className="grid gap-2 py-4 sm:grid-cols-[minmax(12rem,1fr)_9rem] sm:items-center">
-                    <span><span className="block text-sm font-semibold">Steps</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{t('guided.batch.settings.stepsHelp', '28까지는 기본 범위예요. 더 높이면 지시 이행이 늘 수 있지만 항상 더 좋은 결과를 뜻하지는 않아요.')}</span></span>
-                    <Input type="number" min={1} max={50} value={generation.steps} disabled={disabled} onChange={event => onGeneration({ steps: Math.max(1, Math.min(50, Number(event.target.value) || 1)) })} className="text-base" />
-                </label>
-                <label className="grid gap-2 py-4 sm:grid-cols-[minmax(12rem,1fr)_13rem] sm:items-center">
-                    <span><span className="block text-sm font-semibold">Sampler</span><span className="mt-1 block text-xs text-muted-foreground">{t('guided.batch.settings.samplerHelp', '추천값을 그대로 사용해도 충분해요.')}</span></span>
-                    <select value={generation.sampler} disabled={disabled} onChange={event => onGeneration({ sampler: event.target.value })} className="min-h-11 border-x-0 border-y border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
-                        {SAMPLER_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-                    </select>
-                </label>
-                <label className="grid gap-2 py-4 sm:grid-cols-[minmax(12rem,1fr)_9rem] sm:items-center">
-                    <span><span className="block text-sm font-semibold">Prompt Guidance</span><span className="mt-1 block text-xs text-muted-foreground">{t('guided.batch.settings.cfgHelp', '높일수록 프롬프트를 강하게 따르지만 화면이 거칠어질 수 있어요.')}</span></span>
+function SettingsStep({ draft, disabled, onGeneration }: {
+    draft: BatchImageDraft
+    disabled: boolean
+    onGeneration(patch: Partial<SingleImageGenerationSettings>): void
+}) {
+    const { t } = useTranslation()
+    const generation = draft.payload.generation
+    return (
+        <div className="divide-y divide-border/70 border-y border-border/70">
+            <label className="grid gap-2 py-4 sm:grid-cols-[minmax(12rem,1fr)_9rem] sm:items-center">
+                <span>
+                    <span className="block text-sm font-semibold">Steps</span>
+                    <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                        {t('guided.batch.settings.stepsHelp', '28까지는 기본 범위예요. 더 높이면 지시 이행이 늘 수 있지만 항상 더 좋은 결과를 뜻하지는 않아요.')}
+                    </span>
+                </span>
+                <Input type="number" min={1} max={50} value={generation.steps} disabled={disabled} onChange={event => onGeneration({ steps: Math.max(1, Math.min(50, Number(event.target.value) || 1)) })} className="text-base" />
+            </label>
+            <label className="grid gap-2 py-4 sm:grid-cols-[minmax(12rem,1fr)_13rem] sm:items-center">
+                <span>
+                    <span className="block text-sm font-semibold">Sampler</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                        {t('guided.batch.settings.samplerHelp', '추천값을 그대로 사용해도 충분해요.')}
+                    </span>
+                </span>
+                <select value={generation.sampler} disabled={disabled} onChange={event => onGeneration({ sampler: event.target.value })} className="min-h-11 border-x-0 border-y border-input bg-background px-3 text-sm focus:border-primary focus:outline-none">
+                    {SAMPLER_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+            </label>
+            <details className="py-4">
+                <summary className="min-h-11 cursor-pointer select-none py-2 text-sm font-semibold marker:text-primary">
+                    {t('guided.batch.settings.advanced', '세부 조정 · 선택')}
+                </summary>
+                <label className="mt-3 grid gap-2 border-t border-border/55 pt-4 sm:grid-cols-[minmax(12rem,1fr)_9rem] sm:items-center">
+                    <span>
+                        <span className="block text-sm font-semibold">Prompt Guidance</span>
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {t('guided.batch.settings.cfgHelp', '높일수록 프롬프트를 강하게 따르지만 화면이 거칠어질 수 있어요.')}
+                        </span>
+                    </span>
                     <Input type="number" min={0} max={10} step={0.1} value={generation.cfgScale} disabled={disabled} onChange={event => onGeneration({ cfgScale: Math.max(0, Math.min(10, Number(event.target.value) || 0)) })} className="text-base" />
                 </label>
-            </div>
-            <section className="border-y border-border/55 py-5" aria-labelledby="guided-batch-output-heading">
-                <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
-                    <div>
-                        <h2 id="guided-batch-output-heading" className="text-sm font-semibold">
-                            {t('guided.batch.settings.outputDirectory', '저장 폴더')}
-                        </h2>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            {t('guided.batch.settings.outputHelp', '작업별 저장 위치와 자동 업로드 대상을 선택하세요.')}
-                        </p>
-                        <div className="mt-3">
-                            <GenerationFolderPicker
-                                value={draft.payload.output.generationFolderId}
-                                disabled={disabled}
-                                allowManual
-                                onChange={selection => onOutput(outputPatchFromGenerationFolder(
-                                    selection,
-                                    draft.payload.output.metadataMode,
-                                ))}
-                            />
-                        </div>
-                        {draft.payload.output.generationFolderId == null && (
-                            <Input
-                                id="guided-batch-output-directory"
-                                className="mt-3"
-                                value={directory}
-                                disabled={disabled}
-                                onChange={event => setDirectory(event.target.value)}
-                                onBlur={commitDirectory}
-                                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                                aria-label={t('guided.batch.settings.directOutputDirectory', '직접 입력 저장 경로')}
-                            />
-                        )}
-                    </div>
-                    <div>
-                        <label htmlFor="guided-batch-output-format" className="text-sm font-semibold">
-                            {t('guided.batch.settings.imageFormat', '이미지 형식')}
-                        </label>
-                        <select
-                            id="guided-batch-output-format"
-                            value={draft.payload.output.imageFormat}
-                            onChange={event => onOutput({ imageFormat: event.target.value as SingleImageOutputSettings['imageFormat'] })}
-                            disabled={disabled}
-                            className="mt-3 min-h-11 w-full border-x-0 border-y border-input bg-background px-3 text-sm focus:border-primary focus:outline-none"
-                        >
-                            <option value="png">PNG</option>
-                            <option value="webp">WebP</option>
-                        </select>
-                    </div>
-                </div>
-            </section>
-            <GuidedMetadataPolicy
-                value={draft.payload.output.metadataMode}
-                disabled={disabled}
-                autoR2UploadProfileId={draft.payload.output.autoR2UploadProfileId}
-                deleteOriginalAfterRelease={draft.payload.output.deleteOriginalAfterRelease}
-                rightsXmpEnabled={draft.payload.output.rightsXmpEnabled}
-                rightsOwner={draft.payload.output.rightsOwner}
-                rightsEffectiveDate={draft.payload.output.rightsEffectiveDate}
-                onChange={metadataMode => onOutput({ metadataMode })}
-                onAutoR2UploadProfileIdChange={autoR2UploadProfileId => onOutput({ autoR2UploadProfileId })}
-                onDeleteOriginalAfterReleaseChange={deleteOriginalAfterRelease => onOutput({ deleteOriginalAfterRelease })}
-                onRightsXmpEnabledChange={rightsXmpEnabled => onOutput({ rightsXmpEnabled })}
-                onRightsOwnerChange={rightsOwner => onOutput({ rightsOwner })}
-                onRightsEffectiveDateChange={rightsEffectiveDate => onOutput({ rightsEffectiveDate })}
-            />
-            <div className="flex flex-wrap items-baseline justify-between gap-2 border-y border-primary/35 py-4">
-                <span className="text-sm font-medium">{t('guided.batch.settings.estimate', '현재 설정의 최대 예상 비용')}</span>
-                <span className="font-mono text-xl font-semibold text-primary">{estimatedAnlas.toLocaleString()} Anlas</span>
-            </div>
+            </details>
         </div>
     )
 }
@@ -768,6 +720,13 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
     onSubmit(): void
 }) {
     const { t } = useTranslation()
+    const metadataLabel = draft.payload.output.metadataMode === 'embedded'
+        ? t('guided.metadata.embedded', '이미지에 포함')
+        : draft.payload.output.metadataMode === 'sidecar-only'
+            ? t('guided.metadata.sidecar', '이미지 유지 + sidecar')
+            : draft.payload.output.metadataMode === 'strip-and-sidecar'
+                ? t('guided.metadata.clean', '공유용 정화 + sidecar · 권장')
+                : t('guided.metadata.stripOnly', '정화만 · 비권장')
     const rows = [
         { label: t('guided.batch.review.mode', '방식'), value: draft.payload.batchMode, node: 'model' as const },
         { label: t('guided.batch.review.model', '모델'), value: MODEL_OPTIONS.find(item => item.id === draft.payload.model)?.name ?? '—', node: 'model' as const },
@@ -780,11 +739,21 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
             node: 'prompt' as const,
         }] : []),
         { label: t('guided.batch.review.count', '생성 수'), value: t('guided.batch.review.countValue', '{{count}}장', { count: requestedCount(draft) }), node: draft.payload.batchMode === 'scenes' ? 'scenes' as const : 'count' as const },
-        { label: t('guided.batch.review.settings', '설정'), value: `${draft.payload.resolution?.width ?? '—'} × ${draft.payload.resolution?.height ?? '—'} · ${draft.payload.generation.steps} Steps`, node: 'settings' as const },
+        { label: t('guided.batch.review.resolution', '해상도'), value: `${draft.payload.resolution?.width ?? '—'} × ${draft.payload.resolution?.height ?? '—'}`, node: 'resolution' as const },
+        { label: t('guided.batch.review.settings', '생성 설정'), value: `${draft.payload.generation.steps} Steps · ${SAMPLER_OPTIONS.find(item => item.id === draft.payload.generation.sampler)?.label ?? draft.payload.generation.sampler} · CFG ${draft.payload.generation.cfgScale}`, node: 'settings' as const },
         {
             label: t('guided.batch.review.output', '저장'),
             value: `${draft.payload.output.generationFolderPath ? `${draft.payload.output.generationFolderPath} · ` : ''}${draft.payload.output.directory} · ${draft.payload.output.imageFormat.toUpperCase()}`,
-            node: 'settings' as const,
+            node: 'output' as const,
+        },
+        {
+            label: t('guided.batch.review.metadata', '메타데이터'),
+            value: draft.payload.output.metadataMode === 'strip-and-sidecar'
+                ? `${metadataLabel} · ${draft.payload.output.autoR2UploadProfileId
+                    ? t('guided.batch.review.r2On', 'R2 자동 업로드')
+                    : t('guided.batch.review.r2Off', '로컬에만 저장')}`
+                : metadataLabel,
+            node: 'metadata' as const,
         },
     ]
     return (
@@ -1356,17 +1325,21 @@ export function GuidedBatchImages() {
 
     useEffect(() => {
         if (draft === null) return
-        const nodes = activeNodes(draft.payload.batchMode)
-        if (params.nodeId !== undefined && nodes.includes(params.nodeId as BatchRouteNodeId)) return
-        navigate(`/guided-preview/batch/${draft.id}/${draft.currentNodeId}`, { replace: true })
+        const availableNodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
+        if (params.nodeId !== undefined && availableNodes.includes(params.nodeId as BatchRouteNodeId)) return
+        const fallback = availableNodes.includes(draft.currentNodeId)
+            ? draft.currentNodeId
+            : 'metadata'
+        navigate(`/guided-preview/batch/${draft.id}/${fallback}`, { replace: true })
     }, [draft, navigate, params.nodeId])
 
     if (loading) return <div className="flex min-h-full items-center justify-center" role="status"><LoaderCircle className="h-5 w-5 animate-spin text-primary" /><span className="ml-3 text-sm text-muted-foreground">{t('guided.batch.loading', '초안을 불러오는 중…')}</span></div>
     if (loadError || draft === null) return <div className="mx-auto flex min-h-full max-w-lg items-center px-4"><div className="w-full border-y border-destructive/40 py-8 text-center" role="alert"><CircleAlert className="mx-auto h-6 w-6 text-destructive" /><p className="mt-3 text-sm font-semibold">{t('guided.batch.loadError', '배치 초안을 불러오지 못했어요.')}</p></div></div>
 
-    const nodes = activeNodes(draft.payload.batchMode)
+    const nodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
     const requestedNode = params.nodeId as BatchRouteNodeId | undefined
-    const nodeId = requestedNode !== undefined && nodes.includes(requestedNode) ? requestedNode : draft.currentNodeId
+    const fallbackNode = nodes.includes(draft.currentNodeId) ? draft.currentNodeId : 'metadata'
+    const nodeId = requestedNode !== undefined && nodes.includes(requestedNode) ? requestedNode : fallbackNode
     const locked = draft.status === 'queued' || draft.status === 'completed'
     const total = draft.payload.batchMode === 'scenes'
         ? scenes.reduce((sum, scene) => sum + scene.count, 0)
@@ -1381,11 +1354,34 @@ export function GuidedBatchImages() {
     const estimatedAnlas = perImageAnlas * total
     const sceneReady = scenes.length > 0 && scenes.every(scene => scene.name.trim() && scene.positive.trim() && scene.count > 0)
     const canVisit = (target: BatchRouteNodeId): boolean => {
+        if (!nodes.includes(target)) return false
         if (target === 'model') return true
         if (target === 'prompt') return draft.payload.model !== null
         if (target === 'count') return draft.payload.model !== null && positive.trim().length > 0
         if (target === 'scenes') return draft.payload.model !== null
-        if (target === 'settings') return draft.payload.batchMode === 'scenes' ? sceneReady : positive.trim().length > 0 && total > 0
+        const contentReady = draft.payload.model !== null && (draft.payload.batchMode === 'scenes'
+            ? sceneReady
+            : positive.trim().length > 0 && total > 0)
+        if (target === 'resolution') return contentReady
+        if (target === 'settings' || target === 'output' || target === 'metadata') {
+            return contentReady && draft.payload.resolution !== null
+        }
+        if (target === 'rights') {
+            return contentReady
+                && draft.payload.resolution !== null
+                && draft.payload.output.metadataMode === 'strip-and-sidecar'
+        }
+        if (target === 'delivery') {
+            const issues = listBatchImageDraftIssues({
+                ...draft,
+                payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts },
+            })
+            return contentReady
+                && draft.payload.resolution !== null
+                && draft.payload.output.metadataMode === 'strip-and-sidecar'
+                && !issues.includes('rights-owner-invalid')
+                && !issues.includes('rights-effective-date-required')
+        }
         if (target === 'review') return isBatchImageDraftReady({
             ...draft,
             payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts },
@@ -1418,9 +1414,15 @@ export function GuidedBatchImages() {
                         ? 'prompt'
                         : issue === 'count-invalid'
                             ? 'count'
-                            : issue === 'scenes-required' || issue === 'scene-invalid'
+                        : issue === 'scenes-required' || issue === 'scene-invalid'
                                 ? 'scenes'
-                                : 'settings'
+                                : issue === 'resolution-required' || issue === 'resolution-invalid'
+                                    ? 'resolution'
+                                    : issue === 'rights-owner-invalid' || issue === 'rights-effective-date-required'
+                                        ? 'rights'
+                                        : issue === 'output-invalid'
+                                            ? 'output'
+                                            : 'settings'
                 if (blockingNode !== nodeId) await goTo(blockingNode)
             }
             return
@@ -1437,6 +1439,15 @@ export function GuidedBatchImages() {
     const patchPayload = (patch: Partial<BatchImageDraft['payload']>) => {
         setConsented(false)
         return commitMutation(current => ({ payload: { ...current.payload, ...patch } }))
+    }
+    const patchOutput = (patch: Partial<SingleImageOutputSettings>) => {
+        setConsented(false)
+        return commitMutation(current => ({
+            payload: {
+                ...current.payload,
+                output: { ...current.payload.output, ...patch },
+            },
+        }))
     }
     const previous = nodes[nodes.indexOf(nodeId) - 1]
     const back = () => previous === undefined ? navigate('/guided-preview/guide/batch') : void goTo(previous)
@@ -1500,7 +1511,12 @@ export function GuidedBatchImages() {
         prompt: [t('guided.batch.steps.prompt.title', '공통 프롬프트와 모듈을 정해 볼까요?'), t('guided.batch.steps.prompt.description', '폴더에 저장한 모듈을 그대로 불러오거나, 무작위·순차 참조로 연결할 수 있어요.')],
         count: [t('guided.batch.steps.count.title', '몇 장을 만들까요?'), t('guided.batch.steps.count.description', '모든 항목은 독립된 대기열 작업으로 저장돼 앱을 이동해도 이어집니다.')],
         scenes: [t('guided.batch.steps.scenes.title', '어떤 씬들을 만들까요?'), t('guided.batch.steps.scenes.description', '씬마다 프롬프트와 생성 장수를 정해 한 번에 대기열로 보낼 수 있어요.')],
-        settings: [t('guided.batch.steps.settings.title', '공통 생성 설정을 확인해 볼까요?'), t('guided.batch.steps.settings.description', '권장 해상도와 28 Steps는 기본 비용 범위예요. 바꾸면 예상 비용을 바로 다시 계산합니다.')],
+        resolution: [t('guided.batch.steps.resolution.title', '어떤 크기로 만들까요?'), t('guided.batch.steps.resolution.description', '공통 해상도를 고르면 전체 장수의 최대 예상 비용을 바로 계산합니다.')],
+        settings: [t('guided.batch.steps.settings.title', '결과를 얼마나 세밀하게 다듬을까요?'), t('guided.batch.steps.settings.description', '28 Steps와 추천 샘플러로 시작해도 충분해요. 필요한 경우에만 세부 조정을 펼치세요.')],
+        output: [t('guided.batch.steps.output.title', '완성된 이미지들을 어디에 둘까요?'), t('guided.batch.steps.output.description', '이번 묶음의 저장 폴더와 파일 형식을 정하세요. 폴더별 R2 대상도 함께 불러옵니다.')],
+        metadata: [t('guided.batch.steps.metadata.title', '생성 정보를 어떻게 보관할까요?'), t('guided.batch.steps.metadata.description', '개인 보관, sidecar 분리, 공유용 정화 중 이번 묶음에 맞는 한 가지를 고르세요.')],
+        rights: [t('guided.batch.steps.rights.title', '공유 이미지에 권리 표시를 넣을까요?'), t('guided.batch.steps.rights.description', '선택 사항입니다. 사용한다면 소유자명과 효력 시작일을 이 묶음에 기록합니다.')],
+        delivery: [t('guided.batch.steps.delivery.title', '정화가 끝난 뒤 어디까지 처리할까요?'), t('guided.batch.steps.delivery.description', '자동 업로드와 정화 전 원본 보관 여부를 각각 선택하세요.')],
         review: [t('guided.batch.steps.review.title', '대기열에 넣기 전에 확인할까요?'), t('guided.batch.steps.review.description', '설정은 스냅샷으로 고정되고, 비용 동의와 같은 초안 재전송은 중복 실행되지 않아요.')],
         result: [t('guided.batch.steps.result.title', '완성된 이미지들을 확인해 볼까요?'), t('guided.batch.steps.result.description', '결과는 완성되는 순서대로 나타나며, 다른 워크플로우로 이동해도 작업은 계속됩니다.')],
     }[nodeId]
@@ -1511,7 +1527,62 @@ export function GuidedBatchImages() {
             {nodeId === 'prompt' && <PromptStep draft={draft} positive={positive} negative={negative} characterPrompts={characterPrompts} disabled={locked} onPositive={value => { editableRef.current = { ...editableRef.current, positive: value }; setPositive(value); scheduleEditableSave() }} onNegative={value => { editableRef.current = { ...editableRef.current, negative: value }; setNegative(value); scheduleEditableSave() }} onCharacterPrompts={value => { editableRef.current = { ...editableRef.current, characterPrompts: value }; setCharacterPrompts(value); scheduleEditableSave() }} onOrder={variationOrder => { void patchPayload({ variationOrder }).catch(() => undefined) }} />}
             {nodeId === 'count' && <CountStep count={draft.payload.count} disabled={locked} onChange={count => { void patchPayload({ count }).catch(() => undefined) }} />}
             {nodeId === 'scenes' && <ScenesStep scenes={scenes} disabled={locked} onChange={value => { editableRef.current = { ...editableRef.current, scenes: value }; setScenes(value); scheduleEditableSave() }} />}
-            {nodeId === 'settings' && <SettingsStep draft={draft} disabled={locked} imageCount={total} estimatedAnlas={estimatedAnlas} pricingBasis={activeCredentialsAreOpus ? 'all-active-opus' : 'paid'} onResolution={(width, height) => { setConsented(false); void patchPayload({ resolution: { width, height } }).catch(() => undefined) }} onGeneration={patch => { setConsented(false); void commitMutation(current => ({ payload: { ...current.payload, generation: { ...current.payload.generation, ...patch } } })).catch(() => undefined) }} onOutput={patch => { void commitMutation(current => ({ payload: { ...current.payload, output: { ...current.payload.output, ...patch } } })).catch(() => undefined) }} />}
+            {nodeId === 'resolution' && (
+                <ResolutionStep
+                    draft={draft}
+                    disabled={locked}
+                    imageCount={total}
+                    estimatedAnlas={estimatedAnlas}
+                    pricingBasis={activeCredentialsAreOpus ? 'all-active-opus' : 'paid'}
+                    onResolution={(width, height) => {
+                        setConsented(false)
+                        void patchPayload({ resolution: { width, height } }).catch(() => undefined)
+                    }}
+                />
+            )}
+            {nodeId === 'settings' && (
+                <SettingsStep
+                    draft={draft}
+                    disabled={locked}
+                    onGeneration={patch => {
+                        setConsented(false)
+                        void commitMutation(current => ({
+                            payload: {
+                                ...current.payload,
+                                generation: { ...current.payload.generation, ...patch },
+                            },
+                        })).catch(() => undefined)
+                    }}
+                />
+            )}
+            {nodeId === 'output' && (
+                <GuidedOutputDestinationStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'metadata' && (
+                <GuidedMetadataStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'rights' && (
+                <GuidedRightsStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'delivery' && (
+                <GuidedDeliveryStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
             {nodeId === 'review' && <ReviewStep draft={{ ...draft, payload: { ...draft.payload, prompt: { positive, negative }, scenes, characterPrompts } }} activeTokenCount={activeTokenCount} estimatedAnlas={estimatedAnlas} consented={consented} submitting={submitting} submitError={submitError} onConsent={setConsented} onEdit={target => void goTo(target)} onSubmit={() => void submit()} />}
             {nodeId === 'result' && <ResultGallery draft={draft} summary={summary} jobs={resultJobs} hasMore={resultHasMore} loadingMore={resultLoading} onLoadMore={() => setResultLimit(current => current + 48)} onEdit={() => void reviseResult('prompt', false)} onRetry={() => void reviseResult('review', true)} />}
         </BatchStepFrame>

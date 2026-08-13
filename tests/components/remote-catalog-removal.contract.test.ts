@@ -90,7 +90,7 @@ describe('removed remote catalog runtime contract', () => {
         expect(gate).toContain('readTrackedFileFromIndex')
         expect(gate).toContain('repositoryFiles.tracked.has(relativePath)')
         expect(gate).toContain('repositoryRootIsNotPublicInput')
-        expect(gate).toContain('publicSourceExcludesCodexTooling')
+        expect(gate).toContain('publicSourceUsesTrackedHeadArchive')
         expect(gate).toContain(`STYLE_LAB_${removedCatalogName.toUpperCase()}_ALLOWLIST`)
         expect(gate).toContain(
             `term.toLowerCase() === '${removedCatalogName.toLowerCase()}'`,
@@ -98,6 +98,6 @@ describe('removed remote catalog runtime contract', () => {
         expect(gate).toContain(`isStyleLab${removedCatalogName}Path(relativePath)`)
         expect(gitignore.split(/\r?\n/)).toContain('.codex/')
         expect(vite).not.toMatch(/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i)
-        expect(publicRelease).toMatch(/['"]\.codex['"]/i)
+        expect(publicRelease).toMatch(/&\s+git\s+-C\s+\$ProjectRoot\s+archive[\s\S]*?\bHEAD\b/i)
     })
 })

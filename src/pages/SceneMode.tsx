@@ -1558,20 +1558,11 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
     const addToTrash = useTrashStore(state => state.add)
 
     const thumbnail = getSceneThumbnail(scene)
-    const [imageUrl, setImageUrl] = useState<string>('')
-
-    useEffect(() => {
-        if (!thumbnail) {
-            setImageUrl('')
-            return
-        }
-        if (thumbnail.startsWith('data:')) {
-            setImageUrl(thumbnail)
-            return
-        }
-        // The platform adapter projects persisted paths without copying image bytes.
-        setImageUrl(toNativeAssetUrl(thumbnail))
-    }, [thumbnail])
+    // Native path projection is synchronous derived data; keeping a second
+    // state copy made recycled/memoized cards briefly retain another Scene's image.
+    const imageUrl = !thumbnail || thumbnail.startsWith('data:')
+        ? thumbnail ?? ''
+        : toNativeAssetUrl(thumbnail)
 
 
     const handleSaveName = () => {
@@ -1856,14 +1847,4 @@ const SortableSceneCard = memo(function SortableSceneCard(props: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.scene.id, disabled: props.disabled })
     const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.0 : 1 }
     return <div ref={setNodeRef} style={style} className="min-w-0"> <SceneCardItem {...props} dragAttributes={attributes} dragListeners={listeners} /> </div>
-}, (prevProps, nextProps) => {
-    // Only re-render if scene id, queueCount, name, or disabled changes
-    return prevProps.scene.id === nextProps.scene.id &&
-        prevProps.scene.queueCount === nextProps.scene.queueCount &&
-        prevProps.scene.name === nextProps.scene.name &&
-        prevProps.scene.scenePrompt === nextProps.scene.scenePrompt &&
-        JSON.stringify(prevProps.scene.compositionRef) === JSON.stringify(nextProps.scene.compositionRef) &&
-        prevProps.scene.excludePinned === nextProps.scene.excludePinned &&
-        prevProps.scene.images?.length === nextProps.scene.images?.length &&
-        prevProps.disabled === nextProps.disabled
 })

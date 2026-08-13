@@ -278,4 +278,80 @@ describe('Scene store composition actions', () => {
         expect(state.sceneCompositionResults).toHaveProperty('scene:b')
         expect(state.sceneCompositionResults).toHaveProperty('scene:c')
     })
+
+    it('consumes an unlocked seed and publishes the next seed atomically', () => {
+        useSceneStore.getState().updateSceneGeneration(PRESET_ID, 'scene:a', {
+            seed: 123,
+            seedLocked: false,
+        })
+        vi.spyOn(Math, 'random')
+            .mockReturnValueOnce(0.5)
+            .mockReturnValueOnce(0.25)
+
+        expect(useSceneStore.getState().consumeSceneGenerationSeed(PRESET_ID, 'scene:a')).toBe(123)
+        expect(resolveSceneGeneration(useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!).seed)
+            .toBe(2_147_483_647)
+        expect(useSceneStore.getState().consumeSceneGenerationSeed(PRESET_ID, 'scene:a'))
+            .toBe(2_147_483_647)
+        expect(resolveSceneGeneration(useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!).seed)
+            .toBe(1_073_741_823)
+    })
+
+    it('materializes a zero seed once when the Scene is locked', () => {
+        useSceneStore.getState().updateSceneGeneration(PRESET_ID, 'scene:a', {
+            seed: 0,
+            seedLocked: true,
+        })
+        vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+        expect(useSceneStore.getState().consumeSceneGenerationSeed(PRESET_ID, 'scene:a'))
+            .toBe(2_147_483_647)
+        expect(resolveSceneGeneration(useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!))
+            .toMatchObject({ seed: 2_147_483_647, seedLocked: true })
+        expect(useSceneStore.getState().consumeSceneGenerationSeed(PRESET_ID, 'scene:a'))
+            .toBe(2_147_483_647)
+    })
+
+    it('claims and requeues FIFO image filenames without losing the scene default', () => {
+        const store = useSceneStore.getState()
+        store.setSceneFilenameTemplate(PRESET_ID, 'scene:a', 'scene_{seed}')
+        store.setQueuedImageFileNames(PRESET_ID, 'scene:a', ['first', '', 'third'])
+
+        expect(store.decrementFirstQueuedScene(PRESET_ID)).toMatchObject({
+            scene: { id: 'scene:a' },
+            filenameTemplate: 'first',
+        })
+        const inherited = useSceneStore.getState().decrementFirstQueuedScene(PRESET_ID)
+        expect(inherited).toMatchObject({
+            scene: { id: 'scene:a' },
+            filenameTemplate: 'scene_{seed}',
+        })
+
+        useSceneStore.getState().requeueSceneGeneration(
+            PRESET_ID,
+            'scene:a',
+            inherited?.filenameTemplate,
+        )
+        expect(useSceneStore.getState().getScene(PRESET_ID, 'scene:a')).toMatchObject({
+            queueCount: 2,
+            queuedFileNames: ['scene_{seed}', 'third'],
+        })
+    })
+
+    it('keeps same-tick image and session identities unique', () => {
+        vi.spyOn(Date, 'now').mockReturnValue(NOW)
+        const store = useSceneStore.getState()
+        store.addImageToScene(PRESET_ID, 'scene:a', 'first.png')
+        store.addImageToScene(PRESET_ID, 'scene:a', 'second.png')
+
+        const images = useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!.images
+        expect(new Set(images.map(image => image.id)).size).toBe(images.length)
+
+        useSceneStore.setState({ generationSessionId: NOW })
+        expect(useSceneStore.getState().startNewGenerationSession()).toBe(NOW + 1)
+        useSceneStore.getState().cancelSceneGeneration()
+        expect(useSceneStore.getState().generationSessionId).toBe(NOW + 2)
+        useSceneStore.getState().setIsGenerating(false)
+        expect(useSceneStore.getState().generationSessionId).toBe(NOW + 3)
+    })
 })

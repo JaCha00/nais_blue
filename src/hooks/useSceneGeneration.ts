@@ -141,9 +141,18 @@ function reportSceneFailure(result: SceneProcessResult, ctx: SceneWorkerContext)
     }
 }
 
-async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCard, ctx: SceneWorkerContext): Promise<SceneProcessResult> {
+async function processSceneWithSlot(
+    slot: ApiSlot,
+    token: string,
+    scene: SceneCard,
+    ctx: SceneWorkerContext,
+    filenameTemplate?: string,
+): Promise<SceneProcessResult> {
     if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
+    const operationId = crypto.randomUUID()
+    const requestId = `scene-request:${ctx.sessionId}:${scene.id}:${operationId}`
+    const seed = useSceneStore.getState().consumeSceneGenerationSeed(ctx.activePresetId, scene.id)
     useSceneStore.getState().setStreamingData(scene.id, null, 0)
     let sequenceLease: ReturnType<typeof reserveSceneFragmentSequenceProposal> = null
     let requestLease: SceneRequestControllerLease | null = null
@@ -181,9 +190,11 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         )
         const built = await buildSceneGenerationParams(scene, {
             sessionId: ctx.sessionId,
-            requestId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+            requestId,
             now: new Date(resolveStartedAt),
+            presetId: ctx.activePresetId,
             generationFolder,
+            seed,
         })
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
@@ -210,7 +221,6 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         }
 
         const { params, finalPrompt, mimeType } = built
-        const requestId = `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`
         requestLease = acquireSceneRequestController({
             sessionId: ctx.sessionId,
             slot,
@@ -244,7 +254,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
                 operation: 'scene.generate',
                 stage: canUseStreaming ? 'stream' : 'request',
                 sceneId: scene.id,
-                correlationId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+                correlationId: requestId,
                 prompt: finalPrompt,
             })
             const failure = classifyProcessError(result.error || 'Generation failed', result.termination)
@@ -257,16 +267,20 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         const activeSequenceLease = sequenceLease
         const sceneState = useSceneStore.getState()
         const preset = sceneState.presets.find(candidate => candidate.id === ctx.activePresetId)
+        const baseOutputContext = {
+            useAbsoluteScenePath: generationFolder?.useAbsolutePath ?? settingsSnapshot.useAbsoluteScenePath,
+            metadataMode: generationFolder?.r2.autoUpload
+                ? 'strip-and-sidecar' as const
+                : scene.metadataMode ?? settingsSnapshot.metadataMode,
+            presetName: preset?.name || 'Default',
+            presetPathSegments: getScenePresetPathSegments(sceneState.presets, ctx.activePresetId),
+            sceneName: scene.name,
+            ...(filenameTemplate?.trim() ? { filenameTemplate: filenameTemplate.trim() } : {}),
+        }
         const outputContext = generationFolder === null
-            ? undefined
+            ? baseOutputContext
             : {
-                useAbsoluteScenePath: generationFolder.useAbsolutePath,
-                metadataMode: generationFolder.r2.autoUpload
-                    ? 'strip-and-sidecar' as const
-                    : scene.metadataMode ?? settingsSnapshot.metadataMode,
-                presetName: preset?.name || 'Default',
-                presetPathSegments: getScenePresetPathSegments(sceneState.presets, ctx.activePresetId),
-                sceneName: scene.name,
+                ...baseOutputContext,
                 generationFolderId: generationFolder.id,
                 generationFolderPath: generationFolder.path,
                 directory: generationFolder.directory,
@@ -275,12 +289,12 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
                 r2Bucket: generationFolder.r2.bucket,
                 r2Prefix: generationFolder.r2.prefix,
             }
-        const sourceJobId = `scene-direct-${ctx.sessionId}-${scene.id}-${params.seed}`
+        const sourceJobId = `scene-direct-${operationId}`
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
             presentation: sceneResultPresentation,
             canSave: () => isSessionAlive(ctx.sessionId),
             sentPayloadSummary: result.sentPayloadSummary,
-            ...(outputContext === undefined ? {} : { outputContext }),
+            outputContext,
             ...(generationFolder?.r2.autoUpload
                 ? {
                     afterSave: async output => {
@@ -340,7 +354,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
             operation: 'scene.generate',
             stage: 'request',
             sceneId: scene.id,
-            correlationId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+            correlationId: requestId,
         })
         const failure = classifyProcessError(error)
         reportSceneFailure(failure, ctx)
@@ -388,10 +402,11 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
             if (shouldStopForSession(ctx.sessionId)) return
             if (!useAuthStore.getState().isSlotActive(slot)) return
 
-            const scene = useSceneStore.getState().decrementFirstQueuedScene(ctx.activePresetId)
-            if (!scene) return
+            const claim = useSceneStore.getState().decrementFirstQueuedScene(ctx.activePresetId)
+            if (!claim) return
 
-            const result = await processSceneWithSlot(slot, token, scene, ctx)
+            const { scene, filenameTemplate } = claim
+            const result = await processSceneWithSlot(slot, token, scene, ctx, filenameTemplate)
             if (result.status === 'cancelled') return
 
             if (result.status === 'invalid') {
@@ -403,7 +418,7 @@ async function workerLoop(slot: ApiSlot, token: string, ctx: SceneWorkerContext)
                 useSceneStore.getState().setStreamingData(null, null, 0)
 
                 if (isSessionAlive(ctx.sessionId)) {
-                    useSceneStore.getState().incrementQueue(ctx.activePresetId, scene.id)
+                    useSceneStore.getState().requeueSceneGeneration(ctx.activePresetId, scene.id, filenameTemplate)
                 }
 
                 if (result.status === 'retryable' && isSessionAlive(ctx.sessionId) && useAuthStore.getState().isSlotActive(slot)) {

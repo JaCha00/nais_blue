@@ -158,7 +158,7 @@ const releaseInputIsDistOnly = tauriConfig?.build?.frontendDist === '../dist'
 const viteConfig = await readFile(path.join(root, 'vite.config.ts'), 'utf8')
 const repositoryRootIsNotPublicInput = !/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i.test(viteConfig)
 const publicReleaseScript = await readFile(path.join(root, 'scripts/create-public-release.ps1'), 'utf8')
-const publicSourceExcludesCodexTooling = /['"]\.codex['"]/i.test(publicReleaseScript)
+const publicSourceUsesTrackedHeadArchive = /&\s+git\s+-C\s+\$ProjectRoot\s+archive[\s\S]*?\bHEAD\b/i.test(publicReleaseScript)
 
 console.log('Remote runtime removal search gate')
 console.log(`Search terms (${SEARCH_TERMS.length}): ${SEARCH_TERMS.join(', ')}`)
@@ -172,12 +172,12 @@ console.log(`Release frontend input: ${tauriConfig?.build?.frontendDist ?? '(mis
 if (
     !releaseInputIsDistOnly
     || !repositoryRootIsNotPublicInput
-    || !publicSourceExcludesCodexTooling
+    || !publicSourceUsesTrackedHeadArchive
     || trackedCodexToolingFiles.length > 0
 ) {
     console.error(
         'Release input must remain ../dist, Vite publicDir must not expose the repository root, '
-        + 'public source staging must exclude .codex/**, and project-local Codex tooling must remain untracked.',
+        + 'public source staging must archive tracked HEAD, and project-local Codex tooling must remain untracked.',
     )
     process.exit(1)
 }

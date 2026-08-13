@@ -4,8 +4,21 @@ import { useTranslation } from 'react-i18next'
 
 import { PromptModuleCreator } from '@/components/fragments/PromptModuleCreator'
 import { Button } from '@/components/ui/button'
-import { parseMetadataFromFile, type NAIMetadata } from '@/lib/metadata-parser'
+import {
+    parseExternalMetadataJson,
+    parseMetadataFromFile,
+    parseNaiBlueSidecarMetadata,
+    type NAIMetadata,
+} from '@/lib/metadata-parser'
+import {
+    parseNaiStyleCatalogFile,
+    type NaiStyleCatalog,
+    type NaiStyleCatalogItem,
+    type NaiStyleCatalogParseProgress,
+} from '@/lib/nai-style-catalog'
 import { cn } from '@/lib/utils'
+
+import { GuidedStyleCatalogImport } from './GuidedStyleCatalogImport'
 
 const MAX_PROMPT_IMPORT_BYTES = 50 * 1024 * 1024
 
@@ -101,7 +114,11 @@ function jsonPrompts(value: unknown): { positive: string; negative: string } | n
     return null
 }
 
-export async function readGuidedPromptImportFile(file: File): Promise<GuidedPromptImportValue> {
+function isJsonFile(file: File): boolean {
+    return file.type === 'application/json' || file.name.toLocaleLowerCase().endsWith('.json')
+}
+
+function validatePromptImportFile(file: File): void {
     if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > MAX_PROMPT_IMPORT_BYTES) {
         throw new RangeError('Prompt metadata file size is invalid')
     }
@@ -109,12 +126,21 @@ export async function readGuidedPromptImportFile(file: File): Promise<GuidedProm
     const supported = file.type.startsWith('image/') || file.type === 'application/json'
         || /\.(?:png|webp|jpe?g|json)$/.test(lowerName)
     if (!supported) throw new TypeError('Unsupported prompt metadata file')
+}
 
-    const metadata = await parseMetadataFromFile(file)
+export async function readGuidedPromptImportFile(file: File): Promise<GuidedPromptImportValue> {
+    validatePromptImportFile(file)
+    let metadata: NAIMetadata | null
+    let json: string | null = null
+    if (isJsonFile(file)) {
+        json = await file.text()
+        metadata = parseExternalMetadataJson(json) ?? parseNaiBlueSidecarMetadata(json)
+    } else {
+        metadata = await parseMetadataFromFile(file)
+    }
     let prompts = metadata ? metadataPrompts(metadata) : null
-    if ((!prompts || (!prompts.positive && !prompts.negative))
-        && (lowerName.endsWith('.json') || file.type === 'application/json')) {
-        prompts = jsonPrompts(JSON.parse(await file.text()))
+    if ((!prompts || (!prompts.positive && !prompts.negative)) && json !== null) {
+        prompts = jsonPrompts(JSON.parse(json))
     }
     if (!prompts || (!prompts.positive && !prompts.negative)) {
         throw new TypeError('No prompt metadata was found')
@@ -125,6 +151,22 @@ export async function readGuidedPromptImportFile(file: File): Promise<GuidedProm
         sourceName: file.name,
         ...(characters.length === 0 ? {} : { characters }),
     }
+}
+
+export type GuidedPromptImportSource =
+    | { readonly kind: 'prompt'; readonly value: GuidedPromptImportValue }
+    | { readonly kind: 'style-catalog'; readonly catalog: NaiStyleCatalog }
+
+export async function readGuidedPromptImportSource(
+    file: File,
+    onProgress?: (progress: NaiStyleCatalogParseProgress) => void,
+): Promise<GuidedPromptImportSource> {
+    validatePromptImportFile(file)
+    if (isJsonFile(file)) {
+        const catalog = await parseNaiStyleCatalogFile(file, onProgress)
+        if (catalog !== null) return { kind: 'style-catalog', catalog }
+    }
+    return { kind: 'prompt', value: await readGuidedPromptImportFile(file) }
 }
 
 export function GuidedPromptFileImport({
@@ -145,6 +187,8 @@ export function GuidedPromptFileImport({
     const [dragging, setDragging] = useState(false)
     const [loading, setLoading] = useState(false)
     const [imported, setImported] = useState<GuidedPromptImportValue | null>(null)
+    const [catalog, setCatalog] = useState<NaiStyleCatalog | null>(null)
+    const [progress, setProgress] = useState<NaiStyleCatalogParseProgress | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [createdPath, setCreatedPath] = useState<string | null>(null)
 
@@ -153,13 +197,23 @@ export function GuidedPromptFileImport({
         setLoading(true)
         setError(null)
         setCreatedPath(null)
+        setProgress(null)
         try {
-            setImported(await readGuidedPromptImportFile(file))
+            const source = await readGuidedPromptImportSource(file, setProgress)
+            if (source.kind === 'style-catalog') {
+                setCatalog(source.catalog)
+                setImported(null)
+            } else {
+                setCatalog(null)
+                setImported(source.value)
+            }
         } catch {
             setImported(null)
+            setCatalog(null)
             setError(t('guided.promptImport.error', '프롬프트 메타데이터를 찾지 못했어요. NAI 이미지 또는 지원하는 외부 JSON인지 확인해 주세요.'))
         } finally {
             setLoading(false)
+            setProgress(null)
         }
     }
 
@@ -176,18 +230,20 @@ export function GuidedPromptFileImport({
                         {t('guided.promptImport.description', '파일을 놓거나 탐색기로 골라 이미지 메타데이터의 긍정·제외·캐릭터 프롬프트를 읽습니다.')}
                     </p>
                 </div>
-                <PromptModuleCreator
-                    disabled={disabled || !moduleSource.trim()}
-                    sourceText={moduleSource}
-                    suggestedName={imported?.sourceName}
-                    triggerLabel={imported
-                        ? t('guided.promptImport.saveImportedModule', '불러온 내용을 모듈로 저장')
-                        : t('guided.promptImport.saveCurrentModule', '현재 프롬프트를 모듈로 저장')}
-                    onCreated={path => {
-                        setCreatedPath(path)
-                        onModuleCreated?.(path)
-                    }}
-                />
+                {!catalog && (
+                    <PromptModuleCreator
+                        disabled={disabled || !moduleSource.trim()}
+                        sourceText={moduleSource}
+                        suggestedName={imported?.sourceName}
+                        triggerLabel={imported
+                            ? t('guided.promptImport.saveImportedModule', '불러온 내용을 모듈로 저장')
+                            : t('guided.promptImport.saveCurrentModule', '현재 프롬프트를 모듈로 저장')}
+                        onCreated={path => {
+                            setCreatedPath(path)
+                            onModuleCreated?.(path)
+                        }}
+                    />
+                )}
             </div>
             <input
                 ref={inputRef}
@@ -226,11 +282,32 @@ export function GuidedPromptFileImport({
                     <span className="block text-base font-semibold">{loading
                         ? t('guided.promptImport.loading', '메타데이터를 읽는 중…')
                         : t('guided.promptImport.choose', '여기에 파일을 놓거나 눌러서 선택')}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">PNG · WebP · JPEG · JSON</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{loading && progress
+                        ? t('guided.promptImport.catalog.progress', '{{records}}개 확인 · {{percent}}%', {
+                            records: progress.recordsRead.toLocaleString(),
+                            percent: progress.totalBytes > 0 ? Math.min(100, Math.round(progress.bytesRead / progress.totalBytes * 100)) : 0,
+                        })
+                        : 'PNG · WebP · JPEG · JSON'}</span>
                 </span>
             </button>
             {error && <p className="mt-3 text-sm text-destructive" role="alert">{error}</p>}
             {createdPath && <p className="mt-3 text-sm text-success" role="status">{t('guided.promptImport.moduleSaved', '{{path}} 모듈을 저장했어요.', { path: createdPath })}</p>}
+            {catalog && (
+                <GuidedStyleCatalogImport
+                    catalog={catalog}
+                    disabled={disabled}
+                    onChoose={(item: NaiStyleCatalogItem) => setImported({
+                        positive: item.positive,
+                        negative: item.negative,
+                        sourceName: `${catalog.sourceName} · ${item.title}`,
+                        ...(item.characters.length === 0 ? {} : { characters: item.characters.map(character => ({
+                            prompt: character.prompt,
+                            negative: character.negative,
+                            position: { ...character.position },
+                        })) }),
+                    })}
+                />
+            )}
             {imported && (
                 <div className="mt-4 border-t border-border/55 pt-4">
                     <p className="text-sm font-semibold">{imported.sourceName}</p>

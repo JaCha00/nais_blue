@@ -437,6 +437,8 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
 }
 
 export class OutputWriter {
+    private readonly outputNameReservations = new Map<string, Promise<void>>()
+
     constructor(
         private readonly platform: OutputPlatformAdapter,
         private readonly metadataWriter: OutputMetadataWriter = new MetadataWriter(),
@@ -507,6 +509,7 @@ export class OutputWriter {
 
         let phase: OutputWriterPhase = 'resolve-destination'
         let journal: OutputRecoveryJournal | null = null
+        let releaseOutputName: (() => void) | null = null
         // A workflow persistence failure is not a file-system failure once file
         // compensation and journal removal finish. This flag lets the outer
         // transaction guard preserve that original error for the Queue boundary.
@@ -536,7 +539,9 @@ export class OutputWriter {
                 request.destination.extension,
             ) ?? fallback
             const collisionPolicy = request.destination.collisionPolicy ?? 'unique'
-            const fileName = await resolveCollisionFileName(requestedFileName, collisionPolicy, async candidate => {
+            const candidateExists = async (candidate: string): Promise<boolean> => {
+                const reservationKey = `${directory.baseDir ?? 'absolute'}:${childOutputRef(directory, candidate).path}`
+                if (this.outputNameReservations.has(reservationKey)) return true
                 const imageExists = await this.platform.exists(childOutputRef(directory, candidate))
                 if (imageExists) return true
                 if (request.metadata !== undefined) {
@@ -557,7 +562,30 @@ export class OutputWriter {
                     childOutputRef(directory, toArtifactSidecarPath(candidate)),
                 )
                 return currentArtifactExists
-            })
+            }
+            let fileName = ''
+            while (releaseOutputName === null) {
+                const candidate = await resolveCollisionFileName(requestedFileName, collisionPolicy, candidateExists)
+                const reservationKey = `${directory.baseDir ?? 'absolute'}:${childOutputRef(directory, candidate).path}`
+                const activeReservation = this.outputNameReservations.get(reservationKey)
+                if (activeReservation !== undefined) {
+                    if (collisionPolicy !== 'unique') await activeReservation
+                    continue
+                }
+
+                let releaseReservation = (): void => undefined
+                const reservation = new Promise<void>(resolve => {
+                    releaseReservation = resolve
+                })
+                this.outputNameReservations.set(reservationKey, reservation)
+                fileName = candidate
+                releaseOutputName = () => {
+                    if (this.outputNameReservations.get(reservationKey) === reservation) {
+                        this.outputNameReservations.delete(reservationKey)
+                    }
+                    releaseReservation()
+                }
+            }
             const transactionId = request.transactionId ?? this.createTransactionId()
             if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
                 throw new OutputWriterError(
@@ -840,6 +868,8 @@ export class OutputWriter {
                 stage: diagnosticError.phase,
             }).eventId
             throw diagnosticError
+        } finally {
+            releaseOutputName?.()
         }
     }
 

@@ -313,7 +313,32 @@
             "moduleSaved": "{{path}} 모듈을 저장했어요.",
             "replace": "현재 프롬프트 교체",
             "append": "현재 내용 뒤에 추가",
-            "characterCount": "캐릭터 {{count}}명 포함"
+            "characterCount": "캐릭터 {{count}}명 포함",
+            "catalog": {
+                "defaultFolder": "가져온 그림체",
+                "detected": "그림체 {{count}}개를 찾았어요. 필요한 항목만 저장하거나 전체를 한 번에 보관할 수 있습니다.",
+                "individualAction": "개별 선택·저장",
+                "allAction": "전체 저장",
+                "individualTitle": "개별 그림체 선택",
+                "individualHelp": "한 항목을 골라 현재 작업으로 불러오거나 모듈 보관함에 저장하세요.",
+                "allTitle": "카탈로그 전체 저장",
+                "allHelp": "{{count}}개 항목을 한 번에 모듈 보관함에 추가합니다.",
+                "progress": "{{records}}개 확인 · {{percent}}%",
+                "search": "제목 또는 ID 검색",
+                "items": "그림체 항목",
+                "narrowResults": "{{shown}} / {{total}}개 표시 · 검색어로 범위를 좁혀 주세요.",
+                "noResults": "일치하는 항목이 없어요.",
+                "chooseItem": "왼쪽에서 항목을 선택하세요.",
+                "emptyPositive": "긍정 프롬프트 없음",
+                "folder": "저장 폴더",
+                "storageHelp": "같은 항목을 같은 폴더에 다시 저장하면 건너뜁니다. 여러 캐릭터 텍스트는 한 파트에 문단별로 보존하고, 좌표는 모듈이 아닌 각 작업에서 0.5를 기준으로 정합니다.",
+                "invalidFolder": "저장 폴더 경로를 확인해 주세요.",
+                "saveError": "모듈을 저장하지 못했어요. 저장 공간과 폴더 경로를 확인해 주세요.",
+                "saved": "{{created}}개 저장 · 이미 있던 {{skipped}}개 건너뜀",
+                "chooseForPrompt": "이 항목 불러오기",
+                "saveAllConfirm": "{{count}}개 전체 저장",
+                "saveOne": "선택 항목 저장"
+            }
         },
         "metadata": {
             "title": "이미지 메타데이터",
@@ -347,6 +372,13 @@
             "privateUpload": "비공개 프로필에는 정화 이미지와 private sidecar를 함께 업로드합니다.",
             "publicUpload": "공개 프로필에는 정화된 이미지만 업로드하고, 프롬프트 sidecar는 로컬에 남깁니다.",
             "localOnly": "자동 업로드를 선택하지 않으면 이미지와 sidecar는 로컬에만 저장합니다."
+        },
+        "output": {
+            "folderTitle": "저장 폴더",
+            "folderHelp": "폴더별 저장 위치와 R2 대상을 함께 불러옵니다. 필요하면 이번 작업에서 다른 폴더를 고르세요.",
+            "manualPath": "직접 입력 저장 경로",
+            "formatTitle": "이미지 형식",
+            "formatHelp": "PNG는 호환성이 좋고, WebP는 파일 크기를 줄이기 좋아요."
         },
         "workflows": {
             "home": "작업 홈",
@@ -556,7 +588,12 @@
                 "prompt": { "short": "프롬프트", "title": "공통 프롬프트와 모듈을 정해 볼까요?", "description": "폴더에 저장한 모듈을 그대로 불러오거나 무작위·순차 참조로 연결할 수 있어요." },
                 "count": { "short": "생성 수", "title": "몇 장을 만들까요?", "description": "모든 항목은 독립된 대기열 작업으로 저장돼 앱을 이동해도 이어집니다." },
                 "scenes": { "short": "씬 구성", "title": "어떤 씬들을 만들까요?", "description": "씬마다 프롬프트와 생성 장수를 정해 한 번에 대기열로 보낼 수 있어요." },
-                "settings": { "short": "생성 설정", "title": "공통 생성 설정을 확인해 볼까요?", "description": "권장 해상도와 28 Steps는 기본 비용 범위예요. 바꾸면 예상 비용을 바로 다시 계산합니다." },
+                "resolution": { "short": "해상도", "title": "어떤 크기로 만들까요?", "description": "공통 해상도를 고르면 전체 장수의 최대 예상 비용을 바로 계산합니다." },
+                "settings": { "short": "품질", "title": "결과를 얼마나 세밀하게 다듬을까요?", "description": "28 Steps와 추천 샘플러로 시작해도 충분해요. 필요한 경우에만 세부 조정을 펼치세요." },
+                "output": { "short": "저장 위치", "title": "완성된 이미지들을 어디에 둘까요?", "description": "이번 묶음의 저장 폴더와 파일 형식을 정하세요. 폴더별 R2 대상도 함께 불러옵니다." },
+                "metadata": { "short": "정보 보관", "title": "생성 정보를 어떻게 보관할까요?", "description": "개인 보관, sidecar 분리, 공유용 정화 중 이번 묶음에 맞는 한 가지를 고르세요." },
+                "rights": { "short": "권리 표시", "title": "공유 이미지에 권리 표시를 넣을까요?", "description": "선택 사항입니다. 사용한다면 소유자명과 효력 시작일을 이 묶음에 기록합니다." },
+                "delivery": { "short": "전송", "title": "정화가 끝난 뒤 어디까지 처리할까요?", "description": "자동 업로드와 정화 전 원본 보관 여부를 각각 선택하세요." },
                 "review": { "short": "최종 확인", "title": "대기열에 넣기 전에 확인할까요?", "description": "설정은 스냅샷으로 고정되고, 같은 초안을 다시 눌러도 중복 실행되지 않아요." },
                 "result": { "short": "결과", "title": "완성된 이미지들을 확인해 볼까요?", "description": "결과는 완성되는 순서대로 나타나며, 다른 워크플로우로 이동해도 작업은 계속됩니다." }
             },
@@ -620,6 +657,7 @@
                 "resolution": "해상도",
                 "stepsHelp": "28까지는 기본 범위예요. 더 높이면 지시 이행이 늘 수 있지만 항상 더 좋은 결과를 뜻하지는 않아요.",
                 "samplerHelp": "추천값을 그대로 사용해도 충분해요.",
+                "advanced": "세부 조정 · 선택",
                 "cfgHelp": "높일수록 프롬프트를 강하게 따르지만 화면이 거칠어질 수 있어요.",
                 "outputDirectory": "저장 폴더",
                 "outputHelp": "작업별 저장 위치와 자동 업로드 대상을 선택하세요.",
@@ -636,8 +674,12 @@
                 "scenePrompts": "씬별 프롬프트",
                 "count": "생성 수",
                 "countValue": "{{count}}장",
-                "settings": "설정",
+                "resolution": "해상도",
+                "settings": "생성 설정",
                 "output": "저장",
+                "metadata": "메타데이터",
+                "r2On": "R2 자동 업로드",
+                "r2Off": "로컬에만 저장",
                 "edit": "수정",
                 "costConsent": "최대 {{cost}} Anlas 비용으로 대기열에 추가할게요.",
                 "queueHelp": "같은 계정에서는 한 번에 한 작업만 실행하고, 다음 작업은 자동으로 이어서 시작해요.",
@@ -741,9 +783,29 @@
                     "description": "용도에 가장 가까운 비율을 고르세요. 세 선택지 모두 1024² 픽셀 범위 안이에요."
                 },
                 "settings": {
-                    "short": "생성 설정",
+                    "short": "품질",
                     "title": "이 설정으로 다듬어 볼까요?",
                     "description": "추천값은 그대로 써도 충분해요. 결과의 느낌을 바꾸고 싶을 때만 조절해 보세요."
+                },
+                "output": {
+                    "short": "저장 위치",
+                    "title": "완성된 이미지를 어디에 둘까요?",
+                    "description": "저장 폴더와 파일 형식만 정하세요. 폴더에 연결된 업로드 대상도 함께 불러옵니다."
+                },
+                "metadata": {
+                    "short": "정보 보관",
+                    "title": "생성 정보를 어떻게 보관할까요?",
+                    "description": "개인 보관, sidecar 분리, 공유용 정화 중 이번 작업에 맞는 한 가지를 고르세요."
+                },
+                "rights": {
+                    "short": "권리 표시",
+                    "title": "공유 이미지에 권리 표시를 넣을까요?",
+                    "description": "선택 사항입니다. 사용한다면 소유자명과 효력 시작일을 이번 작업에만 기록합니다."
+                },
+                "delivery": {
+                    "short": "전송",
+                    "title": "정화가 끝난 뒤 어디까지 처리할까요?",
+                    "description": "자동 업로드와 정화 전 원본 보관 여부를 각각 선택하세요."
                 },
                 "review": {
                     "short": "최종 확인",
@@ -811,6 +873,13 @@
                 "noAccount": "사용 가능한 계정 없음",
                 "output": "저장",
                 "autosave": "자동 저장",
+                "metadata": "메타데이터",
+                "rightsOn": "권리 XMP 사용",
+                "rightsOff": "권리 XMP 사용 안 함",
+                "r2On": "R2 자동 업로드",
+                "r2Off": "로컬에만 저장",
+                "originalDiscard": "검증 후 원본 폐기",
+                "originalKeep": "원본 보관",
                 "cost": "최대 비용",
                 "free": "0 Anlas",
                 "maxAnlas": "최대 {{cost}} Anlas",
@@ -2120,6 +2189,10 @@
         "trigger": "구조화 모듈 불러오기",
         "triggerShort": "구조화 모듈",
         "search": "폴더 또는 모듈 검색",
+        "searchCopyTarget": "대상 모듈 검색",
+        "narrowResults": "{{shown}} / {{total}}개 표시 · 검색어로 범위를 좁혀 주세요.",
+        "narrowCopyResults": "{{shown}} / {{total}}개 표시 · 검색어로 범위를 좁혀 주세요.",
+        "noSearchResults": "일치하는 모듈이 없어요.",
         "newFolder": "폴더 추가",
         "newFolderHelp": "슬래시(/)를 사용하면 하위 폴더를 한 번에 만들 수 있어요.",
         "folderExample": "예: 캐릭터/판타지",

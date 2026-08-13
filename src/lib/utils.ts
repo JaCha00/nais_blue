@@ -6,5 +6,5 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function generateRandomSeed(): number {
-  return Math.floor(Math.random() * 4294967295)
+  return Math.floor(Math.random() * 4294967295) || 1
 }

@@ -17,6 +17,10 @@ export const SINGLE_IMAGE_NODE_IDS = [
     'prompt',
     'resolution',
     'settings',
+    'output',
+    'metadata',
+    'rights',
+    'delivery',
     'review',
 ] as const
 
@@ -119,13 +123,54 @@ export const BATCH_IMAGE_NODE_IDS = [
     'prompt',
     'count',
     'scenes',
+    'resolution',
     'settings',
+    'output',
+    'metadata',
+    'rights',
+    'delivery',
     'review',
 ] as const
 
 export type BatchImageNodeId = typeof BATCH_IMAGE_NODE_IDS[number]
 export type BatchImageMode = 'same-settings' | 'variations' | 'scenes'
 export type BatchVariationOrder = 'random' | 'sequential'
+
+export function singleImageNodePath(
+    metadataMode: SingleImageMetadataMode,
+): readonly SingleImageNodeId[] {
+    return [
+        'model',
+        'prompt',
+        'resolution',
+        'settings',
+        'output',
+        'metadata',
+        ...(metadataMode === 'strip-and-sidecar'
+            ? ['rights', 'delivery'] as const
+            : []),
+        'review',
+    ]
+}
+
+export function batchImageNodePath(
+    mode: BatchImageMode,
+    metadataMode: SingleImageMetadataMode,
+): readonly BatchImageNodeId[] {
+    return [
+        'model',
+        'prompt',
+        mode === 'scenes' ? 'scenes' : 'count',
+        'resolution',
+        'settings',
+        'output',
+        'metadata',
+        ...(metadataMode === 'strip-and-sidecar'
+            ? ['rights', 'delivery'] as const
+            : []),
+        'review',
+    ]
+}
 
 export interface BatchImageScene {
     readonly id: string

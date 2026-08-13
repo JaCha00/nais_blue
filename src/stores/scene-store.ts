@@ -17,6 +17,7 @@ import type {
 } from '@/lib/composition/scene-adapter'
 import { abortSceneSessionRequests } from '@/lib/scene-generation/request-cancellation'
 import type { MetadataMode } from '@/lib/generation-metadata'
+import { generateRandomSeed } from '@/lib/utils'
 
 export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
@@ -92,6 +93,10 @@ export interface SceneCard {
     metadataMode?: MetadataMode
     /** Optional shared generation-folder plan selected specifically for this scene. */
     generationFolderId?: string
+    /** Scene-wide filename template. Empty/undefined keeps the resolved output policy. */
+    filenameTemplate?: string
+    /** FIFO overrides aligned with pending queue entries; blanks inherit filenameTemplate. */
+    queuedFileNames?: string[]
     excludePinned?: boolean // Rotation-only: skip pinned characters for this scene.
     compositionRef?: SceneCompositionRef
     createdAt: number
@@ -107,7 +112,13 @@ export interface SceneFolderTemplate {
     height?: number
     excludePinned?: boolean
     metadataMode?: MetadataMode
+    filenameTemplate?: string
     compositionRef?: SceneCompositionRef
+}
+
+export interface SceneQueueClaim {
+    scene: SceneCard
+    filenameTemplate?: string
 }
 
 /** Old Scene cards remain readable while all new edits use the modular prompt shape. */
@@ -197,6 +208,9 @@ interface SceneState {
     updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
     updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean, metadataMode?: MetadataMode, generationFolderId?: string | undefined }) => void
     updateSceneGeneration: (presetId: string, sceneId: string, generation: Partial<SceneGenerationConfig>) => void
+    consumeSceneGenerationSeed: (presetId: string, sceneId: string) => number
+    setSceneFilenameTemplate: (presetId: string, sceneId: string, filenameTemplate: string) => void
+    setQueuedImageFileNames: (presetId: string, sceneId: string, fileNames: readonly string[]) => void
     setSceneCompositionRef: (presetId: string, sceneId: string, ref: SceneCompositionRef | undefined) => void
     resetSceneToRecipe: (presetId: string, sceneId: string) => void
     updateAllScenesResolution: (presetId: string, width: number, height: number) => void
@@ -222,7 +236,9 @@ interface SceneState {
     getSceneThumbnail: (scene: SceneCard) => string | undefined
 
     // Actions - Generation
-    decrementFirstQueuedScene: (presetId: string) => SceneCard | null
+    decrementFirstQueuedScene: (presetId: string) => SceneQueueClaim | null
+    requeueSceneGeneration: (presetId: string, sceneId: string, filenameTemplate?: string) => void
+    consumeSceneQueueEntries: (presetId: string, sceneId: string, count: number) => void
 
     // Generation Status
     isGenerating: boolean
@@ -303,6 +319,25 @@ const createDefaultPreset = (): ScenePreset => ({
 })
 
 const createSceneEntityId = (): string => `${Date.now()}-${crypto.randomUUID()}`
+const nextSceneGenerationSessionId = (current: number): number => Math.max(Date.now(), current + 1)
+const MAX_FILENAME_TEMPLATE_LENGTH = 180
+
+function normalizeFilenameTemplate(value: string | undefined): string | undefined {
+    const normalized = sanitizeFilenameTemplateInput(value)?.trim()
+    return normalized || undefined
+}
+
+function sanitizeFilenameTemplateInput(value: string | undefined): string | undefined {
+    const sanitized = value?.replace(/[\r\n]+/g, ' ').slice(0, MAX_FILENAME_TEMPLATE_LENGTH)
+    return sanitized || undefined
+}
+
+function normalizeQueuedFileNames(values: readonly string[], count: number): string[] | undefined {
+    const normalized = Array.from({ length: Math.max(0, count) }, (_, index) => (
+        normalizeFilenameTemplate(values[index]) ?? ''
+    ))
+    return normalized.some(Boolean) ? normalized : undefined
+}
 
 /** Template cloning isolates folder defaults from later edits to either the source or created Scene. */
 function cloneSceneFolderTemplate(template: SceneFolderTemplate): SceneFolderTemplate {
@@ -327,6 +362,7 @@ function sceneFolderTemplateFromScene(scene: SceneCard): SceneFolderTemplate {
         ...(scene.height === undefined ? {} : { height: scene.height }),
         ...(scene.excludePinned === undefined ? {} : { excludePinned: scene.excludePinned }),
         ...(scene.metadataMode === undefined ? {} : { metadataMode: scene.metadataMode }),
+        ...(scene.filenameTemplate === undefined ? {} : { filenameTemplate: scene.filenameTemplate }),
         ...(scene.compositionRef === undefined ? {} : { compositionRef: structuredClone(scene.compositionRef) }),
     }
 }
@@ -558,6 +594,7 @@ export const useSceneStore = create<SceneState>()(
                             ...(template?.height === undefined ? {} : { height: template.height }),
                             excludePinned: template?.excludePinned ?? false,
                             ...(template?.metadataMode === undefined ? {} : { metadataMode: template.metadataMode }),
+                            ...(template?.filenameTemplate === undefined ? {} : { filenameTemplate: template.filenameTemplate }),
                             ...(template?.compositionRef === undefined
                                 ? {}
                                 : { compositionRef: structuredClone(template.compositionRef) }),
@@ -588,9 +625,10 @@ export const useSceneStore = create<SceneState>()(
                         if (!scene) return p
                         const duplicated: SceneCard = {
                             ...scene,
-                            id: Date.now().toString(),
+                            id: createSceneEntityId(),
                             name: `${scene.name} (복사본)`,
                             queueCount: 0,
+                            queuedFileNames: undefined,
                             images: [],
                             createdAt: Date.now(),
                         }
@@ -739,6 +777,58 @@ export const useSceneStore = create<SceneState>()(
                     : preset),
                 sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
             })),
+            consumeSceneGenerationSeed: (presetId, sceneId) => {
+                let consumedSeed: number | null = null
+                set(state => {
+                    const preset = state.presets.find(candidate => candidate.id === presetId)
+                    const scene = preset?.scenes.find(candidate => candidate.id === sceneId)
+                    if (scene === undefined) return state
+
+                    const generation = resolveSceneGeneration(scene)
+                    consumedSeed = generation.seed || generateRandomSeed()
+                    const nextSeed = generation.seedLocked ? consumedSeed : generateRandomSeed()
+                    if (generation.seed === nextSeed) return state
+
+                    return {
+                        presets: state.presets.map(candidate => candidate.id === presetId
+                            ? {
+                                ...candidate,
+                                scenes: candidate.scenes.map(item => item.id === sceneId
+                                    ? {
+                                        ...item,
+                                        generation: { ...generation, seed: nextSeed },
+                                    }
+                                    : item),
+                            }
+                            : candidate),
+                        sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+                    }
+                })
+                return consumedSeed ?? generateRandomSeed()
+            },
+            setSceneFilenameTemplate: (presetId, sceneId, filenameTemplate) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => scene.id === sceneId
+                            ? { ...scene, filenameTemplate: sanitizeFilenameTemplateInput(filenameTemplate) }
+                            : scene),
+                    }
+                    : preset),
+            })),
+            setQueuedImageFileNames: (presetId, sceneId, fileNames) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => scene.id === sceneId
+                            ? {
+                                ...scene,
+                                queuedFileNames: normalizeQueuedFileNames(fileNames, scene.queueCount),
+                            }
+                            : scene),
+                    }
+                    : preset),
+            })),
             setSceneCompositionRef: (presetId, sceneId, compositionRef) => set(state => ({
                 presets: state.presets.map(preset => preset.id === presetId
                     ? {
@@ -814,13 +904,20 @@ export const useSceneStore = create<SceneState>()(
 
             // Queue Actions
             setQueueCount: (presetId, sceneId, count) => {
+                const nextCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
                 set(state => ({
                     presets: state.presets.map(p =>
                         p.id === presetId
                             ? {
                                 ...p,
                                 scenes: p.scenes.map(s =>
-                                    s.id === sceneId ? { ...s, queueCount: Math.max(0, count) } : s
+                                    s.id === sceneId
+                                        ? {
+                                            ...s,
+                                            queueCount: nextCount,
+                                            queuedFileNames: normalizeQueuedFileNames(s.queuedFileNames ?? [], nextCount),
+                                        }
+                                        : s
                                 ),
                             }
                             : p
@@ -829,7 +926,7 @@ export const useSceneStore = create<SceneState>()(
             },
 
             incrementQueue: (presetId, sceneId, count = 1) => {
-                const safeCount = Math.max(0, count)
+                const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
                 if (safeCount === 0) return
 
                 set(state => ({
@@ -855,12 +952,14 @@ export const useSceneStore = create<SceneState>()(
             },
 
             addAllToQueue: (presetId, count = 1) => {
+                const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+                if (safeCount === 0) return
                 set(state => ({
                     presets: state.presets.map(p =>
                         p.id === presetId
                             ? {
                                 ...p,
-                                scenes: p.scenes.map(s => ({ ...s, queueCount: s.queueCount + count })),
+                                scenes: p.scenes.map(s => ({ ...s, queueCount: s.queueCount + safeCount })),
                             }
                             : p
                     ),
@@ -873,10 +972,34 @@ export const useSceneStore = create<SceneState>()(
                         p.id === presetId
                             ? {
                                 ...p,
-                                scenes: p.scenes.map(s => ({ ...s, queueCount: 0 })),
+                                scenes: p.scenes.map(s => ({ ...s, queueCount: 0, queuedFileNames: undefined })),
                             }
                             : p
                     ),
+                }))
+            },
+
+            consumeSceneQueueEntries: (presetId, sceneId, count) => {
+                const consumedCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
+                if (consumedCount === 0) return
+                set(state => ({
+                    presets: state.presets.map(preset => preset.id === presetId
+                        ? {
+                            ...preset,
+                            scenes: preset.scenes.map(scene => {
+                                if (scene.id !== sceneId) return scene
+                                const nextCount = Math.max(0, scene.queueCount - consumedCount)
+                                return {
+                                    ...scene,
+                                    queueCount: nextCount,
+                                    queuedFileNames: normalizeQueuedFileNames(
+                                        (scene.queuedFileNames ?? []).slice(consumedCount),
+                                        nextCount,
+                                    ),
+                                }
+                            }),
+                        }
+                        : preset),
                 }))
             },
 
@@ -892,10 +1015,11 @@ export const useSceneStore = create<SceneState>()(
 
             // Image Actions
             addImageToScene: (presetId, sceneId, imageUrl) => {
+                const timestamp = Date.now()
                 const newImage: SceneImage = {
-                    id: Date.now().toString(),
+                    id: createSceneEntityId(),
                     url: imageUrl,
-                    timestamp: Date.now(),
+                    timestamp,
                     isFavorite: false,
                 }
                 
@@ -1079,34 +1203,86 @@ export const useSceneStore = create<SceneState>()(
 
             // Generation Actions
             decrementFirstQueuedScene: (presetId) => {
-                const preset = get().presets.find(p => p.id === presetId)
-                if (!preset) return null
+                let claim: SceneQueueClaim | null = null
+                set(state => {
+                    const preset = state.presets.find(candidate => candidate.id === presetId)
+                    const queuedScene = preset?.scenes.find(scene => scene.queueCount > 0)
+                    if (queuedScene === undefined) return state
 
-                const queuedScene = preset.scenes.find(s => s.queueCount > 0)
-                if (!queuedScene) return null
-
-                get().setQueueCount(presetId, queuedScene.id, queuedScene.queueCount - 1)
-                return queuedScene
+                    const filenameTemplate = normalizeFilenameTemplate(queuedScene.queuedFileNames?.[0])
+                        ?? normalizeFilenameTemplate(queuedScene.filenameTemplate)
+                    claim = {
+                        scene: queuedScene,
+                        ...(filenameTemplate === undefined ? {} : { filenameTemplate }),
+                    }
+                    const nextCount = queuedScene.queueCount - 1
+                    return {
+                        presets: state.presets.map(candidate => candidate.id === presetId
+                            ? {
+                                ...candidate,
+                                scenes: candidate.scenes.map(scene => scene.id === queuedScene.id
+                                    ? {
+                                        ...scene,
+                                        queueCount: nextCount,
+                                        queuedFileNames: normalizeQueuedFileNames(
+                                            (scene.queuedFileNames ?? []).slice(1),
+                                            nextCount,
+                                        ),
+                                    }
+                                    : scene),
+                            }
+                            : candidate),
+                    }
+                })
+                return claim
             },
+            requeueSceneGeneration: (presetId, sceneId, filenameTemplate) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => {
+                            if (scene.id !== sceneId) return scene
+                            const existing = Array.from({ length: scene.queueCount }, (_, index) => (
+                                scene.queuedFileNames?.[index] ?? ''
+                            ))
+                            return {
+                                ...scene,
+                                queueCount: scene.queueCount + 1,
+                                queuedFileNames: normalizeQueuedFileNames([
+                                    normalizeFilenameTemplate(filenameTemplate) ?? '',
+                                    ...existing,
+                                ], scene.queueCount + 1),
+                            }
+                        }),
+                    }
+                    : preset),
+            })),
 
             isGenerating: false,
             isCancelling: false,
             setIsGenerating: (isGenerating) => {
                 // When stopping generation, increment session ID to invalidate any in-progress operations
                 if (!isGenerating) {
-                    set({ isGenerating: false, isCancelling: false, generationSessionId: Date.now() })
+                    set(state => ({
+                        isGenerating: false,
+                        isCancelling: false,
+                        generationSessionId: nextSceneGenerationSessionId(state.generationSessionId),
+                    }))
                 } else {
                     set({ isGenerating: true, isCancelling: false })
                 }
             },
             cancelSceneGeneration: () => {
                 const cancelledSessionId = get().generationSessionId
-                set({ isCancelling: true, generationSessionId: Date.now() })
+                set(state => ({
+                    isCancelling: true,
+                    generationSessionId: nextSceneGenerationSessionId(state.generationSessionId),
+                }))
                 abortSceneSessionRequests(cancelledSessionId)
             },
             generationSessionId: 0,
             startNewGenerationSession: () => {
-                const newSessionId = Date.now()
+                const newSessionId = nextSceneGenerationSessionId(get().generationSessionId)
                 set({
                     generationSessionId: newSessionId,
                     isGenerating: true,
@@ -1270,7 +1446,7 @@ export const useSceneStore = create<SceneState>()(
 
                     // Create the new preset
                     const newPreset: ScenePreset = {
-                        id: Date.now().toString(), // Generate new ID
+                        id: createSceneEntityId(),
                         name: newName,
                         scenes: newScenes,
                         createdAt: Date.now()
@@ -1507,7 +1683,7 @@ export const useSceneStore = create<SceneState>()(
                         scenes: p.scenes.map(s => {
                             // Fast path: skip expensive sorting if under limit
                             if (s.images.length <= MAX_IMAGES_PERSIST) {
-                                return { ...s, queueCount: 0 }
+                                return { ...s, queueCount: 0, queuedFileNames: undefined }
                             }
                             // Over limit: keep favorites + newest non-favorites
                             const favorites = s.images.filter(img => img.isFavorite)
@@ -1518,6 +1694,7 @@ export const useSceneStore = create<SceneState>()(
                             return {
                                 ...s,
                                 queueCount: 0,
+                                queuedFileNames: undefined,
                                 images: [...favorites, ...nonFavorites.slice(0, keepCount)]
                                     .sort((a, b) => b.timestamp - a.timestamp)
                             }
