@@ -8,7 +8,10 @@ import {
     promptModuleSourceLine,
 } from '@/components/fragments/PromptModuleCreator'
 import { renderGuidedAgentPrompt } from '@/presentation/workflow/GuidedAgentPromptComposer'
-import { readGuidedPromptImportFile } from '@/presentation/workflow/GuidedPromptFileImport'
+import {
+    readGuidedPromptImportFile,
+    readGuidedPromptImportSource,
+} from '@/presentation/workflow/GuidedPromptFileImport'
 
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
@@ -145,6 +148,40 @@ describe('Guided prompt file import', () => {
         await expect(readGuidedPromptImportFile(png as unknown as globalThis.File)).resolves.toMatchObject({
             positive: 'portrait, night city, neon reflection',
             negative: 'logo, text',
+        })
+    })
+
+    it('routes a style-record array to catalog import without choosing one entry implicitly', async () => {
+        const file = new File([JSON.stringify([
+            {
+                schema: 'nai-style-record/v1',
+                id: 'shared-style-00000000000000000001',
+                title: 'Style one',
+                base: 'watercolor',
+                negative: 'text',
+                characters: [],
+                params: {},
+            },
+            {
+                schema: 'nai-style-record/v1',
+                id: 'shared-style-00000000000000000002',
+                title: 'Style two',
+                base: 'ink',
+                negative: 'lowres',
+                characters: [],
+                params: {},
+            },
+        ])], 'styles.json', { type: 'application/json' })
+
+        await expect(readGuidedPromptImportSource(file as unknown as globalThis.File)).resolves.toMatchObject({
+            kind: 'style-catalog',
+            catalog: {
+                sourceName: 'styles.json',
+                items: [
+                    { title: 'Style one', positive: 'watercolor', negative: 'text' },
+                    { title: 'Style two', positive: 'ink', negative: 'lowres' },
+                ],
+            },
         })
     })
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import { indexedDBStorage } from '@/lib/indexed-db'
+import { indexedDBStorage, STRUCTURED_PROMPT_MODULE_STORE_KEY } from '@/lib/indexed-db'
 
 export const PROMPT_MODULE_PART_KINDS = [
     'base',
@@ -30,16 +30,24 @@ export interface StructuredPromptModule {
 
 export type PromptModulePartValues = Partial<Record<PromptModulePartKind, string>>
 
+export interface PromptModuleCreateInput {
+    readonly name: string
+    readonly folder?: string
+    readonly parts?: PromptModulePartValues
+}
+
+export interface PromptModuleBatchResult {
+    readonly createdIds: readonly string[]
+    readonly skippedCount: number
+}
+
 interface PromptModuleLibraryState {
     readonly schemaVersion: 1
     readonly folders: readonly string[]
     readonly modules: readonly StructuredPromptModule[]
     addFolder(path: string): string | null
-    createModule(input: {
-        readonly name: string
-        readonly folder?: string
-        readonly parts?: PromptModulePartValues
-    }): string
+    createModule(input: PromptModuleCreateInput): string
+    createModules(inputs: readonly PromptModuleCreateInput[]): PromptModuleBatchResult
     replaceModule(module: StructuredPromptModule): void
     deleteModule(id: string): void
     copyPart(sourceModuleId: string, kind: PromptModulePartKind, targetModuleId: string): void
@@ -144,6 +152,50 @@ export const usePromptModuleLibraryStore = create<PromptModuleLibraryState>()(
                 }))
                 return id
             },
+            createModules: inputs => {
+                if (inputs.length > 10_000) throw new RangeError('Prompt module batch is too large')
+                let result: PromptModuleBatchResult = { createdIds: [], skippedCount: 0 }
+                set(state => {
+                    const occupied = new Set(state.modules.map(module => (
+                        `${module.folder}\u0000${module.name}`.toLocaleLowerCase()
+                    )))
+                    const folders = new Set(state.folders)
+                    const created: StructuredPromptModule[] = []
+                    let skippedCount = 0
+                    const now = Date.now()
+
+                    for (const input of inputs) {
+                        const folder = normalizePromptModuleFolder(input.folder ?? '')
+                        const name = boundedText(input.name, 120)
+                        if (!name || folder === null) {
+                            throw new TypeError('Structured prompt module name or folder is invalid')
+                        }
+                        const identity = `${folder}\u0000${name}`.toLocaleLowerCase()
+                        if (occupied.has(identity)) {
+                            skippedCount += 1
+                            continue
+                        }
+                        occupied.add(identity)
+                        if (folder) folders.add(folder)
+                        created.push(safeModule({
+                            id: `prompt-module-${crypto.randomUUID()}`,
+                            name,
+                            folder,
+                            parts: partsFromValues(input.parts),
+                            createdAt: now,
+                            updatedAt: now,
+                        }))
+                    }
+
+                    result = { createdIds: created.map(module => module.id), skippedCount }
+                    if (created.length === 0) return state
+                    return {
+                        folders: [...folders].sort(),
+                        modules: [...created, ...state.modules],
+                    }
+                })
+                return result
+            },
             replaceModule: module => {
                 const safe = safeModule({ ...module, updatedAt: Date.now() })
                 set(state => {
@@ -177,7 +229,7 @@ export const usePromptModuleLibraryStore = create<PromptModuleLibraryState>()(
             },
         }),
         {
-            name: 'nai-blue-structured-prompt-modules',
+            name: STRUCTURED_PROMPT_MODULE_STORE_KEY,
             version: 1,
             storage: createJSONStorage(() => indexedDBStorage),
             partialize: state => ({

@@ -24,6 +24,7 @@ import {
 import {
     FULL_BACKUP_STORE_KEYS,
     LEGACY_BACKUP_STORE_KEYS,
+    STRUCTURED_PROMPT_MODULE_STORE_KEY,
     exportAllData,
     exportRawIndexedDBEntries,
     flushAllPendingWrites,
@@ -113,6 +114,7 @@ export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedB
     'nai-blue-theme': { version: 2, schemaVersion: 2 },
     'nai-blue-wildcards': { version: 2, schemaVersion: 2 },
     'nai-blue-prompt-library': { version: 2, schemaVersion: 2 },
+    [STRUCTURED_PROMPT_MODULE_STORE_KEY]: { version: 1, schemaVersion: 1 },
     'nai-blue-layout': { version: 2, schemaVersion: 2 },
     'nai-blue-library': { version: 2, schemaVersion: 2 },
     'nai-blue-tools': { version: 2, schemaVersion: 2 },

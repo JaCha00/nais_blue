@@ -40,6 +40,8 @@ import {
 } from '@/stores/prompt-module-library-store'
 
 const ROOT_FOLDER = '__root__'
+const MAX_VISIBLE_MODULES = 200
+const MAX_VISIBLE_COPY_TARGETS = 200
 
 function partLabel(kind: PromptModulePartKind, t: ReturnType<typeof useTranslation>['t']): string {
     return {
@@ -75,6 +77,7 @@ function ModuleEditor({
     const [deleteKind, setDeleteKind] = useState<PromptModulePartKind | null>(null)
     const [copyKind, setCopyKind] = useState<PromptModulePartKind | null>(null)
     const [copyTargetId, setCopyTargetId] = useState('')
+    const [copyQuery, setCopyQuery] = useState('')
     const [error, setError] = useState('')
 
     useEffect(() => {
@@ -84,11 +87,17 @@ function ModuleEditor({
         setDeleteKind(null)
         setCopyKind(null)
         setCopyTargetId('')
+        setCopyQuery('')
     }, [module, open])
 
     if (!draft) return null
     const missingKinds = PROMPT_MODULE_PART_KINDS.filter(kind => !draft.parts.some(part => part.kind === kind))
     const targets = modules.filter(candidate => candidate.id !== draft.id)
+    const normalizedCopyQuery = copyQuery.trim().toLocaleLowerCase()
+    const matchingTargets = normalizedCopyQuery
+        ? targets.filter(target => `${target.folder}/${target.name}`.toLocaleLowerCase().includes(normalizedCopyQuery))
+        : targets
+    const visibleTargets = matchingTargets.slice(0, MAX_VISIBLE_COPY_TARGETS)
 
     const setPartContent = (kind: PromptModulePartKind, content: string) => {
         setDraft(current => current === null ? null : ({
@@ -194,16 +203,18 @@ function ModuleEditor({
                 }}
             />
 
-            <Dialog open={copyKind !== null} onOpenChange={next => { if (!next) { setCopyKind(null); setCopyTargetId('') } }}>
+            <Dialog open={copyKind !== null} onOpenChange={next => { if (!next) { setCopyKind(null); setCopyTargetId(''); setCopyQuery('') } }}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
                         <DialogTitle>{t('promptModuleLibrary.copyTitle', '파트를 다른 모듈로 복사')}</DialogTitle>
                         <DialogDescription>{t('promptModuleLibrary.copyHelp', '대상에 같은 파트가 있으면 기존 내용 뒤에 안전하게 추가합니다.')}</DialogDescription>
                     </DialogHeader>
+                    <Input value={copyQuery} onChange={event => { setCopyQuery(event.target.value); setCopyTargetId('') }} placeholder={t('promptModuleLibrary.searchCopyTarget', '대상 모듈 검색')} />
                     <select value={copyTargetId} onChange={event => setCopyTargetId(event.target.value)} className="min-h-11 w-full border-x-0 border-y border-input bg-background px-3 text-sm" aria-label={t('promptModuleLibrary.copyTarget', '복사할 대상 모듈')}>
                         <option value="">{t('promptModuleLibrary.chooseTarget', '대상 모듈 선택')}</option>
-                        {targets.map(target => <option key={target.id} value={target.id}>{target.folder ? `${target.folder}/` : ''}{target.name}</option>)}
+                        {visibleTargets.map(target => <option key={target.id} value={target.id}>{target.folder ? `${target.folder}/` : ''}{target.name}</option>)}
                     </select>
+                    {matchingTargets.length > visibleTargets.length && <p className="text-xs text-muted-foreground">{t('promptModuleLibrary.narrowCopyResults', '{{shown}} / {{total}}개 표시 · 검색어로 범위를 좁혀 주세요.', { shown: visibleTargets.length, total: matchingTargets.length })}</p>}
                     <DialogFooter>
                         <Button type="button" variant="ghost" onClick={() => setCopyKind(null)}>{t('common.cancel', '취소')}</Button>
                         <Button type="button" disabled={!copyTargetId} onClick={() => {
@@ -256,16 +267,24 @@ export function StructuredPromptModuleLibrary({
 
     const selectedModule = modules.find(module => module.id === selectedModuleId) ?? null
     const editingModule = modules.find(module => module.id === editingModuleId) ?? null
-    const grouped = useMemo(() => {
+    const moduleResults = useMemo(() => {
         const normalized = query.trim().toLocaleLowerCase()
-        const visible = normalized
+        const matched = normalized
             ? modules.filter(module => `${module.folder}/${module.name}`.toLocaleLowerCase().includes(normalized))
             : modules
-        const folderNames = [...new Set(['', ...folders, ...visible.map(module => module.folder)])]
-        return folderNames
-            .map(folder => ({ folder, modules: visible.filter(module => module.folder === folder) }))
+        const visible = matched.slice(0, MAX_VISIBLE_MODULES)
+        const byFolder = new Map<string, StructuredPromptModule[]>()
+        for (const module of visible) {
+            const group = byFolder.get(module.folder)
+            if (group) group.push(module)
+            else byFolder.set(module.folder, [module])
+        }
+        if (!normalized) for (const folder of folders) if (!byFolder.has(folder)) byFolder.set(folder, [])
+        const grouped = [...byFolder]
+            .map(([folder, folderModules]) => ({ folder, modules: folderModules }))
             .filter(group => group.modules.length > 0 || (!normalized && group.folder !== ''))
             .sort((left, right) => left.folder.localeCompare(right.folder))
+        return { grouped, matchedCount: matched.length, visibleCount: visible.length }
     }, [folders, modules, query])
 
     const chooseModule = (module: StructuredPromptModule) => {
@@ -308,19 +327,30 @@ export function StructuredPromptModuleLibrary({
                     </div>
                     <div className="grid min-h-0 flex-1 grid-rows-[minmax(11rem,40%)_minmax(0,1fr)] gap-4 md:grid-cols-[minmax(15rem,0.8fr)_minmax(0,1.2fr)] md:grid-rows-1">
                         <section className="custom-scrollbar min-h-0 overflow-y-auto border-y border-border/70 py-2" aria-label={t('promptModuleLibrary.modules', '저장된 모듈')}>
-                            {modules.length === 0 ? <p className="px-4 py-8 text-center text-sm leading-6 text-muted-foreground">{t('promptModuleLibrary.empty', '아직 모듈이 없어요. 현재 프롬프트로 첫 모듈을 만들어 보세요.')}</p> : grouped.map(group => (
-                                <div key={group.folder || ROOT_FOLDER} className="pb-3 last:pb-0">
-                                    <h3 className="px-3 py-1 text-xs font-semibold text-muted-foreground">{group.folder || t('promptModuleLibrary.root', '관리 폴더 루트')}</h3>
-                                    {group.modules.length === 0
-                                        ? <p className="px-3 py-2 text-xs text-muted-foreground">{t('promptModuleLibrary.emptyFolder', '빈 폴더')}</p>
-                                        : group.modules.map(module => (
-                                            <button key={module.id} type="button" onClick={() => chooseModule(module)} className={cn('flex min-h-11 w-full items-center gap-2 border-l-2 px-3 py-2 text-left', selectedModuleId === module.id ? 'border-primary bg-primary/[0.08]' : 'border-transparent hover:bg-accent/50')}>
-                                                <span className="min-w-0 flex-1 truncate text-sm font-medium">{module.name}</span>
-                                                <span className="shrink-0 font-mono text-xs text-muted-foreground">{moduleSummary(module)}</span>
-                                            </button>
-                                        ))}
+                            {modules.length === 0 ? (
+                                <p className="px-4 py-8 text-center text-sm leading-6 text-muted-foreground">{t('promptModuleLibrary.empty', '아직 모듈이 없어요. 현재 프롬프트로 첫 모듈을 만들어 보세요.')}</p>
+                            ) : moduleResults.matchedCount === 0 ? (
+                                <p className="px-4 py-8 text-center text-sm leading-6 text-muted-foreground">{t('promptModuleLibrary.noSearchResults', '일치하는 모듈이 없어요.')}</p>
+                            ) : (
+                                <div>
+                                    {moduleResults.matchedCount > moduleResults.visibleCount && (
+                                        <p className="border-b border-border/50 px-3 py-2 text-xs text-muted-foreground">{t('promptModuleLibrary.narrowResults', '{{shown}} / {{total}}개 표시 · 검색어로 범위를 좁혀 주세요.', { shown: moduleResults.visibleCount, total: moduleResults.matchedCount })}</p>
+                                    )}
+                                    {moduleResults.grouped.map(group => (
+                                        <div key={group.folder || ROOT_FOLDER} className="pb-3 last:pb-0">
+                                            <h3 className="px-3 py-1 text-xs font-semibold text-muted-foreground">{group.folder || t('promptModuleLibrary.root', '관리 폴더 루트')}</h3>
+                                            {group.modules.length === 0
+                                                ? <p className="px-3 py-2 text-xs text-muted-foreground">{t('promptModuleLibrary.emptyFolder', '빈 폴더')}</p>
+                                                : group.modules.map(module => (
+                                                    <button key={module.id} type="button" onClick={() => chooseModule(module)} className={cn('flex min-h-11 w-full items-center gap-2 border-l-2 px-3 py-2 text-left', selectedModuleId === module.id ? 'border-primary bg-primary/[0.08]' : 'border-transparent hover:bg-accent/50')}>
+                                                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{module.name}</span>
+                                                        <span className="shrink-0 font-mono text-xs text-muted-foreground">{moduleSummary(module)}</span>
+                                                    </button>
+                                                ))}
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
+                            )}
                         </section>
                         <section className="custom-scrollbar min-h-0 overflow-y-auto border-y border-border/70" aria-live="polite">
                             {!selectedModule ? (
