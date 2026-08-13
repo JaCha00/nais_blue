@@ -20,9 +20,7 @@ import {
     LoaderCircle,
     Pencil,
     RotateCcw,
-    Settings2,
     Sparkles,
-    WalletCards,
 } from 'lucide-react'
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
@@ -34,6 +32,7 @@ import {
     isSingleImageDraftReady,
     listSingleImageDraftIssues,
     reviseSingleImageDraft,
+    singleImageNodePath,
     type ReviseSingleImageDraftInput,
     type SingleImageDraft,
     type SingleImageGenerationSettings,
@@ -67,7 +66,6 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
 import {
@@ -85,11 +83,14 @@ import {
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
-import { GuidedMetadataPolicy } from './GuidedMetadataPolicy'
+import {
+    GuidedDeliveryStep,
+    GuidedMetadataStep,
+    GuidedRightsStep,
+} from './GuidedMetadataPolicy'
+import { GuidedOutputDestinationStep } from './GuidedOutputDestinationStep'
 import { StructuredPromptModuleLibrary } from '@/components/prompt-modules/StructuredPromptModuleLibrary'
-import { GenerationFolderPicker } from '@/components/generation-folders/GenerationFolderPicker'
 import { insertStructuredPartsIntoWorkflow } from './structured-prompt-insertion'
-import { outputPatchFromGenerationFolder } from './generation-folder-selection'
 
 type DraftPatch = Omit<ReviseSingleImageDraftInput, 'updatedAt'>
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -97,6 +98,10 @@ type GuidedSingleImageNodeId = SingleImageNodeId | 'result'
 
 // Result is presentation-only; persisted workflow node IDs remain stable across draft migrations.
 const GUIDED_SINGLE_IMAGE_NODE_IDS = [...SINGLE_IMAGE_NODE_IDS, 'result'] as const
+
+function activeNodes(metadataMode: SingleImageOutputSettings['metadataMode']): readonly GuidedSingleImageNodeId[] {
+    return [...singleImageNodePath(metadataMode), 'result']
+}
 
 interface GuidedResultProjection {
     readonly id: string
@@ -165,6 +170,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
 }
 
 interface StepFrameProps {
+    nodes: readonly GuidedSingleImageNodeId[]
     nodeId: GuidedSingleImageNodeId
     saveStatus: SaveStatus
     title: string
@@ -177,6 +183,7 @@ interface StepFrameProps {
 }
 
 function StepFrame({
+    nodes,
     nodeId,
     saveStatus,
     title,
@@ -189,8 +196,8 @@ function StepFrame({
 }: StepFrameProps) {
     const { t } = useTranslation()
     const titleRef = useRef<HTMLHeadingElement>(null)
-    const index = GUIDED_SINGLE_IMAGE_NODE_IDS.indexOf(nodeId)
-    const progress = ((index + 1) / GUIDED_SINGLE_IMAGE_NODE_IDS.length) * 100
+    const index = nodes.indexOf(nodeId)
+    const progress = ((index + 1) / nodes.length) * 100
 
     useEffect(() => {
         titleRef.current?.focus()
@@ -231,15 +238,15 @@ function StepFrame({
                             label: t(`guided.single.steps.${nodeId}.short`, nodeId),
                         })}
                     </span>
-                    <span className="font-mono text-muted-foreground" aria-label={t('guided.single.stepA11y', '{{current}}단계, 전체 {{total}}단계', { current: index + 1, total: GUIDED_SINGLE_IMAGE_NODE_IDS.length })}>
-                        {index + 1} / {GUIDED_SINGLE_IMAGE_NODE_IDS.length}
+                    <span className="font-mono text-muted-foreground" aria-label={t('guided.single.stepA11y', '{{current}}단계, 전체 {{total}}단계', { current: index + 1, total: nodes.length })}>
+                        {index + 1} / {nodes.length}
                     </span>
                 </div>
                 <div className="mt-3 h-px overflow-hidden bg-border">
                     <div className="h-full bg-primary transition-[width] duration-slow" style={{ width: `${progress}%` }} />
                 </div>
                 <ol className="mt-3 flex gap-5 overflow-x-auto pb-1 text-sm font-medium [scrollbar-width:none]" aria-label={t('guided.single.stepNavigation', '세부 단계 이동')}>
-                    {GUIDED_SINGLE_IMAGE_NODE_IDS.map((step, stepIndex) => {
+                    {nodes.map((step, stepIndex) => {
                         const current = step === nodeId
                         const enabled = canVisit(step)
                         return (
@@ -536,33 +543,16 @@ function ResolutionStep({
 function SettingsStep({
     draft,
     disabled,
-    activeTokenCount,
-    estimatedAnlas,
     onPatch,
-    onOutputPatch,
 }: {
     draft: SingleImageDraft
     disabled: boolean
-    activeTokenCount: number
-    estimatedAnlas: number
     onPatch(patch: Partial<SingleImageGenerationSettings>): void
-    onOutputPatch(patch: Partial<SingleImageOutputSettings>): void
 }) {
     const { t } = useTranslation()
     const [steps, setSteps] = useState(draft.payload.generation.steps)
-    const [directory, setDirectory] = useState(draft.payload.output.directory)
 
     useEffect(() => setSteps(draft.payload.generation.steps), [draft.payload.generation.steps])
-    useEffect(() => setDirectory(draft.payload.output.directory), [draft.payload.output.directory])
-
-    const commitDirectory = () => {
-        const value = directory.trim()
-        if (value.length === 0) {
-            setDirectory(draft.payload.output.directory)
-            return
-        }
-        if (value !== draft.payload.output.directory) onOutputPatch({ directory: value })
-    }
 
     return (
         <div className="space-y-7">
@@ -616,112 +606,6 @@ function SettingsStep({
                     </SelectContent>
                 </Select>
             </section>
-
-            <section className="border-y border-border/55 py-5" aria-labelledby="guided-output-heading">
-                <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
-                    <div>
-                        <h2 id="guided-output-heading" className="text-sm font-semibold">
-                            {t('guided.single.settings.outputDirectory', '저장 폴더')}
-                        </h2>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                            {t('guided.single.settings.outputHelp', '작업별 저장 위치와 자동 업로드 대상을 선택하세요.')}
-                        </p>
-                        <div className="mt-3">
-                            <GenerationFolderPicker
-                                value={draft.payload.output.generationFolderId}
-                                disabled={disabled}
-                                allowManual
-                                onChange={selection => onOutputPatch(outputPatchFromGenerationFolder(
-                                    selection,
-                                    draft.payload.output.metadataMode,
-                                ))}
-                            />
-                        </div>
-                        {draft.payload.output.generationFolderId == null && (
-                            <Input
-                                id="guided-output-directory"
-                                className="mt-3"
-                                value={directory}
-                                disabled={disabled}
-                                onChange={event => setDirectory(event.target.value)}
-                                onBlur={commitDirectory}
-                                onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                                aria-label={t('guided.single.settings.directOutputDirectory', '직접 입력 저장 경로')}
-                            />
-                        )}
-                    </div>
-                    <div>
-                        <label htmlFor="guided-output-format" className="text-sm font-semibold">
-                            {t('guided.single.settings.imageFormat', '이미지 형식')}
-                        </label>
-                        <Select
-                            value={draft.payload.output.imageFormat}
-                            onValueChange={value => onOutputPatch({ imageFormat: value as SingleImageOutputSettings['imageFormat'] })}
-                            disabled={disabled}
-                        >
-                            <SelectTrigger id="guided-output-format" className="mt-3"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="png">PNG</SelectItem>
-                                <SelectItem value="webp">WebP</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </section>
-
-            <GuidedMetadataPolicy
-                value={draft.payload.output.metadataMode}
-                disabled={disabled}
-                autoR2UploadProfileId={draft.payload.output.autoR2UploadProfileId}
-                deleteOriginalAfterRelease={draft.payload.output.deleteOriginalAfterRelease}
-                rightsXmpEnabled={draft.payload.output.rightsXmpEnabled}
-                rightsOwner={draft.payload.output.rightsOwner}
-                rightsEffectiveDate={draft.payload.output.rightsEffectiveDate}
-                onChange={metadataMode => onOutputPatch({ metadataMode })}
-                onAutoR2UploadProfileIdChange={autoR2UploadProfileId => onOutputPatch({ autoR2UploadProfileId })}
-                onDeleteOriginalAfterReleaseChange={deleteOriginalAfterRelease => onOutputPatch({ deleteOriginalAfterRelease })}
-                onRightsXmpEnabledChange={rightsXmpEnabled => onOutputPatch({ rightsXmpEnabled })}
-                onRightsOwnerChange={rightsOwner => onOutputPatch({ rightsOwner })}
-                onRightsEffectiveDateChange={rightsEffectiveDate => onOutputPatch({ rightsEffectiveDate })}
-            />
-
-            <section className="grid divide-y divide-border/55 border-y border-border/55 sm:grid-cols-2 sm:divide-x sm:divide-y-0" aria-label={t('guided.single.settings.accountAndCost', '계정과 예상 비용')}>
-                <div className="px-2 py-5 sm:px-5">
-                    <div className="flex items-center gap-2">
-                        <Settings2 className="h-4 w-4 text-primary" aria-hidden="true" />
-                        <h2 className="text-xs font-semibold">{t('guided.single.settings.account', '사용할 계정')}</h2>
-                    </div>
-                    <p className="mt-3 text-sm font-semibold">
-                        {activeTokenCount > 0
-                            ? t('guided.single.settings.autoAccount', '사용 가능한 계정 자동 선택')
-                            : t('guided.single.settings.noAccount', '사용 가능한 계정 없음')}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {t('guided.single.settings.accountCount', '현재 {{count}}개 토큰을 사용할 수 있어요.', { count: activeTokenCount })}
-                    </p>
-                </div>
-                <div className="px-2 py-5 sm:px-5">
-                    <div className="flex items-center gap-2">
-                        <WalletCards className="h-4 w-4 text-primary" aria-hidden="true" />
-                        <h2 className="text-xs font-semibold">{t('guided.single.settings.cost', '현재 예상 비용')}</h2>
-                    </div>
-                    <p className="mt-3 text-sm font-semibold">
-                        {estimatedAnlas === 0
-                            ? t('guided.single.settings.free', '0 Anlas · 무료 조건')
-                            : t('guided.single.settings.anlas', '{{cost}} Anlas 예상', { cost: estimatedAnlas })}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {t('guided.single.settings.costFinal', '최종 단계에서 상한을 확인한 뒤만 대기열에 추가해요.')}
-                    </p>
-                </div>
-            </section>
-
-            <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
-                <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-                {activeTokenCount > 1
-                    ? t('guided.single.settings.multiToken', '서로 다른 API 토큰을 쓰는 백그라운드 작업은 각 계정에서 병행할 수 있어요.')
-                    : t('guided.single.settings.singleToken', '같은 API 토큰으로는 이미지를 동시에 만들 수 없어요. 다른 생성이 중이면 이 작업을 다음 순서에 이어서 실행할게요.')}
-            </p>
         </div>
     )
 }
@@ -787,6 +671,13 @@ function ReviewStep({
     const submitted = draft.status === 'queued' || draft.status === 'completed'
     const resolution = draft.payload.resolution
     const enabledCharacters = draft.payload.characterPrompts.items.filter(character => character.enabled)
+    const metadataLabel = draft.payload.output.metadataMode === 'embedded'
+        ? t('guided.metadata.embedded', '이미지에 포함')
+        : draft.payload.output.metadataMode === 'sidecar-only'
+            ? t('guided.metadata.sidecar', '이미지 유지 + sidecar')
+            : draft.payload.output.metadataMode === 'strip-and-sidecar'
+                ? t('guided.metadata.clean', '공유용 정화 + sidecar · 권장')
+                : t('guided.metadata.stripOnly', '정화만 · 비권장')
     return (
         <div className="space-y-6">
             <dl className="grid border-t border-border/70 sm:grid-cols-2 sm:gap-x-6">
@@ -824,10 +715,28 @@ function ReviewStep({
                         ? t('guided.single.review.autoAccount', '자동 선택 · {{count}}개 사용 가능', { count: activeTokenCount })
                         : t('guided.single.review.noAccount', '사용 가능한 계정 없음')}
                 </ReviewRow>
-                <ReviewRow label={t('guided.single.review.output', '저장')} onEdit={submitted ? undefined : () => onEdit('settings')}>
+                <ReviewRow label={t('guided.single.review.output', '저장')} onEdit={submitted ? undefined : () => onEdit('output')}>
                     {draft.payload.output.generationFolderPath
                         ? `${draft.payload.output.generationFolderPath} · ${draft.payload.output.directory}`
                         : draft.payload.output.directory} · {draft.payload.output.imageFormat.toUpperCase()} · {t('guided.single.review.autosave', '자동 저장')}
+                </ReviewRow>
+                <ReviewRow label={t('guided.single.review.metadata', '메타데이터')} onEdit={submitted ? undefined : () => onEdit('metadata')}>
+                    {metadataLabel}
+                    {draft.payload.output.metadataMode === 'strip-and-sidecar' && (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {draft.payload.output.rightsXmpEnabled
+                                ? t('guided.single.review.rightsOn', '권리 XMP 사용')
+                                : t('guided.single.review.rightsOff', '권리 XMP 사용 안 함')}
+                            {' · '}
+                            {draft.payload.output.autoR2UploadProfileId
+                                ? t('guided.single.review.r2On', 'R2 자동 업로드')
+                                : t('guided.single.review.r2Off', '로컬에만 저장')}
+                            {' · '}
+                            {draft.payload.output.deleteOriginalAfterRelease
+                                ? t('guided.single.review.originalDiscard', '검증 후 원본 폐기')
+                                : t('guided.single.review.originalKeep', '원본 보관')}
+                        </p>
+                    )}
                 </ReviewRow>
                 <ReviewRow label={t('guided.single.review.cost', '최대 비용')}>
                     <span className="font-semibold">
@@ -1151,7 +1060,7 @@ export function GuidedSingleImage() {
     const navigate = useNavigate()
     const params = useParams<{ draftId: string; nodeId: string }>()
     const draftId = params.draftId ?? ''
-    const nodeId = isNodeId(params.nodeId) ? params.nodeId : null
+    const requestedNodeId = isNodeId(params.nodeId) ? params.nodeId : null
     const [draft, setDraft] = useState<SingleImageDraft | null>(null)
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState(false)
@@ -1178,6 +1087,20 @@ export function GuidedSingleImage() {
     })
     const completionInFlightRef = useRef(false)
     const completionNavigatedRef = useRef(false)
+    const nodes = useMemo(
+        () => draft === null
+            ? GUIDED_SINGLE_IMAGE_NODE_IDS
+            : activeNodes(draft.payload.output.metadataMode),
+        [draft],
+    )
+    const fallbackNode = draft !== null && nodes.includes(draft.currentNodeId)
+        ? draft.currentNodeId
+        : 'metadata'
+    const nodeId = requestedNodeId !== null && nodes.includes(requestedNodeId)
+        ? requestedNodeId
+        : draft === null
+            ? null
+            : fallbackNode
 
     const token1 = useAuthStore(state => state.token)
     const token2 = useAuthStore(state => state.token2)
@@ -1245,10 +1168,10 @@ export function GuidedSingleImage() {
     }, [draftId, navigate])
 
     useEffect(() => {
-        if (draft !== null && nodeId === null) {
-            navigate(`/guided-preview/work/${draft.id}/${draft.currentNodeId}`, { replace: true })
+        if (draft !== null && nodeId !== null && params.nodeId !== nodeId) {
+            navigate(`/guided-preview/work/${draft.id}/${nodeId}`, { replace: true })
         }
-    }, [draft, navigate, nodeId])
+    }, [draft, navigate, nodeId, params.nodeId])
 
     useEffect(() => {
         const batchId = draft?.lastSnapshotId
@@ -1399,12 +1322,42 @@ export function GuidedSingleImage() {
         setConsented(false)
         return commitMutation(current => ({ payload: { ...current.payload, ...patch } }))
     }
+    const patchOutput = (patch: Partial<SingleImageOutputSettings>) => {
+        setConsented(false)
+        return commitMutation(current => ({
+            payload: {
+                ...current.payload,
+                output: { ...current.payload.output, ...patch },
+            },
+        }))
+    }
     const canVisit = (target: GuidedSingleImageNodeId): boolean => {
         const hasPrompt = positive.trim().length > 0
+        if (!nodes.includes(target)) return false
         if (target === 'model') return true
         if (target === 'prompt') return draft.payload.model !== null
         if (target === 'resolution') return draft.payload.model !== null && hasPrompt
-        if (target === 'settings') return draft.payload.resolution !== null && hasPrompt
+        if (target === 'settings' || target === 'output' || target === 'metadata') {
+            return draft.payload.resolution !== null && hasPrompt
+        }
+        if (target === 'rights') {
+            return draft.payload.output.metadataMode === 'strip-and-sidecar'
+                && draft.payload.resolution !== null
+                && hasPrompt
+        }
+        if (target === 'delivery') {
+            const issues = listSingleImageDraftIssues({
+                ...draft,
+                payload: {
+                    ...draft.payload,
+                    prompt: { positive, negative },
+                    characterPrompts,
+                },
+            })
+            return draft.payload.output.metadataMode === 'strip-and-sidecar'
+                && !issues.includes('rights-owner-invalid')
+                && !issues.includes('rights-effective-date-required')
+        }
         if (target === 'review') return isSingleImageDraftReady({
             ...draft,
             payload: {
@@ -1445,7 +1398,11 @@ export function GuidedSingleImage() {
                         ? 'prompt'
                         : issue === 'resolution-required' || issue === 'resolution-invalid'
                             ? 'resolution'
-                            : 'settings'
+                            : issue === 'rights-owner-invalid' || issue === 'rights-effective-date-required'
+                                ? 'rights'
+                                : issue === 'output-invalid'
+                                    ? 'output'
+                                    : 'settings'
                 if (blockingNode !== nodeId) await goTo(blockingNode)
             }
             return
@@ -1472,8 +1429,8 @@ export function GuidedSingleImage() {
             setSaveStatus('error')
         }
     }
-    const currentIndex = GUIDED_SINGLE_IMAGE_NODE_IDS.indexOf(nodeId)
-    const previous = GUIDED_SINGLE_IMAGE_NODE_IDS[currentIndex - 1]
+    const currentIndex = nodes.indexOf(nodeId)
+    const previous = nodes[currentIndex - 1]
     const back = () => {
         if (previous === undefined) navigate('/guided-preview')
         else void goTo(previous)
@@ -1548,23 +1505,25 @@ export function GuidedSingleImage() {
         }
     }
 
+    const nextNode = nodes[currentIndex + 1]
     const footer = (() => {
-        if (nodeId === 'model') {
-            return <Button onClick={() => void goTo('prompt')} disabled={draft.payload.model === null || saveStatus === 'saving'}>{t('guided.single.continue', '계속')}</Button>
-        }
-        if (nodeId === 'prompt') {
-            return <Button onClick={() => void goTo('resolution')} disabled={positive.trim().length === 0 || saveStatus === 'saving'}>{t('guided.single.continue', '계속')}</Button>
-        }
-        if (nodeId === 'resolution') {
-            return <Button onClick={() => void goTo('settings')} disabled={draft.payload.resolution === null || saveStatus === 'saving'}>{t('guided.single.continue', '계속')}</Button>
-        }
-        if (nodeId === 'settings') {
-            return <Button onClick={() => void goTo('review')} disabled={saveStatus === 'saving'}>{t('guided.single.reviewSettings', '설정 검토')}</Button>
-        }
         if (nodeId === 'result') {
             return <span className="text-sm text-muted-foreground">{t('guided.single.result.footer', '결과는 자동 저장되며, 설정은 언제든 다시 다듬을 수 있어요.')}</span>
         }
-        return <span className="text-sm text-muted-foreground">{t('guided.single.review.footer', '실행 전 설정과 비용을 한 번 더 확인해 주세요.')}</span>
+        if (nodeId === 'review') {
+            return <span className="text-sm text-muted-foreground">{t('guided.single.review.footer', '실행 전 설정과 비용을 한 번 더 확인해 주세요.')}</span>
+        }
+        return (
+            <Button
+                type="button"
+                onClick={() => { if (nextNode !== undefined) void goTo(nextNode) }}
+                disabled={saveStatus === 'saving' || nextNode === undefined || !canVisit(nextNode)}
+            >
+                {nextNode === 'review'
+                    ? t('guided.single.reviewSettings', '설정 검토')
+                    : t('guided.single.continue', '계속')}
+            </Button>
+        )
     })()
 
     const stepCopy = {
@@ -1584,6 +1543,22 @@ export function GuidedSingleImage() {
             title: t('guided.single.steps.settings.title', '이 설정으로 다듬어 볼까요?'),
             description: t('guided.single.steps.settings.description', '추천값은 그대로 써도 충분해요. 결과의 느낌을 바꾸고 싶을 때만 조절해 보세요.'),
         },
+        output: {
+            title: t('guided.single.steps.output.title', '완성된 이미지를 어디에 둘까요?'),
+            description: t('guided.single.steps.output.description', '저장 폴더와 파일 형식만 정하세요. 폴더에 연결된 업로드 대상도 함께 불러옵니다.'),
+        },
+        metadata: {
+            title: t('guided.single.steps.metadata.title', '생성 정보를 어떻게 보관할까요?'),
+            description: t('guided.single.steps.metadata.description', '개인 보관, sidecar 분리, 공유용 정화 중 이번 작업에 맞는 한 가지를 고르세요.'),
+        },
+        rights: {
+            title: t('guided.single.steps.rights.title', '공유 이미지에 권리 표시를 넣을까요?'),
+            description: t('guided.single.steps.rights.description', '선택 사항입니다. 사용한다면 소유자명과 효력 시작일을 이번 작업에만 기록합니다.'),
+        },
+        delivery: {
+            title: t('guided.single.steps.delivery.title', '정화가 끝난 뒤 어디까지 처리할까요?'),
+            description: t('guided.single.steps.delivery.description', '자동 업로드와 정화 전 원본 보관 여부를 각각 선택하세요.'),
+        },
         review: {
             title: t('guided.single.steps.review.title', '만들기 전에 한 눈에 확인해 볼까요?'),
             description: t('guided.single.steps.review.description', '대기열에 추가한 뒤에는 이 설정을 스냅샷으로 고정해 안전하게 실행해요.'),
@@ -1596,6 +1571,7 @@ export function GuidedSingleImage() {
 
     return (
         <StepFrame
+            nodes={nodes}
             nodeId={nodeId}
             saveStatus={saveStatus}
             title={stepCopy.title}
@@ -1654,8 +1630,6 @@ export function GuidedSingleImage() {
                 <SettingsStep
                     draft={draft}
                     disabled={locked}
-                    activeTokenCount={activeTokenCount}
-                    estimatedAnlas={estimatedAnlas}
                     onPatch={patch => {
                         setConsented(false)
                         void commitMutation(current => ({
@@ -1665,15 +1639,34 @@ export function GuidedSingleImage() {
                             },
                         })).catch(() => undefined)
                     }}
-                    onOutputPatch={patch => {
-                        setConsented(false)
-                        void commitMutation(current => ({
-                            payload: {
-                                ...current.payload,
-                                output: { ...current.payload.output, ...patch },
-                            },
-                        })).catch(() => undefined)
-                    }}
+                />
+            )}
+            {nodeId === 'output' && (
+                <GuidedOutputDestinationStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'metadata' && (
+                <GuidedMetadataStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'rights' && (
+                <GuidedRightsStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
+                />
+            )}
+            {nodeId === 'delivery' && (
+                <GuidedDeliveryStep
+                    value={draft.payload.output}
+                    disabled={locked}
+                    onChange={patch => { void patchOutput(patch).catch(() => undefined) }}
                 />
             )}
             {nodeId === 'review' && (

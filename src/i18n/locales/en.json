@@ -373,6 +373,13 @@
             "publicUpload": "A public profile receives only the purified image; the prompt sidecar stays local.",
             "localOnly": "Without automatic upload, the image and sidecar remain local."
         },
+        "output": {
+            "folderTitle": "Save folder",
+            "folderHelp": "Load the local destination and R2 target assigned to a folder. Choose another folder for this task if needed.",
+            "manualPath": "Manually entered save path",
+            "formatTitle": "Image format",
+            "formatHelp": "PNG offers broad compatibility, while WebP is useful for smaller files."
+        },
         "workflows": {
             "home": "Task home",
             "breadcrumb": "Current task path",
@@ -577,7 +584,12 @@
                 "prompt": { "short": "Prompt", "title": "Let's set the shared prompt and modules", "description": "Load a saved module as-is, or connect it as a random or sequential reference." },
                 "count": { "short": "Count", "title": "How many images should we make?", "description": "Each item becomes an independent durable queue job, so it continues when you move elsewhere." },
                 "scenes": { "short": "Scenes", "title": "Which scenes should we make?", "description": "Give each scene its own prompt and count, then send them to the queue together." },
-                "settings": { "short": "Settings", "title": "Let's check the shared generation settings", "description": "Recommended resolutions and 28 Steps are within the basic cost range. Changes update the estimate immediately." },
+                "resolution": { "short": "Resolution", "title": "What size should the images be?", "description": "Choose one shared resolution to see the maximum estimated cost for the full batch." },
+                "settings": { "short": "Quality", "title": "How much should we refine the results?", "description": "28 Steps and the recommended sampler are a solid start. Open fine tuning only when needed." },
+                "output": { "short": "Save location", "title": "Where should the finished images go?", "description": "Choose the folder and file format for this batch. Any folder-specific R2 target comes with it." },
+                "metadata": { "short": "Metadata", "title": "How should generation data be stored?", "description": "Choose private storage, a separate sidecar, or purification for sharing." },
+                "rights": { "short": "Rights", "title": "Add a rights notice to shared images?", "description": "This is optional. If enabled, the owner and effective date apply only to this batch." },
+                "delivery": { "short": "Delivery", "title": "What should happen after purification?", "description": "Choose automatic upload and whether to keep the pre-purification original." },
                 "review": { "short": "Review", "title": "One last check before queueing?", "description": "Settings are frozen in a snapshot, and resubmitting the same draft won't run it twice." },
                 "result": { "short": "Results", "title": "Let's review the finished images", "description": "Results appear as they finish, and generation continues when you move to another workflow." }
             },
@@ -637,6 +649,7 @@
                 "resolution": "Resolution",
                 "stepsHelp": "Up to 28 is within the basic range. More Steps can improve instruction following, but higher is not always better.",
                 "samplerHelp": "The recommended value is a good default.",
+                "advanced": "Fine tuning · Optional",
                 "cfgHelp": "Higher values follow the prompt more strongly, but can make the image look harsh.",
                 "outputDirectory": "Save folder",
                 "outputHelp": "Choose the local destination and automatic upload target for this job.",
@@ -653,8 +666,12 @@
                 "scenePrompts": "Prompts by scene",
                 "count": "Image count",
                 "countValue": "{{count}} images",
-                "settings": "Settings",
+                "resolution": "Resolution",
+                "settings": "Generation settings",
                 "output": "Save",
+                "metadata": "Metadata",
+                "r2On": "Automatic R2 upload",
+                "r2Off": "Local only",
                 "edit": "Edit",
                 "costConsent": "Add this batch to the queue with a maximum cost of {{cost}} Anlas.",
                 "queueHelp": "One account runs one image job at a time; the next job starts automatically.",
@@ -758,9 +775,29 @@
                     "description": "Choose the aspect ratio closest to your intended use. All three stay within 1024² pixels."
                 },
                 "settings": {
-                    "short": "Generation settings",
+                    "short": "Quality",
                     "title": "Shall we fine-tune these settings?",
                     "description": "The recommended values work well as they are. Adjust them only when you want a different feel."
+                },
+                "output": {
+                    "short": "Save location",
+                    "title": "Where should the finished image go?",
+                    "description": "Choose only the save folder and file format. Any upload target connected to the folder comes with it."
+                },
+                "metadata": {
+                    "short": "Metadata",
+                    "title": "How should generation data be stored?",
+                    "description": "Choose private storage, a separate sidecar, or purification for sharing."
+                },
+                "rights": {
+                    "short": "Rights",
+                    "title": "Add a rights notice to the shared image?",
+                    "description": "This is optional. If enabled, the owner and effective date apply only to this task."
+                },
+                "delivery": {
+                    "short": "Delivery",
+                    "title": "What should happen after purification?",
+                    "description": "Choose automatic upload and whether to keep the pre-purification original."
                 },
                 "review": {
                     "short": "Final review",
@@ -828,6 +865,13 @@
                 "noAccount": "No account available",
                 "output": "Save",
                 "autosave": "Autosave",
+                "metadata": "Metadata",
+                "rightsOn": "Rights XMP enabled",
+                "rightsOff": "Rights XMP disabled",
+                "r2On": "Automatic R2 upload",
+                "r2Off": "Local only",
+                "originalDiscard": "Discard original after verification",
+                "originalKeep": "Keep original",
                 "cost": "Maximum cost",
                 "free": "0 Anlas",
                 "maxAnlas": "Up to {{cost}} Anlas",
