@@ -50,8 +50,9 @@ check.
 After all changes are committed and `main` is pushed:
 
 ```powershell
-git tag -a v1.0.0 -m "NAI Blue 1.0.0"
-git push origin v1.0.0
+$version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+git tag -a "v$version" -m "NAI Blue $version"
+git push origin "v$version"
 ```
 
 `.github/workflows/build.yml` verifies that the tag matches the version sources

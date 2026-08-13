@@ -27,12 +27,12 @@ assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
 assert.equal(policy.versionCode, android.bundle.android.versionCode)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.equal(policy.updateBaseline, null)
-assert.equal(policy.firstReleaseForApplicationId, true)
-assert.equal(policy.firstReleaseVersion, '1.0.0')
-assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), null)
-assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011004)
-assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), null)
+assert.deepEqual(policy.updateBaseline, { tag: 'v1.0.0', versionCode: 2011004 })
+assert.equal(policy.firstReleaseForApplicationId, false)
+assert.equal(policy.firstReleaseVersion, undefined)
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v1.0.0')
+assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011005)
+assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), 2011004)
 assert.throws(
     () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
     /first release of an applicationId/,

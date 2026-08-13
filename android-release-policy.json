@@ -10,12 +10,14 @@
     "x86_64"
   ],
   "versionCodeScheme": "explicit-monotonic",
-  "versionCode": 2011004,
+  "versionCode": 2011005,
   "signing": {
     "keyAlias": "release",
     "certificateSha256": "6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65"
   },
-  "updateBaseline": null,
-  "firstReleaseForApplicationId": true,
-  "firstReleaseVersion": "1.0.0"
+  "updateBaseline": {
+    "tag": "v1.0.0",
+    "versionCode": 2011004
+  },
+  "firstReleaseForApplicationId": false
 }
