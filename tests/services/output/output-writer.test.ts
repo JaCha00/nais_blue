@@ -223,6 +223,35 @@ beforeEach(() => {
 })
 
 describe('OutputWriter fault containment', () => {
+    it('reserves distinct names for concurrent unique writes', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        let transactionOrdinal = 0
+        const outputWriter = new OutputWriter(
+            adapter,
+            new DeterministicMetadataWriter(),
+            () => `txn-concurrent-${++transactionOrdinal}`,
+            () => new Date(FIXED_NOW),
+        )
+
+        const [first, second] = await Promise.all([
+            outputWriter.write(request({ imageBytes: new Uint8Array([1]) })),
+            outputWriter.write(request({ imageBytes: new Uint8Array([2]) })),
+        ])
+
+        expect(first.status).toBe('committed')
+        expect(second.status).toBe('committed')
+        if (first.status !== 'committed' || second.status !== 'committed') {
+            throw new Error('Expected both output transactions to commit')
+        }
+        expect([first.result.fileName, second.result.fileName].sort()).toEqual([
+            'result-2.png',
+            'result.png',
+        ])
+        expect(adapter.file('output/result.png')).toEqual(new Uint8Array([1]))
+        expect(adapter.file('output/result-2.png')).toEqual(new Uint8Array([2]))
+        expectNoTransactionArtifacts(adapter)
+    })
+
     it.each(['strip-and-sidecar', 'strip-only'] as const)(
         'purges provider metadata before writing and thumbnailing %s output',
         async metadataMode => {

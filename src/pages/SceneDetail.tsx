@@ -1338,17 +1338,9 @@ function SceneImageCard({
     onInpaint?: (base64: string) => void
 }) {
     const { t } = useTranslation()
-    const [imgSrc, setImgSrc] = useState<string>('')
-
-    useEffect(() => {
-        if (!image.url) return
-        if (image.url.startsWith('data:')) {
-            setImgSrc(image.url)
-            return
-        }
-        // The Scene store persists native paths; Tauri's asset URL keeps gallery rendering off the JS heap.
-        setImgSrc(toNativeAssetUrl(image.url))
-    }, [image.url])
+    const imgSrc = !image.url || image.url.startsWith('data:')
+        ? image.url
+        : toNativeAssetUrl(image.url)
 
     const activateImage = () => {
         if (isEditMode) {

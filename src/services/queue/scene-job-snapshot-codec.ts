@@ -148,7 +148,12 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
             && !isR2BucketName(candidate.sceneWorkflow.outputContext.r2Bucket))
         || (candidate.sceneWorkflow.outputContext.r2Prefix !== undefined
             && candidate.sceneWorkflow.outputContext.r2Prefix !== null
-            && !isResolvedR2Prefix(candidate.sceneWorkflow.outputContext.r2Prefix))) {
+            && !isResolvedR2Prefix(candidate.sceneWorkflow.outputContext.r2Prefix))
+        || (candidate.sceneWorkflow.outputContext.filenameTemplate !== undefined
+            && (typeof candidate.sceneWorkflow.outputContext.filenameTemplate !== 'string'
+                || candidate.sceneWorkflow.outputContext.filenameTemplate.length === 0
+                || candidate.sceneWorkflow.outputContext.filenameTemplate.length > 180
+                || /[\r\n]/.test(candidate.sceneWorkflow.outputContext.filenameTemplate)))) {
         return invalidSnapshot()
     }
     return candidate as unknown as SceneQueueSnapshotParameters

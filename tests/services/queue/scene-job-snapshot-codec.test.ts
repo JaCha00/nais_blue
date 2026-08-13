@@ -133,6 +133,7 @@ describe('Scene Job Snapshot codec', () => {
                 autoR2UploadProfileId: 'asset-profile-default-r2',
                 r2Bucket: 'scene-bucket',
                 r2Prefix: 'prime/bluehair/01',
+                filenameTemplate: 'opening_{seed}_{timestamp}',
             },
         }), dehydrated).snapshot
 
@@ -141,6 +142,7 @@ describe('Scene Job Snapshot codec', () => {
             directory: 'D:\\Images\\Prime\\01',
             r2Bucket: 'scene-bucket',
             r2Prefix: 'prime/bluehair/01',
+            filenameTemplate: 'opening_{seed}_{timestamp}',
         })
     })
 })

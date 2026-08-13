@@ -23,6 +23,15 @@ describe('filename policy', () => {
         })).toBe('hero_portrait_42_20260713-010203')
     })
 
+    it('provides the legacy timestamp token without caller-specific context', () => {
+        const now = new Date('2026-07-13T01:02:03.004Z')
+
+        expect(renderFilenameTemplate({
+            template: 'NAI_Blue_{timestamp}',
+            now,
+        })).toBe(`NAI_Blue_${now.getTime()}`)
+    })
+
     it('owns extension replacement without creating stacked image extensions', () => {
         expect(ensureImageFileExtension('portrait.webp', 'png')).toBe('portrait.png')
         expect(ensureImageFileExtension('portrait.png', 'webp')).toBe('portrait.webp')

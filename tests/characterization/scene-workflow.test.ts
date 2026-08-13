@@ -315,6 +315,8 @@ function scene(id: string, queueCount: number, overrides: Record<string, unknown
         ...(overrides.prompts === undefined ? {} : { prompts: overrides.prompts }),
         ...(overrides.generation === undefined ? {} : { generation: overrides.generation }),
         ...(overrides.compositionRef === undefined ? {} : { compositionRef: overrides.compositionRef }),
+        ...(overrides.filenameTemplate === undefined ? {} : { filenameTemplate: overrides.filenameTemplate }),
+        ...(overrides.queuedFileNames === undefined ? {} : { queuedFileNames: overrides.queuedFileNames }),
         createdAt: FIXED_TIME,
     }
 }
@@ -720,6 +722,56 @@ describe('Scene workflow golden characterization', () => {
 })
 
 describe('Scene Composition v2 caller contract', () => {
+    it('uses the visible unlocked seed and advances the Scene to its next seed', async () => {
+        resetRuntime(197, [scene('scene-seed-advance', 1, {
+            generation: { seed: 123, seedLocked: false },
+        })])
+        runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
+        vi.spyOn(Math, 'random').mockReturnValue(0.25)
+        runtimeCapture.behaviors.push('success')
+
+        await runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(197, false))
+
+        expect(runtimeCapture.params[0]?.seed).toBe(123)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-seed-advance')?.generation)
+            .toMatchObject({ seed: 1_073_741_823, seedLocked: false })
+    })
+
+    it('materializes a queued image filename before committing the Scene output', async () => {
+        resetRuntime(196, [scene('scene-custom-name', 1, {
+            generation: { seed: 456, seedLocked: true },
+            filenameTemplate: 'scene-default_{seed}',
+            queuedFileNames: ['opening_{seed}'],
+        })])
+        runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
+        runtimeCapture.behaviors.push('success')
+
+        await runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(196, false))
+
+        expect(runtimeCapture.writes.some(path => path.endsWith('/opening_456.png'))).toBe(true)
+        expect(runtime.useSceneStore.getState().getScene(PRESET_ID, 'scene-custom-name')).toMatchObject({
+            queueCount: 0,
+            queuedFileNames: undefined,
+        })
+    })
+
+    it('keeps repeated Scene filenames as distinct gallery outputs', async () => {
+        resetRuntime(195, [scene('scene-duplicate-names', 2, {
+            generation: { seed: 789, seedLocked: true },
+            queuedFileNames: ['duplicate', 'duplicate'],
+        })])
+        runtime.useSceneStore.setState({ sceneCompositionMode: 'v2' })
+        runtimeCapture.behaviors.push('success', 'success')
+
+        await runtime.sceneTest.workerLoop(1, 'synthetic-slot-1', context(195, false))
+
+        expect(runtimeCapture.writes.some(path => path.endsWith('/duplicate.png'))).toBe(true)
+        expect(runtimeCapture.writes.some(path => path.endsWith('/duplicate-2.png'))).toBe(true)
+        const images = runtime.useSceneStore.getState()
+            .getScene(PRESET_ID, 'scene-duplicate-names')?.images ?? []
+        expect(new Set(images.map(image => image.url)).size).toBe(2)
+    })
+
     it('uses Scene-owned prompts and parameters without reading Main draft values', async () => {
         resetRuntime(198, [scene('scene-owned', 1, {
             prompts: {

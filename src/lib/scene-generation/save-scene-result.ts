@@ -51,6 +51,8 @@ export interface SaveSceneResultOptions {
         autoR2UploadProfileId?: string | null
         r2Bucket?: string | null
         r2Prefix?: string | null
+        /** Scene-wide or FIFO job-specific filename template captured before execution. */
+        filenameTemplate?: string
     }
 }
 
@@ -123,11 +125,6 @@ export async function saveSceneResult(
 
     const presentation = options.presentation
     const outputDefaults = presentation.readOutputDefaults(ctx.activePresetId)
-    const metadataParams: GenerationParams = {
-        ...params,
-        sentPayloadSummary: options.sentPayloadSummary,
-        ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
-    }
     const useAbsoluteScenePath = options.outputContext?.useAbsoluteScenePath ?? outputDefaults.useAbsoluteScenePath
     const metadataMode = options.outputContext?.metadataMode ?? outputDefaults.metadataMode
     const presetName = options.outputContext?.presetName ?? outputDefaults.presetName
@@ -135,24 +132,49 @@ export async function saveSceneResult(
         ?? outputDefaults.presetPathSegments
     const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
-    const fallbackFileName = `NAI_Blue_SCENE_${Date.now()}_${Math.floor(Math.random() * 10000)}`
-    const policyFileName = params.outputPolicySummary?.filenameTemplateId
+    const outputTime = new Date()
+    const fallbackFileName = `NAI_Blue_SCENE_${outputTime.getTime()}_${crypto.randomUUID()}`
+    const explicitFilenameTemplate = options.outputContext?.filenameTemplate?.trim()
+    const requestedFilenameTemplate = explicitFilenameTemplate
+        || params.outputPolicySummary?.filenameTemplateId
+    const policyFileName = requestedFilenameTemplate
         ? renderFilenameTemplate({
-            template: params.outputPolicySummary.filenameTemplateId,
+            template: requestedFilenameTemplate,
             context: {
                 seed: params.seed,
                 scene: { id: scene.id, name: scene.name },
                 preset: { id: ctx.activePresetId, name: presetName },
             },
+            now: outputTime,
             fallback: fallbackFileName,
         })
         : null
     const fileName = ensureImageFileExtension(
-        params.assetModulePlan?.output.fileName ?? policyFileName ?? fallbackFileName,
+        explicitFilenameTemplate
+            ? policyFileName
+            : params.assetModulePlan?.output.fileName ?? policyFileName ?? fallbackFileName,
         fileExt,
     ) ?? `${fallbackFileName}.${fileExt}`
     const rawDataUrl = toDataUrl(imageData, mimeType)
     const effectiveMetadataMode = params.metadataMode ?? metadataMode
+    const metadataParams: GenerationParams = {
+        ...params,
+        sentPayloadSummary: options.sentPayloadSummary,
+        ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
+        ...((params.outputPolicySummary !== undefined || explicitFilenameTemplate)
+            ? {
+                outputPolicySummary: {
+                    ...params.outputPolicySummary,
+                    imageFormat: params.imageFormat ?? (fileExt === 'webp' ? 'webp' : 'png'),
+                    metadataMode: effectiveMetadataMode,
+                    ...(explicitFilenameTemplate === undefined
+                        ? {}
+                        : { filenameTemplateId: explicitFilenameTemplate }),
+                    collisionPolicy: 'unique',
+                },
+            }
+            : {}),
+    }
     // OutputWriter owns metadata sanitization for every workflow and both strip modes.
     const dataUrl = rawDataUrl
     const binaryData = Uint8Array.from(atob(toBase64(imageData)), c => c.charCodeAt(0))
@@ -209,7 +231,9 @@ export async function saveSceneResult(
                 workflowDefaultDirectory: 'NAI_Blue_Scene',
                 fileName,
                 extension: fileExt,
-                collisionPolicy: params.outputPolicySummary?.collisionPolicy ?? 'unique',
+                // Every Scene generation is a distinct gallery item. Never let
+                // a repeated template erase an earlier image or alias thumbnails.
+                collisionPolicy: 'unique',
             },
             imageBytes: binaryData,
             imageDataUrl: dataUrl,
@@ -236,7 +260,7 @@ export async function saveSceneResult(
 
                 artifactLineage = await options.registerArtifact?.(outputResult) ?? null
                 committedPath = outputResult.path
-                historyId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`
+                historyId = `scene-history-${crypto.randomUUID()}`
                 presentation.commitResult({
                     historyId,
                     presetId: ctx.activePresetId,

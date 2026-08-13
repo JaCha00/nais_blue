@@ -15,7 +15,8 @@ import { ResolutionSelector, type Resolution } from '@/components/ui/ResolutionS
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
-import { cn } from '@/lib/utils'
+import { SceneOutputNamingEditor } from '@/components/scene/SceneOutputNamingEditor'
+import { cn, generateRandomSeed } from '@/lib/utils'
 import { AVAILABLE_MODELS } from '@/stores/generation-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
@@ -199,7 +200,7 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                         <Button type="button" variant={generation.seedLocked ? 'secondary' : 'outline'} size="icon" className="h-10 w-10 shrink-0" onClick={() => patchGeneration('seedLocked', !generation.seedLocked)} disabled={disabled} aria-label={generation.seedLocked ? t('settings.unlockSeed', '시드 잠금 해제') : t('settings.lockSeed', '시드 잠금')}>
                             {generation.seedLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                         </Button>
-                        <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => patchGeneration('seed', Math.floor(Math.random() * 4294967295))} disabled={disabled || generation.seedLocked} aria-label={t('settings.randomSeed', '무작위 시드')}>
+                        <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={() => patchGeneration('seed', generateRandomSeed())} disabled={disabled || generation.seedLocked} aria-label={t('settings.randomSeed', '무작위 시드')}>
                             <Dice5 className="h-4 w-4" />
                         </Button>
                     </div>
@@ -249,6 +250,7 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                         </div>
                     ))}
                 </div>
+                <SceneOutputNamingEditor presetId={presetId} scene={scene} disabled={disabled} />
             </details>
         </section>
     )
