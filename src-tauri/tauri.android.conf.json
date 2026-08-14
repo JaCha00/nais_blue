@@ -6,7 +6,7 @@
   "bundle": {
     "android": {
       "minSdkVersion": 24,
-      "versionCode": 2011005
+      "versionCode": 2011006
     },
     "externalBin": [],
     "createUpdaterArtifacts": false
