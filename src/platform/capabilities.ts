@@ -122,27 +122,61 @@ export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCap
     })
 }
 
-// Loaded lazily to avoid a runtime.ts -> capabilities.ts cycle. runtime.ts only
-// re-exports compatibility booleans after this value has been constructed.
-const detectedPlatform = (() => {
-    const configured = typeof __NAI_BLUE_TAURI_PLATFORM__ === 'string'
-        ? __NAI_BLUE_TAURI_PLATFORM__.toLowerCase()
-        : ''
+interface RuntimePlatformDetectionInput {
+    readonly configuredPlatform: string
+    readonly hasWindow: boolean
+    readonly hasTauriRuntime: boolean
+    readonly userAgent: string
+}
+
+/**
+ * Keeps browser previews closed while accepting both Tauri runtime markers.
+ * Some WebView2 builds expose `__TAURI_INTERNALS__` before the compatibility
+ * `isTauri` boolean, so requiring only the latter incorrectly disables every
+ * desktop capability during application startup.
+ */
+export function detectRuntimePlatform({
+    configuredPlatform,
+    hasWindow,
+    hasTauriRuntime,
+    userAgent,
+}: RuntimePlatformDetectionInput): RuntimePlatform {
+    const configured = configuredPlatform.toLowerCase()
+    const agent = userAgent.toLowerCase()
     const configuredNative = configured === 'android' || configured === 'ios'
         || configured === 'windows' || configured === 'macos' || configured === 'linux'
-    // The compile-time target also exists in production browser previews. Only
-    // trust it in a real Tauri webview (or a windowless build/test process).
-    if (configuredNative && (typeof window === 'undefined' || Reflect.get(globalThis, 'isTauri') === true)) {
-        return configured
-    }
-    if (typeof navigator !== 'undefined') {
-        const agent = navigator.userAgent.toLowerCase()
+
+    if (!hasWindow) return configuredNative ? configured : 'unknown'
+    if (hasTauriRuntime) {
+        if (configuredNative) return configured
         if (agent.includes('android')) return 'android'
         if (/iphone|ipad|ipod/.test(agent)) return 'ios'
+        if (agent.includes('windows')) return 'windows'
+        if (agent.includes('mac os') || agent.includes('macintosh')) return 'macos'
+        if (agent.includes('linux')) return 'linux'
+        return 'desktop'
     }
-    if (typeof window !== 'undefined') return 'web'
-    return 'unknown'
-})() satisfies RuntimePlatform
+    return 'web'
+}
+
+function hasTauriRuntimeMarker(): boolean {
+    if (Reflect.get(globalThis, 'isTauri') === true) return true
+    const internals = Reflect.get(globalThis, '__TAURI_INTERNALS__')
+    return typeof internals === 'object'
+        && internals !== null
+        && typeof Reflect.get(internals, 'invoke') === 'function'
+}
+
+// Loaded lazily to avoid a runtime.ts -> capabilities.ts cycle. runtime.ts only
+// re-exports compatibility booleans after this value has been constructed.
+const detectedPlatform = detectRuntimePlatform({
+    configuredPlatform: typeof __NAI_BLUE_TAURI_PLATFORM__ === 'string'
+        ? __NAI_BLUE_TAURI_PLATFORM__
+        : '',
+    hasWindow: typeof window !== 'undefined',
+    hasTauriRuntime: hasTauriRuntimeMarker(),
+    userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+})
 
 export const runtimeCapabilities: RuntimeCapabilities = createRuntimeCapabilities(detectedPlatform)
 

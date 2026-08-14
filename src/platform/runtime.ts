@@ -1,41 +1,27 @@
-import type { RuntimePlatform } from './capabilities'
+import { runtimeCapabilities, type RuntimePlatform } from './capabilities'
 
 export type NaisRuntimePlatform = Exclude<RuntimePlatform, 'desktop' | 'web'>
 
-declare const __NAI_BLUE_TAURI_PLATFORM__: string | undefined
-
-const buildPlatform = typeof __NAI_BLUE_TAURI_PLATFORM__ === 'string'
-    ? __NAI_BLUE_TAURI_PLATFORM__.toLowerCase()
-    : ''
-
-const userAgent = typeof navigator === 'undefined'
-    ? ''
-    : navigator.userAgent.toLowerCase()
-
-function normalizePlatform(value: string): NaisRuntimePlatform {
+function normalizePlatform(value: RuntimePlatform): NaisRuntimePlatform {
     if (value === 'android') return 'android'
     if (value === 'ios') return 'ios'
     if (value === 'windows') return 'windows'
     if (value === 'macos') return 'macos'
     if (value === 'linux') return 'linux'
-    if (userAgent.includes('android')) return 'android'
-    if (/iphone|ipad|ipod/.test(userAgent)) return 'ios'
     return 'unknown'
 }
 
-export const runtimePlatform = normalizePlatform(buildPlatform)
+export const runtimePlatform = normalizePlatform(runtimeCapabilities.platform)
 export const isAndroidRuntime = runtimePlatform === 'android'
 export const isMobileRuntime = runtimePlatform === 'android' || runtimePlatform === 'ios'
-// Native-only services use this centralized build-time classification instead
-// of importing Tauri runtime probes throughout UI and service modules.
-export const isDesktopRuntime = runtimePlatform === 'windows'
+export const isDesktopRuntime = runtimeCapabilities.platform === 'desktop'
+    || runtimePlatform === 'windows'
     || runtimePlatform === 'macos'
     || runtimePlatform === 'linux'
 
 // Compatibility exports for call sites that only need a boolean. New UI should
 // consume the full capability object so unsupported reasons are visible.
-export { runtimeCapabilities } from './capabilities'
-import { runtimeCapabilities } from './capabilities'
+export { runtimeCapabilities }
 
 export const supportsEmbeddedBrowser = runtimeCapabilities.embeddedBrowser.supported
 export const supportsLocalTaggerSidecar = runtimeCapabilities.localTaggerSidecar.supported

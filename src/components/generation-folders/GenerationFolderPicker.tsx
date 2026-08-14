@@ -99,12 +99,18 @@ export function GenerationFolderPicker({
             <GenerationFolderManagerDialog
                 open={managerOpen}
                 r2State={r2State}
-                onOpenChange={nextOpen => {
-                    setManagerOpen(nextOpen)
-                    if (!nextOpen) {
-                        if (resolved) onChange({ folder: resolved, r2Ready: r2State.status === 'ready' })
-                        else if (value) onChange(null)
-                    }
+                onOpenChange={setManagerOpen}
+                onSaved={folderId => {
+                    const settings = useSettingsStore.getState()
+                    const folder = resolveGenerationFolder(settings.generationFolders, folderId, {
+                        directory: settings.savePath,
+                        useAbsolutePath: settings.useAbsolutePath,
+                        r2Bucket: r2State.profile?.bucket,
+                        r2Prefix: r2State.profile?.prefix,
+                    })
+                    onChange(folder === null
+                        ? null
+                        : { folder, r2Ready: r2State.status === 'ready' })
                 }}
             />
         </div>

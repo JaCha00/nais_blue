@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { FileImage, LoaderCircle, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -19,21 +19,17 @@ import {
 import { cn } from '@/lib/utils'
 
 import { GuidedStyleCatalogImport } from './GuidedStyleCatalogImport'
+import {
+    guidedPromptImportFromMetadata,
+    type GuidedPromptImportValue,
+} from './guided-prompt-import'
+
+export type {
+    GuidedPromptImportCharacter,
+    GuidedPromptImportValue,
+} from './guided-prompt-import'
 
 const MAX_PROMPT_IMPORT_BYTES = 50 * 1024 * 1024
-
-export interface GuidedPromptImportValue {
-    positive: string
-    negative: string
-    sourceName: string
-    characters?: readonly GuidedPromptImportCharacter[]
-}
-
-export interface GuidedPromptImportCharacter {
-    prompt: string
-    negative: string
-    position: { x: number; y: number }
-}
 
 interface JsonRecord {
     [key: string]: unknown
@@ -47,36 +43,6 @@ function record(value: unknown): JsonRecord | null {
 
 function stringValue(value: unknown): string {
     return typeof value === 'string' ? value.trim() : ''
-}
-
-function metadataPrompts(metadata: NAIMetadata): { positive: string; negative: string } {
-    const parts = metadata.promptParts
-    const positive = parts
-        ? [parts.base, parts.additional, parts.detail].map(value => value.trim()).filter(Boolean).join(', ')
-        : stringValue(metadata.v4_prompt?.caption?.base_caption) || stringValue(metadata.prompt)
-    const negative = stringValue(parts?.negative)
-        || stringValue(metadata.v4_negative_prompt?.caption?.base_caption)
-        || stringValue(metadata.negativePrompt)
-    return { positive, negative }
-}
-
-function coordinate(value: unknown): number {
-    return typeof value === 'number' && Number.isFinite(value)
-        ? Math.max(0.1, Math.min(0.9, value))
-        : 0.5
-}
-
-function metadataCharacters(metadata: NAIMetadata): GuidedPromptImportCharacter[] {
-    const positive = metadata.v4_prompt?.caption?.char_captions ?? []
-    const negative = metadata.v4_negative_prompt?.caption?.char_captions ?? []
-    return positive.map((character, index) => ({
-        prompt: stringValue(character.char_caption),
-        negative: stringValue(negative[index]?.char_caption),
-        position: {
-            x: coordinate(character.centers?.[0]?.x),
-            y: coordinate(character.centers?.[0]?.y),
-        },
-    })).filter(character => character.prompt.length > 0 || character.negative.length > 0)
 }
 
 function jsonPrompts(value: unknown): { positive: string; negative: string } | null {
@@ -138,18 +104,24 @@ export async function readGuidedPromptImportFile(file: File): Promise<GuidedProm
     } else {
         metadata = await parseMetadataFromFile(file)
     }
-    let prompts = metadata ? metadataPrompts(metadata) : null
+    const metadataImport = metadata === null
+        ? null
+        : guidedPromptImportFromMetadata(metadata, file.name)
+    let prompts = metadataImport === null
+        ? null
+        : { positive: metadataImport.positive, negative: metadataImport.negative }
     if ((!prompts || (!prompts.positive && !prompts.negative)) && json !== null) {
         prompts = jsonPrompts(JSON.parse(json))
     }
-    if (!prompts || (!prompts.positive && !prompts.negative)) {
+    const hasCharacters = (metadataImport?.characters?.length ?? 0) > 0
+    if ((!prompts || (!prompts.positive && !prompts.negative)) && !hasCharacters) {
         throw new TypeError('No prompt metadata was found')
     }
-    const characters = metadata === null ? [] : metadataCharacters(metadata)
     return {
-        ...prompts,
+        positive: prompts?.positive ?? '',
+        negative: prompts?.negative ?? '',
         sourceName: file.name,
-        ...(characters.length === 0 ? {} : { characters }),
+        ...(metadataImport?.characters === undefined ? {} : { characters: metadataImport.characters }),
     }
 }
 
@@ -175,12 +147,17 @@ export function GuidedPromptFileImport({
     onReplace,
     onAppend,
     onModuleCreated,
+    incomingImport = null,
+    onIncomingImportHandled,
 }: {
     positive: string
     disabled?: boolean
     onReplace(value: GuidedPromptImportValue): void
     onAppend(value: GuidedPromptImportValue): void
     onModuleCreated?(canonicalPath: string): void
+    /** App-wide drops arrive here after the current Guided draft returns to this step. */
+    incomingImport?: GuidedPromptImportValue | null
+    onIncomingImportHandled?(): void
 }) {
     const { t } = useTranslation()
     const inputRef = useRef<HTMLInputElement>(null)
@@ -191,6 +168,14 @@ export function GuidedPromptFileImport({
     const [progress, setProgress] = useState<NaiStyleCatalogParseProgress | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [createdPath, setCreatedPath] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (incomingImport === null) return
+        setCatalog(null)
+        setImported(incomingImport)
+        setError(null)
+        setCreatedPath(null)
+    }, [incomingImport])
 
     const read = async (file: File | undefined) => {
         if (!file || loading || disabled) return
@@ -318,8 +303,20 @@ export function GuidedPromptFileImport({
                         </p>
                     )}
                     <div className="mt-4 flex flex-wrap gap-2">
-                        <Button type="button" onClick={() => onReplace(imported)}>{t('guided.promptImport.replace', '현재 프롬프트 교체')}</Button>
-                        <Button type="button" variant="outline" onClick={() => onAppend(imported)}>{t('guided.promptImport.append', '현재 내용 뒤에 추가')}</Button>
+                        <Button type="button" onClick={() => {
+                            onReplace(imported)
+                            setImported(null)
+                            onIncomingImportHandled?.()
+                        }}>{t('guided.promptImport.replace', '현재 프롬프트 교체')}</Button>
+                        <Button type="button" variant="outline" onClick={() => {
+                            onAppend(imported)
+                            setImported(null)
+                            onIncomingImportHandled?.()
+                        }}>{t('guided.promptImport.append', '현재 내용 뒤에 추가')}</Button>
+                        <Button type="button" variant="ghost" onClick={() => {
+                            setImported(null)
+                            onIncomingImportHandled?.()
+                        }}>{t('common.cancel', '취소')}</Button>
                     </div>
                 </div>
             )}

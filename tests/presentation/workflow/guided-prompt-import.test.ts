@@ -70,6 +70,37 @@ describe('Guided prompt file import', () => {
         })
     })
 
+    it('accepts character-only metadata without inventing a main prompt', async () => {
+        const file = new File([JSON.stringify({
+            v4_prompt: {
+                caption: {
+                    base_caption: '',
+                    char_captions: [{
+                        char_caption: '1girl, blue hair',
+                        centers: [{ x: 0.5, y: 0.5 }],
+                    }],
+                },
+            },
+            v4_negative_prompt: {
+                caption: {
+                    base_caption: '',
+                    char_captions: [{ char_caption: 'red hair', centers: [] }],
+                },
+            },
+        })], 'character-only.json', { type: 'application/json' })
+
+        await expect(readGuidedPromptImportFile(file as unknown as globalThis.File)).resolves.toEqual({
+            positive: '',
+            negative: '',
+            sourceName: 'character-only.json',
+            characters: [{
+                prompt: '1girl, blue hair',
+                negative: 'red hair',
+                position: { x: 0.5, y: 0.5 },
+            }],
+        })
+    })
+
     it('imports a NAIS2 metadata sidecar through the external compatibility boundary', async () => {
         const file = new File([JSON.stringify({
             metadataName: 'nais2',

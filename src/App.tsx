@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Outlet, Routes, Route } from 'react-router'
 import { Toaster } from '@/components/ui/toaster'
 import { DiagnosticsSurface } from '@/components/diagnostics/DiagnosticsSurface'
 import { ApiTokenDialog } from '@/components/credentials/ApiTokenDialog'
+import { GlobalImageMetadataDrop } from '@/components/metadata/GlobalImageMetadataDrop'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RuntimeProviders } from '@/components/runtime/RuntimeProviders'
 import { useTrashStore } from '@/stores/trash-store'
@@ -94,6 +95,7 @@ function App() {
                 <RuntimeProviders>
                     <TrashRetentionSweep />
                     <AppContent />
+                    <GlobalImageMetadataDrop />
                     <ApiTokenDialog />
                     <Toaster />
                     <DiagnosticsSurface />

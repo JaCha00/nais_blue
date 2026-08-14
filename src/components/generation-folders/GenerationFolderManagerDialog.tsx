@@ -14,6 +14,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { toast } from '@/components/ui/use-toast'
 import {
     DEFAULT_GENERATION_FOLDER_ID,
     generationFolderDescendantIds,
@@ -44,10 +45,12 @@ function folderRows(folders: readonly GenerationFolder[]): FolderRow[] {
 export function GenerationFolderManagerDialog({
     open,
     onOpenChange,
+    onSaved,
     r2State,
 }: {
     open: boolean
     onOpenChange(open: boolean): void
+    onSaved?(folderId: string): void
     r2State: DefaultR2Readiness
 }) {
     const { t } = useTranslation()
@@ -155,6 +158,12 @@ export function GenerationFolderManagerDialog({
             })
             setActive(selected.id)
             setError(null)
+            onSaved?.(selected.id)
+            onOpenChange(false)
+            toast({
+                title: t('generationFolders.manager.saved', '폴더 설정을 저장했어요.'),
+                variant: 'success',
+            })
         } catch {
             setError(t('generationFolders.manager.saveError', '폴더 설정을 저장하지 못했습니다.'))
         }
@@ -171,7 +180,7 @@ export function GenerationFolderManagerDialog({
     return (
         <>
             <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-5xl overflow-hidden p-0">
+                <DialogContent className="grid max-h-[calc(100dvh-2rem)] max-w-5xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0">
                     <DialogHeader className="border-b border-border/60 px-5 py-4 pr-14">
                         <DialogTitle>{t('generationFolders.manager.title', '이미지 생성 폴더')}</DialogTitle>
                         <DialogDescription>{t('generationFolders.manager.description', '로컬 경로, 공통 프롬프트와 R2 대상을 한 폴더 단위로 관리합니다.')}</DialogDescription>
@@ -297,7 +306,7 @@ export function GenerationFolderManagerDialog({
                             </section>
 
                             {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
-                            <div className="flex flex-wrap justify-between gap-2">
+                            <div className="sticky bottom-0 -mx-5 flex flex-wrap justify-between gap-2 border-t border-border/60 bg-background px-5 pb-1 pt-4">
                                 <Button type="button" variant="ghost" className="text-destructive" disabled={selected.id === DEFAULT_GENERATION_FOLDER_ID} onClick={() => setDeleteOpen(true)}><Trash2 className="mr-2 h-4 w-4" />{t('generationFolders.manager.delete', '폴더 정의 삭제')}</Button>
                                 <Button type="button" onClick={save}><Save className="mr-2 h-4 w-4" />{t('generationFolders.manager.save', '설정 저장')}</Button>
                             </div>

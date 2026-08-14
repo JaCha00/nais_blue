@@ -1,5 +1,5 @@
 import { Check, CloudUpload, FileJson, LockKeyhole, ShieldCheck } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 
@@ -18,6 +18,10 @@ import {
 } from '@/domain/workflow/bluehair-rights-policy'
 import { useDefaultR2Readiness } from '@/hooks/useDefaultR2Readiness'
 import { cn } from '@/lib/utils'
+import {
+    currentLocalRightsDate,
+    formatGuidedRightsDateInput,
+} from './guided-rights-date'
 
 const MODES: readonly SingleImageMetadataMode[] = [
     'embedded',
@@ -114,6 +118,7 @@ export function GuidedRightsStep({
     onChange(patch: Partial<SingleImageOutputSettings>): void
 }) {
     const { t } = useTranslation()
+    const dateId = useId()
     const owner = value.rightsOwner ?? DEFAULT_RIGHTS_OWNER
     const ownerInvalid = value.rightsXmpEnabled === true && !isRightsOwner(owner)
     const dateInvalid = value.rightsXmpEnabled === true
@@ -140,7 +145,7 @@ export function GuidedRightsStep({
             </label>
 
             {value.rightsXmpEnabled === true && (
-                <section className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-end">
+                <section className="grid gap-4 py-5 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-start">
                     <label className="grid gap-1.5 text-xs font-medium">
                         <span>{t('guided.metadata.rightsOwner', 'XMP 소유자명')}</span>
                         <input
@@ -153,17 +158,41 @@ export function GuidedRightsStep({
                             className="min-h-11 border-x-0 border-y border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-55"
                         />
                     </label>
-                    <label className="grid gap-1.5 text-xs font-medium">
-                        <span>{t('guided.metadata.rightsDate', '권리 효력 시작일')}</span>
+                    <div className="grid gap-1.5 text-xs font-medium">
+                        <span className="flex min-h-8 items-center justify-between gap-2">
+                            <label htmlFor={dateId}>{t('guided.metadata.rightsDate', '권리 효력 시작일')}</label>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 px-2 text-xs"
+                                disabled={disabled}
+                                onClick={() => onChange({ rightsEffectiveDate: currentLocalRightsDate() })}
+                            >
+                                {t('guided.metadata.rightsDateToday', '오늘 날짜 사용')}
+                            </Button>
+                        </span>
                         <input
-                            type="date"
+                            id={dateId}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="off"
+                            spellCheck={false}
+                            maxLength={10}
+                            placeholder="YYYYMMDD"
                             value={value.rightsEffectiveDate ?? ''}
                             disabled={disabled}
                             aria-invalid={dateInvalid}
-                            onChange={event => onChange({ rightsEffectiveDate: event.target.value || null })}
+                            onChange={event => {
+                                const formatted = formatGuidedRightsDateInput(event.target.value)
+                                onChange({ rightsEffectiveDate: formatted || null })
+                            }}
                             className="min-h-11 border-x-0 border-y border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-55"
                         />
-                    </label>
+                        <span className="font-normal text-muted-foreground">
+                            {t('guided.metadata.rightsDateFormat', '숫자 8자리 · 예: 20260814')}
+                        </span>
+                    </div>
                     <p className={cn(
                         'text-xs leading-5 sm:col-span-2',
                         ownerInvalid || dateInvalid ? 'text-destructive' : 'text-muted-foreground',

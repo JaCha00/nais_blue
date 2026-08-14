@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import {
     createRuntimeCapabilities,
+    detectRuntimePlatform,
     UnsupportedRuntimeCapabilityError,
 } from '@/platform/capabilities'
 
@@ -27,11 +28,31 @@ describe('RuntimeCapabilities', () => {
         expect(createRuntimeCapabilities('web').embeddedBrowser.supported).toBe(false)
     })
 
-    it('requires the runtime Tauri signal before trusting a native build target in a browser', async () => {
-        const source = await readFile(resolve(process.cwd(), 'src/platform/capabilities.ts'), 'utf8')
-
-        expect(source).toContain("Reflect.get(globalThis, 'isTauri') === true")
-        expect(source).toContain("if (typeof window !== 'undefined') return 'web'")
+    it('accepts the native WebView marker without trusting a browser preview build target', () => {
+        expect(detectRuntimePlatform({
+            configuredPlatform: 'windows',
+            hasWindow: true,
+            hasTauriRuntime: true,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        })).toBe('windows')
+        expect(detectRuntimePlatform({
+            configuredPlatform: 'windows',
+            hasWindow: true,
+            hasTauriRuntime: false,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        })).toBe('web')
+        expect(detectRuntimePlatform({
+            configuredPlatform: '',
+            hasWindow: true,
+            hasTauriRuntime: true,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        })).toBe('windows')
+        expect(detectRuntimePlatform({
+            configuredPlatform: 'android',
+            hasWindow: true,
+            hasTauriRuntime: false,
+            userAgent: 'Mozilla/5.0 (Linux; Android 16)',
+        })).toBe('web')
     })
 
     it('provides a reason and alternative for every unsupported Android capability', () => {

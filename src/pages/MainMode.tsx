@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -140,7 +140,6 @@ export default function MainMode() {
 
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
     const [metadataImage, setMetadataImage] = useState<string | undefined>(undefined)
-    const [isDragOver, setIsDragOver] = useState(false)
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     // Inpainting dialog state
     const [inpaintDialogOpen, setInpaintDialogOpen] = useState(false)
@@ -618,51 +617,6 @@ export default function MainMode() {
         setResolvedSheetOpen(true)
     }
 
-    // Drag counter to prevent flickering from child elements
-    const dragCounter = useRef(0)
-
-    // Drag & Drop for metadata loading
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        dragCounter.current = 0
-        setIsDragOver(false)
-
-        const file = e.dataTransfer.files[0]
-        if (file && file.type.startsWith('image/')) {
-            // Convert file to base64
-            const reader = new FileReader()
-            reader.onload = () => {
-                setMetadataImage(reader.result as string)
-                setMetadataDialogOpen(true)
-            }
-            reader.readAsDataURL(file)
-        }
-    }, [])
-
-    const handleDragEnter = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        dragCounter.current++
-        if (e.dataTransfer.types.includes('Files')) {
-            setIsDragOver(true)
-        }
-    }, [])
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-    }, [])
-
-    const handleDragLeave = useCallback((e: React.DragEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        dragCounter.current--
-        if (dragCounter.current === 0) {
-            setIsDragOver(false)
-        }
-    }, [])
-
     // Memory cleanup on unmount - release large Base64 data when leaving main mode
     // This prevents OOM when switching between modes (Issue #6)
     useEffect(() => {
@@ -833,30 +787,7 @@ export default function MainMode() {
     ) : null
 
     return (
-        <div
-            className="relative h-full min-h-0 w-full overflow-hidden bg-canvas"
-            onDrop={handleDrop}
-            onDragEnter={handleDragEnter}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-        >
-            {/* DESIGN.md Cobalt Instrument: drag feedback is a single semantic
-                layer so metadata import stays clear without glow or glass. */}
-            {isDragOver && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-scrim/70 p-4" role="status" aria-live="polite">
-                    <div className="w-full max-w-md rounded-panel border-2 border-primary bg-card p-6 text-center shadow-overlay sm:p-8">
-                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-panel bg-accent text-primary">
-                            <ImagePlus className="h-8 w-8" />
-                        </div>
-                        <p className="text-lg font-semibold text-foreground">
-                            {t('metadata.dropToLoad', '이미지를 드롭하여 메타데이터 불러오기')}
-                        </p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            {t('metadata.extractDesc', 'PNG 파일에서 프롬프트와 설정을 추출합니다')}
-                        </p>
-                    </div>
-                </div>
-            )}
+        <div className="relative h-full min-h-0 w-full overflow-hidden bg-canvas">
 
             <CompositionWorkspaceLayout
                 desktopRails={false}

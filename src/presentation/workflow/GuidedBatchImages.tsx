@@ -69,10 +69,14 @@ import {
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
 import { listGuidedBatchResultJobs } from './guided-batch-results'
 import {
+    GUIDED_GLOBAL_PROMPT_IMPORT_EVENT,
     GUIDED_QUEUE_ACTIVITY_REFRESH_EVENT,
     announceGuidedDraftChange,
+    type GuidedGlobalPromptImportDetail,
 } from './guided-draft-events'
 import { GuidedPromptFileImport } from './GuidedPromptFileImport'
+import { applyGuidedPromptImport } from './guided-prompt-import-application'
+import type { GuidedPromptImportValue } from './guided-prompt-import'
 import { GuidedResolutionDetails } from './GuidedResolutionDetails'
 import { GuidedCharacterPromptSheet } from './GuidedCharacterPromptSheet'
 import {
@@ -365,18 +369,42 @@ function ModuleReferencePicker({ order, disabled, onSelect }: {
     )
 }
 
-function PromptStep({ draft, positive, negative, characterPrompts, disabled, onPositive, onNegative, onCharacterPrompts, onOrder }: {
+function PromptStep({
+    draft,
+    positive,
+    negative,
+    characterPrompts,
+    incomingImport,
+    disabled,
+    onPositive,
+    onNegative,
+    onCharacterPrompts,
+    onOrder,
+    onIncomingImportHandled,
+}: {
     draft: BatchImageDraft
     positive: string
     negative: string
     characterPrompts: WorkflowCharacterPrompts
+    incomingImport: GuidedPromptImportValue | null
     disabled: boolean
     onPositive(value: string): void
     onNegative(value: string): void
     onCharacterPrompts(value: WorkflowCharacterPrompts): void
     onOrder(value: 'random' | 'sequential'): void
+    onIncomingImportHandled(): void
 }) {
     const { t } = useTranslation()
+    const applyImport = (mode: 'replace' | 'append', imported: Parameters<typeof applyGuidedPromptImport>[1]) => {
+        const next = applyGuidedPromptImport({ positive, negative, characterPrompts }, imported, {
+            mode,
+            createCharacterId: () => `guided-character-${crypto.randomUUID()}`,
+            characterName: index => t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
+        })
+        if (next.positive !== positive) onPositive(next.positive)
+        if (next.negative !== negative) onNegative(next.negative)
+        if (next.characterPrompts !== characterPrompts) onCharacterPrompts(next.characterPrompts)
+    }
     const appendReference = (path: string) => onPositive(appendPromptModuleLine(
         positive,
         `<${draft.payload.variationOrder === 'sequential' ? '*' : ''}${path}>`,
@@ -386,36 +414,10 @@ function PromptStep({ draft, positive, negative, characterPrompts, disabled, onP
             <GuidedPromptFileImport
                 positive={positive}
                 disabled={disabled}
-                onReplace={value => {
-                    if (value.positive) onPositive(value.positive)
-                    if (value.negative) onNegative(value.negative)
-                    if (value.characters?.length) onCharacterPrompts({
-                        positionEnabled: true,
-                        items: value.characters.map((character, index) => ({
-                            id: `guided-character-${crypto.randomUUID()}`,
-                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
-                            prompt: character.prompt,
-                            negative: character.negative,
-                            enabled: character.prompt.trim().length > 0,
-                            position: { ...character.position },
-                        })),
-                    })
-                }}
-                onAppend={value => {
-                    if (value.positive) onPositive(appendPromptModuleLine(positive, value.positive))
-                    if (value.negative) onNegative(appendPromptModuleLine(negative, value.negative))
-                    if (value.characters?.length) onCharacterPrompts({
-                        positionEnabled: true,
-                        items: [...characterPrompts.items, ...value.characters.map((character, index) => ({
-                            id: `guided-character-${crypto.randomUUID()}`,
-                            name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
-                            prompt: character.prompt,
-                            negative: character.negative,
-                            enabled: character.prompt.trim().length > 0,
-                            position: { ...character.position },
-                        }))],
-                    })
-                }}
+                incomingImport={incomingImport}
+                onIncomingImportHandled={onIncomingImportHandled}
+                onReplace={value => applyImport('replace', value)}
+                onAppend={value => applyImport('append', value)}
                 onModuleCreated={draft.payload.batchMode === 'variations' ? appendReference : undefined}
             />
             <section className="border-y border-border/70 py-5">
@@ -1162,6 +1164,7 @@ export function GuidedBatchImages() {
         positionEnabled: false,
         items: [],
     })
+    const [incomingImport, setIncomingImport] = useState<GuidedPromptImportValue | null>(null)
     const [scenes, setScenes] = useState<readonly BatchImageScene[]>([])
     const [consented, setConsented] = useState(false)
     const [submitting, setSubmitting] = useState(false)
@@ -1254,6 +1257,57 @@ export function GuidedBatchImages() {
             void saveEditable().catch(() => undefined)
         }, 400)
     }, [saveEditable])
+
+    useEffect(() => {
+        const handleGlobalImport = (event: Event) => {
+            if (!(event instanceof CustomEvent)) return
+            const detail = event.detail as GuidedGlobalPromptImportDetail
+            if (detail.kind !== 'batch' || detail.draftId !== draftId) return
+            event.preventDefault()
+
+            const current = draftRef.current
+            if (current === null) return
+            const returningFromResult = current.status === 'queued' || current.status === 'completed'
+
+            const editable = editableRef.current
+            if (editableTimerRef.current !== null) {
+                clearTimeout(editableTimerRef.current)
+                editableTimerRef.current = null
+            }
+
+            void commitMutation(latest => ({
+                ...(returningFromResult ? { status: 'review' as const, lastSnapshotId: null } : {}),
+                currentNodeId: 'prompt',
+                payload: {
+                    ...latest.payload,
+                    prompt: { positive: editable.positive, negative: editable.negative },
+                    scenes: editable.scenes,
+                    characterPrompts: editable.characterPrompts,
+                },
+            })).then(saved => {
+                if (returningFromResult) {
+                    setSummary(null)
+                    setResultJobs([])
+                    setResultLimit(48)
+                    setConsented(false)
+                }
+                setIncomingImport(detail.value)
+                navigate(`/guided-preview/batch/${saved.id}/prompt`)
+                toast({
+                    title: t('metadata.globalApplied', '프롬프트를 불러왔어요.'),
+                    description: t('metadata.globalGuided', '현재 초안을 유지한 채 프롬프트 단계로 돌아왔어요. 교체하거나 뒤에 추가할 내용을 골라 주세요.'),
+                    variant: 'success',
+                })
+            }).catch(() => {
+                toast({
+                    title: t('guided.batch.save.error', '저장을 확인해 주세요'),
+                    variant: 'destructive',
+                })
+            })
+        }
+        window.addEventListener(GUIDED_GLOBAL_PROMPT_IMPORT_EVENT, handleGlobalImport)
+        return () => window.removeEventListener(GUIDED_GLOBAL_PROMPT_IMPORT_EVENT, handleGlobalImport)
+    }, [commitMutation, draftId, navigate, t])
 
     useEffect(() => {
         let active = true
@@ -1524,7 +1578,35 @@ export function GuidedBatchImages() {
     return (
         <BatchStepFrame draft={draft} nodeId={nodeId} saveStatus={saveStatus} title={copy[0]} description={copy[1]} canVisit={canVisit} onVisit={target => void goTo(target)} onBack={back} footer={footer}>
             {nodeId === 'model' && <ModelStep draft={draft} disabled={locked} onSelect={model => { void patchPayload({ model }).catch(() => undefined) }} />}
-            {nodeId === 'prompt' && <PromptStep draft={draft} positive={positive} negative={negative} characterPrompts={characterPrompts} disabled={locked} onPositive={value => { editableRef.current = { ...editableRef.current, positive: value }; setPositive(value); scheduleEditableSave() }} onNegative={value => { editableRef.current = { ...editableRef.current, negative: value }; setNegative(value); scheduleEditableSave() }} onCharacterPrompts={value => { editableRef.current = { ...editableRef.current, characterPrompts: value }; setCharacterPrompts(value); scheduleEditableSave() }} onOrder={variationOrder => { void patchPayload({ variationOrder }).catch(() => undefined) }} />}
+            {nodeId === 'prompt' && (
+                <PromptStep
+                    draft={draft}
+                    positive={positive}
+                    negative={negative}
+                    characterPrompts={characterPrompts}
+                    incomingImport={incomingImport}
+                    disabled={locked}
+                    onIncomingImportHandled={() => setIncomingImport(null)}
+                    onPositive={value => {
+                        editableRef.current = { ...editableRef.current, positive: value }
+                        setPositive(value)
+                        scheduleEditableSave()
+                    }}
+                    onNegative={value => {
+                        editableRef.current = { ...editableRef.current, negative: value }
+                        setNegative(value)
+                        scheduleEditableSave()
+                    }}
+                    onCharacterPrompts={value => {
+                        editableRef.current = { ...editableRef.current, characterPrompts: value }
+                        setCharacterPrompts(value)
+                        scheduleEditableSave()
+                    }}
+                    onOrder={variationOrder => {
+                        void patchPayload({ variationOrder }).catch(() => undefined)
+                    }}
+                />
+            )}
             {nodeId === 'count' && <CountStep count={draft.payload.count} disabled={locked} onChange={count => { void patchPayload({ count }).catch(() => undefined) }} />}
             {nodeId === 'scenes' && <ScenesStep scenes={scenes} disabled={locked} onChange={value => { editableRef.current = { ...editableRef.current, scenes: value }; setScenes(value); scheduleEditableSave() }} />}
             {nodeId === 'resolution' && (
