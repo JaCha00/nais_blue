@@ -9,6 +9,10 @@ export interface LibraryItem {
     width: number
     height: number
     createdAt: number
+    generationFolderId?: string | null
+    format?: 'png' | 'webp'
+    sidecarPath?: string | null
+    r2Status?: 'not-requested' | 'uploaded' | 'pending-or-failed'
     // Stack support
     isStack?: boolean
     stackItems?: LibraryItem[]  // Items inside this stack (only if isStack=true)
@@ -38,6 +42,7 @@ interface LibraryState {
     toggleItemSelection: (itemId: string, clearOthers?: boolean) => void
     selectItemRange: (fromId: string, toId: string) => void
     selectAllItems: () => void
+    selectItems: (ids: readonly string[]) => void
     clearSelection: () => void
     deleteSelectedItems: () => void
     setLastSelectedItemId: (id: string | null) => void
@@ -90,9 +95,16 @@ export const useLibraryStore = create<LibraryState>()(
             setItems: (items) => set({ items }),
 
             updateItem: (id, updates) => set((state) => ({
-                items: state.items.map((item) =>
-                    item.id === id ? { ...item, ...updates } : item
-                )
+                items: state.items.map(item => {
+                    if (item.id === id) return { ...item, ...updates }
+                    if (!item.stackItems) return item
+                    return {
+                        ...item,
+                        stackItems: item.stackItems.map(stackItem => stackItem.id === id
+                            ? { ...stackItem, ...updates }
+                            : stackItem),
+                    }
+                }),
             })),
 
             setDraggedSource: (source) => set({ draggedSource: source }),
@@ -148,6 +160,8 @@ export const useLibraryStore = create<LibraryState>()(
                     : items.filter(i => !i.isStack) // Exclude stacks from selection
                 set({ selectedItemIds: viewItems.map(i => i.id) })
             },
+
+            selectItems: ids => set({ selectedItemIds: [...new Set(ids)], lastSelectedItemId: ids[ids.length - 1] ?? null }),
 
             clearSelection: () => set({ selectedItemIds: [], lastSelectedItemId: null }),
 

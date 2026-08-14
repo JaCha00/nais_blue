@@ -710,6 +710,23 @@ describe('OutputWriter fault containment', () => {
         expectNoTransactionArtifacts(adapter)
     })
 
+    it('commits a pre-encoded metadata preservation sidecar next to a non-generation image', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const metadataSidecar = new TextEncoder().encode('{"format":"nai-blue-library-image-release"}')
+
+        const outcome = await writer(adapter).write(request({ metadataSidecarBytes: metadataSidecar }))
+
+        expect(outcome).toMatchObject({
+            status: 'committed',
+            result: {
+                fileName: 'result.png',
+                sidecarPath: '/app-data/output/result.nai-blue.json',
+            },
+        })
+        expect(bytesEqual(adapter.file('output/result.nai-blue.json'), metadataSidecar)).toBe(true)
+        expectNoTransactionArtifacts(adapter)
+    })
+
     it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         const existing = new Uint8Array([7, 7, 7])

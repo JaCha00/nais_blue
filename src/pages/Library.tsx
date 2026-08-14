@@ -27,20 +27,23 @@ import {
     createNativeDirectory,
     nativePathExists,
     readNativeBinaryFile,
-    writeNativeBinaryFile,
 } from '@/platform/native-file-system'
-import { joinNativePath } from '@/platform/native-path'
 import { toast } from '@/components/ui/use-toast'
-import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload } from 'lucide-react'
+import { ImagePlus, X, Grid3x3, Edit3, Trash2, Layers, ArrowLeft, CheckSquare, FolderOpen, Upload, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settings-store'
 import {
-    getMediaStorageRoot,
     MEDIA_STORAGE_BASE_DIRECTORY,
     shouldUseAbsoluteMediaPath,
 } from '@/platform/storage'
+import {
+    LibraryImageWorkflowDialog,
+    type LibraryImageWorkflowOptions,
+} from '@/components/library/LibraryImageWorkflowDialog'
+import { runLibraryImageWorkflow } from '@/services/library/library-image-workflow'
+import { imageDataUrlFromBytes } from '@/lib/image-data-url'
 
 const dropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
@@ -64,7 +67,7 @@ import { runtimeCapabilities } from '@/platform/capabilities'
  * Browser preview depends on FileReader and the IndexedDB-backed Library store.
  * A data URL keeps imported images usable after reload without invoking native fs.
  */
-async function createBrowserLibraryItem(file: File): Promise<LibraryItem> {
+async function createBrowserLibraryItem(file: File, generationFolderId?: string): Promise<LibraryItem> {
     const path = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = () => typeof reader.result === 'string'
@@ -81,7 +84,28 @@ async function createBrowserLibraryItem(file: File): Promise<LibraryItem> {
         width: 0,
         height: 0,
         createdAt: Date.now(),
+        generationFolderId,
     }
+}
+
+interface PendingLibrarySource {
+    readonly name: string
+    readonly file?: File
+    readonly item?: LibraryItem
+}
+
+function generationFolderLabel(folders: ReturnType<typeof useSettingsStore.getState>['generationFolders'], folderId: string | null | undefined): string | null {
+    if (!folderId) return null
+    const byId = new Map(folders.map(folder => [folder.id, folder]))
+    const names: string[] = []
+    const visited = new Set<string>()
+    let current = byId.get(folderId)
+    while (current && !visited.has(current.id)) {
+        visited.add(current.id)
+        names.unshift(current.name)
+        current = current.parentId ? byId.get(current.parentId) : undefined
+    }
+    return names.join(' / ') || null
 }
 
 export default function Library({ onOpenTools }: { onOpenTools?: () => void } = {}) {
@@ -99,8 +123,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
         selectedItemIds,
         toggleItemSelection,
         selectItemRange,
-        selectAllItems,
-        clearSelection: _clearSelection,
+        selectItems,
         deleteSelectedItems,
         lastSelectedItemId,
         // Stack
@@ -110,14 +133,22 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
         unstack
     } = useLibraryStore()
     const addToTrash = useTrashStore(state => state.add)
-    const { libraryPath, useAbsoluteLibraryPath } = useSettingsStore()
+    const { libraryPath, useAbsoluteLibraryPath, generationFolders } = useSettingsStore()
     const [activeId, setActiveId] = useState<string | null>(null)
     const [isDraggingFile, setIsDraggingFile] = useState(false)
+    const [folderFilter, setFolderFilter] = useState('')
+    const [workflowSources, setWorkflowSources] = useState<PendingLibrarySource[]>([])
+    const [workflowOpen, setWorkflowOpen] = useState(false)
+    const [busyProgress, setBusyProgress] = useState<{ current: number; total: number } | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Get current view items (main library or inside a stack)
     const currentStack = currentStackId ? items.find(item => item.id === currentStackId) : null
-    const viewItems = currentStack?.stackItems || items.filter(() => !currentStackId)
+    const unfilteredViewItems = currentStack?.stackItems || items.filter(() => !currentStackId)
+    const viewItems = currentStackId || !folderFilter
+        ? unfilteredViewItems
+        : unfilteredViewItems.filter(item => item.generationFolderId === folderFilter
+            || item.stackItems?.some(stackItem => stackItem.generationFolderId === folderFilter))
 
     // Dialog States
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
@@ -237,120 +268,31 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
         setActiveId(null)
     }
 
-    // Handle File Drop from OS
-    const onFileDrop = useCallback(async (e: React.DragEvent) => {
+    const stageFiles = useCallback((files: readonly File[], preferredName?: string) => {
+        const supported = files.filter(file => file.type === 'image/png'
+            || file.type === 'image/webp'
+            || file.type === 'image/jpeg'
+            || /\.(png|webp|jpe?g)$/iu.test(file.name))
+        if (supported.length === 0) {
+            toast({ title: t('library.unsupportedFormat', 'PNG, WebP 또는 JPEG 이미지를 선택해 주세요.'), variant: 'destructive' })
+            return
+        }
+        setWorkflowSources(supported.map((file, index) => ({
+            file,
+            name: preferredName && supported.length === 1 && index === 0 ? preferredName : file.name,
+        })))
+        setWorkflowOpen(true)
+    }, [t])
+
+    const onFileDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault()
         e.stopPropagation()
         setIsDraggingFile(false)
-
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            const files = Array.from(e.dataTransfer.files)
-            const imageFiles = files.filter(f => f.type.startsWith('image/'))
-
-            if (imageFiles.length === 0) return
-
-            try {
-                if (!runtimeCapabilities.nativePluginRuntime.supported) {
-                    const browserItems = await Promise.all(imageFiles.map(createBrowserLibraryItem))
-                    browserItems.forEach(addItem)
-                    toast({
-                        title: t('library.added', '이미지 추가됨'),
-                        description: t('library.addedDesc', { count: browserItems.length }),
-                        variant: 'success',
-                    })
-                    return
-                }
-                const mediaStorageRoot = await getMediaStorageRoot()
-                const relPath = libraryPath || 'NAI_Blue_Library'
-                const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
-                    ? libraryPath
-                    : await joinNativePath(mediaStorageRoot, relPath)
-
-                // Ensure dir exists
-                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                    if (!(await nativePathExists(libraryPath))) {
-                        await createNativeDirectory(libraryPath, { recursive: true })
-                    }
-                } else {
-                    if (!(await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
-                        await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                    }
-                }
-
-                let addedCount = 0
-
-                // Check for custom app metadata
-                const customFilename = e.dataTransfer.getData('nai-blue/filename')
-
-                for (const file of imageFiles) {
-                    const buffer = await file.arrayBuffer()
-                    const uint8Array = new Uint8Array(buffer)
-                    const ext = file.name.split('.').pop() || 'png'
-                    const uuid = crypto.randomUUID()
-                    const shortUuid = uuid.split('-')[0] // First 8 chars for shorter names
-
-                    // Determine filename - add UUID suffix to prevent collisions
-                    let baseName = file.name.replace(/\.[^.]+$/, '') // Remove extension
-                    if (customFilename && imageFiles.length === 1) {
-                        baseName = customFilename.replace(/\.[^.]+$/, '')
-                    }
-
-                    // Create unique filename: originalName_xxxxxxxx.ext
-                    const fileName = `${baseName}_${shortUuid}.${ext}`
-
-                    const newPath = await joinNativePath(libraryDir, fileName)
-
-                    // Write
-                    if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                        await writeNativeBinaryFile(newPath, uint8Array)
-                    } else {
-                        const relPath = libraryPath || 'NAI_Blue_Library'
-                        await writeNativeBinaryFile(`${relPath}/${fileName}`, uint8Array, {
-                            baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
-                        })
-                    }
-
-                    const newItem: LibraryItem = {
-                        id: uuid,
-                        name: fileName.replace(`.${ext}`, ''), // Display Name matched
-                        path: newPath,
-                        width: 0,
-                        height: 0,
-                        createdAt: Date.now()
-                    }
-
-                    addItem(newItem)
-                    addedCount++
-                }
-
-                if (addedCount > 0) {
-                    toast({
-                        title: t('library.added', '이미지 추가됨'),
-                        description: t('library.addedDesc', { count: addedCount }),
-                        variant: 'success'
-                    })
-                }
-            } catch (error) {
-                console.error('File import failed:', error)
-                toast({
-                    title: t('library.error', '가져오기 실패'),
-                    variant: 'destructive'
-                })
-            }
-        }
-    }, [addItem, libraryPath, t, useAbsoluteLibraryPath])
+        const files = Array.from(e.dataTransfer.files ?? [])
+        if (files.length > 0) stageFiles(files, e.dataTransfer.getData('nai-blue/filename'))
+    }, [stageFiles])
 
     const activeItem = activeId ? items.find(i => i.id === activeId) : null
-
-    // Helper
-    const arrayBufferToBase64 = (buffer: Uint8Array): string => {
-        let binary = ''
-        const len = buffer.byteLength
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(buffer[i])
-        }
-        return btoa(binary)
-    }
 
     // Handlers
     const handleRenameClick = (item: LibraryItem) => {
@@ -379,8 +321,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 return
             }
             const data = await readNativeBinaryFile(item.path)
-            const base64 = arrayBufferToBase64(data)
-            setSelectedImageRef(`data:image/png;base64,${base64}`)
+            setSelectedImageRef(imageDataUrlFromBytes(data, item.path))
             setImageRefDialogOpen(true)
         } catch (e) {
             console.error('Failed to load for ref:', e)
@@ -396,8 +337,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 return
             }
             const data = await readNativeBinaryFile(item.path)
-            const base64 = arrayBufferToBase64(data)
-            setSelectedImageForMetadata(`data:image/png;base64,${base64}`)
+            setSelectedImageForMetadata(imageDataUrlFromBytes(data, item.path))
             setMetadataDialogOpen(true)
         } catch (e) {
             console.error('Failed to load metadata:', e)
@@ -429,91 +369,107 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
         }
     }
 
-    // File import handler
     const handleImportClick = () => {
         fileInputRef.current?.click()
     }
 
-    const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files
-        if (!files || files.length === 0) return
+    const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.length) stageFiles(Array.from(e.target.files))
+        e.target.value = ''
+    }
 
-        const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
-        if (imageFiles.length === 0) return
+    const openWorkflowForItems = (selected: readonly LibraryItem[]) => {
+        const editable = selected.filter(item => !item.isStack)
+        if (editable.length === 0) return
+        setWorkflowSources(editable.map(item => ({ item, name: item.name })))
+        setWorkflowOpen(true)
+    }
 
+    const readWorkflowSource = async (source: PendingLibrarySource): Promise<Uint8Array> => {
+        if (source.file) return new Uint8Array(await source.file.arrayBuffer())
+        if (!source.item) throw new Error('이미지 원본을 찾지 못했습니다.')
+        if (source.item.path.startsWith('data:')) {
+            return new Uint8Array(await (await fetch(source.item.path)).arrayBuffer())
+        }
+        return readNativeBinaryFile(source.item.path)
+    }
+
+    const runImageWorkflow = async (options: LibraryImageWorkflowOptions) => {
+        if (workflowSources.length === 0) return
+        setBusyProgress({ current: 0, total: workflowSources.length })
+        let completed = 0
+        let r2Warnings = 0
         try {
             if (!runtimeCapabilities.nativePluginRuntime.supported) {
-                const browserItems = await Promise.all(imageFiles.map(createBrowserLibraryItem))
-                browserItems.forEach(addItem)
-                toast({
-                    title: t('library.added', '이미지 추가됨'),
-                    description: t('library.addedDesc', { count: browserItems.length }),
-                    variant: 'success',
-                })
-                e.target.value = ''
-                return
-            }
-            const mediaStorageRoot = await getMediaStorageRoot()
-            const relPath = libraryPath || 'NAI_Blue_Library'
-            const libraryDir = shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath
-                ? libraryPath
-                : await joinNativePath(mediaStorageRoot, relPath)
-
-            // Ensure dir exists
-            if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                if (!(await nativePathExists(libraryPath))) {
-                    await createNativeDirectory(libraryPath, { recursive: true })
+                for (const source of workflowSources) {
+                    if (source.file) {
+                        addItem(await createBrowserLibraryItem(source.file, options.folder.id))
+                    } else if (source.item) {
+                        addItem({
+                            ...source.item,
+                            id: crypto.randomUUID(),
+                            name: `${source.item.name} copy`,
+                            createdAt: Date.now(),
+                            generationFolderId: options.folder.id,
+                        })
+                    }
+                    completed += 1
+                    setBusyProgress({ current: completed, total: workflowSources.length })
                 }
             } else {
-                if (!(await nativePathExists(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY }))) {
-                    await createNativeDirectory(relPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                }
-            }
-
-            let addedCount = 0
-            for (const file of imageFiles) {
-                const buffer = await file.arrayBuffer()
-                const uint8Array = new Uint8Array(buffer)
-                const ext = file.name.split('.').pop() || 'png'
-                const uuid = crypto.randomUUID()
-                const shortUuid = uuid.split('-')[0]
-                const baseName = file.name.replace(/\.[^.]+$/, '')
-                const fileName = `${baseName}_${shortUuid}.${ext}`
-                const newPath = await joinNativePath(libraryDir, fileName)
-
-                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
-                    await writeNativeBinaryFile(newPath, uint8Array)
-                } else {
-                    await writeNativeBinaryFile(`${relPath}/${fileName}`, uint8Array, {
-                        baseDir: MEDIA_STORAGE_BASE_DIRECTORY,
+                for (const source of workflowSources) {
+                    const result = await runLibraryImageWorkflow({
+                        source: { name: source.name, bytes: await readWorkflowSource(source) },
+                        destination: options.folder,
+                        format: options.format,
+                        stripMetadata: options.stripMetadata,
+                        autoUpload: options.autoUpload,
                     })
+                    const r2Status: LibraryItem['r2Status'] = !options.autoUpload
+                        ? 'not-requested'
+                        : result.r2?.status === 'uploaded'
+                            ? 'uploaded'
+                            : 'pending-or-failed'
+                    if (r2Status === 'pending-or-failed') r2Warnings += 1
+                    addItem({
+                        id: result.operationId,
+                        name: result.output.fileName.replace(/\.[^.]+$/u, ''),
+                        path: result.output.path,
+                        width: result.width,
+                        height: result.height,
+                        createdAt: Date.now(),
+                        generationFolderId: options.folder.id,
+                        format: result.format,
+                        sidecarPath: result.sidecarPath,
+                        r2Status,
+                    })
+                    completed += 1
+                    setBusyProgress({ current: completed, total: workflowSources.length })
                 }
-
-                const newItem: LibraryItem = {
-                    id: uuid,
-                    name: fileName.replace(`.${ext}`, ''),
-                    path: newPath,
-                    width: 0,
-                    height: 0,
-                    createdAt: Date.now()
-                }
-                addItem(newItem)
-                addedCount++
             }
-
-            if (addedCount > 0) {
-                toast({
-                    title: t('library.added', '이미지 추가됨'),
-                    description: t('library.addedDesc', { count: addedCount }),
-                    variant: 'success'
-                })
-            }
+            setWorkflowOpen(false)
+            setWorkflowSources([])
+            setEditMode(false)
+            toast({
+                title: t('library.workflow.completed', '{{count}}개 새 파일을 만들었습니다.', { count: completed }),
+                description: r2Warnings > 0
+                    ? t('library.workflow.r2Warning', '로컬 저장은 완료됐지만 {{count}}개 R2 업로드를 확인해야 합니다.', { count: r2Warnings })
+                    : undefined,
+                variant: r2Warnings > 0 ? 'default' : 'success',
+            })
         } catch (error) {
-            console.error('File import failed:', error)
-            toast({ title: t('library.error', '가져오기 실패'), variant: 'destructive' })
+            console.error('Library image workflow failed:', error)
+            if (completed > 0) setWorkflowSources(current => current.slice(completed))
+            toast({
+                title: t('library.workflow.failed', '이미지 처리를 완료하지 못했습니다.'),
+                description: completed > 0
+                    ? t('library.workflow.partialFailure', '{{count}}개는 완료했습니다. 남은 이미지부터 다시 시도할 수 있습니다.', { count: completed })
+                    : error instanceof Error ? error.message : undefined,
+                variant: 'destructive',
+            })
+        } finally {
+            setBusyProgress(null)
         }
-
-        e.target.value = ''
     }
 
     return (
@@ -547,17 +503,25 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                                 {selectedItemIds.length} {t('library.selected', '개 선택')}
                             </span>
                         </div>
-                        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+                        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
                             <Button
                                 variant="ghost"
                                 size="sm"
                                 className="h-11 min-w-0 flex-1 px-2 hover:bg-accent sm:flex-none sm:px-3 lg:h-9"
-                                onClick={selectAllItems}
+                                onClick={() => selectItems(viewItems.filter(item => !item.isStack).map(item => item.id))}
                             >
                                 <CheckSquare className="mr-1.5 h-4 w-4 shrink-0" />
                                 <span className="min-w-0 truncate">{t('scene.selectAll', '전체 선택')}</span>
                             </Button>
-                            <div className="hidden h-5 w-px bg-border sm:block" />
+                            <Button
+                                size="sm"
+                                className="h-11 min-w-0 flex-[1.4] px-3 sm:flex-none lg:h-9"
+                                onClick={() => openWorkflowForItems(viewItems.filter(item => selectedItemIds.includes(item.id)))}
+                                disabled={selectedItemIds.length === 0}
+                            >
+                                <Wand2 className="mr-1.5 h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate">{t('library.workflow.menu', '정리 · 변환')}</span>
+                            </Button>
                             {!currentStackId && (
                                 <Tip content={t('library.createStackDesc', '선택한 이미지를 하나의 스택으로 묶음')}>
                                     <Button
@@ -603,7 +567,20 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                                     <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={currentStack?.name}>{currentStack?.name}</h2>
                                 </>
                             ) : (
-                                <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t('library.title', '라이브러리')}</h2>
+                                <>
+                                    <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">{t('library.title', '라이브러리')}</h2>
+                                    <select
+                                        value={folderFilter}
+                                        onChange={event => setFolderFilter(event.target.value)}
+                                        className="min-h-10 max-w-44 border-x-0 border-y border-input bg-background px-2 text-xs text-muted-foreground"
+                                        aria-label={t('library.folderFilter', '폴더로 필터')}
+                                    >
+                                        <option value="">{t('library.allFolders', '모든 폴더')}</option>
+                                        {generationFolders.map(folder => (
+                                            <option key={folder.id} value={folder.id}>{generationFolderLabel(generationFolders, folder.id)}</option>
+                                        ))}
+                                    </select>
+                                </>
                             )}
                         </div>
                         <div className="ml-auto flex min-w-0 items-center justify-end gap-2">
@@ -611,23 +588,20 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                             <input
                                 ref={fileInputRef}
                                 type="file"
-                                accept="image/*"
+                                accept=".png,.webp,.jpg,.jpeg,image/png,image/webp,image/jpeg"
                                 multiple
                                 className="hidden"
                                 onChange={handleFileInputChange}
                             />
-                            {/* Import Image Button */}
-                            <Tip content={t('library.import', '이미지 불러오기')}>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-11 w-11 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground lg:h-9 lg:w-9"
-                                    onClick={handleImportClick}
-                                    aria-label={t('library.import', '이미지 불러오기')}
-                                >
-                                    <Upload className="h-4 w-4" />
-                                </Button>
-                            </Tip>
+                            <Button
+                                size="sm"
+                                className="h-11 shrink-0 px-3 lg:h-9"
+                                onClick={handleImportClick}
+                            >
+                                <Upload className="mr-1.5 h-4 w-4" />
+                                <span className="hidden sm:inline">{t('library.import', '이미지 가져오기')}</span>
+                                <span className="sm:hidden">{t('library.importShort', '가져오기')}</span>
+                            </Button>
                             <Tip content={t('library.editModeDesc', '여러 이미지를 선택하여 일괄 편집')}>
                                 <Button
                                     variant="ghost"
@@ -709,7 +683,9 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                                     onRename={handleRenameClick}
                                     onAddRef={handleAddRefClick}
                                     onLoadMetadata={handleLoadMetadata}
+                                    onEditImage={item => openWorkflowForItems([item])}
                                     onOpenTools={onOpenTools}
+                                    folderLabel={generationFolderLabel(generationFolders, item.generationFolderId) ?? undefined}
                                     onImageClick={(imgUrl) => {
                                         if (isEditMode && !item.isStack) {
                                             // Edit mode: toggle selection (stacks cannot be selected)
@@ -748,16 +724,19 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 </DndContext>
 
                 {viewItems.length === 0 && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-40">
-                        <div className="w-24 h-24 rounded-full bg-muted/30 flex items-center justify-center mb-6 animate-pulse">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
+                        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-muted/45">
                             <ImagePlus className="h-10 w-10 text-muted-foreground" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2 text-foreground/80">
-                            {t('library.emptyTitle', '라이브러리가 비어있습니다')}
+                        <h3 className="mb-2 text-xl font-semibold text-foreground/80">
+                            {folderFilter ? t('library.emptyFolderTitle', '이 폴더에는 아직 이미지가 없습니다') : t('library.emptyTitle', '라이브러리가 비어있습니다')}
                         </h3>
                         <p className="max-w-sm px-4 text-center text-sm leading-relaxed text-muted-foreground [text-wrap:balance]">
-                            {t('library.emptyDesc', '이미지를 불러오거나 생성해 나만의 컬렉션을 만들어보세요.')}
+                            {t('library.emptyDesc', '이미지를 가져오면 저장 폴더, 형식과 R2 업로드를 순서대로 안내합니다.')}
                         </p>
+                        <Button className="mt-5 pointer-events-auto" onClick={handleImportClick}>
+                            <Upload className="mr-2 h-4 w-4" />{t('library.import', '이미지 가져오기')}
+                        </Button>
                     </div>
                 )}
             </div>
@@ -782,7 +761,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                                         {t('library.drop', '여기에 놓아서 추가')}
                                     </p>
                                     <p className="text-sm text-muted-foreground mt-2">
-                                        {t('library.dropHint', '이미지를 드래그하여 추가하세요')}
+                                        {t('library.dropHint', '놓으면 저장 폴더와 편집 방법을 차례로 안내합니다.')}
                                     </p>
                                 </div>
                             </div>
@@ -823,6 +802,17 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 cancelText={t('common.cancel', '취소')}
                 variant="destructive"
                 onConfirm={handleTrashSelectedItems}
+            />
+
+            <LibraryImageWorkflowDialog
+                open={workflowOpen}
+                sourceNames={workflowSources.map(source => source.name)}
+                busyProgress={busyProgress}
+                onOpenChange={open => {
+                    setWorkflowOpen(open)
+                    if (!open) setWorkflowSources([])
+                }}
+                onConfirm={runImageWorkflow}
             />
 
             {/* Full-Screen Image Viewer Overlay */}

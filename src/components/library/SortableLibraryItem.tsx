@@ -8,7 +8,9 @@ interface SortableLibraryItemProps {
     onRename: (item: LibraryItemType) => void
     onAddRef: (item: LibraryItemType) => void
     onLoadMetadata: (item: LibraryItemType) => void
+    onEditImage: (item: LibraryItemType) => void
     onOpenTools?: () => void
+    folderLabel?: string
     onImageClick?: (imageUrl: string) => void
     isEditMode?: boolean
     isSelected?: boolean
@@ -16,7 +18,7 @@ interface SortableLibraryItemProps {
     disabled?: boolean
 }
 
-export function SortableLibraryItem({ item, onRename, onAddRef, onLoadMetadata, onOpenTools, onImageClick, isEditMode, isSelected, onSelectionClick, disabled }: SortableLibraryItemProps) {
+export function SortableLibraryItem({ item, onRename, onAddRef, onLoadMetadata, onEditImage, onOpenTools, folderLabel, onImageClick, isEditMode, isSelected, onSelectionClick, disabled }: SortableLibraryItemProps) {
     const {
         attributes,
         listeners,
@@ -39,7 +41,9 @@ export function SortableLibraryItem({ item, onRename, onAddRef, onLoadMetadata, 
                 onRename={onRename} 
                 onAddRef={onAddRef} 
                 onLoadMetadata={onLoadMetadata} 
+                onEditImage={onEditImage}
                 onOpenTools={onOpenTools}
+                folderLabel={folderLabel}
                 onImageClick={onImageClick}
                 isEditMode={isEditMode}
                 isSelected={isSelected}

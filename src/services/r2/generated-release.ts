@@ -17,6 +17,14 @@ export type GeneratedR2ReleaseResult =
     | { readonly status: 'unavailable'; readonly reason: 'runtime' | 'profile' | 'credential' | 'output' }
     | { readonly status: 'pending-or-failed'; readonly failed: number; readonly pending: number }
 
+export interface LocalImageR2ReleaseArtifact {
+    readonly localPath: string
+    readonly fileName: string
+    readonly contentSha256: string
+    readonly contentType: string
+    readonly size: number
+}
+
 function remoteKey(prefix: string, fileName: string): string {
     const safeName = fileName.replace(/\\/g, '/').split('/').pop()?.trim() ?? ''
     if (!safeName || safeName === '.' || safeName === '..') throw new Error('Generated R2 release filename is invalid')
@@ -62,15 +70,12 @@ export function deriveGeneratedReleaseProfile(
     }
 }
 
-/**
- * Uploads only the exact verified output set. Public profiles never receive the
- * prompt-bearing sidecar; private profiles require and upload the pair.
- */
-export async function releaseGeneratedOutputToR2(input: {
+/** Uploads one verified local image and, for private profiles, its audit sidecar. */
+export async function releaseLocalImageToR2(input: {
     readonly profileId: string
-    readonly sourceJobId: string
-    readonly imageFormat: 'png' | 'webp'
-    readonly output: OutputWriteResult
+    readonly sourceId: string
+    readonly image: LocalImageR2ReleaseArtifact
+    readonly sidecar?: LocalImageR2ReleaseArtifact
     readonly bucket?: string | null
     readonly prefix?: string | null
 }): Promise<GeneratedR2ReleaseResult> {
@@ -97,28 +102,26 @@ export async function releaseGeneratedOutputToR2(input: {
     }
     const credential = await nativeR2CredentialStatus(profile.credentialRef).catch(() => null)
     if (!credential?.available) return { status: 'unavailable', reason: 'credential' }
+    if (profile.publicMode === 'private' && input.sidecar === undefined) {
+        return { status: 'unavailable', reason: 'output' }
+    }
 
-    const finalImage = input.output.finalImage
-    if (!finalImage) return { status: 'unavailable', reason: 'output' }
     const artifacts: NativeR2ScannedArtifact[] = [{
-        artifactId: `${input.sourceJobId}:release-image`,
-        localVariant: input.output.file.displayPath,
-        remoteKey: remoteKey(profile.prefix, input.output.fileName),
-        contentSha256: finalImage.contentChecksum,
-        contentType: `image/${input.imageFormat}`,
-        size: finalImage.byteSize,
+        artifactId: `${input.sourceId}:release-image`,
+        localVariant: input.image.localPath,
+        remoteKey: remoteKey(profile.prefix, input.image.fileName),
+        contentSha256: input.image.contentSha256,
+        contentType: input.image.contentType,
+        size: input.image.size,
     }]
-
-    if (profile.publicMode === 'private') {
-        if (!input.output.sidecarFile) return { status: 'unavailable', reason: 'output' }
-        const sidecarBytes = await createRuntimeOutputPlatformAdapter().readFile(input.output.sidecarFile)
+    if (profile.publicMode === 'private' && input.sidecar !== undefined) {
         artifacts.push({
-            artifactId: `${input.sourceJobId}:release-sidecar`,
-            localVariant: input.output.sidecarFile.displayPath,
-            remoteKey: remoteKey(profile.prefix, input.output.sidecarFile.displayPath),
-            contentSha256: await sha256Bytes(sidecarBytes),
-            contentType: 'application/json',
-            size: sidecarBytes.byteLength,
+            artifactId: `${input.sourceId}:release-sidecar`,
+            localVariant: input.sidecar.localPath,
+            remoteKey: remoteKey(profile.prefix, input.sidecar.fileName),
+            contentSha256: input.sidecar.contentSha256,
+            contentType: input.sidecar.contentType,
+            size: input.sidecar.size,
         })
     }
 
@@ -135,6 +138,47 @@ export async function releaseGeneratedOutputToR2(input: {
         artifactCount: artifacts.length,
         sidecarUploaded: profile.publicMode === 'private',
     }
+}
+
+/**
+ * Uploads only the exact verified output set. Public profiles never receive the
+ * prompt-bearing sidecar; private profiles require and upload the pair.
+ */
+export async function releaseGeneratedOutputToR2(input: {
+    readonly profileId: string
+    readonly sourceJobId: string
+    readonly imageFormat: 'png' | 'webp'
+    readonly output: OutputWriteResult
+    readonly bucket?: string | null
+    readonly prefix?: string | null
+}): Promise<GeneratedR2ReleaseResult> {
+    const finalImage = input.output.finalImage
+    if (!finalImage) return { status: 'unavailable', reason: 'output' }
+    let sidecar: LocalImageR2ReleaseArtifact | undefined
+    if (input.output.sidecarFile) {
+        const sidecarBytes = await createRuntimeOutputPlatformAdapter().readFile(input.output.sidecarFile)
+        sidecar = {
+            localPath: input.output.sidecarFile.displayPath,
+            fileName: input.output.sidecarFile.displayPath,
+            contentSha256: await sha256Bytes(sidecarBytes),
+            contentType: 'application/json',
+            size: sidecarBytes.byteLength,
+        }
+    }
+    return releaseLocalImageToR2({
+        profileId: input.profileId,
+        sourceId: input.sourceJobId,
+        image: {
+            localPath: input.output.file.displayPath,
+            fileName: input.output.fileName,
+            contentSha256: finalImage.contentChecksum,
+            contentType: `image/${input.imageFormat}`,
+            size: finalImage.byteSize,
+        },
+        ...(sidecar === undefined ? {} : { sidecar }),
+        bucket: input.bucket,
+        prefix: input.prefix,
+    })
 }
 
 /** Removes only the transaction-owned private original, never the published image. */

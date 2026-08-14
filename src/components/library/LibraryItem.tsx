@@ -4,7 +4,7 @@ import { LibraryItem as LibraryItemType } from '@/stores/library-store'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import { LibraryContextMenu } from './LibraryContextMenu'
 import { cn } from '@/lib/utils'
-import { Check, Square, Layers } from 'lucide-react'
+import { Check, Cloud, Square, Layers } from 'lucide-react'
 
 interface LibraryItemProps {
     item: LibraryItemType
@@ -13,21 +13,23 @@ interface LibraryItemProps {
     onRename?: (item: LibraryItemType) => void
     onAddRef?: (item: LibraryItemType) => void
     onLoadMetadata?: (item: LibraryItemType) => void
+    onEditImage?: (item: LibraryItemType) => void
     onOpenTools?: () => void
+    folderLabel?: string
     onImageClick?: (imageUrl: string) => void
     isEditMode?: boolean
     isSelected?: boolean
     onSelectionClick?: (e: React.MouseEvent) => void
 }
 
-export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, onLoadMetadata, onOpenTools, onImageClick, isEditMode, isSelected, onSelectionClick }: LibraryItemProps) {
+export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, onLoadMetadata, onEditImage, onOpenTools, folderLabel, onImageClick, isEditMode, isSelected, onSelectionClick }: LibraryItemProps) {
     const { t } = useTranslation()
     const [imageUrl, setImageUrl] = useState<string>('')
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
         // Browser imports are persisted data URLs; native files still use the
-            // platform asset protocol without copying their bytes into React state.
+        // platform asset protocol without copying their bytes into React state.
         try {
             const assetUrl = /^(data:|blob:|https?:)/i.test(item.path)
                 ? item.path
@@ -94,7 +96,13 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
             )}
 
             <div className="absolute bottom-0 left-0 right-0 bg-scrim/70 p-2 opacity-100 transition-opacity lg:opacity-0 lg:group-focus-within:opacity-100 lg:group-hover:opacity-100">
-                <p className="text-xs text-primary-foreground truncate px-1">{item.name}</p>
+                <p className="truncate px-1 text-xs text-primary-foreground">{item.name}</p>
+                {folderLabel && (
+                    <p className="mt-0.5 flex items-center gap-1 truncate px-1 text-[11px] text-primary-foreground/70">
+                        {item.r2Status === 'uploaded' && <Cloud className="h-3 w-3 shrink-0" />}
+                        <span className="truncate">{folderLabel}</span>
+                    </p>
+                )}
             </div>
         </div>
     )
@@ -107,6 +115,7 @@ export function LibraryItem({ item, className, isOverlay, onRename, onAddRef, on
             onRename={onRename ? () => onRename(item) : undefined}
             onAddRef={onAddRef ? () => onAddRef(item) : undefined}
             onLoadMetadata={onLoadMetadata ? () => onLoadMetadata(item) : undefined}
+            onEditImage={onEditImage ? () => onEditImage(item) : undefined}
             onOpenTools={onOpenTools}
         >
             {content}

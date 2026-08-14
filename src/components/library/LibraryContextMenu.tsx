@@ -18,6 +18,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrashStore } from '@/stores/trash-store'
 import { archiveLibraryItems } from '@/services/trash/asset-trash-service'
 import { runtimeCapabilities } from '@/platform/capabilities'
+import { detectImageMimeType, imageDataUrlFromBytes } from '@/lib/image-data-url'
 
 /** Native paths use Tauri fs; browser-preview imports are persisted data URLs. */
 async function readLibraryBytes(path: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -31,6 +32,7 @@ interface LibraryContextMenuProps {
     onRename?: () => void
     onAddRef?: () => void
     onLoadMetadata?: () => void
+    onEditImage?: () => void
     onOpenTools?: () => void
 }
 
@@ -42,7 +44,7 @@ export function openLibraryToolsSurface(onOpenTools: (() => void) | undefined, n
     navigate('/tools')
 }
 
-export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadMetadata, onOpenTools }: LibraryContextMenuProps) {
+export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadMetadata, onEditImage, onOpenTools }: LibraryContextMenuProps) {
     const { t } = useTranslation()
     const { items: libraryItems, removeItem } = useLibraryStore()
     const addToTrash = useTrashStore(state => state.add)
@@ -53,7 +55,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
     const handleCopy = async () => {
         try {
             const data = await readLibraryBytes(item.path)
-            const blob = new Blob([data], { type: 'image/png' })
+            const blob = new Blob([data], { type: detectImageMimeType(data, item.path) })
             await navigator.clipboard.write([
                 new ClipboardItem({ [blob.type]: blob })
             ])
@@ -99,14 +101,7 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                 return
             }
             const data = await readLibraryBytes(item.path)
-            let binary = ''
-            const len = data.byteLength
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(data[i])
-            }
-            const base64 = btoa(binary)
-
-            setActiveImage(`data:image/png;base64,${base64}`)
+            setActiveImage(imageDataUrlFromBytes(data, item.path))
             openLibraryToolsSurface(onOpenTools, navigate)
         } catch (e) {
             console.error('Failed to load for tools:', e)
@@ -157,6 +152,10 @@ export function LibraryContextMenu({ item, children, onRename, onAddRef, onLoadM
                 <ContextMenuItem onClick={handleSmartTools}>
                     <Wand2 className="h-4 w-4 mr-2" />
                     {t('smartTools.title', '스마트 툴')}
+                </ContextMenuItem>
+                <ContextMenuItem onClick={onEditImage}>
+                    <FileSearch className="h-4 w-4 mr-2" />
+                    {t('library.workflow.menu', '정리 · 변환')}
                 </ContextMenuItem>
                 <ContextMenuItem onClick={onAddRef}>
                     <Users className="h-4 w-4 mr-2" />

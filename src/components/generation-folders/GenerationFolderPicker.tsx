@@ -79,8 +79,9 @@ export function GenerationFolderPicker({
                         </option>
                     ))}
                 </select>
-                <Button type="button" variant="outline" size="icon" aria-label={t('generationFolders.manage', '생성 폴더 관리')} onClick={() => setManagerOpen(true)} disabled={disabled}>
-                    <FolderCog className="h-4 w-4" />
+                <Button type="button" variant="outline" className="shrink-0" aria-label={t('generationFolders.manage', '폴더 관리')} onClick={() => setManagerOpen(true)} disabled={disabled}>
+                    <FolderCog className="mr-1.5 h-4 w-4" />
+                    {t('generationFolders.manage', '폴더 관리')}
                 </Button>
             </div>
             {resolved && (

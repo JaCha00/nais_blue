@@ -94,6 +94,8 @@ export interface OutputWriterRequest {
     imageBytes: Uint8Array
     imageDataUrl: string
     metadata?: MetadataWriteRequest
+    /** Pre-encoded sibling metadata sidecar for non-generation image workflows. */
+    metadataSidecarBytes?: Uint8Array
     /**
      * A non-generation artifact sidecar written in the same journaled
      * transaction as the image.  This is deliberately bytes-only so callers
@@ -544,7 +546,12 @@ export class OutputWriter {
                 if (this.outputNameReservations.has(reservationKey)) return true
                 const imageExists = await this.platform.exists(childOutputRef(directory, candidate))
                 if (imageExists) return true
-                if (request.metadata !== undefined) {
+                if (request.metadataSidecarBytes !== undefined) {
+                    const explicitSidecarExists = await this.platform.exists(
+                        childOutputRef(directory, toSidecarFileName(candidate)),
+                    )
+                    if (explicitSidecarExists) return true
+                } else if (request.metadata !== undefined) {
                     const sidecarNeeded = request.metadata.metadataMode === 'sidecar-only'
                         || request.metadata.metadataMode === 'strip-and-sidecar'
                         || request.metadata.imageFormat === 'webp'
@@ -605,6 +612,10 @@ export class OutputWriter {
                 : null
             const preparedImageDataUrl = cleanImage?.dataUrl ?? request.imageDataUrl
             const prepared = this.metadataWriter.prepare(cleanImage?.bytes ?? request.imageBytes, request.metadata)
+            if (request.metadataSidecarBytes !== undefined && prepared.sidecarBytes !== undefined) {
+                throw new OutputWriterError('write-metadata-temp', 'Only one metadata sidecar source can be committed')
+            }
+            const metadataSidecarBytes = request.metadataSidecarBytes ?? prepared.sidecarBytes
             // Keep the established generation/output scheduling unchanged.
             // Organizer sidecars and Queue's ArtifactRecord recovery facts are
             // explicit callers, so ordinary output writes do not pay a digest.
@@ -636,7 +647,7 @@ export class OutputWriter {
                 final: imageFinal,
                 committed: false,
             }]
-            if (prepared.sidecarBytes !== undefined) {
+            if (metadataSidecarBytes !== undefined) {
                 const sidecarName = toSidecarFileName(fileName)
                 artifacts.push({
                     kind: 'sidecar',
@@ -711,8 +722,8 @@ export class OutputWriter {
 
             mark('write-metadata-temp')
             const sidecarArtifact = artifacts.find(artifact => artifact.kind === 'sidecar')
-            if (sidecarArtifact !== undefined && prepared.sidecarBytes !== undefined) {
-                await this.platform.writeFile(sidecarArtifact.temp, prepared.sidecarBytes)
+            if (sidecarArtifact !== undefined && metadataSidecarBytes !== undefined) {
+                await this.platform.writeFile(sidecarArtifact.temp, metadataSidecarBytes)
             }
             const diagnosticArtifact = artifacts.find(artifact => artifact.kind === 'diagnostic')
             if (diagnosticArtifact !== undefined && prepared.diagnosticSidecarBytes !== undefined) {
