@@ -1,20 +1,35 @@
+import { stripImageMetadata } from '@/domain/organizer/metadata-sanitizer'
+import { imageDataUrlFromBytes } from '@/lib/image-data-url'
+
 function dataUrlToBytes(dataUrl: string): Uint8Array {
     const base64 = dataUrl.replace(/^data:image\/[^;]+;base64,/, '')
     const binary = atob(base64)
     return Uint8Array.from(binary, character => character.charCodeAt(0))
 }
 
+function finalizePurgedImage(
+    bytes: Uint8Array,
+    imageFormat: 'png' | 'webp',
+): { dataUrl: string; bytes: Uint8Array } {
+    const stripped = stripImageMetadata(bytes)
+    return {
+        dataUrl: imageDataUrlFromBytes(stripped, `image.${imageFormat}`),
+        bytes: stripped,
+    }
+}
+
 /**
  * Browser re-encoding is the local counterpart to the Worker SVG wrapper: canvas requires decoded
  * pixels, the output writer consumes its byte result, and the black fill plus tiny blur destroys
- * alpha/RGB LSB payloads while the new encoder omits source PNG/WebP metadata chunks.
+ * alpha/RGB LSB payloads. Some WebView encoders add their own color profile, so the encoded
+ * container is stripped once more before it can be written or validated.
  */
 export async function eradicateImageMetadata(
     imageDataUrl: string,
     imageFormat: 'png' | 'webp',
 ): Promise<{ dataUrl: string; bytes: Uint8Array }> {
     if (typeof document === 'undefined' || typeof Image === 'undefined') {
-        return { dataUrl: imageDataUrl, bytes: dataUrlToBytes(imageDataUrl) }
+        return finalizePurgedImage(dataUrlToBytes(imageDataUrl), imageFormat)
     }
 
     const source = new Image()
@@ -42,13 +57,7 @@ export async function eradicateImageMetadata(
         canvas.toBlob(result => result ? resolve(result) : reject(new Error('E_IMAGE_METADATA_PURGE_ENCODE')), mime, 0.99)
     })
     const bytes = new Uint8Array(await blob.arrayBuffer())
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result))
-        reader.onerror = () => reject(new Error('E_IMAGE_METADATA_PURGE_DATA_URL'))
-        reader.readAsDataURL(blob)
-    })
     canvas.width = 1
     canvas.height = 1
-    return { dataUrl, bytes }
+    return finalizePurgedImage(bytes, imageFormat)
 }

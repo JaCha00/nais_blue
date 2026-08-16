@@ -190,7 +190,7 @@ vi.mock('@/lib/style-lab/build-style-lab-params', async importOriginal => {
 
 const FIXED_TIME = Date.parse('2026-07-11T00:00:00.000Z')
 const FIXED_SEED = 616161
-const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+4xVnAAAAAElFTkSuQmCC'
+const TINY_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 
 function base64Bytes(value: string): Uint8Array {
     return Uint8Array.from(atob(value.replace(/^data:image\/[^;]+;base64,/, '')), character => character.charCodeAt(0))
