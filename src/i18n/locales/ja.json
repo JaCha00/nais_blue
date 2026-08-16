@@ -2175,6 +2175,20 @@
         "unsupportedFormat": "PNG、WebP、JPEG 画像を選択してください。",
         "editModeDesc": "複数画像を選択して一括編集",
         "gridColumnsDesc": "グリッド列数変更",
+        "rename": {
+            "batchTitle": "{{count}}個のファイル名を変更",
+            "singleDesc": "画像ファイルと関連する sidecar の名前をまとめて変更します。",
+            "batchDesc": "ルールを確認してから、選択した画像に順番に適用します。",
+            "patternLabel": "命名ルール",
+            "nameLabel": "新しいファイル名",
+            "tokens": "使用可能: {name}, {index}, {index:000}, {datetime:YYYYMMDD}",
+            "preview": "プレビュー",
+            "extensionKept": "拡張子は維持され、重複する名前には -2 が自動で付きます。",
+            "r2Unchanged": "すでに R2 へアップロードしたファイル名は変更されません。",
+            "apply": "名前を変更",
+            "completed": "{{count}}個の名前を変更しました。",
+            "failed": "ファイル名を変更できませんでした。"
+        },
         "workflow": {
             "title": "画像の取り込み・編集",
             "menu": "整理・変換",

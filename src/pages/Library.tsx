@@ -44,6 +44,7 @@ import {
     type LibraryImageWorkflowOptions,
 } from '@/components/library/LibraryImageWorkflowDialog'
 import { runLibraryImageWorkflow } from '@/services/library/library-image-workflow'
+import { renameLibraryFiles } from '@/services/library/library-file-renamer'
 import { imageDataUrlFromBytes } from '@/lib/image-data-url'
 
 const dropAnimation = {
@@ -115,7 +116,6 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
         items, 
         addItem, 
         setItems, 
-        updateItem, 
         gridColumns, 
         setGridColumns,
         // Edit Mode
@@ -142,6 +142,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
     const [workflowOpen, setWorkflowOpen] = useState(false)
     const [busyProgress, setBusyProgress] = useState<{ current: number; total: number } | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const workflowRunInFlight = useRef(false)
 
     // Get current view items (main library or inside a stack)
     const currentStack = currentStackId ? items.find(item => item.id === currentStackId) : null
@@ -153,7 +154,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
 
     // Dialog States
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
-    const [selectedItemForRename, setSelectedItemForRename] = useState<LibraryItem | null>(null)
+    const [renameTargets, setRenameTargets] = useState<LibraryItem[]>([])
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     const [selectedImageRef, setSelectedImageRef] = useState<string | null>(null)
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
@@ -303,20 +304,49 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
 
     // Handlers
     const handleRenameClick = (item: LibraryItem) => {
-        setSelectedItemForRename(item)
+        setRenameTargets([item])
         setRenameDialogOpen(true)
     }
 
-    const handleRenameConfirm = (newName: string) => {
-        if (selectedItemForRename) {
-            updateItem(selectedItemForRename.id, { name: newName })
-            // Note: We are currently NOT renaming the physical file to avoid file referencing issues or complexity for now.
-            // The user request was "Rename in context menu", which usually implies display name.
-            // If physical rename is strictly required, we'd need `rename`.
-            // Given "Unify filenames" requirement earlier, maybe physical rename is expected?
-            // "Name change" usually means the display name in the app.
-            // Let's stick to display name update in the store for safety.
-            toast({ title: t('actions.saved', '저장 완료'), variant: 'success' })
+    const openBatchRename = () => {
+        const targets = viewItems.filter(item => selectedItemIds.includes(item.id) && !item.isStack)
+        if (targets.length === 0) return
+        setRenameTargets(targets)
+        setRenameDialogOpen(true)
+    }
+
+    const handleRenameConfirm = async (template: string): Promise<boolean> => {
+        if (renameTargets.length === 0) return false
+        try {
+            const results = await renameLibraryFiles(renameTargets, template)
+            const resultById = new Map(results.map(result => [result.id, result]))
+            const applyResult = (item: LibraryItem): LibraryItem => {
+                const result = resultById.get(item.id)
+                if (result) return {
+                    ...item,
+                    name: result.name,
+                    path: result.path,
+                    sidecarPath: result.sidecarPath,
+                }
+                return item.stackItems
+                    ? { ...item, stackItems: item.stackItems.map(applyResult) }
+                    : item
+            }
+            setItems(useLibraryStore.getState().items.map(applyResult))
+            if (renameTargets.length > 1) setEditMode(false)
+            toast({
+                title: t('library.rename.completed', '{{count}}개 이름을 변경했습니다.', { count: results.length }),
+                variant: 'success',
+            })
+            return true
+        } catch (error) {
+            console.error('Library rename failed:', error)
+            toast({
+                title: t('library.rename.failed', '파일 이름을 변경하지 못했습니다.'),
+                description: error instanceof Error ? error.message : undefined,
+                variant: 'destructive',
+            })
+            return false
         }
     }
 
@@ -402,7 +432,8 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
     }
 
     const runImageWorkflow = async (options: LibraryImageWorkflowOptions) => {
-        if (workflowSources.length === 0) return
+        if (workflowSources.length === 0 || workflowRunInFlight.current) return
+        workflowRunInFlight.current = true
         setBusyProgress({ current: 0, total: workflowSources.length })
         let completed = 0
         let r2Warnings = 0
@@ -475,6 +506,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                 variant: 'destructive',
             })
         } finally {
+            workflowRunInFlight.current = false
             setBusyProgress(null)
         }
     }
@@ -529,6 +561,16 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
                             >
                                 <Wand2 className="mr-1.5 h-4 w-4 shrink-0" />
                                 <span className="min-w-0 truncate">{t('library.workflow.menu', '정리 · 변환')}</span>
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-11 min-w-0 flex-1 px-2 hover:bg-accent sm:flex-none sm:px-3 lg:h-9"
+                                onClick={openBatchRename}
+                                disabled={selectedItemIds.length === 0}
+                            >
+                                <Edit3 className="mr-1.5 h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate">{t('actions.rename', '이름 변경')}</span>
                             </Button>
                             {!currentStackId && (
                                 <Tip content={t('library.createStackDesc', '선택한 이미지를 하나의 스택으로 묶음')}>
@@ -782,7 +824,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
             <LibraryRenameDialog
                 open={renameDialogOpen}
                 onOpenChange={setRenameDialogOpen}
-                initialName={selectedItemForRename?.name || ''}
+                items={renameTargets}
                 onConfirm={handleRenameConfirm}
             />
 

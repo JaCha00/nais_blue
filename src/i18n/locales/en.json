@@ -2177,6 +2177,20 @@
         "unsupportedFormat": "Choose PNG, WebP, or JPEG images.",
         "editModeDesc": "Select multiple images for batch editing",
         "gridColumnsDesc": "Change grid column count",
+        "rename": {
+            "batchTitle": "Rename {{count}} files",
+            "singleDesc": "Renames the image file and its linked sidecar together.",
+            "batchDesc": "Review the pattern, then apply it to the selected images in order.",
+            "patternLabel": "Naming pattern",
+            "nameLabel": "New file name",
+            "tokens": "Available: {name}, {index}, {index:000}, {datetime:YYYYMMDD}",
+            "preview": "Preview",
+            "extensionKept": "File extensions stay the same. Duplicate names automatically receive -2.",
+            "r2Unchanged": "Files already uploaded to R2 keep their current names.",
+            "apply": "Rename",
+            "completed": "Renamed {{count}} files.",
+            "failed": "The file names could not be changed."
+        },
         "workflow": {
             "title": "Import and edit images",
             "menu": "Organize · Convert",

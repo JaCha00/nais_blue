@@ -2213,6 +2213,20 @@
         "unsupportedFormat": "PNG, WebP 또는 JPEG 이미지를 선택해 주세요.",
         "editModeDesc": "여러 이미지를 선택하여 일괄 편집",
         "gridColumnsDesc": "그리드 열 개수 변경",
+        "rename": {
+            "batchTitle": "{{count}}개 파일 이름 변경",
+            "singleDesc": "실제 이미지 파일과 연결된 sidecar 이름도 함께 변경합니다.",
+            "batchDesc": "규칙을 확인한 뒤 선택한 이미지에 순서대로 적용합니다.",
+            "patternLabel": "이름 규칙",
+            "nameLabel": "새 파일 이름",
+            "tokens": "사용 가능: {name}, {index}, {index:000}, {datetime:YYYYMMDD}",
+            "preview": "미리보기",
+            "extensionKept": "파일 확장자는 유지되며, 중복 이름에는 -2가 자동으로 붙습니다.",
+            "r2Unchanged": "이미 업로드된 R2 파일 이름은 바뀌지 않습니다.",
+            "apply": "이름 변경",
+            "completed": "{{count}}개 이름을 변경했습니다.",
+            "failed": "파일 이름을 변경하지 못했습니다."
+        },
         "workflow": {
             "title": "이미지 가져오기 · 편집",
             "menu": "정리 · 변환",
