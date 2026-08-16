@@ -149,6 +149,7 @@ export function GuidedCharacterPromptSheet({
                         }}
                     />
                     <button
+                        data-local-file-drop
                         type="button"
                         disabled={disabled || importing}
                         onClick={() => importInputRef.current?.click()}

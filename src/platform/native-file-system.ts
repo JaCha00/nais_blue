@@ -9,6 +9,7 @@ import {
     writeTextFile,
     type BaseDirectory,
 } from '@tauri-apps/plugin-fs'
+import { invoke } from '@tauri-apps/api/core'
 
 export interface NativePathOptions {
     baseDir?: BaseDirectory
@@ -16,6 +17,23 @@ export interface NativePathOptions {
 
 export interface NativeDirectoryCreateOptions extends NativePathOptions {
     recursive?: boolean
+}
+
+const nativeDirectoryAuthorizations = new Map<string, Promise<void>>()
+
+/** Migrates an existing absolute directory into Tauri's persisted filesystem scopes. */
+export async function authorizeNativeDirectory(path: string): Promise<void> {
+    const normalizedPath = path.trim()
+    const activeAuthorization = nativeDirectoryAuthorizations.get(normalizedPath)
+    if (activeAuthorization) return activeAuthorization
+
+    const authorization = invoke<void>('authorize_native_directory', { path: normalizedPath })
+        .catch((error: unknown) => {
+            nativeDirectoryAuthorizations.delete(normalizedPath)
+            throw error
+        })
+    nativeDirectoryAuthorizations.set(normalizedPath, authorization)
+    return authorization
 }
 
 /** Directory facts consumed by Presentation scanners without exposing Tauri types. */

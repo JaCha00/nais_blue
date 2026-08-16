@@ -263,6 +263,7 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
 
     return (
         <div
+            data-local-file-drop
             className="relative flex h-full min-h-0 flex-col gap-4 md:flex-row"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}

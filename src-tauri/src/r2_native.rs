@@ -596,10 +596,7 @@ mod desktop {
                 size: output.content_length(),
                 content_sha256: output
                     .metadata()
-                    .and_then(|metadata| {
-                        metadata
-                            .get(R2_HASH_METADATA_KEY)
-                    })
+                    .and_then(|metadata| metadata.get(R2_HASH_METADATA_KEY))
                     .cloned(),
                 etag: output.e_tag().map(str::to_string),
             }),

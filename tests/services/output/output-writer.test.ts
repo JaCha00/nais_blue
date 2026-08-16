@@ -223,6 +223,17 @@ beforeEach(() => {
 })
 
 describe('OutputWriter fault containment', () => {
+    it('keeps string platform failures in the diagnostic cause chain', () => {
+        const error = new OutputWriterError('resolve-destination', 'Output failed', {
+            cause: 'path not allowed',
+        })
+
+        expect((error as Error & { cause?: unknown }).cause).toMatchObject({
+            name: 'Error',
+            message: 'path not allowed',
+        })
+    })
+
     it('reserves distinct names for concurrent unique writes', async () => {
         const adapter = new InMemoryOutputAdapter()
         let transactionOrdinal = 0

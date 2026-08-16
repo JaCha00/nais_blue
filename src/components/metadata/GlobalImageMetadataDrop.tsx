@@ -19,6 +19,7 @@ import {
 } from '@/presentation/workflow/guided-prompt-import'
 
 const MAX_GLOBAL_IMAGE_BYTES = 50 * 1024 * 1024
+const LOCAL_FILE_DROP_SELECTOR = '[data-local-file-drop]'
 
 export type GlobalImageDropTarget =
     | { readonly kind: 'single'; readonly draftId: string }
@@ -48,6 +49,13 @@ function hasDraggedFiles(dataTransfer: DataTransfer | null): boolean {
     return dataTransfer !== null && Array.from(dataTransfer.types).includes('Files')
 }
 
+/** Explicit local upload/edit surfaces own file drops before the app-wide metadata importer. */
+export function isLocalFileDropTarget(target: EventTarget | null): boolean {
+    return target !== null
+        && typeof (target as Element).closest === 'function'
+        && (target as Element).closest(LOCAL_FILE_DROP_SELECTOR) !== null
+}
+
 /** App-owned metadata drop target; explicit local drop zones keep precedence. */
 export function GlobalImageMetadataDrop() {
     const { t } = useTranslation()
@@ -70,22 +78,38 @@ export function GlobalImageMetadataDrop() {
             if (!busyRef.current && !disposed) setPhase('idle')
         }
         const handleDragEnter = (event: DragEvent) => {
+            if (isLocalFileDropTarget(event.target)) {
+                resetDrag()
+                return
+            }
             if (event.defaultPrevented || !hasDraggedFiles(event.dataTransfer)) return
             event.preventDefault()
             dragDepthRef.current += 1
             if (!busyRef.current) setPhase('dragging')
         }
         const handleDragOver = (event: DragEvent) => {
+            if (isLocalFileDropTarget(event.target)) {
+                resetDrag()
+                return
+            }
             if (event.defaultPrevented || !hasDraggedFiles(event.dataTransfer)) return
             event.preventDefault()
             if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
         }
         const handleDragLeave = (event: DragEvent) => {
+            if (isLocalFileDropTarget(event.target)) {
+                resetDrag()
+                return
+            }
             if (event.defaultPrevented || !hasDraggedFiles(event.dataTransfer)) return
             dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
             if (dragDepthRef.current === 0 && !busyRef.current) setPhase('idle')
         }
         const handleDrop = (event: DragEvent) => {
+            if (isLocalFileDropTarget(event.target)) {
+                resetDrag()
+                return
+            }
             if (event.defaultPrevented || busyRef.current) return
             const file = Array.from(event.dataTransfer?.files ?? [])
                 .find(isGlobalMetadataImageCandidate)

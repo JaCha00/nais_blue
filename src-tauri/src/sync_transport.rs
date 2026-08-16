@@ -3634,7 +3634,8 @@ mod desktop {
                 .expect("QA output must have a UTF-8 file name");
             assert_eq!(output_parent, expected_parent);
             assert!(
-                output_name.starts_with("nai-blue-lan-device-qa-") && output_name.ends_with(".json")
+                output_name.starts_with("nai-blue-lan-device-qa-")
+                    && output_name.ends_with(".json")
             );
             assert!(!output_path.exists(), "QA output must be a fresh temp file");
             struct EphemeralQaOutput(PathBuf);

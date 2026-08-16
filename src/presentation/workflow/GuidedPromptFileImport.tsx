@@ -243,6 +243,7 @@ export function GuidedPromptFileImport({
                 }}
             />
             <button
+                data-local-file-drop
                 type="button"
                 disabled={disabled || loading}
                 onClick={() => inputRef.current?.click()}

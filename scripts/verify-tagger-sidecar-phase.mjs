@@ -78,7 +78,7 @@ check('release script verifies tagger-server.exe in release build output', inclu
   'Test-Path -LiteralPath $taggerServerExe',
   'Required tagger sidecar is missing from release directory',
 ]))
-check('release script keeps tagger executable out of the public source zip', releaseScript.includes("'*.exe'") &&
+check('release script keeps tagger executable out of the public source zip', releaseScript.includes("'(?i)\\.(exe|dll)$'") &&
   !releaseScript.includes('Copy-RequiredFile -Source $taggerServerExe') &&
   !releaseScript.includes("Role = 'tagger"))
 

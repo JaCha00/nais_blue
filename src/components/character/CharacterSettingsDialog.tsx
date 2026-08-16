@@ -417,6 +417,7 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                     <TabsContent value="character" className="flex-1 overflow-y-auto min-h-0 pr-1">
                         <div className="py-2">
                             <div
+                                data-local-file-drop
                                 className={cn(
                                     "mb-4 cursor-pointer rounded-panel border-2 border-dashed p-4 text-center transition-colors",
                                     charDragOver
@@ -463,6 +464,7 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                         <div className={characterImages.some(img => img.enabled !== false) ? "pointer-events-none opacity-30 grayscale" : ""}>
                             <div className="py-2">
                                 <div
+                                    data-local-file-drop
                                     className={cn(
                                         "cursor-pointer rounded-panel border-2 border-dashed p-6 text-center transition-colors",
                                         vibeDragOver

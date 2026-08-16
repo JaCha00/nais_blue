@@ -24,6 +24,7 @@ import { SortableLibraryItem } from '@/components/library/SortableLibraryItem'
 import { LibraryItem as LibraryItemComponent } from '@/components/library/LibraryItem'
 import { useTranslation } from 'react-i18next'
 import {
+    authorizeNativeDirectory,
     createNativeDirectory,
     nativePathExists,
     readNativeBinaryFile,
@@ -191,6 +192,12 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
 
         const initDir = async () => {
             try {
+                // Migrate a Library path saved before persisted-scope was installed.
+                // Generation destinations are restored lazily by the output adapter.
+                if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
+                    await authorizeNativeDirectory(libraryPath)
+                }
+
                 // 1. Ensure Dir Exists
                 if (shouldUseAbsoluteMediaPath(useAbsoluteLibraryPath) && libraryPath) {
                     // Absolute path
@@ -474,6 +481,7 @@ export default function Library({ onOpenTools }: { onOpenTools?: () => void } = 
 
     return (
         <div
+            data-local-file-drop
             className="h-full flex flex-col relative"
             onDragOver={(e) => {
                 e.preventDefault()

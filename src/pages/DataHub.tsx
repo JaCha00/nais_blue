@@ -250,6 +250,7 @@ export function MetadataWorkspace() {
     return (
         <div className="space-y-4" data-testid="metadata-batch-workspace">
             <section
+                data-local-file-drop
                 className={cn(
                     'group flex min-h-48 cursor-pointer flex-col items-center justify-center rounded-panel border border-dashed px-5 py-8 text-center transition-colors focus-within:ring-2 focus-within:ring-ring',
                     dragging ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/50 hover:bg-muted/20',

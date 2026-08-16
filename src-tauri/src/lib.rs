@@ -73,13 +73,11 @@ async fn verify_token(token: String) -> VerifyTokenResult {
                             error: None,
                         }
                     }
-                    Err(_) => {
-                        VerifyTokenResult {
-                            valid: false,
-                            tier: None,
-                            error: Some("응답 형식 오류".to_string()),
-                        }
-                    }
+                    Err(_) => VerifyTokenResult {
+                        valid: false,
+                        tier: None,
+                        error: Some("응답 형식 오류".to_string()),
+                    },
                 }
             } else if status.as_u16() == 401 {
                 VerifyTokenResult {
@@ -95,13 +93,11 @@ async fn verify_token(token: String) -> VerifyTokenResult {
                 }
             }
         }
-        Err(_) => {
-            VerifyTokenResult {
-                valid: false,
-                tier: None,
-                error: Some("네트워크 오류".to_string()),
-            }
-        }
+        Err(_) => VerifyTokenResult {
+            valid: false,
+            tier: None,
+            error: Some("네트워크 오류".to_string()),
+        },
     }
 }
 
@@ -262,8 +258,7 @@ async fn augment_image(
     image: String,
     width: i32,
     height: i32,
-    #[allow(non_snake_case)]
-    reqType: String,
+    #[allow(non_snake_case)] reqType: String,
     defry: Option<i32>,
     prompt: Option<String>,
 ) -> UpscaleResult {
@@ -291,20 +286,18 @@ async fn augment_image(
         Ok(response) => {
             if response.status().is_success() {
                 match response.bytes().await {
-                    Ok(bytes) => {
-                        match extract_image_from_zip(&bytes) {
-                            Ok(base64_image) => UpscaleResult {
-                                success: true,
-                                image_data: Some(base64_image),
-                                error: None,
-                            },
-                            Err(_) => UpscaleResult {
-                                success: false,
-                                image_data: None,
-                                error: Some("ZIP 처리 오류".to_string()),
-                            },
-                        }
-                    }
+                    Ok(bytes) => match extract_image_from_zip(&bytes) {
+                        Ok(base64_image) => UpscaleResult {
+                            success: true,
+                            image_data: Some(base64_image),
+                            error: None,
+                        },
+                        Err(_) => UpscaleResult {
+                            success: false,
+                            image_data: None,
+                            error: Some("ZIP 처리 오류".to_string()),
+                        },
+                    },
                     Err(_) => UpscaleResult {
                         success: false,
                         image_data: None,
@@ -418,6 +411,8 @@ async fn remove_background(image_base64: String) -> RemoveBackgroundResult {
 
 #[cfg(not(mobile))]
 use std::collections::HashMap;
+#[cfg(not(mobile))]
+use std::path::PathBuf;
 #[cfg(not(mobile))]
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
@@ -639,6 +634,42 @@ fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// Migrates output directories saved before persisted-scope was installed.
+/// The official plugin records both grants, so later restarts restore them.
+#[cfg(not(mobile))]
+#[tauri::command]
+fn authorize_native_directory(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_fs::FsExt;
+
+    let requested = PathBuf::from(path.trim());
+    if !requested.is_absolute() || requested.parent().is_none() {
+        return Err("Only a non-root absolute output directory can be authorized.".to_string());
+    }
+
+    std::fs::create_dir_all(&requested)
+        .map_err(|error| format!("Unable to prepare the output directory: {error}"))?;
+    let directory = requested
+        .canonicalize()
+        .map_err(|error| format!("Unable to resolve the output directory: {error}"))?;
+    if !directory.is_dir() || directory.parent().is_none() {
+        return Err("The configured output path is not a usable directory.".to_string());
+    }
+
+    app.fs_scope()
+        .allow_directory(&directory, true)
+        .map_err(|error| format!("Unable to authorize output file access: {error}"))?;
+    app.asset_protocol_scope()
+        .allow_directory(&directory, true)
+        .map_err(|error| format!("Unable to authorize output preview access: {error}"))?;
+    Ok(())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn authorize_native_directory(_app: AppHandle, _path: String) -> Result<(), String> {
+    Err("Absolute output directories are unavailable on mobile.".to_string())
+}
+
 #[cfg(not(mobile))]
 #[tauri::command]
 async fn check_tagger_binary() -> bool {
@@ -658,8 +689,10 @@ fn contains_unredacted_diagnostic_payload(value: &serde_json::Value) -> bool {
         serde_json::Value::Array(items) => items.iter().any(contains_unredacted_diagnostic_payload),
         serde_json::Value::Object(record) => record.iter().any(|(key, item)| {
             let normalized = key.to_ascii_lowercase();
-            matches!(normalized.as_str(), "responsebody" | "imagedata" | "imagebytes" | "base64" | "binary")
-                || contains_unredacted_diagnostic_payload(item)
+            matches!(
+                normalized.as_str(),
+                "responsebody" | "imagedata" | "imagebytes" | "base64" | "binary"
+            ) || contains_unredacted_diagnostic_payload(item)
         }),
         serde_json::Value::String(text) => {
             let normalized = text.to_ascii_lowercase();
@@ -676,7 +709,9 @@ fn contains_unredacted_diagnostic_payload(value: &serde_json::Value) -> bool {
 /// instead of forwarding arbitrary console data into a durable log.
 #[tauri::command]
 fn record_diagnostic_event(event: serde_json::Value) -> Result<(), String> {
-    let record = event.as_object().ok_or_else(|| "Invalid diagnostic event".to_string())?;
+    let record = event
+        .as_object()
+        .ok_or_else(|| "Invalid diagnostic event".to_string())?;
     if record.get("schemaVersion") != Some(&serde_json::Value::from(1))
         || !record.contains_key("redactedDeveloperMessage")
         || contains_unredacted_diagnostic_payload(&event)
@@ -684,7 +719,8 @@ fn record_diagnostic_event(event: serde_json::Value) -> Result<(), String> {
         return Err("Diagnostic event did not satisfy the redacted schema".to_string());
     }
 
-    let serialized = serde_json::to_string(&event).map_err(|_| "Unable to serialize diagnostic event".to_string())?;
+    let serialized = serde_json::to_string(&event)
+        .map_err(|_| "Unable to serialize diagnostic event".to_string())?;
     if serialized.len() > DIAGNOSTIC_LOG_MAX_BYTES {
         return Err("Diagnostic event exceeded the bounded log size".to_string());
     }
@@ -749,6 +785,7 @@ pub fn run() {
 
     builder = builder
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
@@ -769,9 +806,11 @@ pub fn run() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .clear_targets()
-                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
-                    file_name: Some("diagnostics".to_string()),
-                }))
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("diagnostics".to_string()),
+                    },
+                ))
                 .level(log::LevelFilter::Error)
                 .filter(|metadata| metadata.target() == "nai_blue_diagnostic")
                 .max_file_size(1_000_000)
@@ -802,6 +841,7 @@ pub fn run() {
             is_browser_open,
             zoom_embedded_browser,
             exit_app,
+            authorize_native_directory,
             record_diagnostic_event,
             nai_transport::nai_generate_request,
             nai_transport::cancel_nai_request,

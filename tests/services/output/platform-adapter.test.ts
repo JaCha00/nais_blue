@@ -9,6 +9,14 @@ const fsCapture = vi.hoisted(() => ({
     entries: [] as Array<{ name: string; isFile: boolean; isDirectory: boolean; isSymlink: boolean }>,
 }))
 
+const nativeScopeCapture = vi.hoisted(() => ({ paths: [] as string[] }))
+
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: async (command: string, args?: { path?: string }) => {
+        if (command === 'authorize_native_directory' && args?.path) nativeScopeCapture.paths.push(args.path)
+    },
+}))
+
 vi.mock('@tauri-apps/plugin-fs', () => ({
     BaseDirectory: { AppData: 1, Picture: 2 },
     exists: async (path: string, options?: unknown) => {
@@ -70,6 +78,7 @@ beforeEach(() => {
     fsCapture.existing.clear()
     fsCapture.files.clear()
     fsCapture.entries.length = 0
+    nativeScopeCapture.paths.length = 0
 })
 
 describe('Tauri output platform adapters', () => {
@@ -86,10 +95,12 @@ describe('Tauri output platform adapters', () => {
                 .map(entry => entry.path)
         }
 
-        const [desktop, mobile, tauriConfig] = await Promise.all([
+        const [desktop, mobile, tauriConfig, cargoManifest, nativeEntry] = await Promise.all([
             capabilityPaths('src-tauri/capabilities/default.json'),
             capabilityPaths('src-tauri/capabilities/mobile.json'),
             readFile(resolve(process.cwd(), 'src-tauri/tauri.conf.json'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src-tauri/Cargo.toml'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src-tauri/src/lib.rs'), 'utf8'),
         ])
 
         // OutputWriter journals and commit siblings depend on a literal leading dot;
@@ -99,6 +110,9 @@ describe('Tauri output platform adapters', () => {
         ]))
         expect(mobile).toContain('$APPDATA/**/.*')
         expect(tauriConfig).not.toContain('requireLiteralLeadingDot')
+        expect(cargoManifest).toContain('tauri-plugin-persisted-scope')
+        expect(nativeEntry.indexOf('.plugin(tauri_plugin_fs::init())'))
+            .toBeLessThan(nativeEntry.indexOf('.plugin(tauri_plugin_persisted_scope::init())'))
     })
 
     it('uses Pictures-relative paths on desktop and preserves explicit absolute paths', async () => {
@@ -125,6 +139,7 @@ describe('Tauri output platform adapters', () => {
             displayPath: 'D:\\Exports\\NAI Blue',
             capabilityFallbackUsed: false,
         })
+        expect(nativeScopeCapture.paths).toEqual(['D:\\Exports\\NAI Blue'])
     })
 
     it('falls back from an Android absolute path to AppData without leaking the raw path', async () => {

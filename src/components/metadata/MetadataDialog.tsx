@@ -241,6 +241,7 @@ export function MetadataDialog({ open, onOpenChange, initialImage }: MetadataDia
                 {!metadata ? (
                     // Drop zone
                     <div
+                        data-local-file-drop
                         className={`
                             rounded-xl border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-12
                             ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/30'}

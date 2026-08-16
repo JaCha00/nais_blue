@@ -26,6 +26,7 @@ import {
     getMediaStorageRoot,
     MEDIA_STORAGE_BASE_DIRECTORY,
 } from '@/platform/storage'
+import { authorizeNativeDirectory } from '@/platform/native-file-system'
 import type {
     OutputDestinationRequest,
     OutputFileRef,
@@ -230,10 +231,13 @@ export class DesktopOutputPlatformAdapter extends TauriOutputPlatformAdapter {
 
     async resolveDirectory(request: OutputDestinationRequest): Promise<ResolvedOutputDirectory> {
         if (request.portableDirectory !== undefined) {
-            return resolvePortableOutputDirectory(request.portableDirectory, this.runtime, this.tokenRegistry)
+            const directory = await resolvePortableOutputDirectory(request.portableDirectory, this.runtime, this.tokenRegistry)
+            if (isAbsoluteLike(directory.path)) await authorizeNativeDirectory(directory.path)
+            return directory
         }
         const requested = request.directory?.trim() || request.workflowDefaultDirectory
         if (request.useAbsolutePath && isAbsoluteLike(requested)) {
+            await authorizeNativeDirectory(requested)
             return {
                 path: requested,
                 displayPath: requested,

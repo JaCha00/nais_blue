@@ -2,8 +2,8 @@ use tauri::{AppHandle, Runtime};
 
 use crate::{
     types::{
-        validate_transfer_id, CheckpointArgs, RecoveryResult, ScheduleArgs, TransferIdArgs,
-        CloudflarePairingArgs, CloudflarePairingStatus, TransferStatus, TransferTicket,
+        validate_transfer_id, CheckpointArgs, CloudflarePairingArgs, CloudflarePairingStatus,
+        RecoveryResult, ScheduleArgs, TransferIdArgs, TransferStatus, TransferTicket,
     },
     AndroidTransferExt, Result,
 };

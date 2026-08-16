@@ -180,7 +180,9 @@ export class OutputWriterError extends Error {
         super(message)
         this.name = 'OutputWriterError'
         if (options?.cause !== undefined) {
-            ;(this as Error & { cause?: unknown }).cause = options.cause
+            ;(this as Error & { cause?: unknown }).cause = options.cause instanceof Error
+                ? options.cause
+                : new Error(String(options.cause))
         }
     }
 }

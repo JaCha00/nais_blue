@@ -160,6 +160,7 @@ function Assert-SourceArchiveHasNoPrivateEntries {
     $blockedEntryPatterns = @(
         '(?i)(^|/)\.env(\..*)?$',
         '(?i)(^|/)(nai-blue-release-key|NAI_BLUE_KEYSTORE_BASE64\.txt|keystore\.properties)$',
+        '(?i)\.(exe|dll)$',
         '(?i)\.(pem|key|jks|keystore|p12|pfx)$'
     )
 
