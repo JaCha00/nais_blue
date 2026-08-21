@@ -1,6 +1,6 @@
 # V5 Full 작가 태그 혼합 연구
 
-> 상태: A01 단독 작가 지문 실험 준비 · 최종 갱신: 2026-08-21
+> 상태: A01 독립 Seed 탐색 완료, 반복성 확인 대기 · 최종 갱신: 2026-08-21
 
 ## 연구 질문과 판정
 
@@ -31,7 +31,9 @@
 - Character Prompt 1은 인물의 정체성, 외형, 의상, 포즈와 소품을 소유한다.
 - 첫 A01~A03 비교에서는 Character Position을 화면 `x=0.46, y=0.52` 부근으로 고정한다.
 - 장면 모듈은 위나 아래 중 한 곳에만 둔다. A01~A03은 공식 권장에 맞춰 글로벌 프롬프트를 먼저, 장면 모듈을 하단에 둔다.
-- 각 분기는 같은 Seed 2개로 최소 2장을 생성한다. 수동 UC는 비운다.
+- 각 분기는 서로 다른 무작위 Seed로 최소 2장을 생성한다. 한 작가 안에서도 결과 모드가 갈리면 4장까지 확장한다.
+- Seed는 분기 사이에 맞추지 않는다. 픽셀·구도 일치가 아니라 반복되는 스타일 지문, 발생률과 변동성을 비교한다.
+- 수동 UC는 비운다.
 
 ## 새 목표 캐릭터와 시각 가설
 
@@ -75,102 +77,88 @@
 
 ```text
 GLOBAL DRAWING METHOD:
-artist:mika pikazo,
-digital illustration,
-clean deliberate linework, controlled varied line weight,
-layered cel shading with restrained soft blending,
-coherent hard-and-soft edge hierarchy,
-consistent brush logic across face, costume, props, and environment
+artist influence: artist:mika pikazo
+medium: digital illustration
+linework: clean deliberate linework with controlled varied line weight
+shading: layered cel shading with restrained soft blending
+edge control: crisp hard edges on focal details and softer edges on secondary forms
+finish consistency: one coherent brush and rendering logic across face, costume, props, and environment
 
-SUBJECT COUNT:
-1girl, solo, original
+SCENE STRUCTURE:
+subject: 1girl, solo, original
+era: year 2026
+detail density: high complexity
+spatial depth: depthness
+framing: portrait key visual, cowboy shot
+camera: dramatic low-angle three-quarter view
+placement: the character stands slightly left of center as the only focal point
+silhouette: strong and immediately readable
 
-ERA:
-year 2026
-
-DETAIL AND DEPTH:
-high complexity, depthness
-
-COMPOSITION:
-portrait key visual, cowboy shot, dramatic low-angle three-quarter view,
-the character stands slightly left of center as one clear focal point,
-strong readable silhouette
-
-COLOR SCRIPT:
-deep black and charcoal base,
-vivid cyan and magenta accents,
-the character colors remain distinct from the environment
-
-LIGHTING AND MOOD:
-cool moonlight, cyan and magenta city bounce light,
-electric but calm nocturnal atmosphere
+COLOR AND ATMOSPHERE:
+base palette: deep black and charcoal
+accent palette: vivid cyan and magenta
+color separation: the character remains clearly separated from the environment
+lighting: cool moonlight with cyan and magenta city bounce light
+mood: electric but calm nocturnal atmosphere
 
 BACKGROUND:
-blue-hour rooftop above a dense futuristic city,
-luminous signs far below, a huge pale moon behind thin clouds,
-windblown holographic delivery slips, strong foreground-to-background depth
+location: a blue-hour rooftop above a dense futuristic city
+far background: luminous signs far below and a huge pale moon behind thin clouds
+atmospheric motion: holographic delivery slips moving in the wind
+depth arrangement: clear foreground, middle ground, and distant city layers
 
 FORMAT:
-one uninterrupted full-bleed illustration occupying the entire canvas
+canvas use: the artwork fills the entire canvas
+panel layout: one uninterrupted full-bleed illustration
 ```
 
 Character Prompt 1:
 
 ```text
 IDENTITY:
-young adult woman, lunar courier
+role: young adult woman, lunar courier
+identity anchors: high side ponytail, scarlet eyes, left-eye beauty mark, qipao-shaped techwear
 
 FACE:
-slender oval face with a slightly pointed chin,
-straight dark eyebrows,
-small beauty mark directly below her left eye
+shape: slender oval face with a slightly pointed chin
+eyebrows: straight dark eyebrows
+signature mark: one small beauty mark directly below her left eye
 
-HAIR OVERALL:
-deep black hair with a sleek, weighty silhouette,
-high side ponytail tied on her right side,
-cyan underdye visible only on the inner layer
+HAIR:
+base color: deep black
+overall silhouette: sleek weighty hair with a high side ponytail tied on her right side
+front hair: soft center-parted bangs with one thin curved strand between the eyes
+side hair: two clean face-framing sidelocks ending near the jaw
+back hair: one thick ponytail falling diagonally behind her right shoulder
+secondary color: cyan underdye visible only on the inner lower half and tips
 
-HAIR FRONT:
-soft center-parted bangs,
-one thin curved strand between the eyes
+EYES:
+eye shape: slender almond-shaped eyes with slightly raised outer corners
+upper eye line: pronounced upper eyelid line ending in a short sharp outer wing
+lower eye line: minimal lower eyelash line
+iris structure: medium round irises with a crisp dark outer ring and small pupils
+iris color: deep scarlet red with a subtle orange inner gradient
+catchlight: one small diamond-shaped catchlight in each eye
 
-HAIR SIDES:
-two clean face-framing sidelocks ending near the jaw
-
-HAIR BACK:
-one thick ponytail falling diagonally behind her right shoulder,
-cyan inner layer visible near the lower half and tips
-
-EYES SHAPE:
-slender almond-shaped eyes with slightly raised outer corners
-
-EYES LINE:
-clean pronounced upper eyelid line with a short sharp outer wing,
-minimal lower eyelash line
-
-EYES IRIS:
-medium-sized round irises with a crisp dark outer ring and small pupils,
-deep scarlet red irises with a subtle orange inner gradient,
-one small diamond-shaped catchlight in each eye
-
-OUTFIT SILHOUETTE:
-fitted high-neck sleeveless qipao-inspired techwear dress,
-clean asymmetric hem visible within the cowboy shot
-
-OUTFIT MATERIAL AND COLOR:
-matte black technical fabric,
-cyan circuit embroidery along one side,
-small flashes of magenta inner lining at moving edges
+OUTFIT:
+silhouette: fitted qipao-inspired techwear dress with a clean asymmetric hem
+neckline and sleeves: high neck and sleeveless shoulders
+material: matte black technical fabric
+base color: black
+accent detail: cyan circuit embroidery along one side
+inner lining: small flashes of magenta visible only at moving edges
 
 ACCESSORIES AND PROP:
-one silver mechanical hairpin securing the ponytail,
-fitted black gloves,
-rectangular transparent holographic courier case with a cyan rim
+hair accessory: one silver mechanical hairpin securing the ponytail
+handwear: fitted black gloves
+main prop: one rectangular transparent holographic courier case with a cyan rim
 
-ACTION:
-turning toward the viewer while stepping onto a rooftop ledge,
-one knee bent, holding a transparent holographic courier case,
-calm confident half-smile
+ACTION AND EXPRESSION:
+body action: turning toward the viewer while stepping onto a rooftop ledge
+leg pose: one knee bent
+hand action: holding the courier case in one hand
+gaze: looking toward the viewer
+expression: calm confident half-smile
 ```
 
 ### A01 단독 지문 분기
@@ -183,6 +171,23 @@ calm confident half-smile
 | A01-C | `artist:lack` |
 
 얼굴·눈, 선화, 채색·명암, 의상·재질, 광원, 배경·구도를 작가별 지문으로 기록한다. 한 작가가 두 Seed에서 전혀 다른 모드로 나오면 혼합 후보에서 제외하거나 더 많은 반복으로 보류한다.
+
+### A01 독립 Seed 탐색 관찰
+
+- PNG 메타데이터는 네 결과 모두 V5, 832×1216, Steps 28, Guidance 7, Euler Ancestral, 빈 UC와 동일한 기본·캐릭터 프롬프트를 사용했음을 확인한다.
+- Character Position은 비활성화되어 있었다. 화면 배치는 좌표가 아니라 `SCENE STRUCTURE:`의 자연어만으로 형성됐다.
+- 네 결과 모두 검은 사이드 포니테일, 시안 보조색, 적안, 검은 치파오형 테크웨어, 시안 회로, 마젠타 안감, 장갑, 투명 케이스, 굽힌 무릎, 미래 도시·달·날리는 전표를 유지했다. 세부 구조가 작가 태그가 바뀌어도 큰 의미 앵커를 보존했다.
+- 앞·옆·뒷머리의 정확한 분리, 시안 언더다이의 노출 위치, 점의 방향·개수와 다이아몬드 캐치라이트는 불안정했다. `sleeveless`는 mika pikazo 결과에서만 명확하고 나머지는 긴소매에 가깝다.
+- 작가 태그는 그리는 방식에만 머물지 않았다. 얼굴 구조, 의상 해석, 색 포화도, 배경 밀도와 광원까지 함께 움직여 전역 누출이 확인됐다.
+
+| 분기 | Seed | 임시 단독 지문 |
+|---|---:|---|
+| A01-0 | 1517025908 | 가장 중립적인 현대 애니메이션형 얼굴, 균일한 어두운 윤곽, 정돈된 셀 명암, 선명한 회로·케이스와 안정적인 도시 배경 |
+| A01-A | 1457696876 | 큰 복합 홍채와 날카로운 눈 장식, 매우 높은 청·시안·마젠타 포화도, 그래픽 색면, 역동적 근접 구도와 프리즘형 케이스 |
+| A01-B | 3052486526 | 둥글고 어린 얼굴, 각진 테크웨어와 기계적 얼굴 표식, 큰 검은 명암 면, 평면적인 화면·도시 그래픽과 강한 흑백 대비 |
+| A01-C | 3932814009 | 길고 성숙한 얼굴과 좁은 눈, 부드러운 선·그라데이션, 천의 완만한 입체감, 청록 안개와 가장 강한 대기 원근 |
+
+각 지문은 대표 1장 기준의 임시값이다. 같은 작가의 독립 Seed 결과에서 반복되는 항목만 A02·A03의 판정 기준으로 승격한다.
 
 ## A02 전역 혼합
 
@@ -199,32 +204,44 @@ A01에서 가장 선명하고 상보적인 두 작가를 선택한다. 기본 �
 
 ## A03 요소별 귀속
 
-먼저 Character Prompt와 글로벌 배경 사이의 거친 귀속을 시험하고, 통과할 때만 얼굴과 의상의 미세 귀속을 시험한다.
+한 번에 작가 하나와 범위 하나만 추가한다. `GLOBAL DRAWING METHOD:`에서는 모든 작가 태그를 제거하고 공통 그리기 방식은 유지한다. 각 분기는 독립 Seed로 최소 2장 생성한다.
 
-### A03-C 거친 귀속
+### A03-F 얼굴 단독
 
-- Character Prompt 맨 위: `CHARACTER STYLE: Render the character only with artist:mika pikazo and artist:neco.`
-- 기본 Prompt의 `BACKGROUND:` 맨 위: `BACKGROUND STYLE: Render only the environment and lighting with artist:lack.`
-- `GLOBAL DRAWING METHOD:`에서는 모든 작가 태그를 제거하고 공통 그리기 방식은 유지한다.
-
-### A03-F 미세 귀속
-
-Character Prompt 맨 위에 다음을 추가한다.
+Character Prompt의 `FACE:` 바로 위에 추가한다.
 
 ```text
 FACE STYLE:
-Apply artist:mika pikazo only to the face, eyes, and hair rendering.
-
-COSTUME STYLE:
-Apply artist:neco only to the clothing, accessories, and courier case rendering.
+artist influence: artist:mika pikazo
+scope: face shape, eyebrows, eyes, irises, and facial mark only
 ```
 
-A03-S에서는 두 작가를 서로 바꾼다. 얼굴과 의상이 함께 바뀌거나 배경까지 따라 바뀌면 요소별 귀속이 아니라 전역 누출로 판정한다.
+### A03-O 의상·소품 단독
+
+Character Prompt의 `OUTFIT:` 바로 위에 추가한다.
+
+```text
+OUTFIT STYLE:
+artist influence: artist:neco
+scope: clothing, fabric, embroidery, gloves, hairpin, and courier case only
+```
+
+### A03-B 배경 단독
+
+기본 Prompt의 `BACKGROUND:` 바로 아래에 추가한다.
+
+```text
+BACKGROUND STYLE:
+artist influence: artist:lack
+scope: rooftop, city, sky, moon, delivery slips, and environmental lighting only
+```
+
+각 단독 분기에서 목표 요소에 A01의 해당 지문이 반복되고 비목표 요소에는 나타나지 않아야 귀속 성공이다. 전체 이미지가 함께 이동하면 전역 누출, 지문 자체가 나타나지 않으면 범위 지시가 작가 태그를 약화한 것으로 판정한다. 세 단독 분기가 통과한 뒤에만 한 Prompt에서 결합한다.
 
 ## A04 독자적 그림체 판정
 
 1. A02에서 가장 반복성이 높은 조합과 비율을 하나 고른다.
-2. 옥상, 주간 실내, 자연광 야외의 세 장면에서 같은 조합을 Seed 2개씩 생성한다.
+2. 옥상, 주간 실내, 자연광 야외의 세 장면에서 같은 조합을 독립 Seed 2개씩 생성한다.
 3. 반복되는 얼굴 추상화, 선·엣지, 명암 적층, 브러시 질감과 세부 위계를 작가명 없는 `STYLE_FINGERPRINT` 문장으로 기록한다. 색, 조명, 분위기와 구도는 제외한다.
 4. 작가 태그를 제거하고 지문만 사용해 같은 세 장면을 다시 생성한다.
 
@@ -240,13 +257,13 @@ one full-bleed main illustration with one small borderless eye close-up inset at
 the main character and background remain continuous and the artwork fills the entire canvas
 ```
 
-배치 비교에서는 `SUBJECT COUNT:`부터 `FORMAT:`까지의 하단 모듈 전체를 `GLOBAL DRAWING METHOD:` 위 또는 아래로 이동하며 내용은 수정하지 않는다.
+배치 비교에서는 `SCENE STRUCTURE:`부터 `FORMAT:`까지의 하단 모듈 전체를 `GLOBAL DRAWING METHOD:` 위 또는 아래로 이동하며 내용은 수정하지 않는다.
 
 ## 결과 기록
 
 | ID | Seed | 얼굴 추상화 | 선·엣지 | 명암 적층 | 질감·세부 위계 | 색·분위기 누출 | 지배·공존·전환 | 결정 |
 |---|---|---|---|---|---|---|---|---|
-| A01-0 | - | - | - | - | - | - | - | 미실행 |
-| A01-A | - | - | - | - | - | - | - | 미실행 |
-| A01-B | - | - | - | - | - | - | - | 미실행 |
-| A01-C | - | - | - | - | - | - | - | 미실행 |
+| A01-0 | 1517025908 | 중립적 현대 애니메이션형 | 균일하고 선명함 | 정돈된 셀 명암 | 회로·케이스 우선 | 지정 팔레트 안에서 안정적 | 기준선 | 채택 |
+| A01-A | 1457696876 | 큰 복합 홍채와 눈 장식 | 날카롭고 그래픽함 | 고대비 색면 | 눈·케이스 장식 우선 | 고채도 청·시안·마젠타 전역 확장 | 전역 영향 | 반복 대기 |
+| A01-B | 3052486526 | 둥글고 어린 얼굴 | 각지고 검은 면이 큼 | 평면·덩어리 명암 | 테크웨어·기계 표식 우선 | 흑백·시안 그래픽 전역 확장 | 전역 영향 | 반복 대기 |
+| A01-C | 3932814009 | 길고 성숙한 얼굴 | 부드럽고 가늘음 | 회화적 그라데이션 | 천·공기감 우선 | 청록 안개·대기 원근 전역 확장 | 전역 영향 | 반복 대기 |
