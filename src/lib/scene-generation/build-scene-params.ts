@@ -294,6 +294,7 @@ async function createSceneCompositionSnapshot(
             seed,
             qualityToggle: sceneGeneration.qualityToggle,
             ucPreset: sceneGeneration.ucPreset,
+            transparentBackground: false,
             sourceMode: 'text-to-image',
             strength: generation.strength,
             noise: generation.noise,
@@ -517,6 +518,7 @@ async function materializeV2GenerationParams(
         ...(modulePlan === null ? {} : { assetModulePlan: modulePlan }),
         qualityToggle: plan.params.qualityToggle,
         ucPreset: plan.params.ucPreset,
+        transparentBackground: plan.params.transparentBackground,
         promptParts: {
             base: plan.promptParts.base,
             inpainting: plan.promptParts.inpainting,

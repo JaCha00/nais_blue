@@ -3,6 +3,8 @@
   "sourceKind": "synthetic-target-bearer-covering-matrix",
   "captureDate": "2026-07-16",
   "requiredModels": [
+    "nai-diffusion-5-full",
+    "nai-diffusion-5-curated",
     "nai-diffusion-4-5-curated",
     "nai-diffusion-4-5-full",
     "nai-diffusion-4-curated-preview",
@@ -12,7 +14,99 @@
     "png",
     "webp"
   ],
+  "modelPayloadContracts": [
+    {
+      "model": "nai-diffusion-5-full",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "very aesthetic, masterpiece, no text",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+      "skipCfgAboveSigma": null,
+      "v5TagHints": {
+        "tag_hint_qt": 1,
+        "tag_hint_uc_preset": 2,
+        "tag_hint_transparent_background": false
+      }
+    },
+    {
+      "model": "nai-diffusion-5-curated",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "very aesthetic, masterpiece, no text",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+      "skipCfgAboveSigma": null,
+      "v5TagHints": {
+        "tag_hint_qt": 1,
+        "tag_hint_uc_preset": 2,
+        "tag_hint_transparent_background": false
+      }
+    },
+    {
+      "model": "nai-diffusion-4-5-curated",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "location, masterpiece, no text, -0.8::feet::, rating:general",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "blurry, lowres, upscaled, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, halftone, multiple views, logo, too many watermarks, negative space, blank page",
+      "skipCfgAboveSigma": 58
+    },
+    {
+      "model": "nai-diffusion-4-5-full",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "location, very aesthetic, masterpiece, no text",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+      "skipCfgAboveSigma": 58
+    },
+    {
+      "model": "nai-diffusion-4-curated-preview",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "rating:general, amazing quality, very aesthetic, absurdres",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, logo, dated, signature, multiple views, gigantic breasts",
+      "skipCfgAboveSigma": 19
+    },
+    {
+      "model": "nai-diffusion-4-full",
+      "promptBase": "1girl, silver hair\nblue eyes",
+      "qualitySuffix": "no text, best quality, very aesthetic, absurdres",
+      "negativeBase": "lowres",
+      "ucPreset0Prefix": "blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks",
+      "skipCfgAboveSigma": 19
+    }
+  ],
   "cases": [
+    {
+      "id": "core-main-v5-full-standard-png",
+      "workflow": "main",
+      "model": "nai-diffusion-5-full",
+      "transport": "standard",
+      "format": "png",
+      "seed": 26071611
+    },
+    {
+      "id": "core-scene-v5-full-stream-webp",
+      "workflow": "scene",
+      "model": "nai-diffusion-5-full",
+      "transport": "stream",
+      "format": "webp",
+      "seed": 26071612
+    },
+    {
+      "id": "core-style-v5-curated-stream-png",
+      "workflow": "style-lab",
+      "model": "nai-diffusion-5-curated",
+      "transport": "stream",
+      "format": "png",
+      "seed": 26071613
+    },
+    {
+      "id": "core-main-v5-curated-standard-webp",
+      "workflow": "main",
+      "model": "nai-diffusion-5-curated",
+      "transport": "standard",
+      "format": "webp",
+      "seed": 26071614
+    },
     {
       "id": "core-main-v45-curated-standard-png",
       "workflow": "main",
@@ -104,7 +198,7 @@
     {
       "id": "app-main-standard-png",
       "workflow": "main",
-      "model": "nai-diffusion-4-5-curated",
+      "model": "nai-diffusion-5-full",
       "transport": "standard",
       "format": "png",
       "expectedCommit": "output-history-file"
@@ -112,7 +206,7 @@
     {
       "id": "app-scene-stream-webp",
       "workflow": "scene",
-      "model": "nai-diffusion-4-5-full",
+      "model": "nai-diffusion-5-curated",
       "transport": "stream",
       "format": "webp",
       "expectedCommit": "scene-output-file-sidecar"
@@ -128,7 +222,7 @@
     {
       "id": "app-main-source-edit-webp",
       "workflow": "main",
-      "model": "nai-diffusion-4-5-full",
+      "model": "nai-diffusion-5-full",
       "transport": "source-zip",
       "format": "webp",
       "sourceFrom": "app-main-standard-png",
@@ -147,6 +241,6 @@
     "webCapture": false,
     "liveResponseStored": false,
     "sensitiveDataRemoved": true,
-    "notes": "The required matrix is a covering matrix. One bounded V3-family probe found Furry V3 stream/WebP rejected with HTTP 400, so both V3 models were retired from release authority."
+    "notes": "The required matrix is a covering matrix. V5 Full and Curated are selectable release models. One bounded V3-family probe found Furry V3 stream/WebP rejected with HTTP 400, so both V3 models were retired from release authority."
   }
 }

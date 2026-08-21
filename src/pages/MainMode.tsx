@@ -42,7 +42,7 @@ import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { useLayoutStore } from '@/stores/layout-store'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
 import {
     MAIN_ASSET_SELECTION_PREFIX,
@@ -68,6 +68,7 @@ import {
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
+import { normalizeNaiImageModelId } from '@/services/nai/model-catalog'
 
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
@@ -109,6 +110,7 @@ export default function MainMode() {
         batchCount,
         currentBatch,
         streamProgress,
+        model,
         steps,
         isCancelled,
         generatingMode,
@@ -279,13 +281,15 @@ export default function MainMode() {
 
     const selectedModule = moduleStackItems.find(module => module.id === selectedModuleId) ?? null
     const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
+    const pricingBasis = resolveAnlasPricingBasis({ model, activeCredentialsAreOpus })
     const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
         ? calculateAnlasCost({
+            model,
             width: selectedResolution.width,
             height: selectedResolution.height,
             steps,
             imageCount: 1,
-            pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+            pricingBasis,
         }) * batchCount
         : null
     const hasRecipeControls = assetProfile.recipes.length > 0
@@ -338,41 +342,25 @@ export default function MainMode() {
             // Generate random seed
             const newSeed = Math.floor(Math.random() * 4294967295)
 
-            // Map metadata model name to API model ID
-            // Metadata returns display names like "NovelAI Diffusion V4.5 ..." 
-            // but API needs IDs like "nai-diffusion-4-5-full"
-            const mapModelNameToId = (name?: string): string => {
-                if (!name) return 'nai-diffusion-4-5-full'
-                const lower = name.toLowerCase()
-                if (lower.includes('4.5') || lower.includes('4-5')) {
-                    if (lower.includes('curated')) return 'nai-diffusion-4-5-curated'
-                    return 'nai-diffusion-4-5-full'
-                }
-                if (lower.includes('v4') || lower.includes('4')) {
-                    if (lower.includes('curated')) return 'nai-diffusion-4-curated-preview'
-                    return 'nai-diffusion-4-full'
-                }
-                if (lower.includes('furry')) return 'nai-diffusion-furry-3'
-                if (lower.includes('v3') || lower.includes('3')) return 'nai-diffusion-3'
-                return 'nai-diffusion-4-5-full'
-            }
-
             // Call API directly with metadata (without modifying UI store)
             // Use all settings from metadata, only randomize seed
             const regenerateParams = {
                 prompt: metadata.prompt || '',
                 negative_prompt: metadata.negativePrompt || '',
-                model: mapModelNameToId(metadata.model),
-                width: metadata.width || 832,
-                height: metadata.height || 1216,
-                steps: metadata.steps || 28,
-                cfg_scale: metadata.cfgScale || 5,
-                cfg_rescale: metadata.cfgRescale || 0,
-                sampler: metadata.sampler || 'k_euler',
-                scheduler: metadata.scheduler || 'native',
+                model: normalizeNaiImageModelId(metadata.model) ?? genStore.model,
+                width: metadata.width ?? 832,
+                height: metadata.height ?? 1216,
+                steps: metadata.steps ?? 28,
+                cfg_scale: metadata.cfgScale ?? 5,
+                cfg_rescale: metadata.cfgRescale ?? 0,
+                sampler: metadata.sampler ?? 'k_euler',
+                scheduler: metadata.scheduler ?? 'native',
                 smea: metadata.smea ?? true,
                 smea_dyn: metadata.smeaDyn ?? false,
                 variety: metadata.variety ?? false,
+                qualityToggle: metadata.qualityToggle ?? false,
+                ucPreset: metadata.ucPreset ?? 0,
+                transparentBackground: metadata.transparentBackground ?? false,
                 seed: newSeed,
                 imageFormat: useSettingsStore.getState().imageFormat,
                 metadataMode: useSettingsStore.getState().metadataMode,

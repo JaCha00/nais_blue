@@ -5,6 +5,7 @@ import {
     isRightsOwner,
 } from './bluehair-rights-policy'
 import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
+import { DEFAULT_NAI_IMAGE_MODEL } from '@/domain/generation/model-default'
 
 export const WORKFLOW_DRAFT_STORE_KEY = 'nai-blue-workflow-drafts'
 export const SINGLE_IMAGE_DRAFT_SCHEMA_VERSION = 2 as const
@@ -44,6 +45,8 @@ export interface SingleImageGenerationSettings {
     readonly seed: number
     readonly qualityToggle: boolean
     readonly ucPreset: number
+    /** Missing on schema-v2 drafts created before V5 means opaque output. */
+    readonly transparentBackground?: boolean
 }
 
 export interface SingleImageOutputSettings {
@@ -287,6 +290,8 @@ function isGenerationSettings(value: unknown): value is SingleImageGenerationSet
         && typeof value.qualityToggle === 'boolean'
         && Number.isSafeInteger(value.ucPreset)
         && (value.ucPreset as number) >= 0
+        && (value.transparentBackground === undefined
+            || typeof value.transparentBackground === 'boolean')
 }
 
 function isResolution(value: unknown): value is NonNullable<SingleImageDraftPayload['resolution']> {
@@ -406,13 +411,13 @@ function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDr
     if (!isOutputSettings(output)) throw new TypeError('Workflow draft output settings are invalid')
     return Object.freeze({
         mode: 'text-to-image',
-        model: input.model ?? null,
+        model: input.model ?? DEFAULT_NAI_IMAGE_MODEL,
         prompt: Object.freeze({ positive: '', negative: '' }),
         characterPrompts: Object.freeze({
             positionEnabled: false,
             items: Object.freeze([]),
         }),
-        resolution: null,
+        resolution: Object.freeze({ width: 832, height: 1216 }),
         generation: Object.freeze({
             steps: 28,
             cfgScale: 5,
@@ -425,6 +430,7 @@ function createDefaultPayload(input: CreateSingleImageDraftInput): SingleImageDr
             seed: input.seed,
             qualityToggle: true,
             ucPreset: 0,
+            transparentBackground: false,
         }),
         credentialPolicy: Object.freeze({ kind: 'auto' as const }),
         output: Object.freeze(output),
@@ -445,7 +451,7 @@ export function createSingleImageDraft(input: CreateSingleImageDraftInput): Sing
         kind: 'single-image',
         revision: 0,
         status: 'draft',
-        currentNodeId: 'model',
+        currentNodeId: 'prompt',
         payload: createDefaultPayload(input),
         createdAt: input.now,
         updatedAt: input.now,
@@ -461,7 +467,7 @@ export function createBatchImageDraft(input: CreateBatchImageDraftInput): BatchI
     return Object.freeze({
         ...single,
         kind: 'batch-image',
-        currentNodeId: 'model',
+        currentNodeId: 'prompt',
         payload: Object.freeze({
             ...single.payload,
             batchMode: input.batchMode,

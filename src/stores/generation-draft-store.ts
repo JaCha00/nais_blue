@@ -7,11 +7,12 @@ export type GenerationDraftState = Pick<GenerationStoreState,
     | 'basePrompt' | 'additionalPrompt' | 'detailPrompt' | 'negativePrompt'
     | 'seed' | 'seedLocked' | 'selectedResolution' | 'model' | 'steps'
     | 'cfgScale' | 'cfgRescale' | 'sampler' | 'scheduler' | 'smea'
-    | 'smeaDyn' | 'variety' | 'qualityToggle' | 'ucPreset' | 'batchCount'
+    | 'smeaDyn' | 'variety' | 'qualityToggle' | 'ucPreset' | 'transparentBackground' | 'batchCount'
     | 'setBasePrompt' | 'setAdditionalPrompt' | 'setDetailPrompt' | 'setNegativePrompt'
     | 'setSeed' | 'setSeedLocked' | 'setSelectedResolution' | 'setModel' | 'setSteps'
     | 'setCfgScale' | 'setCfgRescale' | 'setSampler' | 'setScheduler' | 'setSmea'
-    | 'setSmeaDyn' | 'setVariety' | 'setQualityToggle' | 'setUcPreset' | 'setBatchCount'
+    | 'setSmeaDyn' | 'setVariety' | 'setQualityToggle' | 'setUcPreset'
+    | 'setTransparentBackground' | 'setBatchCount'
 >
 
 /**

@@ -57,6 +57,7 @@ export function legacyPresetParams(value: unknown): ParamsOverride {
     assign(params, 'variety', readBoolean(record, 'variety'))
     assign(params, 'qualityToggle', readBoolean(record, 'qualityToggle'))
     assign(params, 'ucPreset', readNumber(record, 'ucPreset'))
+    assign(params, 'transparentBackground', readBoolean(record, 'transparentBackground'))
     return params
 }
 

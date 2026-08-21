@@ -30,7 +30,7 @@ describe('Phase 13 pre-change behavior characterization', () => {
             useCoords: false,
         })
 
-        expect(payload.input).toBe('1girl\nblue eyes, very aesthetic, masterpiece, no text')
+        expect(payload.input).toBe('1girl\nblue eyes, location, very aesthetic, masterpiece, no text')
         expect(payload.parameters.v4_prompt).toMatchObject({
             caption: {
                 base_caption: payload.input,
@@ -39,7 +39,7 @@ describe('Phase 13 pre-change behavior characterization', () => {
         })
         expect(payload.parameters.v4_negative_prompt).toMatchObject({
             caption: {
-                base_caption: 'lowres',
+                base_caption: '{worst quality}, distracting watermark, unfinished, bad quality, {widescreen}, upscale, {sequence}, {{grandfathered content}}, blurred foreground, chromatic aberration, sketch, everyone, [sketch background], simple, [flat colors], ych (character), outline, multiple scenes, [[horror (theme)]], comic, lowres',
                 char_captions: [{ char_caption: 'bad hands' }],
             },
         })

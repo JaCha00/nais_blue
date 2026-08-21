@@ -64,6 +64,22 @@ describe('Guided B-E workflow contract', () => {
         }
     })
 
+    it('lets users draft before connecting and keeps compact native-shell controls accessible', async () => {
+        const [preview, shell] = await Promise.all([
+            source('src/presentation/workflow/GuidedPreview.tsx'),
+            source('src/presentation/workflow/GuidedShell.tsx'),
+        ])
+
+        expect(preview).not.toContain('GuidedCredentialGate')
+        expect(shell).toContain("isAndroidRuntime && 'android-landscape-safe-inline'")
+        expect(shell).toContain('!isMac && !isMobileRuntime && <CustomTitleBar')
+        expect(shell).toContain("aria-label={t('guided.activity.title', '내 작업')}")
+        expect(shell).toContain('aria-expanded={activityOpen}')
+        expect(shell).toContain('aria-controls="guided-activity-sheet"')
+        expect(shell).toContain('id="guided-activity-sheet"')
+        expect(shell).toContain("aria-label={t('guided.advanced', '고급 생성 모드')}")
+    })
+
     it('keeps the full B-E copy tree aligned in every locale', () => {
         expect(leafKeys(ko.guided.workflows)).toEqual(leafKeys(en.guided.workflows))
         expect(leafKeys(ja.guided.workflows)).toEqual(leafKeys(en.guided.workflows))
@@ -115,6 +131,24 @@ describe('Guided single-image production contract', () => {
         expect(leafKeys(ja.guided.single)).toEqual(leafKeys(en.guided.single))
         expect(leafKeys(ko.guided.characters)).toEqual(leafKeys(en.guided.characters))
         expect(leafKeys(ja.guided.characters)).toEqual(leafKeys(en.guided.characters))
+    })
+
+    it('shows the shared Opus V5 allowance beside every Guided paid-consent boundary', async () => {
+        const [single, batch, promptTasks] = await Promise.all([
+            source('src/presentation/workflow/GuidedSingleImage.tsx'),
+            source('src/presentation/workflow/GuidedBatchImages.tsx'),
+            source('src/presentation/workflow/GuidedPromptTasks.tsx'),
+        ])
+
+        for (const [surface, consentMarker] of [
+            [single, 'checked={consented}'],
+            [batch, 'checked={consented}'],
+            [promptTasks, 'checked={costConsented}'],
+        ] as const) {
+            expect(surface).toContain('<NovelAiV5UsageLimit')
+            expect(surface.indexOf('<NovelAiV5UsageLimit')).toBeLessThan(surface.indexOf(consentMarker))
+        }
+        expect(promptTasks).toContain("pricingBasis === 'all-active-opus'")
     })
 
     it('keeps character prompts inside each Guided draft and behind one compact sheet', async () => {

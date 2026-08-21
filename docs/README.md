@@ -19,6 +19,7 @@
 | 경로 | 용도와 보존 정책 |
 |---|---|
 | `architecture/` | 현재 구조, ADR, import graph와 [영속화 지도](./architecture/persistence-map.md) |
+| `research/` | 제품 동작을 검증하는 재현 가능한 연구 기록 |
 | `releases/` | 현재 릴리스 인계와 배포 기준 문서 |
 | `local/plans/` | 진행 중인 로컬 계획 문서 |
 | `local/handoffs/` | 세션·릴리스 인계 기록 |

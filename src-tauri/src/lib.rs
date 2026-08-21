@@ -18,7 +18,16 @@ pub struct AnlasResult {
     pub success: bool,
     pub fixed: Option<i64>,
     pub purchased: Option<i64>,
+    pub usage: Option<OpusGenerationUsage>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpusGenerationUsage {
+    pub percent: f64,
+    pub is_negative: bool,
+    pub time_until_next_percent: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +35,9 @@ struct SubscriptionResponse {
     tier: Option<i32>,
     #[serde(rename = "trainingStepsLeft")]
     training_steps_left: Option<TrainingSteps>,
+    // Keep the subscription endpoint backward-compatible: malformed or
+    // provider-new usage data is ignored without discarding the Anlas balance.
+    usage: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +46,127 @@ struct TrainingSteps {
     fixed_training_steps_left: Option<i64>,
     #[serde(rename = "purchasedTrainingSteps")]
     purchased_training_steps: Option<i64>,
+}
+
+fn parse_opus_generation_usage(value: &serde_json::Value) -> Option<OpusGenerationUsage> {
+    let record = value.as_object()?;
+    let percent = record.get("percent")?.as_f64()?;
+    let is_negative = record.get("isNegative")?.as_bool()?;
+    let time_until_next_percent = record.get("timeUntilNextPercent")?.as_f64()?;
+
+    // Preserve a usable quota state when the provider briefly reports signed
+    // or overfull percentages; consumers display only the bounded percentage.
+    if !percent.is_finite() || !time_until_next_percent.is_finite() || time_until_next_percent < 0.0
+    {
+        return None;
+    }
+
+    Some(OpusGenerationUsage {
+        percent: percent.clamp(0.0, 100.0),
+        is_negative,
+        time_until_next_percent,
+    })
+}
+
+#[cfg(test)]
+mod subscription_usage_tests {
+    use super::{parse_opus_generation_usage, OpusGenerationUsage, SubscriptionResponse};
+    use serde_json::json;
+
+    #[test]
+    fn accepts_the_complete_provider_usage_contract() {
+        let usage = parse_opus_generation_usage(&json!({
+            "percent": 87.5,
+            "isNegative": false,
+            "timeUntilNextPercent": 143.25,
+        }));
+        assert_eq!(
+            usage,
+            Some(OpusGenerationUsage {
+                percent: 87.5,
+                is_negative: false,
+                time_until_next_percent: 143.25,
+            }),
+        );
+        assert_eq!(
+            serde_json::to_value(usage).expect("usage must serialize"),
+            json!({
+                "percent": 87.5,
+                "isNegative": false,
+                "timeUntilNextPercent": 143.25,
+            }),
+        );
+    }
+
+    #[test]
+    fn clamps_signed_or_overfull_percentages_without_losing_usage() {
+        for (percent, expected) in [(-1.0, 0.0), (101.0, 100.0)] {
+            assert_eq!(
+                parse_opus_generation_usage(&json!({
+                    "percent": percent,
+                    "isNegative": percent < 0.0,
+                    "timeUntilNextPercent": 1,
+                })),
+                Some(OpusGenerationUsage {
+                    percent: expected,
+                    is_negative: percent < 0.0,
+                    time_until_next_percent: 1.0,
+                }),
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_legacy_subscription_responses_valid_without_usage() {
+        let response: SubscriptionResponse = serde_json::from_value(json!({
+            "tier": 3,
+            "trainingStepsLeft": {
+                "fixedTrainingStepsLeft": 4,
+                "purchasedTrainingSteps": 5,
+            },
+        }))
+        .expect("legacy response must deserialize");
+
+        assert_eq!(response.tier, Some(3));
+        assert!(response.usage.is_none());
+    }
+
+    #[test]
+    fn ignores_malformed_usage_while_preserving_the_parent_subscription_response() {
+        let response: SubscriptionResponse = serde_json::from_value(json!({
+            "tier": 3,
+            "trainingStepsLeft": {
+                "fixedTrainingStepsLeft": 4,
+                "purchasedTrainingSteps": 5,
+            },
+            "usage": {
+                "percent": "not-a-number",
+                "isNegative": false,
+                "timeUntilNextPercent": 1,
+            },
+        }))
+        .expect("usage shape must not invalidate Anlas data");
+
+        assert_eq!(response.tier, Some(3));
+        assert_eq!(
+            response
+                .usage
+                .as_ref()
+                .and_then(parse_opus_generation_usage),
+            None,
+        );
+    }
+
+    #[test]
+    fn rejects_incomplete_or_invalid_usage_without_affecting_the_parent_response() {
+        for invalid in [
+            json!({ "percent": 50, "isNegative": false }),
+            json!({ "percent": 50, "isNegative": "false", "timeUntilNextPercent": 1 }),
+            json!({ "percent": 50, "isNegative": false, "timeUntilNextPercent": -1 }),
+        ] {
+            assert_eq!(parse_opus_generation_usage(&invalid), None);
+        }
+    }
 }
 
 #[tauri::command]
@@ -129,6 +262,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
                             success: true,
                             fixed,
                             purchased,
+                            usage: data.usage.as_ref().and_then(parse_opus_generation_usage),
                             error: None,
                         }
                     }
@@ -136,6 +270,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
                         success: false,
                         fixed: None,
                         purchased: None,
+                        usage: None,
                         error: Some("응답 형식 오류".to_string()),
                     },
                 }
@@ -144,6 +279,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
                     success: false,
                     fixed: None,
                     purchased: None,
+                    usage: None,
                     error: Some(format!("API 오류: {}", response.status().as_u16())),
                 }
             }
@@ -152,6 +288,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
             success: false,
             fixed: None,
             purchased: None,
+            usage: None,
             error: Some("네트워크 오류".to_string()),
         },
     }

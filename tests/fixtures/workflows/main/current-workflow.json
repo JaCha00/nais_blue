@@ -64,7 +64,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "1girl, silver hair, very aesthetic, masterpiece, no text",
+        "input": "1girl, silver hair, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 832,
@@ -75,7 +75,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": false,
@@ -182,7 +182,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "1girl, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "input": "1girl, soft light, detailed eyes, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 832,
@@ -193,7 +193,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": false,
@@ -300,7 +300,7 @@
       },
       "payloadRedactedSummary": {
         "action": "infill",
-        "input": "portrait, repair hands, very aesthetic, masterpiece, no text",
+        "input": "portrait, repair hands, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full-inpainting",
         "parameters": {
           "width": 768,
@@ -311,7 +311,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, bad hands",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, bad hands",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": false,
@@ -430,7 +430,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "1girl, blue hair, very aesthetic, masterpiece, no text",
+        "input": "1girl, blue hair, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 832,
@@ -441,7 +441,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, <bad anatomy|lowres>",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, <bad anatomy|lowres>",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": true,
@@ -701,7 +701,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "module subject, module lighting, very aesthetic, masterpiece, no text",
+        "input": "module subject, module lighting, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 832,
@@ -712,7 +712,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, module negative",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, module negative",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": true,
@@ -861,7 +861,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "fallback base, fallback additional, very aesthetic, masterpiece, no text",
+        "input": "fallback base, fallback additional, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 832,
@@ -872,7 +872,7 @@
           "scale": 5,
           "cfgRescale": 0,
           "noiseSchedule": "karras",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, fallback negative",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, fallback negative",
           "qualityToggle": true,
           "ucPreset": 0,
           "useCoords": false,

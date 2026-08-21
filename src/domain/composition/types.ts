@@ -131,6 +131,7 @@ export interface ParamsOverride {
     seedLocked?: boolean
     qualityToggle?: boolean
     ucPreset?: number
+    transparentBackground?: boolean
     sourceMode?: SourceMode
     sourceImageResourceId?: EntityId
     maskResourceId?: EntityId
@@ -161,6 +162,7 @@ export interface ResolvedGenerationParams {
     seed: number
     qualityToggle: boolean
     ucPreset: number
+    transparentBackground: boolean
     sourceMode: SourceMode
     sourceImageResourceId?: EntityId
     maskResourceId?: EntityId

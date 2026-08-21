@@ -3,6 +3,36 @@
         "name": "NAI Blue",
         "description": "NovelAI 統合スタジオ"
     },
+    "counter": {
+        "decrease": "画像枚数を減らす",
+        "increase": "画像枚数を増やす",
+        "edit": "現在の画像枚数 {{value}} を編集",
+        "editTitle": "画像枚数を直接編集",
+        "input": "画像枚数"
+    },
+    "credentials": {
+        "v5UsageLimit": {
+            "title": "Opus V5 使用量制限",
+            "description": "Opus プランには、通常解像度かつ Steps 28 以下の NovelAI Diffusion V5 生成が限定的に含まれます。この枠を使い切っても、有料 Anlas で生成を続けられます。",
+            "paidCeiling": "安全側の有料上限: 最大 {{maxAnlas}} Anlas。",
+            "slot": "Opus スロット {{slot}}",
+            "refresh": "Opus スロット {{slot}} の V5 使用量を更新",
+            "progress": "Opus スロット {{slot}} の V5 残り使用量",
+            "unknown": "使用量はまだ読み込まれていません。更新して現在の枠を確認してください。",
+            "remaining": "残り {{percent}}%",
+            "depleted": "含まれる V5 使用量を使い切りました",
+            "eligible": "現在の設定は、残量があれば含まれる V5 使用量を利用できます。",
+            "ineligible": {
+                "resolution": "解像度が 1024² を超えているため、このリクエストは有料 Anlas を使用します。",
+                "steps": "Steps が 28 を超えているため、このリクエストは有料 Anlas を使用します。",
+                "character": "キャラクター参照画像は、含まれる V5 使用量の対象外です。"
+            },
+            "refillUnknown": "回復速度は利用できません。",
+            "refilling": "現在、1時間あたり約 {{rate}}% 回復中です。",
+            "negative": "使用量が 0 未満のため、有料 Anlas へのフォールバックが想定されます。",
+            "alwaysShow": "使用量制限バーを常に表示"
+        }
+    },
     "generationFolders": {
         "defaultName": "デフォルト出力",
         "pickerLabel": "画像生成フォルダ",
@@ -172,7 +202,7 @@
                     "costTitle": "2枚の推定費用",
                     "costSummary": "2候補 · 最大 {{cost}} Anlas",
                     "opusBasis": "有効なアカウントがすべてOpusのため、1024²以下・28 Stepsまでは0 Anlasとして計算します。",
-                    "paidBasis": "すべての有効なアカウントで無料条件を確認できないため、安全側の有料基準で計算します。",
+                    "paidBasis": "これは安全側の有料上限です。対象となる V5 Opus の含まれる使用量があれば、先に使われる場合があります。",
                     "consent": "2候補の生成に最大 {{cost}} Anlasが使われる可能性を確認しました。",
                     "tokenRequired": "先に使用するNovelAI APIトークンを登録してください。"
                 },
@@ -782,7 +812,7 @@
                 "model": {
                     "short": "モデル",
                     "title": "どのモデルを使いますか？",
-                    "description": "初めてなら、指示に忠実で幅広い表現が得意な V4.5 Full がおすすめです。"
+                    "description": "初めてなら、指示に忠実で表現力に優れた最新の V5 Full がおすすめです。"
                 },
                 "prompt": {
                     "short": "プロンプト",
@@ -832,6 +862,8 @@
             },
             "model": {
                 "legend": "生成モデル",
+                "nai-diffusion-5-full": "指示への忠実さ、細部、表現の幅に優れた V5 の基本おすすめモデルです。",
+                "nai-diffusion-5-curated": "表現範囲を厳選し、すばやく安定した結果を得やすい V5 モデルです。",
                 "nai-diffusion-4-5-full": "V4.5 系で生成できる画像の範囲と表現の自由度が最も広いモデルです。",
                 "nai-diffusion-4-5-curated": "表現範囲を厳選し、安定したアニメイラストを作りやすいモデルです。",
                 "nai-diffusion-4-full": "V4 世代の幅広い表現範囲と高い生成自由度を求める場合に適しています。",
@@ -842,7 +874,10 @@
                 "placeholder": "例: 1girl, blue hair, quiet library, warm afternoon light",
                 "tagHelp": "英語タグまたは英語の文章を使えます。タグ候補の数字は学習量ではなく、参考タグデータの投稿数です。",
                 "negativeTitle": "避けたい内容を追加 · 任意",
-                "negativePlaceholder": "例: lowres, blurry, text"
+                "negativePlaceholder": "例: lowres, blurry, text",
+                "transparentBackground": "背景を透過する",
+                "transparentBackgroundHelp": "ステッカーやキャラクター素材など、背景なしで使いたいときにオンにします。",
+                "moreTools": "ファイル・モジュールから読み込む · 任意"
             },
             "resolution": {
                 "legend": "画像の比率と解像度",
@@ -852,7 +887,7 @@
             },
             "settings": {
                 "stepsShort": "画像をどの程度細かく仕上げるかを決めます。",
-                "stepsFree": "28 は安定した基本値です。Opus アカウントで解像度が 1024² 以下なら、基本生成コストはかかりません。",
+                "stepsFree": "28 は安定した基本値です。Opus の含まれる使用量が適用される場合があり、実際の最大 Anlas は確認画面で表示されます。",
                 "stepsPaid": "28 を超えると Anlas が必要になる場合があります。指示への忠実さは上がることがありますが、数値が高いほど必ず良くなるわけではありません。",
                 "sampler": "サンプラー",
                 "samplerHelp": "ノイズを画像へ整えていく方式です。",
@@ -877,6 +912,7 @@
                 "model": "モデル",
                 "prompt": "プロンプト",
                 "negative": "避けたい内容",
+                "transparentBackground": "透過背景",
                 "characters": "キャラクター {{count}}人",
                 "resolution": "解像度",
                 "settings": "生成設定",
@@ -1906,6 +1942,7 @@
         "confirmDeleteTab": "'{{name}}'を削除しますか？"
     },
     "prompt": {
+        "title": "プロンプト",
         "base": "基本プロンプト",
         "basePlaceholder": "1girl, beautiful, long hair, standing, looking at viewer...",
         "additional": "追加プロンプト",
@@ -1993,7 +2030,10 @@
         "fidelity": "忠実度 (Fidelity)",
         "vibeDisabledMsg": "参照リファレンスがある場合は使用できません。",
         "clickToDisable": "クリックで無効化",
-        "clickToEnable": "クリックで有効化"
+        "clickToEnable": "クリックで有効化",
+        "v5PrecisePending": "V5 はまだ Precise Reference に対応していません。",
+        "v5ReferenceAlternative": "キャラクタープロンプトを使うか、この参照画像を残したまま V4.5 に切り替えてください。",
+        "v5VibePending": "V5 はまだ Vibe Transfer に対応していません。画像は保存され、V4.5 で再利用できます。"
     },
     "imageRef": {
         "title": "画像参照を追加",
@@ -2067,6 +2107,7 @@
         "preview": "プレビュー",
         "emptyState": "画像を生成してください",
         "emptyDescription": "プロンプトを開いて入力し、生成ボタンを押してください",
+        "openPrompt": "プロンプトを開く",
         "loadingTitle": "画像生成中...",
         "loadingDescription": "しばらくお待ちください",
         "lastTime": "前回の所要時間",
@@ -2077,25 +2118,73 @@
         "lowStepsCautionRange": "{{threshold}}未満は実験向けです。",
         "restoreRecommendedSteps": "28 stepsに戻す"
     },
+    "diagnosticDrawer": {
+        "open": "診断ログを開く",
+        "shortLabel": "診断",
+        "title": "診断ログ",
+        "description": "機密情報を除去した最近のタスク診断です。",
+        "empty": "記録された診断はありません。",
+        "recommendedAction": "推奨アクション",
+        "copySummary": "要約をコピー",
+        "copyRedactedLog": "編集済みログをコピー",
+        "exportJson": "JSON をエクスポート",
+        "collapseDetails": "詳細を閉じる",
+        "expandDetails": "詳細を表示",
+        "timeline": "タイムライン",
+        "occurredAt": "発生日時",
+        "operation": "処理",
+        "retry": "再試行",
+        "cause": "原因",
+        "recentActivity": "最近のアクティビティ"
+    },
     "settings": {
         "title": "設定",
         "advanced": "詳細設定",
         "resolution": "解像度",
         "resolutionSelect": "解像度を選択",
         "seed": "シード",
+        "lockSeed": "シードを固定",
+        "unlockSeed": "シードの固定を解除",
+        "randomSeed": "ランダムシード",
         "random": "ランダム"
     },
     "parameters": {
         "title": "パラメータ設定",
         "description": "StepsやCFG Scaleなどの生成パラメータを設定します。",
         "model": "モデル",
+        "modelDescriptions": {
+            "nai-diffusion-5-full": "表現の幅が最も広く、指示に忠実な V5 の基本おすすめモデルです。",
+            "nai-diffusion-5-curated": "厳選された表現範囲で安定した結果を得やすい V5 モデルです。",
+            "nai-diffusion-4-5-full": "既存の作業で V4.5 Full との互換性が必要な場合に選びます。",
+            "nai-diffusion-4-5-curated": "V4.5 Curated で作成した結果を再現する場合に選びます。",
+            "nai-diffusion-4-full": "以前の V4 Full 設定を引き継ぐための互換オプションです。",
+            "nai-diffusion-4-curated-preview": "以前の V4 Curated 作業を引き継ぐための互換オプションです。"
+        },
         "steps": "Steps",
         "cfgScale": "CFG Scale",
         "cfgRescale": "CFG Rescale",
         "sampler": "Sampler",
         "scheduler": "Scheduler",
         "smea": "SMEA",
-        "smeaDyn": "SMEA DYN"
+        "smeaHelp": "大きな画像の全体へ注意を行き渡らせます。",
+        "smeaDyn": "SMEA DYN",
+        "smeaDynHelp": "生成中に SMEA を動的に調整します。",
+        "variety": "Variety+",
+        "varietyHelp": "生成画像ごとの変化を大きくします。",
+        "qualityToggle": "品質タグを追加",
+        "qualityToggleHelp": "選択したモデルの公式品質タグをプロンプトへ追加します。",
+        "ucPreset": "除外内容プリセット",
+        "ucHeavy": "強め",
+        "ucLight": "軽め",
+        "ucFurry": "Furry Focus",
+        "ucHuman": "人物重視",
+        "ucNone": "なし",
+        "recommended": "おすすめ",
+        "legacy": "旧バージョン",
+        "v5Karras": "V5 では Karras を自動的に使用します。",
+        "v5VarietyPending": "V5 の Variety+ は、公式設定が確認されるまで無効です。",
+        "transparentBackground": "背景を透過",
+        "transparentBackgroundHelp": "背景なしですぐ使える透過画像を生成します。"
     },
     "history": {
         "title": "履歴",

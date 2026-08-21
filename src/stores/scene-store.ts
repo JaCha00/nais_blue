@@ -18,6 +18,7 @@ import type {
 import { abortSceneSessionRequests } from '@/lib/scene-generation/request-cancellation'
 import type { MetadataMode } from '@/lib/generation-metadata'
 import { generateRandomSeed } from '@/lib/utils'
+import { DEFAULT_NAI_IMAGE_MODEL } from '@/services/nai/model-catalog'
 
 export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
@@ -62,7 +63,7 @@ export const DEFAULT_SCENE_PROMPTS: ScenePromptConfig = {
 }
 
 export const DEFAULT_SCENE_GENERATION: SceneGenerationConfig = {
-    model: 'nai-diffusion-4-5-full',
+    model: DEFAULT_NAI_IMAGE_MODEL,
     steps: 28,
     cfgScale: 5,
     cfgRescale: 0,

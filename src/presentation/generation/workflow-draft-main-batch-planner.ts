@@ -238,6 +238,7 @@ export function createWorkflowDraftMainBatchPlanner(
                 assetModulePlan: null,
                 qualityToggle: generation.qualityToggle,
                 ucPreset: generation.ucPreset,
+                transparentBackground: generation.transparentBackground ?? false,
                 })
                 prepared.push(prepareMainGeneration({
                     params,

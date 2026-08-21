@@ -63,6 +63,12 @@ import {
     prepareMainGeneration,
     type PreparedMainGeneration,
 } from '@/services/generation/main-generation-plan'
+import {
+    DEFAULT_NAI_IMAGE_MODEL,
+    NAI_IMAGE_MODELS,
+    isNovelAiV5Model,
+    isSelectableNaiImageModel,
+} from '@/services/nai/model-catalog'
 import { releaseGeneratedOutputToR2 } from '@/services/r2/generated-release'
 import { gateGenerationFolderAutoUpload, getDefaultR2Readiness } from '@/services/r2/readiness'
 
@@ -634,6 +640,7 @@ async function buildV2GenerationParams(params: {
             : { assetModulePlan: reconcileAssetModulePlan(params.modulePlan, params.plan) ?? undefined }),
         qualityToggle: params.plan.params.qualityToggle,
         ucPreset: params.plan.params.ucPreset,
+        transparentBackground: params.plan.params.transparentBackground,
         promptParts: {
             base: params.plan.promptParts.base,
             inpainting: params.plan.promptParts.inpainting,
@@ -683,14 +690,9 @@ async function buildV2GenerationParams(params: {
     }
 }
 
-export const AVAILABLE_MODELS = [
-    { id: 'nai-diffusion-4-5-curated', name: 'NAI Diffusion V4.5 Curated' },
-    { id: 'nai-diffusion-4-5-full', name: 'NAI Diffusion V4.5 Full' },
-    { id: 'nai-diffusion-4-curated-preview', name: 'NAI Diffusion V4 Curated' },
-    { id: 'nai-diffusion-4-full', name: 'NAI Diffusion V4 Full' },
-] as const
+export const AVAILABLE_MODELS = NAI_IMAGE_MODELS.map(({ id, name }) => ({ id, name }))
 
-export const DEFAULT_GENERATION_MODEL = 'nai-diffusion-4-5-full'
+export const DEFAULT_GENERATION_MODEL = DEFAULT_NAI_IMAGE_MODEL
 
 /**
  * The selectable registry is release authority; preset/history/hydration
@@ -698,7 +700,7 @@ export const DEFAULT_GENERATION_MODEL = 'nai-diffusion-4-5-full'
  * silently reactivate an unsupported provider request.
  */
 export function normalizeSelectableGenerationModel(model: string): string {
-    return AVAILABLE_MODELS.some(candidate => candidate.id === model)
+    return isSelectableNaiImageModel(model)
         ? model
         : DEFAULT_GENERATION_MODEL
 }
@@ -732,6 +734,7 @@ interface GenerationState {
     // Quality settings
     qualityToggle: boolean
     ucPreset: number
+    transparentBackground: boolean
 
     // Batch generation
     batchCount: number
@@ -797,6 +800,7 @@ interface GenerationState {
     setSelectedResolution: (resolution: Resolution) => void
     setQualityToggle: (v: boolean) => void
     setUcPreset: (v: number) => void
+    setTransparentBackground: (v: boolean) => void
 
     setBatchCount: (count: number) => void
 
@@ -826,6 +830,7 @@ interface GenerationState {
         variety?: boolean
         qualityToggle?: boolean
         ucPreset?: number
+        transparentBackground?: boolean
         selectedResolution: Resolution
     }) => void
 
@@ -884,6 +889,7 @@ export const useGenerationStore = create<GenerationState>()(
 
             qualityToggle: true,
             ucPreset: 0,
+            transparentBackground: false,
 
             batchCount: 1,
             currentBatch: 0,
@@ -921,31 +927,48 @@ export const useGenerationStore = create<GenerationState>()(
             setNegativePrompt: (prompt) => set({ negativePrompt: prompt, ...unresolvedMainCompositionState() }),
             setInpaintingPrompt: (prompt) => set({ inpaintingPrompt: prompt, ...unresolvedMainCompositionState() }),
 
-            setModel: (model) => set({ model: normalizeSelectableGenerationModel(model), ...unresolvedMainCompositionState() }),
+            setModel: (model) => set(state => {
+                const nextModel = normalizeSelectableGenerationModel(model)
+                return {
+                    model: nextModel,
+                    scheduler: isNovelAiV5Model(nextModel) ? 'karras' : state.scheduler,
+                    variety: isNovelAiV5Model(nextModel) ? false : state.variety,
+                    transparentBackground: isNovelAiV5Model(nextModel)
+                        ? state.transparentBackground
+                        : false,
+                    ...unresolvedMainCompositionState(),
+                }
+            }),
             setSteps: (steps) => set({ steps, ...unresolvedMainCompositionState() }),
             setCfgScale: (cfgScale) => set({ cfgScale, ...unresolvedMainCompositionState() }),
             setCfgRescale: (cfgRescale) => set({ cfgRescale, ...unresolvedMainCompositionState() }),
             setSampler: (sampler) => set({ sampler, ...unresolvedMainCompositionState() }),
 
             // Batch update - single IndexedDB write instead of 16 separate writes
-            applyPreset: (preset) => set({
-                basePrompt: preset.basePrompt,
-                additionalPrompt: preset.additionalPrompt,
-                detailPrompt: preset.detailPrompt,
-                negativePrompt: preset.negativePrompt,
-                model: normalizeSelectableGenerationModel(preset.model),
-                steps: preset.steps,
-                cfgScale: preset.cfgScale,
-                cfgRescale: preset.cfgRescale,
-                sampler: preset.sampler,
-                scheduler: preset.scheduler,
-                smea: preset.smea,
-                smeaDyn: preset.smeaDyn,
-                variety: preset.variety ?? false,
-                qualityToggle: preset.qualityToggle ?? true,
-                ucPreset: preset.ucPreset ?? 0,
-                selectedResolution: preset.selectedResolution,
-                ...unresolvedMainCompositionState(),
+            applyPreset: (preset) => set(() => {
+                const nextModel = normalizeSelectableGenerationModel(preset.model)
+                return {
+                    basePrompt: preset.basePrompt,
+                    additionalPrompt: preset.additionalPrompt,
+                    detailPrompt: preset.detailPrompt,
+                    negativePrompt: preset.negativePrompt,
+                    model: nextModel,
+                    steps: preset.steps,
+                    cfgScale: preset.cfgScale,
+                    cfgRescale: preset.cfgRescale,
+                    sampler: preset.sampler,
+                    scheduler: isNovelAiV5Model(nextModel) ? 'karras' : preset.scheduler,
+                    smea: preset.smea,
+                    smeaDyn: preset.smeaDyn,
+                    variety: isNovelAiV5Model(nextModel) ? false : preset.variety ?? false,
+                    qualityToggle: preset.qualityToggle ?? true,
+                    ucPreset: preset.ucPreset ?? 0,
+                    transparentBackground: isNovelAiV5Model(nextModel)
+                        ? preset.transparentBackground ?? false
+                        : false,
+                    selectedResolution: preset.selectedResolution,
+                    ...unresolvedMainCompositionState(),
+                }
             }),
             setScheduler: (scheduler) => set({ scheduler, ...unresolvedMainCompositionState() }),
             setSmea: (smea) => set({ smea, ...unresolvedMainCompositionState() }),
@@ -958,6 +981,10 @@ export const useGenerationStore = create<GenerationState>()(
             setSelectedResolution: (resolution) => set({ selectedResolution: resolution, ...unresolvedMainCompositionState() }),
             setQualityToggle: (qualityToggle) => set({ qualityToggle, ...unresolvedMainCompositionState() }),
             setUcPreset: (ucPreset) => set({ ucPreset, ...unresolvedMainCompositionState() }),
+            setTransparentBackground: (transparentBackground) => set({
+                transparentBackground,
+                ...unresolvedMainCompositionState(),
+            }),
 
             setBatchCount: (count) => set({ batchCount: count }),
 
@@ -1024,6 +1051,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
                     model, steps, cfgScale, cfgRescale, sampler, scheduler, smea, smeaDyn, variety,
+                    transparentBackground,
                     selectedResolution, batchCount, lastGenerationTime,
                     sourceImage, strength, noise, mask,
                     compositionMode: requestedCompositionMode, selectedRecipeId,
@@ -1208,6 +1236,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 seed: currentSeed,
                                 qualityToggle: get().qualityToggle,
                                 ucPreset: get().ucPreset,
+                                transparentBackground,
                                 sourceMode: 'text-to-image',
                                 strength,
                                 noise,
@@ -1439,6 +1468,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 assetModulePlan: modulePlan,
                                 qualityToggle: get().qualityToggle,
                                 ucPreset: get().ucPreset,
+                                transparentBackground,
                             })
                         }
 
@@ -1903,6 +1933,7 @@ export const useGenerationStore = create<GenerationState>()(
                 variety: state.variety,
                 qualityToggle: state.qualityToggle,
                 ucPreset: state.ucPreset,
+                transparentBackground: state.transparentBackground,
                 // Seed - only save if locked
                 ...(state.seedLocked ? { seed: state.seed } : {}),
                 seedLocked: state.seedLocked,
@@ -1942,6 +1973,15 @@ export const useGenerationStore = create<GenerationState>()(
                     // Normalize older persisted legacy/shadow selections before first render.
                     state.compositionMode = 'v2'
                     state.model = normalizeSelectableGenerationModel(state.model)
+                    if (isNovelAiV5Model(state.model)) {
+                        state.scheduler = 'karras'
+                        // V5's Variety+ coefficient is not part of the public
+                        // launch contract, so old V4 state must not leak into it.
+                        state.variety = false
+                    }
+                    state.transparentBackground = isNovelAiV5Model(state.model)
+                        ? state.transparentBackground ?? false
+                        : false
                     if (state.styleLabCompositionMode !== 'legacy'
                         && state.styleLabCompositionMode !== 'v2') {
                         state.styleLabCompositionMode = 'v2'

@@ -657,6 +657,7 @@ const PARAM_OVERRIDE_KEYS = [
     'seedLocked',
     'qualityToggle',
     'ucPreset',
+    'transparentBackground',
     'sourceMode',
     'sourceImageResourceId',
     'maskResourceId',
@@ -685,6 +686,7 @@ function validateParamsOverride(value: unknown, path: readonly SchemaPathSegment
     optional(record, 'seedLocked', path, context, validateBoolean)
     optional(record, 'qualityToggle', path, context, validateBoolean)
     optional(record, 'ucPreset', path, context, validateNonNegativeInteger)
+    optional(record, 'transparentBackground', path, context, validateBoolean)
     optional(record, 'sourceMode', path, context, (item, itemPath, itemContext) => {
         validateEnum(item, SOURCE_MODES, itemPath, itemContext)
     })

@@ -104,7 +104,7 @@ export function GuidedHome() {
             })
             if (result.status !== 'committed') throw new Error('Draft ID already exists')
             announceGuidedDraftChange()
-            navigate(`/guided-preview/work/${draft.id}/model`)
+            navigate(`/guided-preview/work/${draft.id}/prompt`)
         } catch {
             setCreateError(true)
         } finally {

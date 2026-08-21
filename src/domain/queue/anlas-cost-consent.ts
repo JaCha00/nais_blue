@@ -1,4 +1,4 @@
-export const ANLAS_COST_ESTIMATOR_VERSION = 'nai-blue-anlas-v2' as const
+export const ANLAS_COST_ESTIMATOR_VERSION = 'nai-blue-anlas-v3' as const
 
 export type AnlasPricingBasis = 'all-active-opus' | 'paid'
 

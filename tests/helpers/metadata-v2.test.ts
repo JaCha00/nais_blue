@@ -103,6 +103,34 @@ describe('NAI Blue Metadata v2', () => {
             height: 1216,
             seed: 77,
         })
+        expect(parseNaiBlueSidecarMetadata(sidecar)?.transparentBackground).toBeUndefined()
+    })
+
+    it('preserves the V5 transparent-background option without invalidating older v2 documents', () => {
+        const metadata = buildNaiBlueParams(baseParams({
+            model: 'nai-diffusion-5-full',
+            transparentBackground: true,
+        }))
+        expect(metadata.version).toBe(2)
+        if (metadata.version !== 2) throw new Error('expected v2')
+        expect(metadata.resolvedParams.transparentBackground).toBe(true)
+
+        const sidecar = encodeNaiBlueSidecar(metadata)
+        expect(readNaiBlueSidecar(sidecar)).toEqual(metadata)
+        expect(parseNaiBlueSidecarMetadata(sidecar)).toMatchObject({
+            metadataVersion: 2,
+            model: 'nai-diffusion-5-full',
+            transparentBackground: true,
+        })
+
+        const olderDocument = JSON.parse(new TextDecoder().decode(sidecar)) as Record<string, unknown>
+        const olderResolved = olderDocument.resolvedParams as Record<string, unknown>
+        delete olderResolved.transparentBackground
+        expect(parseNaiBlueParams(olderDocument)).not.toBeNull()
+        expect(parseNaiBlueSidecarMetadata(JSON.stringify(olderDocument))?.transparentBackground).toBeUndefined()
+
+        olderResolved.transparentBackground = 'true'
+        expect(parseNaiBlueParams(olderDocument)).toBeNull()
     })
 
     it('never re-emits an external automation identifier', () => {

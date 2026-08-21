@@ -114,6 +114,9 @@ function buildResolvedParams(params: GenerationParams): NaiBlueResolvedParams {
         seed: params.seed,
         ...(params.qualityToggle === undefined ? {} : { qualityToggle: params.qualityToggle }),
         ...(params.ucPreset === undefined ? {} : { ucPreset: params.ucPreset }),
+        ...(params.transparentBackground === undefined
+            ? {}
+            : { transparentBackground: params.transparentBackground }),
         sourceMode: params.mask
             ? 'inpaint'
             : params.sourceImage

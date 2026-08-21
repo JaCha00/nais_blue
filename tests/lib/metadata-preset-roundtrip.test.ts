@@ -56,6 +56,48 @@ describe('NAI preset metadata round trip', () => {
         expect(imported.ucPreset).toBeUndefined()
         expect(imported.negativePrompt).toBeUndefined()
     })
+
+    it.each([
+        ['nai-diffusion-4-5-curated', 'NovelAI Diffusion V4.5 Curated'],
+        ['nai-diffusion-4-full', 'NovelAI Diffusion V4 Full'],
+        ['nai-diffusion-4-curated-preview', 'NovelAI Diffusion V4 Curated'],
+    ] as const)('round-trips the model-specific heavy UC for %s', (modelId, source) => {
+        const generated = mergeUcPreset('custom negative', 0, modelId)
+        const imported = inferNAIPresetImport('', generated, source)
+
+        expect(imported).toMatchObject({ ucPreset: 0, negativePrompt: 'custom negative' })
+        expect(mergeUcPreset(imported.negativePrompt!, 0, modelId)).toBe(generated)
+    })
+
+    it('restores V5 preset and transparent-background hints without duplicating prompt text', async () => {
+        const modelId = 'nai-diffusion-5-full'
+        const prompt = mergeQualityTags('blue-haired heroine', true, modelId, true)
+        const negativePrompt = mergeUcPreset('extra fingers', 0, modelId)
+        const metadata = await parseNAIMetadata(pngWithTextChunks([
+            ['Comment', JSON.stringify({
+                prompt,
+                negative_prompt: negativePrompt,
+                tag_hint_transparent_background: true,
+                straight_alpha: true,
+            })],
+            ['Source', 'NovelAI Diffusion V5 Full'],
+        ]))
+
+        expect(metadata).toMatchObject({
+            model: 'NovelAI Diffusion V5 Full',
+            prompt: 'blue-haired heroine',
+            negativePrompt: 'extra fingers',
+            qualityToggle: true,
+            ucPreset: 0,
+            transparentBackground: true,
+        })
+        expect(mergeQualityTags(
+            metadata!.prompt!,
+            metadata!.qualityToggle!,
+            modelId,
+            metadata!.transparentBackground,
+        )).toBe(prompt)
+    })
 })
 
 function pngWithTextChunks(entries: Array<[string, string]>): Uint8Array {

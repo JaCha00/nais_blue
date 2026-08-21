@@ -984,6 +984,9 @@ function buildResolvedParams(core: CoreParams): ResolvedGenerationParams | null 
         seed: core.seed as number,
         qualityToggle: core.qualityToggle as boolean,
         ucPreset: core.ucPreset as number,
+        // Older documents predate V5 transparency, so absence remains the
+        // stable opaque-background behavior instead of invalidating the plan.
+        transparentBackground: core.transparentBackground ?? false,
         sourceMode: core.sourceMode as ResolvedGenerationParams['sourceMode'],
         ...(core.sourceImageResourceId === undefined
             ? {}

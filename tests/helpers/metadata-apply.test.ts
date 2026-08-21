@@ -43,6 +43,7 @@ const current: MetadataApplyCurrentState = {
         variety: false,
         qualityToggle: false,
         ucPreset: 0,
+        transparentBackground: false,
         width: 512,
         height: 512,
         seed: 1,
@@ -55,7 +56,7 @@ function v2Metadata(): NAIMetadata {
     const naiBlue = buildNaiBlueParams({
         prompt: 'portrait',
         negative_prompt: 'bad anatomy',
-        model: 'nai-diffusion-4-5-full',
+        model: 'nai-diffusion-5-full',
         width: 832,
         height: 1216,
         steps: 28,
@@ -66,6 +67,7 @@ function v2Metadata(): NAIMetadata {
         smea: true,
         smea_dyn: false,
         variety: false,
+        transparentBackground: true,
         seed: 77,
         characterPrompts: [{
             stableId: 'character:alice',
@@ -89,6 +91,7 @@ describe('metadata repository apply preview', () => {
         expect(preview.sourceVersion).toBe('v2')
         expect(preview.validation.valid).toBe(true)
         expect(preview.changeSet.characters[0].stableId).toBe('character:alice')
+        expect(preview.changeSet.generation.transparentBackground).toBe(true)
         expect(preview.diff.some(change => change.path === 'steps' && change.after === 28)).toBe(true)
         expect(preview.diff.some(change => change.repository === 'character-prompts')).toBe(true)
     })
@@ -111,5 +114,12 @@ describe('metadata repository apply preview', () => {
         expect(preview.validation.warnings).toContainEqual(expect.objectContaining({
             code: 'legacy-compatibility-import',
         }))
+    })
+
+    it('maps current V5 provider display names to selectable API model IDs', () => {
+        const full = createMetadataApplyPreview({ model: 'NovelAI Diffusion V5 Full' }, options, current)
+        const curated = createMetadataApplyPreview({ model: 'NovelAI Diffusion V5 Curated' }, options, current)
+        expect(full.changeSet.generation.model).toBe('nai-diffusion-5-full')
+        expect(curated.changeSet.generation.model).toBe('nai-diffusion-5-curated')
     })
 })

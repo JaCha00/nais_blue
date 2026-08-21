@@ -26,7 +26,7 @@ describe('Composition workspace shell routing', () => {
         expect(layoutStore).toContain("supportSheet: 'prompt' | 'history' | 'activity' | null")
         expect(layoutStore).toContain('openSupportSheet:')
         expect(layoutStore).toContain('closeSupportSheet:')
-        expect(layoutStore).toContain('partialize: ({ leftSidebarVisible, rightSidebarVisible })')
+        expect(layoutStore).toContain('partialize: ({ leftSidebarVisible, rightSidebarVisible, alwaysShowV5UsageLimit })')
         expect(layout).toContain("const activitySheetOpen = supportSheet === 'activity'")
         expect(layout).toContain('data-testid="open-my-work-activity"')
         expect(layout).toContain('id="nai-blue-activity-sheet"')

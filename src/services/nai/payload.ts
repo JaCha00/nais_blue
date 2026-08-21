@@ -1,6 +1,14 @@
-import { mergeQualityTags, mergeUcPreset, removeComments, type UcPresetIndex } from '@/services/nai/presets'
+import {
+    mergeQualityTags,
+    mergeUcPreset,
+    qualityPresetTagHint,
+    removeComments,
+    ucPresetTagHint,
+    type UcPresetIndex,
+} from '@/services/nai/presets'
+import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
 
-// Release-supported builder authority is V4/V4.5. Retired model identifiers
+// Release-supported builder authority is V4/V4.5/V5. Retired model identifiers
 // may still be parsed from old metadata, but the selectable model boundary
 // normalizes them before a new provider request is created.
 export interface CharacterPromptInput {
@@ -23,10 +31,13 @@ export interface GenerationRequest {
     noiseSchedule: string
     seed: number
     variety: boolean
+    smea?: boolean
+    smeaDyn?: boolean
     qualityToggle: boolean
     ucPreset: UcPresetIndex
     characterPrompts: CharacterPromptInput[]
     useCoords: boolean
+    transparentBackground?: boolean
 }
 
 export interface I2iOptions {
@@ -73,6 +84,9 @@ export function varietySigma(opts: {
     height: number
 }): number | null {
     if (!opts.variety) return null
+    // V5 exposes Variety+ in the current frontend, but its coefficient has not
+    // been published. Fail closed instead of applying the unrelated V4 value.
+    if (opts.model.startsWith('nai-diffusion-5-')) return null
     const coef = opts.model.includes('nai-diffusion-4-5') ? 58 : 19
     return coef * Math.sqrt((opts.width * opts.height) / (832 * 1216))
 }
@@ -81,8 +95,14 @@ export function buildGenerateImagePayload(
     req: GenerationRequest,
     opts: BuildOptions = {},
 ): NaiImagePayload {
-    const prompt = mergeQualityTags(removeComments(req.prompt), req.qualityToggle)
-    const negative = mergeUcPreset(removeComments(req.negativePrompt), req.ucPreset)
+    const presetModel = getNovelAiModelProfile(req.model)?.modelId ?? req.model
+    const prompt = mergeQualityTags(
+        removeComments(req.prompt),
+        req.qualityToggle,
+        presetModel,
+        req.transparentBackground,
+    )
+    const negative = mergeUcPreset(removeComments(req.negativePrompt), req.ucPreset, presetModel)
     const activeChars = req.characterPrompts.filter(char => char.enabled && char.prompt.trim())
     const center = (char: CharacterPromptInput) =>
         req.useCoords ? (char.center ?? { x: 0.5, y: 0.5 }) : { x: 0.5, y: 0.5 }
@@ -113,6 +133,18 @@ export function buildGenerateImagePayload(
             ucPreset: req.ucPreset,
             use_coords: req.useCoords,
             qualityToggle: req.qualityToggle,
+            ...(req.model.startsWith('nai-diffusion-5-')
+                ? {
+                    tag_hint_qt: qualityPresetTagHint(req.qualityToggle),
+                    tag_hint_uc_preset: ucPresetTagHint(req.ucPreset),
+                    tag_hint_transparent_background: req.transparentBackground ?? false,
+                    // V5's transparent PNG contract uses straight alpha alongside
+                    // the tag hint; omit it for opaque and legacy requests.
+                    ...(req.transparentBackground ? { straight_alpha: true } : {}),
+                }
+                : {}),
+            ...(req.smea === undefined ? {} : { sm: req.smea }),
+            ...(req.smeaDyn === undefined ? {} : { sm_dyn: req.smeaDyn }),
             autoSmea: false,
             controlnet_strength: 1,
             normalize_reference_strength_multiple: true,

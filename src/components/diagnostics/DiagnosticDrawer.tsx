@@ -40,16 +40,16 @@ export function DiagnosticDrawer() {
                 {...getDiagnosticDrawerTriggerProps(open)}
                 aria-haspopup="dialog"
                 className="h-11 w-11 shrink-0 rounded-control border border-border text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-auto sm:px-3"
-                aria-label="진단 로그 열기"
+                aria-label={t('diagnosticDrawer.open')}
             >
                 <ListTree className="mr-1.5 inline h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">진단</span>
+                <span className="hidden sm:inline">{t('diagnosticDrawer.shortLabel')}</span>
             </button>
             <Dialog open={drawerOpen} onOpenChange={openValue => (openValue ? open() : closeDrawer())}>
                 <DialogContent className="max-h-[85dvh] max-w-4xl overflow-y-auto p-0">
                     <DialogHeader className="border-b border-border p-4 pr-14">
-                        <DialogTitle>진단 로그</DialogTitle>
-                        <DialogDescription>민감 정보가 제거된 최근 작업 진단입니다.</DialogDescription>
+                        <DialogTitle>{t('diagnosticDrawer.title')}</DialogTitle>
+                        <DialogDescription>{t('diagnosticDrawer.description')}</DialogDescription>
                     </DialogHeader>
                     <div className="border-b border-border p-4">
                         <CompositionAuthorityPanel />
@@ -57,7 +57,7 @@ export function DiagnosticDrawer() {
                     <div className="grid min-h-[320px] md:grid-cols-[220px_minmax(0,1fr)]">
                         <div className="overflow-y-auto border-b border-border p-2 md:border-b-0 md:border-r">
                             {events.length === 0 ? (
-                                <p className="p-2 text-sm text-muted-foreground">기록된 진단이 없습니다.</p>
+                                <p className="p-2 text-sm text-muted-foreground">{t('diagnosticDrawer.empty')}</p>
                             ) : events.map(event => (
                                 <button
                                     key={event.eventId}
@@ -84,19 +84,23 @@ export function DiagnosticDrawer() {
                                     </div>
                                     <span className="rounded-control bg-muted px-2 py-1 text-xs">{selectedEvent.category}</span>
                                 </div>
-                                <p className="mt-3 text-sm text-muted-foreground">권장 행동: {selectedEvent.recommendedAction}</p>
+                                <p className="mt-3 text-sm text-muted-foreground">
+                                    {t('diagnosticDrawer.recommendedAction')}: {selectedEvent.recommendedAction}
+                                </p>
                                 <div className="mt-4 flex flex-wrap gap-2">
                                     <Button variant="outline" size="sm" onClick={() => { void copyDiagnosticEvent(selectedEvent, 'summary') }}>
-                                        <ClipboardCopy className="mr-1.5 h-4 w-4" />요약 복사
+                                        <ClipboardCopy className="mr-1.5 h-4 w-4" />{t('diagnosticDrawer.copySummary')}
                                     </Button>
                                     <Button variant="outline" size="sm" onClick={() => { void copyDiagnosticEvent(selectedEvent, 'full') }}>
-                                        <ClipboardCopy className="mr-1.5 h-4 w-4" />정제된 로그 복사
+                                        <ClipboardCopy className="mr-1.5 h-4 w-4" />{t('diagnosticDrawer.copyRedactedLog')}
                                     </Button>
                                     <Button variant="outline" size="sm" onClick={() => downloadDiagnosticsExport(events)}>
-                                        <Download className="mr-1.5 h-4 w-4" />JSON 내보내기
+                                        <Download className="mr-1.5 h-4 w-4" />{t('diagnosticDrawer.exportJson')}
                                     </Button>
                                     <Button variant="ghost" size="sm" onClick={() => setDetailsExpanded(expanded => !expanded)}>
-                                        {detailsExpanded ? '세부 정보 접기' : '세부 정보 펼치기'}
+                                        {detailsExpanded
+                                            ? t('diagnosticDrawer.collapseDetails')
+                                            : t('diagnosticDrawer.expandDetails')}
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -115,22 +119,22 @@ export function DiagnosticDrawer() {
                                 {detailsExpanded && (
                                     <div className="mt-4 space-y-4 border-t border-border pt-4 text-xs">
                                         <section>
-                                            <h3 className="font-medium">타임라인</h3>
+                                            <h3 className="font-medium">{t('diagnosticDrawer.timeline')}</h3>
                                             <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 break-all text-muted-foreground">
-                                                <dt>발생</dt><dd>{selectedEvent.occurredAt}</dd>
-                                                <dt>작업</dt><dd>{selectedEvent.operation}</dd>
-                                                <dt>재시도</dt><dd>{selectedEvent.retryAttempt ?? 0}/{selectedEvent.maxAttempts ?? '-'}</dd>
+                                                <dt>{t('diagnosticDrawer.occurredAt')}</dt><dd>{selectedEvent.occurredAt}</dd>
+                                                <dt>{t('diagnosticDrawer.operation')}</dt><dd>{selectedEvent.operation}</dd>
+                                                <dt>{t('diagnosticDrawer.retry')}</dt><dd>{selectedEvent.retryAttempt ?? 0}/{selectedEvent.maxAttempts ?? '-'}</dd>
                                             </dl>
                                         </section>
                                         <section>
-                                            <h3 className="font-medium">원인</h3>
+                                            <h3 className="font-medium">{t('diagnosticDrawer.cause')}</h3>
                                             <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-control bg-muted p-3 font-mono text-[11px]">{selectedEvent.redactedDeveloperMessage}</pre>
                                             {selectedEvent.redactedCauseChain.map((cause, index) => (
                                                 <pre key={`${cause.name}-${index}`} className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-all rounded-control bg-muted p-3 font-mono text-[11px]">{cause.name}: {cause.message}{cause.stack ? `\n${cause.stack}` : ''}</pre>
                                             ))}
                                         </section>
                                         <section>
-                                            <h3 className="font-medium">최근 활동</h3>
+                                            <h3 className="font-medium">{t('diagnosticDrawer.recentActivity')}</h3>
                                             <ul className="mt-2 space-y-1 text-muted-foreground">
                                                 {selectedEvent.recentBreadcrumbs.map(breadcrumb => (
                                                     <li key={`${breadcrumb.occurredAt}-${breadcrumb.operation}-${breadcrumb.stage}`} className="break-all">

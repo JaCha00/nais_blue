@@ -97,7 +97,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "input": "portrait, night, 1.0::artist:Synthetic One ::, soft light, detailed eyes, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 896,
@@ -108,7 +108,7 @@
           "scale": 6,
           "cfgRescale": 0.2,
           "noiseSchedule": "exponential",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
           "qualityToggle": true,
           "ucPreset": 3,
           "useCoords": true,
@@ -248,7 +248,7 @@
       },
       "payloadRedactedSummary": {
         "action": "generate",
-        "input": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes, very aesthetic, masterpiece, no text",
+        "input": "portrait, night, 1.2::artist:Synthetic One ::, 0.8::artist:Synthetic Two ::, soft light, detailed eyes, location, very aesthetic, masterpiece, no text",
         "model": "nai-diffusion-4-5-full",
         "parameters": {
           "width": 896,
@@ -259,7 +259,7 @@
           "scale": 6,
           "cfgRescale": 0.2,
           "noiseSchedule": "exponential",
-          "negativePrompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
+          "negativePrompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, @_@, mismatched pupils, glowing eyes, bad anatomy, <bad anatomy|lowres>",
           "qualityToggle": true,
           "ucPreset": 3,
           "useCoords": true,

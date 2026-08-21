@@ -26,6 +26,19 @@ export interface AnlasInfo {
     total: number
 }
 
+/** Runtime subscription allowance for NovelAI Diffusion V5 on Opus. */
+export interface OpusGenerationUsage {
+    percent: number
+    isNegative: boolean
+    timeUntilNextPercent: number
+}
+
+export interface NovelAIUserInfo {
+    anlas: AnlasInfo
+    /** Absent for older provider responses and subscriptions without this allowance. */
+    usage?: OpusGenerationUsage
+}
+
 export interface GenerationParams {
     prompt: string
     negative_prompt: string
@@ -89,6 +102,8 @@ export interface GenerationParams {
     portableOutputDirectory?: PortablePathRef
     qualityToggle?: boolean
     ucPreset?: number
+    /** V5 alpha-background request; false/undefined preserves opaque generation. */
+    transparentBackground?: boolean
     sentPayloadSummary?: string
     promptParts?: {
         base?: string

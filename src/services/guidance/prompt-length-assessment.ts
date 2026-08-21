@@ -77,8 +77,16 @@ export function assessPromptLengths(
     capabilities: ModelTokenCapabilityRegistry = CURRENT_MODEL_TOKEN_CAPABILITIES,
 ): PromptLengthAssessment {
     const enabledCharacters = input.characters.filter(character => character.enabled)
-    const positiveBase = mergeQualityTags(removeComments(input.positivePrompt), input.qualityToggle)
-    const negativeBase = mergeUcPreset(removeComments(input.negativePrompt), input.ucPreset)
+    const positiveBase = mergeQualityTags(
+        removeComments(input.positivePrompt),
+        input.qualityToggle,
+        input.model,
+    )
+    const negativeBase = mergeUcPreset(
+        removeComments(input.negativePrompt),
+        input.ucPreset,
+        input.model,
+    )
     const positiveCharacters = enabledCharacters.map(character => removeComments(character.positive))
     const negativeCharacters = enabledCharacters.map(character => removeComments(character.negative))
     const capability = capabilities[input.model]

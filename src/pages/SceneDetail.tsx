@@ -62,7 +62,7 @@ import type {
     ModuleStackItem,
 } from '@/components/composition-workspace'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -681,12 +681,17 @@ export default function SceneDetail() {
     const resolvedIssues = compositionPreview
         ? [...compositionPreview.result.errors, ...portableResolvedIssues, ...compositionPreview.result.warnings]
         : portableResolvedIssues
+    const pricingBasis = resolveAnlasPricingBasis({
+        model: sceneGeneration.model,
+        activeCredentialsAreOpus,
+    })
     const estimatedCost = calculateAnlasCost({
+        model: sceneGeneration.model,
         width: currentWidth,
         height: currentHeight,
         steps: sceneGeneration.steps,
         imageCount: 1,
-        pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+        pricingBasis,
     }) * Math.max(1, scene.queueCount)
 
     const handleCharacterPositionChange = (characterId: string, position: CharacterPosition) => {

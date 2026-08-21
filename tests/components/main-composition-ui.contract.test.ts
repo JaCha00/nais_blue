@@ -97,6 +97,8 @@ describe('Main composition UI contract', () => {
         expect(autocomplete).toContain('onBlur={flushPendingChange}')
         expect(autocomplete).toContain('return flushPendingChange')
         expect(controls).toContain('data-testid="prompt-generate-action"')
+        expect(controls).toContain('<NovelAiV5UsageLimit')
+        expect(controls).toContain("pricingBasis: 'paid'")
     })
 
     it('keeps the shared prompt action cancellable while Style Lab owns the generation store', async () => {
@@ -162,7 +164,7 @@ describe('Main composition UI contract', () => {
         expect(commandBar).toContain('simplified')
         expect(commandBar).not.toMatch(/\bmode=|validation=|\bseed=|onOpenInspector/)
         expect(mainMode).toContain('const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID')
-        expect(mainMode).toMatch(/calculateAnlasCost\(\{\s*width:\s*selectedResolution\.width,\s*height:\s*selectedResolution\.height,\s*steps,/)
+        expect(mainMode).toMatch(/calculateAnlasCost\(\{\s*model,\s*width:\s*selectedResolution\.width,\s*height:\s*selectedResolution\.height,\s*steps,/)
         expect(mainMode).toContain('imageCount: 1')
         expect(mainMode).toContain('}) * batchCount')
         expect(mainMode).not.toContain('lastResolvedPlan?.params')

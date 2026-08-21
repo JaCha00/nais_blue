@@ -210,6 +210,7 @@ describe('CompositionEngine concrete resolution', () => {
                 sampler: 'k_euler',
                 scheduler: 'exponential',
                 variety: false,
+                transparentBackground: false,
             },
             filenamePolicyInput: {
                 template: 'NAI_Blue_{seed}',
@@ -244,7 +245,7 @@ describe('CompositionEngine concrete resolution', () => {
         })
         expect(result.plan.planHash.digest).toMatch(/^[0-9a-f]{64}$/)
         expect(result.plan.planHash.digest).toBe(
-            '5612ba6d3981068ae9da6e2a5574473608e4e626d178663319fb6234df9fe42a',
+            '94c06dce9afadbf5b0afb5d8c13031c8c7db609d50ece72c3d6b4bb8b92239e6',
         )
         expect(result.plan.planId).toBe(
             `resolved-plan:${result.plan.planHash.version}:${result.plan.planHash.digest}`,

@@ -3,6 +3,36 @@
         "name": "NAI Blue",
         "description": "NovelAI Integrated Studio"
     },
+    "counter": {
+        "decrease": "Decrease image count",
+        "increase": "Increase image count",
+        "edit": "Edit image count, current value {{value}}",
+        "editTitle": "Edit image count",
+        "input": "Image count"
+    },
+    "credentials": {
+        "v5UsageLimit": {
+            "title": "Opus V5 usage limit",
+            "description": "Your Opus plan includes limited NovelAI Diffusion V5 generations at normal resolutions and up to 28 steps. When this allowance runs out, generation can continue with paid Anlas.",
+            "paidCeiling": "Safe paid ceiling: up to {{maxAnlas}} Anlas.",
+            "slot": "Opus slot {{slot}}",
+            "refresh": "Refresh V5 usage for Opus slot {{slot}}",
+            "progress": "Opus slot {{slot}} V5 usage remaining",
+            "unknown": "Usage is not loaded yet. Refresh to check the current allowance.",
+            "remaining": "{{percent}}% remaining",
+            "depleted": "Included V5 allowance depleted",
+            "eligible": "Current settings can use the included V5 allowance when it is available.",
+            "ineligible": {
+                "resolution": "Resolution is above 1024², so this request uses paid Anlas.",
+                "steps": "Steps are above 28, so this request uses paid Anlas.",
+                "character": "Character reference images are outside the included V5 allowance."
+            },
+            "refillUnknown": "Refill speed is unavailable.",
+            "refilling": "Currently refilling at about {{rate}}% per hour.",
+            "negative": "Allowance is below zero, so paid Anlas fallback is expected.",
+            "alwaysShow": "Always show usage limit bar"
+        }
+    },
     "generationFolders": {
         "defaultName": "Default output",
         "pickerLabel": "Image generation folder",
@@ -172,7 +202,7 @@
                     "costTitle": "Estimated cost for two images",
                     "costSummary": "Two candidates · up to {{cost}} Anlas",
                     "opusBasis": "All active accounts are Opus, so settings up to 1024² and 28 Steps are estimated at 0 Anlas.",
-                    "paidBasis": "The free allowance cannot be confirmed for every active account, so this uses the safer paid estimate.",
+                    "paidBasis": "This is the safe paid maximum. If an eligible V5 Opus included allowance is available, it may be used first.",
                     "consent": "I understand that generating both candidates may use up to {{cost}} Anlas.",
                     "tokenRequired": "Add a NovelAI API token before starting these previews."
                 },
@@ -782,7 +812,7 @@
                 "model": {
                     "short": "Model",
                     "title": "Which model would you like to use?",
-                    "description": "If you're new, we recommend V4.5 Full for strong prompt following and a wide range of styles."
+                    "description": "If you're new, start with the latest V5 Full for strong prompt following and a wide creative range."
                 },
                 "prompt": {
                     "short": "Prompt",
@@ -832,6 +862,8 @@
             },
             "model": {
                 "legend": "Generation model",
+                "nai-diffusion-5-full": "The recommended V5 choice for prompt following, detail, and creative range.",
+                "nai-diffusion-5-curated": "A focused V5 model for fast, consistent results.",
                 "nai-diffusion-4-5-full": "The broadest generation range and creative freedom in the V4.5 family.",
                 "nai-diffusion-4-5-curated": "A more selective generation range that makes consistent anime illustrations easier.",
                 "nai-diffusion-4-full": "Choose this for the broad range and creative freedom of the V4 generation.",
@@ -842,7 +874,10 @@
                 "placeholder": "e.g. 1girl, blue hair, quiet library, warm afternoon light",
                 "tagHelp": "You can use English tags or natural language. Numbers in tag suggestions are reference post counts, not the amount of training data.",
                 "negativeTitle": "Add content to avoid · Optional",
-                "negativePlaceholder": "e.g. lowres, blurry, text"
+                "negativePlaceholder": "e.g. lowres, blurry, text",
+                "transparentBackground": "Make the background transparent",
+                "transparentBackgroundHelp": "Turn this on for stickers, character assets, or anything you want to use without a background.",
+                "moreTools": "Import from a file or module · Optional"
             },
             "resolution": {
                 "legend": "Image aspect ratio and resolution",
@@ -852,7 +887,7 @@
             },
             "settings": {
                 "stepsShort": "Choose how thoroughly the image should be refined.",
-                "stepsFree": "28 is a reliable default. With an Opus account and resolution at or below 1024², base generation costs 0 Anlas.",
+                "stepsFree": "28 is a reliable default. Eligible Opus included usage may apply, and the review screen shows the actual maximum Anlas.",
                 "stepsPaid": "More than 28 steps may cost Anlas. Prompt following can improve, but a higher number does not always mean a better result.",
                 "sampler": "Sampler",
                 "samplerHelp": "This controls how noise is refined into the image.",
@@ -877,6 +912,7 @@
                 "model": "Model",
                 "prompt": "Prompt",
                 "negative": "Content to avoid",
+                "transparentBackground": "Transparent background",
                 "characters": "{{count}} characters",
                 "resolution": "Resolution",
                 "settings": "Generation settings",
@@ -1907,6 +1943,7 @@
         "confirmDeleteTab": "Delete '{{name}}'?"
     },
     "prompt": {
+        "title": "Prompt",
         "base": "Prompt",
         "basePlaceholder": "1girl, beautiful, long hair, standing, looking at viewer...",
         "additional": "Supporting Details",
@@ -1994,7 +2031,10 @@
         "fidelity": "Fidelity",
         "vibeDisabledMsg": "Cannot use with Reference active.",
         "clickToDisable": "Click to disable",
-        "clickToEnable": "Click to enable"
+        "clickToEnable": "Click to enable",
+        "v5PrecisePending": "Precise Reference isn't available for V5 yet.",
+        "v5ReferenceAlternative": "Use character prompts, or keep this reference image and switch to V4.5.",
+        "v5VibePending": "Vibe Transfer isn't available for V5 yet. Your images stay saved and can be reused with V4.5."
     },
     "imageRef": {
         "title": "Add Image Reference",
@@ -2068,6 +2108,7 @@
         "preview": "Preview",
         "emptyState": "Generate an Image",
         "emptyDescription": "Open the prompt, enter your idea, then choose Generate",
+        "openPrompt": "Open prompt",
         "loadingTitle": "Generating Image...",
         "loadingDescription": "Please wait a moment",
         "lastTime": "Last time",
@@ -2078,25 +2119,73 @@
         "lowStepsCautionRange": "Values below {{threshold}} are intended for experiments.",
         "restoreRecommendedSteps": "Restore 28 steps"
     },
+    "diagnosticDrawer": {
+        "open": "Open diagnostics",
+        "shortLabel": "Diagnostics",
+        "title": "Diagnostic log",
+        "description": "Recent task diagnostics with sensitive information removed.",
+        "empty": "No diagnostics recorded.",
+        "recommendedAction": "Recommended action",
+        "copySummary": "Copy summary",
+        "copyRedactedLog": "Copy redacted log",
+        "exportJson": "Export JSON",
+        "collapseDetails": "Hide details",
+        "expandDetails": "Show details",
+        "timeline": "Timeline",
+        "occurredAt": "Occurred",
+        "operation": "Operation",
+        "retry": "Retry",
+        "cause": "Cause",
+        "recentActivity": "Recent activity"
+    },
     "settings": {
         "title": "Settings",
         "advanced": "Advanced Settings",
         "resolution": "Resolution",
         "resolutionSelect": "Select Resolution",
         "seed": "Seed",
+        "lockSeed": "Lock seed",
+        "unlockSeed": "Unlock seed",
+        "randomSeed": "Random seed",
         "random": "Random"
     },
     "parameters": {
         "title": "Advanced Settings",
         "description": "Configure generation parameters like Steps and CFG Scale.",
         "model": "Model",
+        "modelDescriptions": {
+            "nai-diffusion-5-full": "Recommended V5 model with the widest creative range and strongest prompt following.",
+            "nai-diffusion-5-curated": "Focused V5 model for consistent results within a curated range.",
+            "nai-diffusion-4-5-full": "Choose this when an existing workflow needs V4.5 Full compatibility.",
+            "nai-diffusion-4-5-curated": "Choose this to reproduce results made with V4.5 Curated.",
+            "nai-diffusion-4-full": "Compatibility option for older V4 Full settings.",
+            "nai-diffusion-4-curated-preview": "Compatibility option for older V4 Curated work."
+        },
         "steps": "Steps",
         "cfgScale": "CFG Scale",
         "cfgRescale": "CFG Rescale",
         "sampler": "Sampler",
         "scheduler": "Scheduler",
         "smea": "SMEA",
-        "smeaDyn": "SMEA DYN"
+        "smeaHelp": "Improves attention across larger images.",
+        "smeaDyn": "SMEA DYN",
+        "smeaDynHelp": "Dynamically adjusts SMEA during generation.",
+        "variety": "Variety+",
+        "varietyHelp": "Increases variation between generated images.",
+        "qualityToggle": "Add Quality Tags",
+        "qualityToggleHelp": "Adds the selected model's official quality tags to the prompt.",
+        "ucPreset": "Undesired Content preset",
+        "ucHeavy": "Heavy",
+        "ucLight": "Light",
+        "ucFurry": "Furry Focus",
+        "ucHuman": "Human Focus",
+        "ucNone": "None",
+        "recommended": "Recommended",
+        "legacy": "Previous version",
+        "v5Karras": "V5 automatically uses the Karras scheduler.",
+        "v5VarietyPending": "V5 Variety+ stays off until its official setting is confirmed.",
+        "transparentBackground": "Transparent background",
+        "transparentBackgroundHelp": "Creates a transparent image you can use without a background."
     },
     "history": {
         "title": "History",

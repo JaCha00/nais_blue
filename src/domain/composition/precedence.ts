@@ -46,6 +46,7 @@ export const CORE_PARAMS_FIELDS = [
     'seedLocked',
     'qualityToggle',
     'ucPreset',
+    'transparentBackground',
     'sourceMode',
     'sourceImageResourceId',
     'maskResourceId',

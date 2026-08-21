@@ -201,6 +201,7 @@ export async function buildStyleLabGenerationParams(
         seed,
         qualityToggle: generation.qualityToggle,
         ucPreset: generation.ucPreset,
+        transparentBackground: false,
         sourceMode: mask ? 'inpaint' : sourceImage ? 'image-to-image' : 'text-to-image',
         strength: generation.strength,
         noise: generation.noise,

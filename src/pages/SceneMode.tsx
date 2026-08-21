@@ -120,7 +120,7 @@ import {
 } from '@/components/scene/scene-grid-virtualization'
 import { previewSceneComposition } from '@/lib/scene-generation/build-scene-params'
 import { getRuntimeCompositionDocument } from '@/lib/composition-authority'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
@@ -455,12 +455,18 @@ export default function SceneMode() {
                     : { severity: 'valid' }
     const estimatedCost = scenes.reduce((sum, scene) => {
         if (scene.queueCount <= 0) return sum
+        const generation = resolveSceneGeneration(scene)
+        const pricingBasis = resolveAnlasPricingBasis({
+            model: generation.model,
+            activeCredentialsAreOpus,
+        })
         return sum + calculateAnlasCost({
+            model: generation.model,
             width: scene.width ?? 832,
             height: scene.height ?? 1216,
-            steps: resolveSceneGeneration(scene).steps,
+            steps: generation.steps,
             imageCount: 1,
-            pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+            pricingBasis,
         }) * scene.queueCount
     }, 0)
     const generationConflict = Boolean(generatingMode && generatingMode !== 'scene')

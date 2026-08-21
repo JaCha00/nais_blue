@@ -4,9 +4,12 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import Counter from '@/components/ui/counter'
 import { toast } from '@/components/ui/use-toast'
+import { NovelAiV5UsageLimit } from '@/components/credentials/NovelAiV5UsageLimit'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import { cn } from '@/lib/utils'
 import { executePromptGenerationCommand } from '@/services/generation/prompt-generation-command'
 import { useRotationStore } from '@/stores/character-rotation-store'
+import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useSceneStore } from '@/stores/scene-store'
@@ -34,8 +37,13 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
     const currentBatch = useGenerationSessionStore(state => state.currentBatch)
     const generatingMode = useGenerationSessionStore(state => state.generatingMode)
     const batchCount = useGenerationDraftStore(state => state.batchCount)
+    const model = useGenerationDraftStore(state => state.model)
+    const selectedResolution = useGenerationDraftStore(state => state.selectedResolution)
     const steps = useGenerationDraftStore(state => state.steps)
     const setBatchCount = useGenerationDraftStore(state => state.setBatchCount)
+    const hasCharacterReference = useCharacterStore(state => (
+        state.characterImages.some(image => image.enabled)
+    ))
     const sceneQueueCount = activePresetId ? getTotalQueueCount(activePresetId) : 0
     const isMainGenerating = generatingMode === 'main'
     const isSceneGenerating = generatingMode === 'scene'
@@ -43,6 +51,14 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
     const isConflict = isSceneMode
         ? isMainGenerating || isStyleLabGenerating
         : isSceneGenerating
+    const paidMaximumAnlas = calculateAnlasCost({
+        model,
+        width: selectedResolution.width,
+        height: selectedResolution.height,
+        steps,
+        imageCount: 1,
+        pricingBasis: 'paid',
+    }) * batchCount
 
     const execute = () => {
         if (isConflict) return
@@ -78,6 +94,17 @@ export function PromptGenerationControls({ isSceneMode }: PromptGenerationContro
 
     return (
         <div className="p-0">
+            {!isSceneMode && (
+                <NovelAiV5UsageLimit
+                    model={model}
+                    width={selectedResolution.width}
+                    height={selectedResolution.height}
+                    steps={steps}
+                    maxAnlas={paidMaximumAnlas}
+                    hasCharacterReference={hasCharacterReference}
+                    className="mb-3"
+                />
+            )}
             <div className="flex flex-wrap gap-2">
                 <Button
                     data-testid="prompt-generate-action"

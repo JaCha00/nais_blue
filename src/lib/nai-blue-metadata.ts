@@ -63,6 +63,7 @@ export interface NaiBlueResolvedParams {
     seed: number
     qualityToggle?: boolean
     ucPreset?: number
+    transparentBackground?: boolean
     sourceMode: 'text-to-image' | 'image-to-image' | 'inpaint'
     strength?: number
     noise?: number
@@ -237,7 +238,7 @@ function isResolvedParams(value: unknown): value is NaiBlueResolvedParams {
     const allowedKeys = new Set([
         'model', 'width', 'height', 'steps', 'cfgScale', 'cfgRescale', 'sampler', 'scheduler',
         'smea', 'smeaDyn', 'variety', 'seed', 'qualityToggle', 'ucPreset', 'sourceMode',
-        'strength', 'noise', 'characterPositionEnabled',
+        'strength', 'noise', 'characterPositionEnabled', 'transparentBackground',
     ])
     return Object.keys(value).every(key => allowedKeys.has(key))
         && typeof value.model === 'string'
@@ -258,6 +259,7 @@ function isResolvedParams(value: unknown): value is NaiBlueResolvedParams {
         && ['text-to-image', 'image-to-image', 'inpaint'].includes(String(value.sourceMode))
         && (value.qualityToggle === undefined || typeof value.qualityToggle === 'boolean')
         && (value.ucPreset === undefined || isFiniteNumber(value.ucPreset))
+        && (value.transparentBackground === undefined || typeof value.transparentBackground === 'boolean')
         && (value.strength === undefined || isFiniteNumber(value.strength))
         && (value.noise === undefined || isFiniteNumber(value.noise))
         && (value.characterPositionEnabled === undefined || typeof value.characterPositionEnabled === 'boolean')

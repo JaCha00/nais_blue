@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import fixture from '../fixtures/product-guidance/token-gate-current-models.json'
-import { assessPromptLengths } from '../../src/services/guidance/prompt-length-assessment'
+import {
+    assessPromptLengths,
+    type ModelTokenCapabilityRegistry,
+} from '../../src/services/guidance/prompt-length-assessment'
 import { summarizePrompt } from '../../src/services/diagnostics/redactor'
 
 describe('Phase 13 token estimator gate', () => {
+    const capabilities: ModelTokenCapabilityRegistry = Object.fromEntries(
+        fixture.models.map(model => [
+            model.model,
+            { tokenizerFamily: model.family, contextLimitTokens: model.contextLimit },
+        ]),
+    ) as ModelTokenCapabilityRegistry
+
     it.each(fixture.models)('fails closed for $model while preserving final section lengths', expected => {
         const result = assessPromptLengths({
             ...fixture.input,
             ucPreset: 2,
             model: expected.model,
-        })
+        }, capabilities)
 
         expect(result.classification).toBe(expected.classification)
         expect(result.tokenizerFamily).toBe(expected.family)
@@ -17,8 +27,8 @@ describe('Phase 13 token estimator gate', () => {
         expect(result.safetyMarginTokens).toBeNull()
         expect(result.contextLimitTokens).toBe(expected.contextLimit)
         expect(result.limitClassification).toBe('confirmed')
-        expect(result.positive).toMatchObject(fixture.expectedLengths.positive)
-        expect(result.negative).toMatchObject(fixture.expectedLengths.negative)
+        expect(result.positive).toMatchObject(expected.expectedLengths.positive)
+        expect(result.negative).toMatchObject(expected.expectedLengths.negative)
         expect(result.positive.characterPromptCharacters).toEqual([4])
         expect(result.negative.characterPromptCharacters).toEqual([9])
     })
@@ -42,22 +52,26 @@ describe('Phase 13 token estimator gate', () => {
         expect(JSON.stringify(result)).not.toContain('512')
     })
 
-    it('accepts a future V5 capability without changing prompt expansion logic', () => {
+    it('accepts a future capability without changing prompt expansion logic', () => {
         const result = assessPromptLengths({
             ...fixture.input,
             ucPreset: 2,
-            model: 'nai-diffusion-5',
+            model: 'nai-diffusion-6-experimental',
         }, {
-            'nai-diffusion-5': { tokenizerFamily: 't5', contextLimitTokens: 1024 },
+            'nai-diffusion-6-experimental': { tokenizerFamily: 't5', contextLimitTokens: 1024 },
         })
 
         expect(result).toMatchObject({
-            model: 'nai-diffusion-5',
+            model: 'nai-diffusion-6-experimental',
             classification: 'unavailable',
             contextLimitTokens: 1024,
             limitClassification: 'confirmed',
         })
-        expect(result.positive).toMatchObject(fixture.expectedLengths.positive)
+        expect(result.positive).toMatchObject({
+            expandedBaseCharacters: 54,
+            enabledCharacterCharacters: 4,
+            combinedCharacters: 58,
+        })
     })
 
     it('removes comments and applies the same quality and UC expansion helpers as the payload path', () => {

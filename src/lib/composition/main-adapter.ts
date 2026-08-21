@@ -268,6 +268,10 @@ export function legacySettingsToParamsOverride(
     assign('seedLocked', readBoolean(source, 'seedLocked', 'seed_locked'))
     assign('qualityToggle', readBoolean(source, 'qualityToggle', 'quality_toggle'))
     assign('ucPreset', readNumber(source, 'ucPreset', 'uc_preset'))
+    assign(
+        'transparentBackground',
+        readBoolean(source, 'transparentBackground', 'transparent_background'),
+    )
     assign('strength', readNumber(source, 'strength'))
     assign('noise', readNumber(source, 'noise'))
     assign(

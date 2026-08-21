@@ -9,6 +9,8 @@ import {
 import { assertDeepEqual, loadFixtureJson } from '../helpers'
 
 type CoreModel =
+    | 'nai-diffusion-5-full'
+    | 'nai-diffusion-5-curated'
     | 'nai-diffusion-4-5-curated'
     | 'nai-diffusion-4-5-full'
     | 'nai-diffusion-4-curated-preview'
@@ -17,16 +19,31 @@ type CoreModel =
 interface MatrixCase {
     id: string
     workflow: 'main' | 'scene' | 'style-lab'
-    model: string
+    model: CoreModel
     transport: 'standard' | 'stream'
     format: 'png' | 'webp'
     seed: number
+}
+
+interface ModelPayloadContract {
+    model: CoreModel
+    promptBase: string
+    qualitySuffix: string
+    negativeBase: string
+    ucPreset0Prefix: string
+    skipCfgAboveSigma: number | null
+    v5TagHints?: {
+        tag_hint_qt: number
+        tag_hint_uc_preset: number
+        tag_hint_transparent_background: boolean
+    }
 }
 
 interface OnlineMatrixFixture {
     sourceKind: string
     requiredModels: CoreModel[]
     requiredFormats: Array<'png' | 'webp'>
+    modelPayloadContracts: ModelPayloadContract[]
     cases: MatrixCase[]
     retiredLegacyEvidence: Array<MatrixCase & {
         observedResult: 'pass' | 'provider-http-400'
@@ -64,11 +81,40 @@ async function fixtures(): Promise<{
     return { matrix, base, expected }
 }
 
-function expectedForCase(base: NaiImagePayload, matrixCase: MatrixCase): NaiImagePayload {
+function expectedForCase(
+    base: NaiImagePayload,
+    matrixCase: MatrixCase,
+    contract: ModelPayloadContract,
+): NaiImagePayload {
     const expected = structuredClone(base)
+    const positive = `${contract.promptBase}, ${contract.qualitySuffix}`
+    const negative = `${contract.ucPreset0Prefix}, ${contract.negativeBase}`
     expected.model = matrixCase.model
+    expected.input = positive
     expected.parameters.image_format = matrixCase.format
-    expected.parameters.skip_cfg_above_sigma = matrixCase.model.includes('4-5') ? 58 : 19
+    expected.parameters.negative_prompt = negative
+    expected.parameters.skip_cfg_above_sigma = contract.skipCfgAboveSigma
+    expected.parameters.v4_prompt = {
+        ...expected.parameters.v4_prompt as Record<string, unknown>,
+        caption: {
+            ...((expected.parameters.v4_prompt as { caption: Record<string, unknown> }).caption),
+            base_caption: positive,
+        },
+    }
+    expected.parameters.v4_negative_prompt = {
+        ...expected.parameters.v4_negative_prompt as Record<string, unknown>,
+        caption: {
+            ...((expected.parameters.v4_negative_prompt as { caption: Record<string, unknown> }).caption),
+            base_caption: negative,
+        },
+    }
+    if (contract.v5TagHints === undefined) {
+        delete expected.parameters.tag_hint_qt
+        delete expected.parameters.tag_hint_uc_preset
+        delete expected.parameters.tag_hint_transparent_background
+    } else {
+        Object.assign(expected.parameters, contract.v5TagHints)
+    }
     if (matrixCase.transport === 'stream') expected.parameters.stream = 'msgpack'
     else delete expected.parameters.stream
     return expected
@@ -89,6 +135,7 @@ describe('supported online model/format covering matrix', () => {
                 expect(matrix.cases).toContainEqual(expect.objectContaining({ model, format }))
             }
         }
+        expect(matrix.modelPayloadContracts.map(contract => contract.model)).toEqual(matrix.requiredModels)
 
         expect(new Set(matrix.cases.map(item => item.workflow))).toEqual(
             new Set(['main', 'scene', 'style-lab']),
@@ -122,8 +169,13 @@ describe('supported online model/format covering matrix', () => {
 
     it('has zero unexplained payload diff across the required matrix', async () => {
         const { matrix, base, expected } = await fixtures()
+        const contractByModel = new Map(
+            matrix.modelPayloadContracts.map(contract => [contract.model, contract]),
+        )
 
         for (const matrixCase of matrix.cases) {
+            const contract = contractByModel.get(matrixCase.model)
+            if (contract === undefined) throw new Error(`Missing model payload contract: ${matrixCase.model}`)
             const request: GenerationRequest = {
                 ...structuredClone(base.request),
                 model: matrixCase.model,
@@ -134,7 +186,7 @@ describe('supported online model/format covering matrix', () => {
                 imageFormat: matrixCase.format,
                 ...(matrixCase.transport === 'stream' ? { stream: 'msgpack' as const } : { stream: undefined }),
             }
-            const caseExpected = expectedForCase(expected, matrixCase)
+            const caseExpected = expectedForCase(expected, matrixCase, contract)
             caseExpected.parameters.seed = matrixCase.seed
 
             assertDeepEqual(

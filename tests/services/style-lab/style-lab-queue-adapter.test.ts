@@ -23,8 +23,8 @@ function memoryStorage(): StateStorage {
 describe('Style-Lab durable Queue adapter', () => {
     it('uses the shared A/B estimator and requires exact Guided consent before enqueue', () => {
         const normalPair = [
-            { width: 1024, height: 1024, steps: 28 },
-            { width: 1024, height: 1024, steps: 28 },
+            { model: 'nai-diffusion-4-5-full', width: 1024, height: 1024, steps: 28 },
+            { model: 'nai-diffusion-4-5-full', width: 1024, height: 1024, steps: 28 },
         ]
         const instant = '2026-08-10T00:00:00.000Z'
         const opusConsent = createAnlasCostConsentSnapshot({

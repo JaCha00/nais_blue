@@ -22,14 +22,14 @@ describe('Anlas cost consent', () => {
         })
 
         expect(() => assertAnlasCostConsentAllows(consent, 10)).not.toThrow()
-        expect(consent.estimatorVersion).toBe('nai-blue-anlas-v2')
+        expect(consent.estimatorVersion).toBe('nai-blue-anlas-v3')
         expect(() => assertAnlasCostConsentAllows(consent, 11)).toThrowError(
             expect.objectContaining({ code: 'E_ANLAS_ESTIMATE_CHANGED' }),
         )
     })
 
     it('invalidates consent created under an older estimator', () => {
-        expect(ANLAS_COST_ESTIMATOR_VERSION).toBe('nai-blue-anlas-v2')
+        expect(ANLAS_COST_ESTIMATOR_VERSION).toBe('nai-blue-anlas-v3')
         expect(isAnlasCostConsentSnapshot({
             ...createAnlasCostConsentSnapshot({
                 pricingBasis: 'paid',

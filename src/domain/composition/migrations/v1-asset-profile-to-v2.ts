@@ -355,6 +355,7 @@ function assignParam(params: ParamsOverride, key: keyof ParamsOverride, value: u
         case 'variety':
         case 'seedLocked':
         case 'qualityToggle':
+        case 'transparentBackground':
         case 'characterPositionEnabled': {
             if (typeof value !== 'boolean') return false
             Object.assign(params, { [key]: value })
@@ -423,6 +424,8 @@ function canonicalParamKey(key: string): keyof ParamsOverride | undefined {
         case 'quality_toggle': return 'qualityToggle'
         case 'ucPreset':
         case 'uc_preset': return 'ucPreset'
+        case 'transparentBackground':
+        case 'transparent_background': return 'transparentBackground'
         case 'sourceMode':
         case 'source_mode': return 'sourceMode'
         case 'sourceImageResourceId':

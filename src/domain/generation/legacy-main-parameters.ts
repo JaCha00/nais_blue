@@ -61,6 +61,7 @@ export interface BuildLegacyMainParametersInput<TAssetModulePlan, TMetadataMode>
     readonly assetModulePlan: TAssetModulePlan | null
     readonly qualityToggle: boolean
     readonly ucPreset: number
+    readonly transparentBackground?: boolean
 }
 
 export interface LegacyMainGenerationParameters<TAssetModulePlan, TMetadataMode> {
@@ -105,6 +106,7 @@ export interface LegacyMainGenerationParameters<TAssetModulePlan, TMetadataMode>
     assetModulePlan?: TAssetModulePlan
     qualityToggle: boolean
     ucPreset: number
+    transparentBackground: boolean
     promptParts: {
         base: string
         additional: string
@@ -165,6 +167,7 @@ export function buildLegacyMainGenerationParameters<TAssetModulePlan, TMetadataM
         ...(input.assetModulePlan === null ? {} : { assetModulePlan: input.assetModulePlan }),
         qualityToggle: input.qualityToggle,
         ucPreset: input.ucPreset,
+        transparentBackground: input.transparentBackground ?? false,
         promptParts: input.modulePromptsActive
             ? {
                 base: input.prompt,
