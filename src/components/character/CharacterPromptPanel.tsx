@@ -68,9 +68,10 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 interface CharacterPromptPanelProps {
     open: boolean
     onOpenChange: (open: boolean) => void
+    maxCharacters?: number
 }
 
-export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPanelProps) {
+export function CharacterPromptPanel({ open, onOpenChange, maxCharacters }: CharacterPromptPanelProps) {
     const { t } = useTranslation()
     const {
         characters,
@@ -98,6 +99,17 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
     const [editingGroupName, setEditingGroupName] = useState('')
     const [activeId, setActiveId] = useState<string | null>(null)
     const [pendingGroupDeletion, setPendingGroupDeletion] = useState<string | null>(null)
+    const characterLimitReached = maxCharacters !== undefined && characters.length >= maxCharacters
+
+    // The model catalog owns the cap. Existing over-limit data stays editable,
+    // while only actions that would create another slot are rejected here.
+    const notifyCharacterLimit = useCallback(() => {
+        if (maxCharacters === undefined) return
+        toast({
+            title: t('characterPanel.limitReachedTitle', '캐릭터 한도에 도달했어요'),
+            description: t('characterPanel.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters }),
+        })
+    }, [maxCharacters, t])
 
     // DnD sensors
     const sensors = useSensors(
@@ -163,6 +175,11 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
     }, [open, characters.length])
 
     const handleAddCharacter = () => {
+        const currentCount = useCharacterPromptStore.getState().characters.length
+        if (maxCharacters !== undefined && currentCount >= maxCharacters) {
+            notifyCharacterLimit()
+            return
+        }
         addCharacter()
         // 새 캐릭터 자동 확장
         setTimeout(() => {
@@ -174,6 +191,11 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
     }
 
     const handleDuplicate = useCallback((char: CharacterPrompt) => {
+        const currentCount = useCharacterPromptStore.getState().characters.length
+        if (maxCharacters !== undefined && currentCount >= maxCharacters) {
+            notifyCharacterLimit()
+            return
+        }
         addCharacter()
         setTimeout(() => {
             const newChar = useCharacterPromptStore.getState().characters.slice(-1)[0]
@@ -186,7 +208,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                 setExpandedId(newChar.id)
             }
         }, 0)
-    }, [addCharacter, updateCharacter])
+    }, [addCharacter, maxCharacters, notifyCharacterLimit, updateCharacter])
 
     const handleToggleExpand = useCallback((id: string) => {
         setExpandedId(prev => prev === id ? null : id)
@@ -266,7 +288,14 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                     <div className="flex items-center gap-2 text-sm font-medium">
                         <Users className="h-4 w-4 text-primary" />
                         <span>{t('characterPanel.title', '캐릭터 프롬프트')}</span>
-                        {characters.filter(c => c.enabled).length > 0 && (
+                        {maxCharacters !== undefined ? (
+                            <span className={cn('text-xs text-muted-foreground', characterLimitReached && 'text-destructive')}>
+                                {t('characterPanel.limitCount', '{{count}}/{{max}}명', {
+                                    count: characters.length,
+                                    max: maxCharacters,
+                                })}
+                            </span>
+                        ) : characters.filter(c => c.enabled).length > 0 && (
                             <span className="text-xs text-muted-foreground">
                                 ({characters.filter(c => c.enabled).length})
                             </span>
@@ -300,12 +329,15 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                 <MapPin className="h-3.5 w-3.5" />
                             </Button>
                         </Tip>
-                        <Tip content={t('characterPanel.addDesc', '새 캐릭터 프롬프트 추가')}>
+                        <Tip content={characterLimitReached
+                            ? t('characterPanel.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters })
+                            : t('characterPanel.addDesc', '새 캐릭터 프롬프트 추가')}>
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
                                 onClick={handleAddCharacter}
+                                disabled={characterLimitReached}
                             >
                                 <Plus className="h-3.5 w-3.5" />
                             </Button>
@@ -364,6 +396,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                 size="sm"
                                                 className="mt-2"
                                                 onClick={handleAddCharacter}
+                                                disabled={characterLimitReached}
                                             >
                                                 <Plus className="h-3.5 w-3.5 mr-1" />
                                                 {t('characterPanel.addFirst', '첫 캐릭터 추가')}
@@ -475,6 +508,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                                     onRemove={() => removeCharacter(char.id)}
                                                                     onToggleEnabled={() => toggleEnabled(char.id)}
                                                                     onDuplicate={() => handleDuplicate(char)}
+                                                                    duplicateDisabled={characterLimitReached}
                                                                     onSaveAsPreset={() => handleSaveAsPreset(char)}
                                                                     onMoveToGroup={moveCharacterToGroup}
                                                                     positionEnabled={positionEnabled}
@@ -518,6 +552,7 @@ export function CharacterPromptPanel({ open, onOpenChange }: CharacterPromptPane
                                                                 onRemove={() => removeCharacter(char.id)}
                                                                 onToggleEnabled={() => toggleEnabled(char.id)}
                                                                 onDuplicate={() => handleDuplicate(char)}
+                                                                duplicateDisabled={characterLimitReached}
                                                                 onSaveAsPreset={() => handleSaveAsPreset(char)}
                                                                 onMoveToGroup={moveCharacterToGroup}
                                                                 positionEnabled={positionEnabled}
@@ -676,6 +711,7 @@ interface CharacterCardProps {
     onRemove: () => void
     onToggleEnabled: () => void
     onDuplicate: () => void
+    duplicateDisabled: boolean
     onSaveAsPreset: () => void
     onMoveToGroup: (characterId: string, groupId: string | undefined) => void
     positionEnabled: boolean
@@ -692,6 +728,7 @@ function CharacterCard({
     onRemove,
     onToggleEnabled,
     onDuplicate,
+    duplicateDisabled,
     onSaveAsPreset,
     onMoveToGroup,
     positionEnabled,
@@ -867,7 +904,7 @@ function CharacterCard({
                             </>
                         )}
                     </ContextMenuItem>
-                    <ContextMenuItem onClick={onDuplicate}>
+                    <ContextMenuItem onClick={onDuplicate} disabled={duplicateDisabled}>
                         <Copy className="h-4 w-4 mr-2" />
                         {t('characterPanel.duplicate', '복제')}
                     </ContextMenuItem>

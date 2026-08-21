@@ -7,6 +7,7 @@ import {
     type UcPresetIndex,
 } from '@/services/nai/presets'
 import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
+import { assembleV5TextPrompt } from '@/services/nai/text-assembly'
 
 // Release-supported builder authority is V4/V4.5/V5. Retired model identifiers
 // may still be parsed from old metadata, but the selectable model boundary
@@ -65,6 +66,7 @@ export interface VibeOptions {
 export interface BuildOptions {
     stream?: 'msgpack'
     i2i?: I2iOptions
+    enhanceMax?: boolean
     characterReferences?: CharacterReferenceOptions[]
     vibes?: VibeOptions[]
     imageFormat?: 'png' | 'webp'
@@ -106,11 +108,20 @@ export function buildGenerateImagePayload(
     const activeChars = req.characterPrompts.filter(char => char.enabled && char.prompt.trim())
     const center = (char: CharacterPromptInput) =>
         req.useCoords ? (char.center ?? { x: 0.5, y: 0.5 }) : { x: 0.5, y: 0.5 }
+    const expandedPrompt = assembleV5TextPrompt({
+        model: presetModel,
+        basePrompt: prompt,
+        characterPrompts: activeChars.map(char => ({
+            prompt: removeComments(char.prompt),
+            center: center(char),
+        })),
+        useCoords: req.useCoords,
+    })
     const action = opts.i2i ? (opts.i2i.maskBase64 ? 'infill' : 'img2img') : 'generate'
 
     return {
         action,
-        input: prompt,
+        input: expandedPrompt,
         model: req.model,
         parameters: {
             params_version: 3,
@@ -166,11 +177,12 @@ export function buildGenerateImagePayload(
                         noise: opts.i2i.noise,
                         extra_noise_seed: opts.i2i.extraNoiseSeed,
                         color_correct: opts.i2i.colorCorrect,
+                        ...(opts.enhanceMax ? { upscaled_enhance: true } : {}),
                     }
                 : {}),
             v4_prompt: {
                 caption: {
-                    base_caption: prompt,
+                    base_caption: expandedPrompt,
                     char_captions: activeChars.map(char => ({
                         char_caption: removeComments(char.prompt),
                         centers: [center(char)],

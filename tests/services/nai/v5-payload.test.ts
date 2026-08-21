@@ -74,4 +74,130 @@ describe('NovelAI V5 payload', () => {
 
         expect(payload.parameters.skip_cfg_above_sigma).toBeNull()
     })
+
+    it('adds only the provider Enhance MAX flag on img2img payloads', () => {
+        const payload = buildGenerateImagePayload(request({
+            model: 'nai-diffusion-4-5-full',
+            width: 1024,
+            height: 1024,
+            qualityToggle: false,
+        }), {
+            enhanceMax: true,
+            i2i: {
+                imageBase64: 'source',
+                strength: 0.3,
+                noise: 0,
+                extraNoiseSeed: 9,
+                colorCorrect: false,
+            },
+        })
+
+        expect(payload.action).toBe('img2img')
+        expect(payload.parameters).toMatchObject({
+            width: 1024,
+            height: 1024,
+            n_samples: 1,
+            image: 'source',
+            strength: 0.3,
+            noise: 0,
+            extra_noise_seed: 9,
+            upscaled_enhance: true,
+        })
+    })
+
+    it('assembles Korean quoted text into V5 base text blocks after quality tags', () => {
+        const payload = buildGenerateImagePayload(request({
+            prompt: '1girl, "안녕", speech bubble, \'괜찮아?\'',
+            characterPrompts: [{
+                prompt: 'blue dress, “또 만나”',
+                negativePrompt: '',
+                enabled: true,
+            }],
+        }))
+
+        expect(payload.input).toBe(
+            '1girl, "안녕", speech bubble, \'괜찮아?\', very aesthetic, masterpiece, no text, '
+            + 'teXt: 안녕\n\n괜찮아?\n\n또 만나',
+        )
+        expect((payload.parameters.v4_prompt as { caption: { char_captions: { char_caption: string }[] } })
+            .caption.char_captions[0].char_caption).toBe('blue dress, “또 만나”')
+    })
+
+    it('keeps manual text prompts authoritative for V5', () => {
+        const payload = buildGenerateImagePayload(request({
+            prompt: '1girl, text: keep this, "무시"',
+            characterPrompts: [{
+                prompt: 'speech bubble, "also ignored"',
+                negativePrompt: '',
+                enabled: true,
+            }],
+        }))
+
+        expect(payload.input).toBe('1girl, very aesthetic, masterpiece, no text, text: keep this, "무시"')
+        expect(payload.input).not.toContain('teXt:')
+    })
+
+    it('inserts V5 prompt decorations before a manual text marker', () => {
+        const payload = buildGenerateImagePayload(request({
+            prompt: 'poster, TEXT: keep this',
+            transparentBackground: true,
+        }))
+
+        expect(payload.input).toBe(
+            'poster, transparent background, very aesthetic, masterpiece, no text, TEXT: keep this',
+        )
+        expect(payload.parameters.straight_alpha).toBe(true)
+    })
+
+    it('does not assemble quoted text for V4 models', () => {
+        const payload = buildGenerateImagePayload(request({
+            model: 'nai-diffusion-4-5-full',
+            prompt: '1girl, "hello"',
+        }))
+
+        expect(payload.input).toContain('1girl, "hello"')
+        expect(payload.input).not.toContain('teXt:')
+    })
+
+    it('orders V5 text blocks by coordinates without reordering character arrays', () => {
+        const payload = buildGenerateImagePayload(request({
+            prompt: 'duo',
+            useCoords: true,
+            characterPrompts: [
+                {
+                    prompt: 'right character, "right"',
+                    negativePrompt: 'right negative',
+                    enabled: true,
+                    center: { x: 0.8, y: 0.2 },
+                },
+                {
+                    prompt: 'left character, "left"',
+                    negativePrompt: 'left negative',
+                    enabled: true,
+                    center: { x: 0.2, y: 0.24 },
+                },
+            ],
+        }))
+        const v4Prompt = payload.parameters.v4_prompt as { caption: { char_captions: { char_caption: string }[] } }
+        const v4Negative = payload.parameters.v4_negative_prompt as { caption: { char_captions: { char_caption: string }[] } }
+
+        expect(payload.input).toContain('teXt: left\n\nright')
+        expect(v4Prompt.caption.char_captions.map(char => char.char_caption)).toEqual([
+            'right character, "right"',
+            'left character, "left"',
+        ])
+        expect(v4Negative.caption.char_captions.map(char => char.char_caption)).toEqual([
+            'right negative',
+            'left negative',
+        ])
+    })
+
+    it('does not treat apostrophes in contractions as quoted text', () => {
+        const payload = buildGenerateImagePayload(request({
+            prompt: 'girl\'s jacket, don\'t stop, "speak"',
+        }))
+
+        expect(payload.input).toContain('teXt: speak')
+        expect(payload.input).not.toContain('teXt: s jacket, don')
+    })
 })

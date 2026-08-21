@@ -294,87 +294,11 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct UpscaleResult {
+#[derive(Debug, Serialize)]
+pub struct AugmentResult {
     pub success: bool,
     pub image_data: Option<String>,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct UpscalePayload {
-    image: String,
-    width: i32,
-    height: i32,
-    scale: i32,
-}
-
-#[tauri::command]
-async fn upscale_image(
-    token: String,
-    image: String,
-    width: i32,
-    height: i32,
-    scale: i32,
-) -> UpscaleResult {
-    let client = reqwest::Client::new();
-
-    let payload = UpscalePayload {
-        image,
-        width,
-        height,
-        scale,
-    };
-
-    let result = client
-        .post("https://api.novelai.net/ai/upscale")
-        .header("Authorization", format!("Bearer {}", token.trim()))
-        .header("Content-Type", "application/json")
-        .json(&payload)
-        .send()
-        .await;
-
-    match result {
-        Ok(response) => {
-            if response.status().is_success() {
-                // Response is a ZIP file containing the image
-                match response.bytes().await {
-                    Ok(bytes) => {
-                        // Use zip crate to extract
-                        match extract_image_from_zip(&bytes) {
-                            Ok(base64_image) => UpscaleResult {
-                                success: true,
-                                image_data: Some(base64_image),
-                                error: None,
-                            },
-                            Err(_) => UpscaleResult {
-                                success: false,
-                                image_data: None,
-                                error: Some("ZIP 처리 오류".to_string()),
-                            },
-                        }
-                    }
-                    Err(_) => UpscaleResult {
-                        success: false,
-                        image_data: None,
-                        error: Some("응답 읽기 오류".to_string()),
-                    },
-                }
-            } else {
-                let status = response.status().as_u16();
-                UpscaleResult {
-                    success: false,
-                    image_data: None,
-                    error: Some(format!("API 오류 {}", status)),
-                }
-            }
-        }
-        Err(_) => UpscaleResult {
-            success: false,
-            image_data: None,
-            error: Some("네트워크 오류".to_string()),
-        },
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -398,7 +322,7 @@ async fn augment_image(
     #[allow(non_snake_case)] reqType: String,
     defry: Option<i32>,
     prompt: Option<String>,
-) -> UpscaleResult {
+) -> AugmentResult {
     let client = reqwest::Client::new();
 
     let payload = AugmentPayload {
@@ -424,18 +348,18 @@ async fn augment_image(
             if response.status().is_success() {
                 match response.bytes().await {
                     Ok(bytes) => match extract_image_from_zip(&bytes) {
-                        Ok(base64_image) => UpscaleResult {
+                        Ok(base64_image) => AugmentResult {
                             success: true,
                             image_data: Some(base64_image),
                             error: None,
                         },
-                        Err(_) => UpscaleResult {
+                        Err(_) => AugmentResult {
                             success: false,
                             image_data: None,
                             error: Some("ZIP 처리 오류".to_string()),
                         },
                     },
-                    Err(_) => UpscaleResult {
+                    Err(_) => AugmentResult {
                         success: false,
                         image_data: None,
                         error: Some("응답 읽기 오류".to_string()),
@@ -443,14 +367,14 @@ async fn augment_image(
                 }
             } else {
                 let status = response.status().as_u16();
-                UpscaleResult {
+                AugmentResult {
                     success: false,
                     image_data: None,
                     error: Some(format!("API 오류 {}", status)),
                 }
             }
         }
-        Err(_) => UpscaleResult {
+        Err(_) => AugmentResult {
             success: false,
             image_data: None,
             error: Some("네트워크 오류".to_string()),
@@ -964,7 +888,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             verify_token,
             get_anlas_balance,
-            upscale_image,
             augment_image,
             remove_background,
             start_tagger,

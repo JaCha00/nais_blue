@@ -76,6 +76,8 @@ export interface GenerationParams {
     sourceImage?: string
     strength?: number
     noise?: number
+    /** Provider-side Enhance MAX uses img2img with the original source and an upscaled_enhance flag. */
+    upscaledEnhance?: boolean
     mask?: string
     imageFormat?: 'png' | 'webp'
     metadataMode?: MetadataMode

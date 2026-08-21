@@ -183,6 +183,7 @@ export function PromptPanel() {
                 <CharacterPromptPanel
                     open={characterPanelOpen}
                     onOpenChange={setCharacterPanelOpen}
+                    maxCharacters={modelProfile?.capabilities.maxCharacters}
                 />
 
                 <PromptEditorSurface />

@@ -19,9 +19,9 @@
   "models": [
     {
       "model": "nai-diffusion-5-full",
-      "family": "t5",
+      "family": "qwen35",
       "classification": "unavailable",
-      "contextLimit": 512,
+      "contextLimit": null,
       "expectedLengths": {
         "positive": { "expandedBaseCharacters": 54, "enabledCharacterCharacters": 4, "combinedCharacters": 58 },
         "negative": { "expandedBaseCharacters": 307, "enabledCharacterCharacters": 9, "combinedCharacters": 316 }
@@ -29,9 +29,9 @@
     },
     {
       "model": "nai-diffusion-5-curated",
-      "family": "t5",
+      "family": "qwen35",
       "classification": "unavailable",
-      "contextLimit": 512,
+      "contextLimit": null,
       "expectedLengths": {
         "positive": { "expandedBaseCharacters": 54, "enabledCharacterCharacters": 4, "combinedCharacters": 58 },
         "negative": { "expandedBaseCharacters": 307, "enabledCharacterCharacters": 9, "combinedCharacters": 316 }

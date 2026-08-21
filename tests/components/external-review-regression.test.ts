@@ -53,4 +53,14 @@ describe('External review regression fixes', () => {
             expect(locale.smartTools.analysisDescription).not.toMatch(/WD Tagger/i)
         }
     })
+
+    it('keeps Enhance MAX visible with a V5 compatibility explanation', async () => {
+        const toolsMode = await source('src/pages/ToolsMode.tsx')
+
+        expect(toolsMode).toContain('smartTools.enhanceMax')
+        expect(toolsMode).toContain('smartTools.enhanceMaxV5Disabled')
+        expect(ko.smartTools.enhanceMaxV5Disabled).toContain('V5')
+        expect(ko.smartTools.enhanceMaxV5Disabled).toContain('V4')
+        expect(ko.smartTools.enhanceMaxTooLarge).toContain('80%')
+    })
 })
