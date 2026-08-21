@@ -1058,8 +1058,10 @@ export const useGenerationStore = create<GenerationState>()(
                 } = get()
                 const compositionMode = effectiveMainCompositionMode(requestedCompositionMode)
 
-                const slot1Token = useAuthStore.getState().getActiveTokens().find((entry) => entry.slot === 1)
-                const token = slot1Token?.token
+                // Main generation follows the same active-credential ordering as
+                // Tools and durable queues, so a valid slot 2 can operate alone.
+                const activeCredential = useAuthStore.getState().getActiveTokens()[0]
+                const token = activeCredential?.token
 
                 if (!token && run.kind === 'execute') {
                     useAuthStore.getState().requestTokenEntry()
@@ -1829,8 +1831,10 @@ export const useGenerationStore = create<GenerationState>()(
                                 }
                             }
 
-                            // Refresh Anlas balance
-                            useAuthStore.getState().refreshAnlas(1)
+                            // Refresh the credential that actually paid for this request.
+                            if (activeCredential) {
+                                useAuthStore.getState().refreshAnlas(activeCredential.slot)
+                            }
                             completedBatchCount++
 
                             // Seed already advanced at generation start

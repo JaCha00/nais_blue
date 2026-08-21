@@ -3,6 +3,7 @@ import {
     getNovelAiModelProfile,
     isNovelAiV5Model,
 } from '@/services/nai/model-catalog'
+import { canUseEnhanceMaxForPixels } from '@/services/nai/enhance-max'
 import type { UcPresetIndex } from '@/services/nai/presets'
 import { prepareReferences } from '@/services/nai/refs'
 import type { GenerationParams } from '@/services/novelai-types'
@@ -42,6 +43,15 @@ export async function adaptGenerationParams(
     if (params.transparentBackground === true && !profile.capabilities.transparentBackground) {
         throw new NovelAiModelCapabilityError('투명 배경은 NAI Diffusion V5에서만 사용할 수 있습니다.')
     }
+    if (params.upscaledEnhance === true && !profile.capabilities.enhanceMax) {
+        throw new NovelAiModelCapabilityError('Enhance MAX는 현재 V4/V4.5 이미지 모델에서만 사용할 수 있습니다.')
+    }
+    if (params.upscaledEnhance === true && !params.sourceImage) {
+        throw new NovelAiModelCapabilityError('Enhance MAX에는 원본 이미지가 필요합니다.')
+    }
+    if (params.upscaledEnhance === true && params.mask) {
+        throw new NovelAiModelCapabilityError('Enhance MAX와 인페인트 마스크는 함께 사용할 수 없습니다.')
+    }
     const activeCharacterCount = (params.characterPrompts ?? [])
         .filter(character => character.enabled && character.prompt.trim()).length
     if (profile.capabilities.maxCharacters !== undefined
@@ -52,6 +62,13 @@ export async function adaptGenerationParams(
     }
 
     const refs = await prepareReferences(token, params)
+    if (params.upscaledEnhance === true
+        && refs.source !== undefined
+        && !canUseEnhanceMaxForPixels(refs.source.width, refs.source.height)) {
+        throw new NovelAiModelCapabilityError(
+            'Enhance MAX는 3MP 목표 해상도의 80% 미만 이미지에서만 사용할 수 있습니다.',
+        )
+    }
     const model = refs.source?.maskBase64
         ? profile.inpaintModelId
         : profile.modelId
@@ -94,6 +111,7 @@ export async function adaptGenerationParams(
             vibes: refs.vibes,
             characterReferences: refs.characterReferences,
             i2i: refs.source?.i2i,
+            enhanceMax: params.upscaledEnhance === true,
             stream,
         },
         encodedVibes: refs.newlyEncodedVibes,

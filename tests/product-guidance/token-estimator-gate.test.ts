@@ -26,7 +26,7 @@ describe('Phase 13 token estimator gate', () => {
         expect(result.tokenCount).toBeNull()
         expect(result.safetyMarginTokens).toBeNull()
         expect(result.contextLimitTokens).toBe(expected.contextLimit)
-        expect(result.limitClassification).toBe('confirmed')
+        expect(result.limitClassification).toBe(expected.contextLimit === null ? 'unavailable' : 'confirmed')
         expect(result.positive).toMatchObject(expected.expectedLengths.positive)
         expect(result.negative).toMatchObject(expected.expectedLengths.negative)
         expect(result.positive.characterPromptCharacters).toEqual([4])
@@ -87,6 +87,34 @@ describe('Phase 13 token estimator gate', () => {
         expect(result.positive.expandedBaseCharacters).toBe('visible'.length)
         expect(result.positive.characterPromptCharacters).toEqual(['char'.length])
         expect(result.negative.expandedBaseCharacters).toBeGreaterThan('artifact'.length)
+    })
+
+    it('mirrors V5 quote text assembly in the expanded positive base length', () => {
+        const result = assessPromptLengths({
+            model: 'nai-diffusion-5-full',
+            positivePrompt: '1girl, "안녕"',
+            negativePrompt: 'lowres',
+            characters: [{ positive: 'speech bubble, "잘 가"', negative: '', enabled: true }],
+            qualityToggle: false,
+            ucPreset: 0,
+        })
+
+        expect(result.tokenizerFamily).toBe('qwen35')
+        expect(result.contextLimitTokens).toBeNull()
+        expect(result.positive.expandedBaseCharacters).toBe('1girl, "안녕", teXt: 안녕\n\n잘 가'.length)
+    })
+
+    it('does not reverse Korean quote order when calculating V5 prompt size', () => {
+        const result = assessPromptLengths({
+            model: 'nai-diffusion-5-full',
+            positivePrompt: '"첫째", "둘째"',
+            negativePrompt: '',
+            characters: [],
+            qualityToggle: false,
+            ucPreset: 4,
+        })
+
+        expect(result.positive.expandedBaseCharacters).toBe('"첫째", "둘째", teXt: 첫째\n\n둘째'.length)
     })
 
     it('keeps diagnostics to hashes and character counts rather than a heuristic token number', () => {

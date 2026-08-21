@@ -71,7 +71,7 @@ describe('Guided reuse does not escape to Advanced mode', () => {
         const tools = source('src/pages/ToolsMode.tsx')
         const i2i = source('src/components/tools/I2IDialog.tsx')
 
-        expect(tools.match(/navigate\('\/advanced'\)/g)).toHaveLength(4)
+        expect(tools.match(/navigate\('\/advanced'\)/g)).toHaveLength(5)
         expect(tools).toContain("if (!guided) navigate('/advanced')")
         expect(tools).toMatch(/if \(guided\) \{\s*setIsI2IOpen\(true\)\s*return\s*\}[\s\S]*navigate\('\/advanced'\)/)
         expect(tools).toMatch(/if \(guided\) \{\s*setIsInpaintingOpen\(true\)\s*return\s*\}[\s\S]*navigate\('\/advanced'\)/)

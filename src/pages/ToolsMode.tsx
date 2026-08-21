@@ -7,7 +7,12 @@ import { useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
-import { smartTools } from '@/services/smart-tools'
+import {
+    calculateEnhanceMaxScale,
+    canUseEnhanceMaxForPixels,
+    smartTools,
+} from '@/services/smart-tools'
+import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/use-toast'
 import { Eraser, Palette, Grid3X3, Wand2, Upload, RefreshCw, Download, X, Maximize2, Image as ImageIcon, Paintbrush, ImagePlus, PenTool, Pencil, Droplets, Smile, Sparkles } from 'lucide-react'
@@ -36,8 +41,10 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
     const navigate = useNavigate()
     const { activeImage, setActiveImage } = useToolsStore()
     const token = useAuthStore(state => state.getActiveTokens()[0]?.token ?? '')
+    const selectedModel = useGenerationStore(state => state.model)
 
     const [processedImage, setProcessedImage] = useState<string | null>(activeImage)
+    const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const remoteImageConsentVersion = useSettingsStore(state => state.remoteImageProcessingConsentVersion)
     const remoteImageConsentAccepted = remoteImageConsentVersion >= REMOTE_IMAGE_PROCESSING_POLICY_VERSION
@@ -64,6 +71,46 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
     useEffect(() => {
         setProcessedImage(activeImage)
     }, [activeImage])
+
+    useEffect(() => {
+        if (!processedImage) {
+            setImageDimensions(null)
+            return
+        }
+        let cancelled = false
+        const image = new Image()
+        image.onload = () => {
+            if (!cancelled) setImageDimensions({ width: image.width, height: image.height })
+            image.src = ''
+        }
+        image.onerror = () => {
+            if (!cancelled) setImageDimensions(null)
+            image.src = ''
+        }
+        image.src = processedImage
+        return () => {
+            cancelled = true
+            image.src = ''
+        }
+    }, [processedImage])
+
+    const selectedModelProfile = getNovelAiModelProfile(selectedModel)
+    const enhanceMaxSupported = selectedModelProfile?.capabilities.enhanceMax === true
+    const enhanceMaxWithinSize = imageDimensions !== null
+        && canUseEnhanceMaxForPixels(imageDimensions.width, imageDimensions.height)
+    const enhanceMaxScale = imageDimensions === null
+        ? null
+        : calculateEnhanceMaxScale(imageDimensions.width, imageDimensions.height)
+    const enhanceMaxReason = !processedImage
+        ? t('smartTools.enhanceMaxNeedImage', '이미지를 먼저 열어주세요.')
+        : !enhanceMaxSupported
+            ? t('smartTools.enhanceMaxV5Disabled', '현재 선택한 V5 모델은 Enhance MAX를 지원하지 않아요. V4 또는 V4.5 모델을 선택하면 사용할 수 있습니다.')
+            : imageDimensions === null
+                ? t('smartTools.enhanceMaxReadingSize', '이미지 크기를 읽는 중입니다.')
+                : !enhanceMaxWithinSize
+                    ? t('smartTools.enhanceMaxTooLarge', 'Enhance MAX는 3MP 목표 해상도의 80% 미만 이미지에서만 사용할 수 있습니다.')
+                    : t('smartTools.enhanceMaxScale', '예상 배율 약 {{scale}}배', { scale: enhanceMaxScale?.toFixed(2) ?? '1.00' })
+    const canRunEnhanceMax = Boolean(processedImage && !isLoading && enhanceMaxSupported && enhanceMaxWithinSize)
 
     const saveToolsImage = async (fileName: string, binaryData: Uint8Array): Promise<string> => {
         const { toolsSavePath, useAbsoluteToolsPath } = useSettingsStore.getState()
@@ -193,7 +240,66 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
             setActiveImage(result)
             setProcessedImage(result)
 
-            toast({ title: t('smartTools.upscaleComplete', '업스케일 완료'), description: t('smartTools.upscaleCompleteDesc', '이미지가 4배 확대되었습니다.'), variant: 'success' })
+            toast({ title: t('smartTools.upscaleComplete', '업스케일 완료'), description: t('smartTools.upscaleCompleteDesc', 'NovelAI가 현재 이미지에 맞춰 업스케일했습니다.'), variant: 'success' })
+
+            if (!guided) navigate('/advanced')
+        } catch (e) {
+            console.error(e)
+            toast({ title: t('smartTools.error', '작업 실패'), description: String(e), variant: 'destructive' })
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const handleEnhanceMax = async () => {
+        if (!processedImage || !canRunEnhanceMax) return
+        if (!token) {
+            useAuthStore.getState().requestTokenEntry()
+            toast({ title: t('toast.tokenRequired.title', 'API 토큰 필요'), description: t('toast.tokenRequired.desc', '설정에서 토큰을 입력해주세요.'), variant: 'destructive' })
+            return
+        }
+
+        setIsLoading(true)
+        try {
+            const generation = useGenerationStore.getState()
+            const result = await smartTools.enhanceMax(processedImage, token, {
+                prompt: [generation.basePrompt, generation.additionalPrompt, generation.detailPrompt]
+                    .filter(part => part.trim().length > 0)
+                    .join(', '),
+                negative_prompt: generation.negativePrompt,
+                model: selectedModel,
+                steps: generation.steps,
+                cfg_scale: generation.cfgScale,
+                cfg_rescale: generation.cfgRescale,
+                sampler: generation.sampler,
+                scheduler: generation.scheduler,
+                smea: generation.smea,
+                smea_dyn: generation.smeaDyn,
+                variety: generation.variety,
+                strength: generation.strength,
+                noise: generation.noise,
+                qualityToggle: generation.qualityToggle,
+                ucPreset: generation.ucPreset,
+            })
+
+            const fileName = `NAI_Blue_ENHANCE_MAX_${Date.now()}.png`
+
+            try {
+                const base64Data = result.replace(/^data:image\/png;base64,/, '')
+                const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0))
+                const fullPath = await saveToolsImage(fileName, binaryData)
+
+                publishGeneratedArtifact({ path: fullPath, data: result })
+            } catch (e) {
+                console.warn('Failed to save Enhance MAX image:', e)
+            }
+
+            const { setPreviewImage } = useGenerationStore.getState()
+            setPreviewImage(result)
+            setActiveImage(result)
+            setProcessedImage(result)
+
+            toast({ title: t('smartTools.enhanceMaxComplete', 'Enhance MAX 완료'), description: t('smartTools.enhanceMaxCompleteDesc', 'NovelAI가 3MP 목표로 인핸스했습니다.'), variant: 'success' })
 
             if (!guided) navigate('/advanced')
         } catch (e) {
@@ -479,25 +585,59 @@ export default function ToolsMode({ guided = false }: { guided?: boolean } = {})
                         </Button>
                     </ToolCard>
 
-                    {/* Upscale (4K) */}
+                    {/* Upscale */}
                     <ToolCard
                         icon={Maximize2}
                         color="text-primary"
                         title={
                             <span className="flex items-center gap-2">
-                                {t('smartTools.upscale', '4K 업스케일')}
-                                <span className="text-warning text-xs font-medium">-7 Anlas</span>
+                                {t('smartTools.upscale', '업스케일')}
+                                <span className="text-warning text-xs font-medium">{t('smartTools.providerCost', '비용 자동 계산')}</span>
                             </span>
                         }
                         disabled={!processedImage || isLoading}
                     >
+                        <p className="text-muted-foreground mb-3 text-xs leading-relaxed">
+                            {t('smartTools.upscaleDesc', 'PNG 입력은 3MP 이하만 지원되며, Anlas 비용은 NovelAI가 요청 시점에 계산합니다.')}
+                        </p>
                         <Button
                             className="w-full"
                             variant="secondary"
                             onClick={handleUpscale}
                             disabled={!processedImage || isLoading}
                         >
-                            {t('smartTools.startUpscale', '4배 업스케일 시작')}
+                            {t('smartTools.startUpscale', '업스케일 시작')}
+                        </Button>
+                    </ToolCard>
+
+                    {/* Enhance MAX */}
+                    <ToolCard
+                        icon={Sparkles}
+                        color="text-success"
+                        title={
+                            <span className="flex items-center gap-2">
+                                {t('smartTools.enhanceMax', 'Enhance MAX')}
+                                <span className="text-warning text-xs font-medium">{t('smartTools.providerCost', '비용 자동 계산')}</span>
+                            </span>
+                        }
+                        disabled={!canRunEnhanceMax}
+                    >
+                        <p className="text-muted-foreground mb-3 text-xs leading-relaxed">
+                            {t('smartTools.enhanceMaxDesc', 'V4/V4.5 모델에서 원본 이미지를 3MP 목표로 자동 인핸스합니다.')}
+                        </p>
+                        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                            {t('smartTools.enhanceMaxUsesCurrentSettings', '현재 메인 화면의 프롬프트·강도·노이즈 설정을 그대로 사용합니다.')}
+                        </p>
+                        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                            {enhanceMaxReason}
+                        </p>
+                        <Button
+                            className="w-full"
+                            variant="secondary"
+                            onClick={handleEnhanceMax}
+                            disabled={!canRunEnhanceMax}
+                        >
+                            {t('smartTools.startEnhanceMax', 'Enhance MAX 시작')}
                         </Button>
                     </ToolCard>
 

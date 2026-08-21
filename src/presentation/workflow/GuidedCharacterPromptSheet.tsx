@@ -24,6 +24,7 @@ import { readGuidedPromptImportFile } from './GuidedPromptFileImport'
 interface GuidedCharacterPromptSheetProps {
     value: WorkflowCharacterPrompts
     disabled: boolean
+    maxCharacters?: number
     onChange(value: WorkflowCharacterPrompts): void
 }
 
@@ -37,26 +38,39 @@ function hasPrompt(value: string): boolean {
 export function GuidedCharacterPromptSheet({
     value,
     disabled,
+    maxCharacters,
     onChange,
 }: GuidedCharacterPromptSheetProps) {
     const { t } = useTranslation()
     const enabledCount = value.items.filter(character => character.enabled).length
+    const characterLimitReached = maxCharacters !== undefined && value.items.length >= maxCharacters
     const importInputRef = useRef<HTMLInputElement>(null)
     const [importing, setImporting] = useState(false)
     const [dragging, setDragging] = useState(false)
     const [importMessage, setImportMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null)
 
-    const addCharacter = () => onChange({
-        ...value,
-        positionEnabled: true,
-        items: [...value.items, {
-            id: `guided-character-${crypto.randomUUID()}`,
-            prompt: '',
-            negative: '',
-            enabled: true,
-            position: { x: 0.5, y: 0.5 },
-        }],
-    })
+    const addCharacter = () => {
+        if (importing) return
+        if (characterLimitReached) {
+            setImportMessage({
+                kind: 'error',
+                text: t('guided.characters.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters }),
+            })
+            return
+        }
+        setImportMessage(null)
+        onChange({
+            ...value,
+            positionEnabled: true,
+            items: [...value.items, {
+                id: `guided-character-${crypto.randomUUID()}`,
+                prompt: '',
+                negative: '',
+                enabled: true,
+                position: { x: 0.5, y: 0.5 },
+            }],
+        })
+    }
     const updateCharacter = (id: string, patch: Partial<WorkflowCharacterPrompt>) => onChange({
         ...value,
         ...(patch.position === undefined ? {} : { positionEnabled: true }),
@@ -76,7 +90,20 @@ export function GuidedCharacterPromptSheet({
         try {
             const imported = await readGuidedPromptImportFile(file)
             if (!imported.characters?.length) throw new TypeError('No character prompts')
-            const additions = imported.characters.map((character, index): WorkflowCharacterPrompt => ({
+            // Only incoming slots are clipped. Previously saved over-limit data
+            // remains available for editing and deletion instead of being lost.
+            const availableSlots = maxCharacters === undefined
+                ? imported.characters.length
+                : Math.max(0, maxCharacters - value.items.length)
+            const acceptedCharacters = imported.characters.slice(0, availableSlots)
+            if (acceptedCharacters.length === 0) {
+                setImportMessage({
+                    kind: 'error',
+                    text: t('guided.characters.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters }),
+                })
+                return
+            }
+            const additions = acceptedCharacters.map((character, index): WorkflowCharacterPrompt => ({
                 id: `guided-character-${crypto.randomUUID()}`,
                 name: t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
                 prompt: character.prompt,
@@ -87,7 +114,12 @@ export function GuidedCharacterPromptSheet({
             onChange({ positionEnabled: true, items: [...value.items, ...additions] })
             setImportMessage({
                 kind: 'success',
-                text: t('guided.characters.imported', '캐릭터 프롬프트 {{count}}개를 추가했어요.', { count: additions.length }),
+                text: additions.length < imported.characters.length
+                    ? t('guided.characters.importedLimited', '남은 슬롯에 맞춰 {{count}}개만 추가했어요. 현재 모델의 최대값은 {{max}}명이에요.', {
+                        count: additions.length,
+                        max: maxCharacters,
+                    })
+                    : t('guided.characters.imported', '캐릭터 프롬프트 {{count}}개를 추가했어요.', { count: additions.length }),
             })
         } catch {
             setImportMessage({
@@ -111,6 +143,14 @@ export function GuidedCharacterPromptSheet({
                         {enabledCount > 0
                             ? t('guided.characters.activeCount', '활성 캐릭터 {{count}}명', { count: enabledCount })
                             : t('guided.characters.emptyHelp', '인물이 여러 명일 때 외형을 따로 지정할 수 있어요.')}
+                        {maxCharacters !== undefined && (
+                            <span className={cn(characterLimitReached && 'text-destructive')}>
+                                {' · '}{t('guided.characters.limitCount', '{{count}}/{{max}}명 사용 중', {
+                                    count: value.items.length,
+                                    max: maxCharacters,
+                                })}
+                            </span>
+                        )}
                     </span>
                 </span>
                 <SheetTrigger asChild>
@@ -133,6 +173,11 @@ export function GuidedCharacterPromptSheet({
                     <SheetDescription className="leading-6">
                         {t('guided.characters.description', '현재 작업에만 적용할 캐릭터의 외형과 제외 요소를 정하세요.')}
                     </SheetDescription>
+                    {characterLimitReached && (
+                        <p className="text-xs leading-5 text-destructive" role="status">
+                            {t('guided.characters.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters })}
+                        </p>
+                    )}
                 </SheetHeader>
 
                 <div className="shrink-0 border-b border-border/70 py-3">
@@ -142,7 +187,7 @@ export function GuidedCharacterPromptSheet({
                         className="sr-only"
                         tabIndex={-1}
                         accept="image/png,image/webp,image/jpeg,.json,application/json"
-                        disabled={disabled || importing}
+                        disabled={disabled || importing || characterLimitReached}
                         onChange={event => {
                             void importCharacters(event.target.files?.[0])
                             event.target.value = ''
@@ -151,9 +196,9 @@ export function GuidedCharacterPromptSheet({
                     <button
                         data-local-file-drop
                         type="button"
-                        disabled={disabled || importing}
+                        disabled={disabled || importing || characterLimitReached}
                         onClick={() => importInputRef.current?.click()}
-                        onDragEnter={event => { event.preventDefault(); if (!disabled) setDragging(true) }}
+                        onDragEnter={event => { event.preventDefault(); if (!disabled && !characterLimitReached) setDragging(true) }}
                         onDragOver={event => event.preventDefault()}
                         onDragLeave={event => {
                             if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
@@ -166,7 +211,7 @@ export function GuidedCharacterPromptSheet({
                         className={cn(
                             'flex min-h-16 w-full items-center gap-3 border border-dashed px-3 py-2 text-left transition-colors focus-ring',
                             dragging ? 'border-primary bg-primary/[0.055]' : 'border-border/80 hover:border-primary/60',
-                            (disabled || importing) && 'cursor-not-allowed opacity-55',
+                            (disabled || importing || characterLimitReached) && 'cursor-not-allowed opacity-55',
                         )}
                     >
                         <ImagePlus className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
@@ -198,7 +243,7 @@ export function GuidedCharacterPromptSheet({
                             <p className="mt-3 text-sm leading-6 text-muted-foreground">
                                 {t('guided.characters.empty', '아직 캐릭터 프롬프트가 없어요.')}
                             </p>
-                            <Button type="button" variant="outline" className="mt-4" onClick={addCharacter} disabled={disabled}>
+                            <Button type="button" variant="outline" className="mt-4" onClick={addCharacter} disabled={disabled || importing || characterLimitReached}>
                                 <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                                 {t('guided.characters.addFirst', '첫 캐릭터 추가')}
                             </Button>
@@ -342,7 +387,7 @@ export function GuidedCharacterPromptSheet({
 
                 {value.items.length > 0 && (
                     <div className="shrink-0 border-t border-border/70 pt-4">
-                        <Button type="button" variant="outline" className="w-full" onClick={addCharacter} disabled={disabled}>
+                        <Button type="button" variant="outline" className="w-full" onClick={addCharacter} disabled={disabled || importing || characterLimitReached}>
                             <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                             {t('guided.characters.addAnother', '캐릭터 추가')}
                         </Button>

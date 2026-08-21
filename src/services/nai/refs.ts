@@ -133,6 +133,21 @@ export interface NormalizedSource {
 
 export async function normalizeSourceForNai(params: GenerationParams): Promise<NormalizedSource | undefined> {
     if (!params.sourceImage) return undefined
+    if (params.upscaledEnhance === true) {
+        const imageBase64 = stripBase64Header(params.sourceImage)
+        return {
+            width: params.width,
+            height: params.height,
+            imageBase64,
+            i2i: {
+                strength: params.strength ?? 0.7,
+                noise: params.noise ?? 0,
+                extraNoiseSeed: Math.max(0, params.seed - 1),
+                colorCorrect: false,
+                imageBase64,
+            },
+        }
+    }
     const snapped = snapNaiResolution(params.width, params.height)
     const imageBase64 = await resizeFillPng(params.sourceImage, snapped.width, snapped.height)
     const maskBase64 = params.mask

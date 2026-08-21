@@ -1,6 +1,8 @@
 // @ts-ignore
 import { Client } from "@gradio/client";
-import { augmentImage, upscaleImage } from '@/services/novelai-api'
+import { augmentImage, generateImage, upscaleImage, type GenerationParams } from '@/services/novelai-api'
+import { canUseEnhanceMaxForPixels } from '@/services/nai/enhance-max'
+import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
 import { assertRemoteImageProcessingConsent } from '@/services/privacy/remote-image-processing'
 
 const KALOSCOPE_SPACE = "DraconicDragon/Kaloscope-artist-style-classifier"
@@ -13,6 +15,31 @@ const KALOSCOPE_PAYLOAD_DEFAULTS = {
 
 const BRIA_SPACE = "briaai/BRIA-RMBG-2.0"
 const ANIME_RMBG_SPACE = "skytnt/anime-remove-background"
+const NAI_UPSCALE_MAX_INPUT_PIXELS = 3_145_728
+export {
+    NAI_ENHANCE_MAX_EXPOSE_PIXELS,
+    NAI_ENHANCE_MAX_PIXELS,
+    calculateEnhanceMaxScale,
+    canUseEnhanceMaxForPixels,
+} from '@/services/nai/enhance-max'
+
+export type EnhanceMaxSettings = Pick<GenerationParams,
+    | 'prompt'
+    | 'negative_prompt'
+    | 'model'
+    | 'steps'
+    | 'cfg_scale'
+    | 'cfg_rescale'
+    | 'sampler'
+    | 'scheduler'
+    | 'smea'
+    | 'smea_dyn'
+    | 'variety'
+    | 'strength'
+    | 'noise'
+    | 'qualityToggle'
+    | 'ucPreset'
+>
 
 export interface TagResult {
     label: string
@@ -255,7 +282,7 @@ class SmartToolsService {
     }
 
     /**
-     * Upscale image using NovelAI's upscale API (4x)
+     * Upscale image using NovelAI's provider-sized V5 upscale API.
      */
     public async upscale(imageInput: string, token: string): Promise<string> {
         // Convert URL to base64 data URL if needed
@@ -277,10 +304,69 @@ class SmartToolsService {
         const height = img.height
         img.src = ''
 
+        if (width * height > NAI_UPSCALE_MAX_INPUT_PIXELS) {
+            throw new Error('업스케일 입력 이미지는 3MP 이하만 지원합니다.')
+        }
+        if (!imageBase64.startsWith('data:image/png;base64,')) {
+            throw new Error('업스케일 입력은 PNG 이미지만 지원합니다.')
+        }
+
         const result = await upscaleImage(token, imageBase64, width, height)
 
         if (!result.success || !result.imageData) {
             throw new Error(result.error || 'Upscale failed')
+        }
+
+        return `data:image/png;base64,${result.imageData}`
+    }
+
+    public async enhanceMax(
+        imageInput: string,
+        token: string,
+        settings: EnhanceMaxSettings,
+    ): Promise<string> {
+        const profile = getNovelAiModelProfile(settings.model)
+        if (!profile?.capabilities.enhanceMax) {
+            throw new Error('Enhance MAX는 현재 V4/V4.5 이미지 모델에서만 사용할 수 있습니다.')
+        }
+
+        let imageBase64 = imageInput
+        if (!imageInput.startsWith('data:')) {
+            const response = await fetch(imageInput)
+            const blob = await response.blob()
+            imageBase64 = await this.blobToDataUrl(blob)
+        }
+
+        const img = new Image()
+        await new Promise<void>((resolve, reject) => {
+            img.onload = () => resolve()
+            img.onerror = reject
+            img.src = imageBase64
+        })
+
+        const width = img.width
+        const height = img.height
+        img.src = ''
+
+        if (!canUseEnhanceMaxForPixels(width, height)) {
+            throw new Error('Enhance MAX는 3MP 목표 해상도의 80% 미만 이미지에서만 사용할 수 있습니다.')
+        }
+
+        const params: GenerationParams = {
+            ...settings,
+            model: profile.modelId,
+            width,
+            height,
+            seed: Math.floor(Math.random() * 4_294_967_295),
+            sourceImage: imageBase64,
+            upscaledEnhance: true,
+            imageFormat: 'png',
+            metadataMode: 'strip-only',
+        }
+        const result = await generateImage(token, params)
+
+        if (!result.success || !result.imageData) {
+            throw new Error(result.error || 'Enhance MAX failed')
         }
 
         return `data:image/png;base64,${result.imageData}`

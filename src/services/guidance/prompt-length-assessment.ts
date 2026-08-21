@@ -4,6 +4,7 @@ import {
     removeComments,
     type UcPresetIndex,
 } from '@/services/nai/presets'
+import { assembleV5TextPrompt, type TextAssemblyCenter } from '@/services/nai/text-assembly'
 
 export type TokenAccuracyClassification = 'exact' | 'estimated' | 'unavailable'
 
@@ -11,6 +12,7 @@ export interface PromptLengthCharacter {
     readonly positive: string
     readonly negative: string
     readonly enabled: boolean
+    readonly center?: TextAssemblyCenter
 }
 
 export interface PromptLengthAssessmentInput {
@@ -18,6 +20,7 @@ export interface PromptLengthAssessmentInput {
     readonly positivePrompt: string
     readonly negativePrompt: string
     readonly characters: readonly PromptLengthCharacter[]
+    readonly useCoords?: boolean
     readonly qualityToggle: boolean
     readonly ucPreset: UcPresetIndex
 }
@@ -36,21 +39,23 @@ export interface PromptLengthAssessment {
     readonly safetyMarginTokens: number | null
     readonly contextLimitTokens: number | null
     readonly limitClassification: 'confirmed' | 'unavailable'
-    readonly tokenizerFamily: 't5' | 'undocumented' | 'unsupported'
+    readonly tokenizerFamily: 't5' | 'qwen35' | 'undocumented' | 'unsupported'
     readonly reason: 'TOKENIZER_ARTIFACT_UNAVAILABLE' | 'UNSUPPORTED_MODEL'
     readonly positive: PromptSectionLengths
     readonly negative: PromptSectionLengths
 }
 
 export interface ModelTokenCapability {
-    readonly tokenizerFamily: 't5' | 'undocumented'
-    readonly contextLimitTokens: number
+    readonly tokenizerFamily: 't5' | 'qwen35' | 'undocumented'
+    readonly contextLimitTokens: number | null
 }
 
 export type ModelTokenCapabilityRegistry = Readonly<Record<string, ModelTokenCapability>>
 
 /** Model-scoped registry keeps a future V5 limit change out of prompt-length logic. */
 export const CURRENT_MODEL_TOKEN_CAPABILITIES: ModelTokenCapabilityRegistry = Object.freeze({
+    'nai-diffusion-5-curated': { tokenizerFamily: 'qwen35', contextLimitTokens: null },
+    'nai-diffusion-5-full': { tokenizerFamily: 'qwen35', contextLimitTokens: null },
     'nai-diffusion-4-5-curated': { tokenizerFamily: 't5', contextLimitTokens: 512 },
     'nai-diffusion-4-5-full': { tokenizerFamily: 't5', contextLimitTokens: 512 },
     'nai-diffusion-4-curated-preview': { tokenizerFamily: 't5', contextLimitTokens: 512 },
@@ -89,21 +94,31 @@ export function assessPromptLengths(
     )
     const positiveCharacters = enabledCharacters.map(character => removeComments(character.positive))
     const negativeCharacters = enabledCharacters.map(character => removeComments(character.negative))
+    const expandedPositiveBase = assembleV5TextPrompt({
+        model: input.model,
+        basePrompt: positiveBase,
+        characterPrompts: enabledCharacters.map((character, index) => ({
+            prompt: positiveCharacters[index],
+            center: character.center,
+        })),
+        useCoords: input.useCoords ?? false,
+    })
     const capability = capabilities[input.model]
     const tokenizerFamily = capability?.tokenizerFamily ?? 'unsupported'
+    const contextLimitTokens = capability?.contextLimitTokens ?? null
 
     return {
         model: input.model,
         classification: 'unavailable',
         tokenCount: null,
         safetyMarginTokens: null,
-        contextLimitTokens: capability?.contextLimitTokens ?? null,
-        limitClassification: capability === undefined ? 'unavailable' : 'confirmed',
+        contextLimitTokens,
+        limitClassification: contextLimitTokens === null ? 'unavailable' : 'confirmed',
         tokenizerFamily,
         reason: capability === undefined
             ? 'UNSUPPORTED_MODEL'
             : 'TOKENIZER_ARTIFACT_UNAVAILABLE',
-        positive: sectionLengths(positiveBase, positiveCharacters),
+        positive: sectionLengths(expandedPositiveBase, positiveCharacters),
         negative: sectionLengths(negativeBase, negativeCharacters),
     }
 }

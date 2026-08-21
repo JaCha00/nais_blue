@@ -417,10 +417,30 @@ function PromptStep({
     onIncomingImportHandled(): void
 }) {
     const { t } = useTranslation()
-    const supportsTransparentBackground = draft.payload.model !== null
-        && getNovelAiModelProfile(draft.payload.model)?.capabilities.transparentBackground === true
+    const modelProfile = draft.payload.model === null ? undefined : getNovelAiModelProfile(draft.payload.model)
+    const supportsTransparentBackground = modelProfile?.capabilities.transparentBackground === true
+    const maxCharacters = modelProfile?.capabilities.maxCharacters
     const applyImport = (mode: 'replace' | 'append', imported: Parameters<typeof applyGuidedPromptImport>[1]) => {
-        const next = applyGuidedPromptImport({ positive, negative, characterPrompts }, imported, {
+        const importedCharacterCount = imported.characters?.length ?? 0
+        const availableSlots = maxCharacters === undefined
+            ? importedCharacterCount
+            : Math.max(0, maxCharacters - (mode === 'append' ? characterPrompts.items.length : 0))
+        const acceptedCharacterCount = Math.min(importedCharacterCount, availableSlots)
+        const limitedImport = acceptedCharacterCount < importedCharacterCount
+            ? { ...imported, characters: imported.characters?.slice(0, acceptedCharacterCount) }
+            : imported
+        if (acceptedCharacterCount < importedCharacterCount) {
+            toast({
+                title: t('guided.characters.importLimitedTitle', '일부 캐릭터만 불러왔어요'),
+                description: acceptedCharacterCount === 0
+                    ? t('guided.characters.limitReached', '현재 모델은 캐릭터를 최대 {{max}}명까지 사용할 수 있어요.', { max: maxCharacters })
+                    : t('guided.characters.importedLimited', '남은 슬롯에 맞춰 {{count}}개만 추가했어요. 현재 모델의 최대값은 {{max}}명이에요.', {
+                        count: acceptedCharacterCount,
+                        max: maxCharacters,
+                    }),
+            })
+        }
+        const next = applyGuidedPromptImport({ positive, negative, characterPrompts }, limitedImport, {
             mode,
             createCharacterId: () => `guided-character-${crypto.randomUUID()}`,
             characterName: index => t('guided.characters.importedName', '가져온 캐릭터 {{index}}', { index: index + 1 }),
@@ -554,6 +574,7 @@ function PromptStep({
             <GuidedCharacterPromptSheet
                 value={characterPrompts}
                 disabled={disabled}
+                maxCharacters={maxCharacters}
                 onChange={onCharacterPrompts}
             />
             <details className="border-y border-border/70 py-3">

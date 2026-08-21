@@ -9,5 +9,5 @@ export const NAI_ENDPOINTS = {
     userData: `${NAI_IMAGE_HOST}/user/data`,
     userInfo: `${NAI_IMAGE_HOST}/user/information`,
     subscription: `${NAI_IMAGE_HOST}/user/subscription`,
-    upscale: 'https://api.novelai.net/ai/upscale',
+    upscale: `${NAI_IMAGE_HOST}/ai/upscale`,
 } as const

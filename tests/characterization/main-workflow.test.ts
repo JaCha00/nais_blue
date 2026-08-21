@@ -936,6 +936,33 @@ describe('Main workflow golden characterization', () => {
         expect(runtimeCapture.params[0].compositionPlanHash).toEqual(state.lastResolvedPlan?.planHash)
     })
 
+    it('uses slot 2 when it is the only active generation credential', async () => {
+        stores.useAuthStore.setState({
+            token: '',
+            isVerified: false,
+            slot1Enabled: false,
+            token2: 'synthetic-slot-two-never-snapshotted',
+            isVerified2: true,
+            slot2Enabled: true,
+            refreshAnlas: async (slot) => {
+                runtimeCapture.calls.push(`anlas:refresh-slot-${slot}`)
+            },
+        })
+        stores.useGenerationStore.setState({
+            compositionMode: 'v2',
+            selectedRecipeId: 'main:direct',
+            basePrompt: 'slot two generation',
+        })
+
+        await stores.useGenerationStore.getState().generate()
+
+        expect(runtimeCapture.requests).toHaveLength(1)
+        expect(runtimeCapture.calls).toContain('anlas:refresh-slot-2')
+        expect(runtimeCapture.toasts).not.toContainEqual(expect.objectContaining({
+            title: expect.stringContaining('token'),
+        }))
+    })
+
     it('runs shadow as one legacy request while retaining a deterministic v2 comparison', async () => {
         stores.useGenerationStore.setState({
             compositionMode: 'shadow',

@@ -18,6 +18,7 @@ const files = [
   'src/services/nai/endpoints.ts',
   'src/services/nai/presets.ts',
   'src/services/nai/model-catalog.ts',
+  'src/services/nai/text-assembly.ts',
   'src/services/nai/payload.ts',
   'src/services/nai/stream.ts',
   'src/services/nai/refs.ts',
@@ -105,8 +106,10 @@ function runPayloadFixtureChecks() {
   // The payload fixture mirrors the runtime dependency graph: preset assembly
   // consumes the shared quality/UC table also used by metadata import.
   const presetTextModule = loadTsCommonJs('src/lib/nai-preset-text.ts')
+  const textAssemblyModule = loadTsCommonJs('src/services/nai/text-assembly.ts')
   const presetsModule = loadTsCommonJs('src/services/nai/presets.ts', {
     '@/lib/nai-preset-text': presetTextModule,
+    '@/services/nai/text-assembly': textAssemblyModule,
   })
   const modelDefaultModule = loadTsCommonJs('src/domain/generation/model-default.ts')
   const modelCatalogModule = loadTsCommonJs('src/services/nai/model-catalog.ts', {
@@ -115,6 +118,7 @@ function runPayloadFixtureChecks() {
   const payloadModule = loadTsCommonJs('src/services/nai/payload.ts', {
     '@/services/nai/model-catalog': modelCatalogModule,
     '@/services/nai/presets': presetsModule,
+    '@/services/nai/text-assembly': textAssemblyModule,
   })
   const { buildGenerateImagePayload } = payloadModule
   const baseRequest = (overrides = {}) => ({
@@ -247,7 +251,7 @@ function runPayloadFixtureChecks() {
 }
 
 check('image host is primary NAI host', /https:\/\/image\.novelai\.net/.test(endpoints))
-check('upscale keeps api host exception', /https:\/\/api\.novelai\.net\/ai\/upscale/.test(endpoints))
+check('upscale uses image host multipart endpoint', /upscale:\s*`\$\{NAI_IMAGE_HOST\}\/ai\/upscale`/.test(endpoints))
 check('payload builder exists exactly once', count(payload, /export function buildGenerateImagePayload/g) === 1)
 check('payload computes Variety+ from model and resolution', /varietySigma/.test(payload) && /832 \* 1216/.test(payload) && /Math\.sqrt/.test(payload))
 check('payload emits v4 prompt and negative prompt', /v4_prompt/.test(payload) && /v4_negative_prompt/.test(payload))
@@ -296,6 +300,14 @@ check(
   !/console\.(?:log|error|warn)\([^\n]*(?:token|payload|body)/i.test(transport)
 )
 check('account endpoints stay Rust invoke primary', /invoke<.*verify_token/s.test(client) && /invoke<.*get_anlas_balance/s.test(client))
+check(
+  'upscale uses auxiliary multipart V5 path without obsolete native command',
+  /getNaiAuxiliaryFetch\(\)\(NAI_ENDPOINTS\.upscale/.test(client) &&
+  /model:\s*'nai-diffusion-5-curated'/.test(client) &&
+  /declared_blur_sigma:\s*0/.test(client) &&
+  /width \* height > 3_145_728/.test(client) &&
+  !/upscale_image/.test(rust)
+)
 check('facade delegates to nai client', /from '@\/services\/nai\/client'/.test(facade))
 check('metadata exposes sentPayload redaction', /export function redactSentPayloadForMetadata/.test(metadata))
 check('client redacts sentPayload before returning metadata summary', /redactSentPayloadForMetadata/.test(client))

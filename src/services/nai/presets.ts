@@ -9,6 +9,7 @@ import {
     UC_PRESETS_V5,
     type UcPresetIndex,
 } from '@/lib/nai-preset-text'
+import { splitManualTextPrompt } from '@/services/nai/text-assembly'
 
 export {
     QUALITY_TAGS_SUFFIX,
@@ -44,14 +45,17 @@ export function mergeQualityTags(
     model = 'nai-diffusion-4-5-full',
     transparentBackground = false,
 ): string {
-    let merged = prompt
+    const manualText = isV5Model(model) ? splitManualTextPrompt(prompt) : null
+    let merged = manualText?.beforeMarker ?? prompt
     if (transparentBackground && isV5Model(model)) {
         merged = appendPromptPart(merged, 'transparent background')
     }
-    if (!qualityToggle) return merged
-    const suffix = QUALITY_TAGS_BY_SELECTABLE_MODEL[model]
-        ?? QUALITY_TAGS_SUFFIX.replace(/^,\s*/, '')
-    return appendPromptPart(merged, suffix)
+    if (qualityToggle) {
+        const suffix = QUALITY_TAGS_BY_SELECTABLE_MODEL[model]
+            ?? QUALITY_TAGS_SUFFIX.replace(/^,\s*/, '')
+        merged = appendPromptPart(merged, suffix)
+    }
+    return manualText === null ? merged : appendPromptPart(merged, manualText.manualText)
 }
 
 export function mergeUcPreset(

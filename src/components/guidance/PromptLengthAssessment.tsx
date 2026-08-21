@@ -3,9 +3,14 @@ import { useTranslation } from 'react-i18next'
 import type { ReadonlyCompositionPlan } from '@/components/composition-workspace/types'
 import { assessPromptLengths } from '@/services/guidance/prompt-length-assessment'
 import type { UcPresetIndex } from '@/services/nai/presets'
+import type { TextAssemblyCenter } from '@/services/nai/text-assembly'
 
 function normalizeUcPreset(value: number): UcPresetIndex {
     return value >= 0 && value <= 4 ? value as UcPresetIndex : 0
+}
+
+function characterCenter(position: ReadonlyCompositionPlan['characters'][number]['position']): TextAssemblyCenter | undefined {
+    return position.mode === 'manual' ? { x: position.x, y: position.y } : undefined
 }
 
 /** Accessible, fail-closed prompt sizing for the exact plan sent to payload expansion. */
@@ -16,7 +21,13 @@ export function PromptLengthAssessment({ plan }: { plan: ReadonlyCompositionPlan
         model: plan.params.model,
         positivePrompt: plan.positivePrompt,
         negativePrompt: plan.negativePrompt,
-        characters: plan.characters,
+        characters: plan.characters.map(character => ({
+            positive: character.positive,
+            negative: character.negative,
+            enabled: character.enabled,
+            center: characterCenter(character.position),
+        })),
+        useCoords: plan.params.characterPositionEnabled,
         qualityToggle: plan.params.qualityToggle,
         ucPreset: normalizeUcPreset(plan.params.ucPreset),
     })
@@ -34,6 +45,8 @@ export function PromptLengthAssessment({ plan }: { plan: ReadonlyCompositionPlan
                 <dd className="font-medium">{t(`tokenAssessment.classifications.${assessment.classification}`)}</dd>
                 <dt>{t('tokenAssessment.model')}</dt>
                 <dd className="break-all font-mono text-right">{assessment.model}</dd>
+                <dt>{t('tokenAssessment.tokenizer')}</dt>
+                <dd className="font-medium">{t(`tokenAssessment.tokenizerFamilies.${assessment.tokenizerFamily}`)}</dd>
                 <dt>{t('tokenAssessment.contextLimit')}</dt>
                 <dd className="font-medium">
                     {assessment.contextLimitTokens === null

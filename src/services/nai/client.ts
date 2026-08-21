@@ -60,9 +60,14 @@ function taggedImage(base64: string, params: GenerationParams): string {
         : base64
 }
 
-async function firstZipEntryBase64(data: ArrayBuffer, emptyMessage: string): Promise<string> {
+async function firstZipEntryBase64(
+    data: ArrayBuffer,
+    emptyMessage: string,
+    requireNamedPng = false,
+): Promise<string> {
     const zip = await JSZip.loadAsync(data)
-    const filename = Object.keys(zip.files)[0]
+    const imageFilename = Object.keys(zip.files).find(name => /^image.*\.png$/i.test(name))
+    const filename = imageFilename ?? (requireNamedPng ? undefined : Object.keys(zip.files)[0])
     if (!filename) throw new Error(emptyMessage)
     const file = zip.file(filename)
     if (!file) throw new Error('ZIP 파일에서 이미지를 읽을 수 없습니다.')
@@ -384,30 +389,53 @@ export async function upscaleImage(
     imageBase64: string,
     width: number,
     height: number,
-    scale: number = 4,
 ): Promise<{ success: boolean; imageData?: string; error?: string }> {
     try {
-        const result = await invoke<{ success: boolean; image_data?: string; error?: string }>('upscale_image', {
-            token: token.trim(),
-            image: stripBase64Header(imageBase64),
-            width,
-            height,
-            scale,
+        if (width * height > 3_145_728) {
+            return { success: false, error: '업스케일 입력 이미지는 3MP 이하만 지원합니다.' }
+        }
+        if (imageBase64.startsWith('data:') && !imageBase64.startsWith('data:image/png;base64,')) {
+            return { success: false, error: '업스케일 입력은 PNG 이미지만 지원합니다.' }
+        }
+
+        const rawBase64 = stripBase64Header(imageBase64)
+        const imageBytes = Uint8Array.from(atob(rawBase64), char => char.charCodeAt(0))
+        const formData = new FormData()
+        formData.append('image', new Blob([imageBytes], { type: 'image/png' }), 'image.png')
+        formData.append('request', new Blob([JSON.stringify({
+            image: 'image',
+            model: 'nai-diffusion-5-curated',
+            declared_blur_sigma: 0,
+        })], { type: 'application/json' }), 'blob')
+
+        const response = await getNaiAuxiliaryFetch()(NAI_ENDPOINTS.upscale, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token.trim()}` },
+            body: formData,
         })
-        if (!result.success) {
-            const event = reportDiagnostic(new Error(result.error || 'Upscale request failed'), {
+
+        if (!response.ok) {
+            const errorText = await response.text()
+            throw new NovelAIHttpError(response.status, errorText)
+        }
+
+        return {
+            success: true,
+            imageData: await firstZipEntryBase64(
+                await response.arrayBuffer(),
+                '업스케일 응답에 image*.png 파일이 없습니다.',
+                true,
+            ),
+        }
+    } catch (error) {
+        if (error instanceof NovelAIHttpError) {
+            const event = reportDiagnostic(error, {
                 operation: 'nai.upscale',
-                stage: 'invoke',
+                stage: 'request',
             })
             return { success: false, error: event.userSummary }
         }
-        return {
-            success: result.success,
-            imageData: result.image_data,
-            error: result.error,
-        }
-    } catch (error) {
-        const event = reportDiagnostic(error, { operation: 'nai.upscale', stage: 'invoke' })
+        const event = reportDiagnostic(error, { operation: 'nai.upscale', stage: 'request' })
         return { success: false, error: event.userSummary }
     }
 }
