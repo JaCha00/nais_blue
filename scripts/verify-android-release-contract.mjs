@@ -31,7 +31,7 @@ assert.deepEqual(policy.updateBaseline, { tag: 'v1.1.0', versionCode: 2011006 })
 assert.equal(policy.firstReleaseForApplicationId, false)
 assert.equal(policy.firstReleaseVersion, undefined)
 assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), 'v1.1.0')
-assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011008)
+assert.equal(resolveAndroidVersionCode(policy, pkg.version), 2011009)
 assert.equal(resolveAndroidUpdateBaselineVersionCode(policy, pkg.version), 2011006)
 assert.throws(
     () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
