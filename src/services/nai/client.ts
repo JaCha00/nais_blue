@@ -7,7 +7,10 @@ import {
     redactSentPayloadForMetadata,
     shouldEmbedNaiBlueParams,
 } from '@/lib/generation-metadata'
-import { adaptGenerationParams } from '@/services/nai/adapter'
+import {
+    NovelAiModelCapabilityError,
+    adaptGenerationParams,
+} from '@/services/nai/adapter'
 import { NAI_ENDPOINTS } from '@/services/nai/endpoints'
 import { buildGenerateImagePayload } from '@/services/nai/payload'
 import { stripBase64Header } from '@/services/nai/refs'
@@ -23,9 +26,10 @@ import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/
 import { OperationMonitor } from '@/services/diagnostics/operation-monitor'
 import {
     NovelAIHttpError,
-    type AnlasInfo,
     type GenerateImageResult,
     type GenerationParams,
+    type NovelAIUserInfo,
+    type OpusGenerationUsage,
 } from '@/services/novelai-types'
 
 export const NAI_STANDARD_TIMEOUT_MS = 120_000
@@ -75,16 +79,47 @@ const naiOperationMonitor = new OperationMonitor({
     pollIntervalMs: 1_000,
 })
 
-export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } | null> {
+interface NativeAnlasResult {
+    success: boolean
+    fixed?: number
+    purchased?: number
+    usage?: unknown
+    error?: string
+}
+
+function parseOpusGenerationUsage(value: unknown): OpusGenerationUsage | undefined {
+    if (value === null || typeof value !== 'object') return undefined
+    const record = value as Record<string, unknown>
+    const { percent, isNegative, timeUntilNextPercent } = record
+    if (
+        typeof percent !== 'number'
+        || !Number.isFinite(percent)
+        || typeof isNegative !== 'boolean'
+        || typeof timeUntilNextPercent !== 'number'
+        || !Number.isFinite(timeUntilNextPercent)
+        || timeUntilNextPercent < 0
+    ) return undefined
+    return {
+        percent: Math.min(100, Math.max(0, percent)),
+        isNegative,
+        timeUntilNextPercent,
+    }
+}
+
+export async function getUserInfo(token: string): Promise<NovelAIUserInfo | null> {
     try {
-        const result = await invoke<{ success: boolean; fixed?: number; purchased?: number; error?: string }>(
+        const result = await invoke<NativeAnlasResult>(
             'get_anlas_balance',
             { token: token.trim() },
         )
         if (!result.success) return null
         const fixed = result.fixed ?? 0
         const purchased = result.purchased ?? 0
-        return { anlas: { fixed, purchased, total: fixed + purchased } }
+        const usage = parseOpusGenerationUsage(result.usage)
+        return {
+            anlas: { fixed, purchased, total: fixed + purchased },
+            ...(usage === undefined ? {} : { usage }),
+        }
     } catch (error) {
         reportDiagnostic(error, { operation: 'nai.user-info', stage: 'invoke' })
         return null
@@ -120,10 +155,11 @@ export async function getAnlasBalance(token: string): Promise<{
     success: boolean
     fixedTrainingStepsLeft?: number
     purchasedTrainingSteps?: number
+    usage?: OpusGenerationUsage
     error?: string
 }> {
     try {
-        const result = await invoke<{ success: boolean; fixed?: number; purchased?: number; error?: string }>(
+        const result = await invoke<NativeAnlasResult>(
             'get_anlas_balance',
             { token: token.trim() },
         )
@@ -134,10 +170,12 @@ export async function getAnlasBalance(token: string): Promise<{
             })
             return { success: false, error: event.userSummary }
         }
+        const usage = parseOpusGenerationUsage(result.usage)
         return {
             success: result.success,
             fixedTrainingStepsLeft: result.fixed,
             purchasedTrainingSteps: result.purchased,
+            ...(usage === undefined ? {} : { usage }),
             error: result.error,
         }
     } catch (error) {
@@ -194,7 +232,7 @@ export async function generateImage(
         })
         return {
             success: false,
-            error: event.userSummary,
+            error: error instanceof NovelAiModelCapabilityError ? error.message : event.userSummary,
             ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
             ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
         }
@@ -273,7 +311,7 @@ export async function generateImageStream(
         })
         return {
             success: false,
-            error: event.userSummary,
+            error: error instanceof NovelAiModelCapabilityError ? error.message : event.userSummary,
             ...(isAbortError(error) ? { termination: 'cancelled' as const } : {}),
             ...(isTimeoutError(error) ? { termination: 'timeout' as const } : {}),
         }

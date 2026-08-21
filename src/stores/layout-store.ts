@@ -5,12 +5,14 @@ import { indexedDBStorage } from '@/lib/indexed-db'
 interface LayoutState {
     leftSidebarVisible: boolean
     rightSidebarVisible: boolean
+    alwaysShowV5UsageLimit: boolean
     /** Transient compact-shell surface; a single value prevents overlapping sheets. */
     supportSheet: 'prompt' | 'history' | 'activity' | null
     toggleLeftSidebar: () => void
     toggleRightSidebar: () => void
     setLeftSidebarVisible: (visible: boolean) => void
     setRightSidebarVisible: (visible: boolean) => void
+    setAlwaysShowV5UsageLimit: (visible: boolean) => void
     openSupportSheet: (sheet: Exclude<LayoutState['supportSheet'], null>) => void
     closeSupportSheet: () => void
 }
@@ -20,11 +22,13 @@ export const useLayoutStore = create<LayoutState>()(
         (set) => ({
             leftSidebarVisible: true,
             rightSidebarVisible: true,
+            alwaysShowV5UsageLimit: true,
             supportSheet: null,
             toggleLeftSidebar: () => set((state) => ({ leftSidebarVisible: !state.leftSidebarVisible })),
             toggleRightSidebar: () => set((state) => ({ rightSidebarVisible: !state.rightSidebarVisible })),
             setLeftSidebarVisible: (visible) => set({ leftSidebarVisible: visible }),
             setRightSidebarVisible: (visible) => set({ rightSidebarVisible: visible }),
+            setAlwaysShowV5UsageLimit: (visible) => set({ alwaysShowV5UsageLimit: visible }),
             openSupportSheet: (supportSheet) => set({ supportSheet }),
             closeSupportSheet: () => set({ supportSheet: null }),
         }),
@@ -32,9 +36,10 @@ export const useLayoutStore = create<LayoutState>()(
             name: 'nai-blue-layout',
             storage: createJSONStorage(() => indexedDBStorage),
             // Dock preferences survive restarts; an open modal surface does not.
-            partialize: ({ leftSidebarVisible, rightSidebarVisible }) => ({
+            partialize: ({ leftSidebarVisible, rightSidebarVisible, alwaysShowV5UsageLimit }) => ({
                 leftSidebarVisible,
                 rightSidebarVisible,
+                alwaysShowV5UsageLimit,
             }),
         }
     )

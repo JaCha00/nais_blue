@@ -17,27 +17,31 @@ import {
     reviseSingleImageDraft,
     singleImageNodePath,
 } from '@/domain/workflow/single-image-draft'
+import { DEFAULT_NAI_IMAGE_MODEL } from '@/domain/generation/model-default'
 
 const NOW = '2026-08-08T00:00:00.000Z'
 const LATER = '2026-08-08T00:00:01.000Z'
 
 describe('single-image workflow draft', () => {
-    it('creates one complete recommended-settings draft without pretending it is ready', () => {
+    it('starts with safe app defaults and asks the beginner for a prompt first', () => {
         const draft = createSingleImageDraft({ id: 'draft:1', now: NOW, seed: 42 })
 
         expect(draft).toMatchObject({
             schemaVersion: 2,
             kind: 'single-image',
             revision: 0,
-            currentNodeId: 'model',
+            currentNodeId: 'prompt',
             payload: {
                 mode: 'text-to-image',
+                model: DEFAULT_NAI_IMAGE_MODEL,
+                resolution: { width: 832, height: 1216 },
                 generation: {
                     steps: 28,
                     cfgScale: 5,
                     sampler: 'k_euler_ancestral',
                     scheduler: 'karras',
                     seed: 42,
+                    transparentBackground: false,
                 },
                 credentialPolicy: { kind: 'auto' },
                 characterPrompts: { positionEnabled: false, items: [] },
@@ -48,11 +52,7 @@ describe('single-image workflow draft', () => {
                 },
             },
         })
-        expect(listSingleImageDraftIssues(draft)).toEqual([
-            'model-required',
-            'prompt-required',
-            'resolution-required',
-        ])
+        expect(listSingleImageDraftIssues(draft)).toEqual(['prompt-required'])
         expect(isSingleImageDraftReady(draft)).toBe(false)
         expect(isSingleImageDraft(draft)).toBe(true)
         expect(SINGLE_IMAGE_NODE_IDS).toEqual([
@@ -134,7 +134,7 @@ describe('single-image workflow draft', () => {
         expect(next.revision).toBe(1)
         expect(next.updatedAt).toBe(LATER)
         expect(isSingleImageDraftReady(next)).toBe(true)
-        expect(current.payload.model).toBeNull()
+        expect(current.payload.model).toBe(DEFAULT_NAI_IMAGE_MODEL)
     })
 
     it('rejects malformed persisted dimensions and backward timestamps', () => {
@@ -147,6 +147,27 @@ describe('single-image workflow draft', () => {
         expect(() => reviseSingleImageDraft(draft, {
             updatedAt: '2026-08-07T23:59:59.000Z',
         })).toThrow('updatedAt must be monotonic')
+    })
+
+    it('keeps older schema-v2 drafts with missing choices and transparency readable', () => {
+        const current = createSingleImageDraft({ id: 'draft:legacy-v2', now: NOW, seed: 42 })
+        const legacy = {
+            ...current,
+            currentNodeId: 'model',
+            payload: {
+                ...current.payload,
+                model: null,
+                resolution: null,
+                generation: { ...current.payload.generation, transparentBackground: undefined },
+            },
+        }
+
+        expect(isSingleImageDraft(legacy)).toBe(true)
+        expect(listSingleImageDraftIssues(legacy)).toEqual([
+            'model-required',
+            'prompt-required',
+            'resolution-required',
+        ])
     })
 
     it('persists incomplete character editing but blocks an enabled blank character', () => {
@@ -204,7 +225,7 @@ describe('batch-image workflow draft', () => {
         ])
     })
 
-    it('creates a detached resumable draft without treating missing choices as valid', () => {
+    it('creates a detached resumable batch with safe defaults and prompt-first entry', () => {
         const draft = createBatchImageDraft({
             id: 'batch:1',
             now: NOW,
@@ -215,20 +236,18 @@ describe('batch-image workflow draft', () => {
         expect(draft).toMatchObject({
             kind: 'batch-image',
             revision: 0,
-            currentNodeId: 'model',
+            currentNodeId: 'prompt',
             payload: {
                 batchMode: 'variations',
                 count: 4,
                 variationOrder: 'random',
                 scenes: [],
                 generation: { seed: 100 },
+                model: DEFAULT_NAI_IMAGE_MODEL,
+                resolution: { width: 832, height: 1216 },
             },
         })
-        expect(listBatchImageDraftIssues(draft)).toEqual([
-            'model-required',
-            'prompt-required',
-            'resolution-required',
-        ])
+        expect(listBatchImageDraftIssues(draft)).toEqual(['prompt-required'])
         expect(isBatchImageDraft(draft)).toBe(true)
         expect(isWorkflowDraft(draft)).toBe(true)
         expect(isBatchImageDraftReady(draft)).toBe(false)

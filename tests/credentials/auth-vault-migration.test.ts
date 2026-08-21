@@ -31,6 +31,8 @@ function legacyPlaintextAuthV4(): string {
             slot2Enabled: false,
             anlas: { fixed: 1, purchased: 2, total: 3 },
             anlas2: { fixed: 4, purchased: 5, total: 9 },
+            opusUsage: { percent: 100, isNegative: false, timeUntilNextPercent: 0 },
+            opusUsage2: { percent: 50, isNegative: false, timeUntilNextPercent: 10 },
         },
     })
 }
@@ -42,6 +44,8 @@ function expectNoRuntimeSecretFields(raw: string): void {
     expect(parsed.state).not.toHaveProperty('token2')
     expect(parsed.state).not.toHaveProperty('anlas')
     expect(parsed.state).not.toHaveProperty('anlas2')
+    expect(parsed.state).not.toHaveProperty('opusUsage')
+    expect(parsed.state).not.toHaveProperty('opusUsage2')
     expect(parsed.state).not.toHaveProperty('sessionPlaintext')
     expect(raw).not.toContain(SLOT_1_SECRET)
     expect(raw).not.toContain(SLOT_2_SECRET)

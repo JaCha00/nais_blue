@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
+import { NovelAiV5UsageLimit } from '@/components/credentials/NovelAiV5UsageLimit'
 import { PromptModuleCreator } from '@/components/fragments/PromptModuleCreator'
 import { PromptModulePicker, appendPromptModuleLine } from '@/components/fragments/PromptModulePicker'
 import Counter from '@/components/ui/counter'
@@ -37,8 +38,8 @@ import { toast } from '@/components/ui/use-toast'
 import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationBatch, GenerationBatchSummary, GenerationJob } from '@/domain/queue/types'
 import {
+    BATCH_IMAGE_NODE_IDS,
     createBatchImageDraft,
-    batchImageNodePath,
     isBatchImageDraft,
     isBatchImageDraftReady,
     listBatchImageDraftIssues,
@@ -52,8 +53,15 @@ import {
     type SingleImageOutputSettings,
     type WorkflowCharacterPrompts,
 } from '@/domain/workflow/single-image-draft'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { cn } from '@/lib/utils'
+import {
+    DEFAULT_NAI_IMAGE_MODEL,
+    NAI_IMAGE_MODELS,
+    getNaiImageModelName,
+    getNovelAiModelProfile,
+    isNovelAiV5Model,
+} from '@/services/nai/model-catalog'
 import { childOutputRef } from '@/services/output/platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
@@ -94,12 +102,13 @@ type BatchRouteNodeId = BatchImageNodeId | 'result'
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 type DraftPatch = Omit<ReviseBatchImageDraftInput, 'updatedAt'>
 
-const MODEL_OPTIONS = [
-    { id: 'nai-diffusion-4-5-full', name: 'NAI Diffusion V4.5 Full', recommended: true },
-    { id: 'nai-diffusion-4-5-curated', name: 'NAI Diffusion V4.5 Curated', recommended: false },
-    { id: 'nai-diffusion-4-full', name: 'NAI Diffusion V4 Full', recommended: false },
-    { id: 'nai-diffusion-4-curated-preview', name: 'NAI Diffusion V4 Curated', recommended: false },
-] as const
+const BATCH_ROUTE_NODE_IDS = [...BATCH_IMAGE_NODE_IDS, 'result'] as const
+
+function isBatchRouteNodeId(value: string | undefined): value is BatchRouteNodeId {
+    return value !== undefined && BATCH_ROUTE_NODE_IDS.includes(value as BatchRouteNodeId)
+}
+
+const MODEL_OPTIONS = NAI_IMAGE_MODELS
 
 const RESOLUTION_OPTIONS = [
     { id: 'portrait', width: 832, height: 1216 },
@@ -131,10 +140,24 @@ function nextTimestamp(draft: BatchImageDraft): string {
 }
 
 function activeNodes(
-    mode: BatchImageMode,
-    metadataMode: SingleImageOutputSettings['metadataMode'],
+    draft: BatchImageDraft,
+    focusedNode: BatchRouteNodeId | null,
 ): readonly BatchRouteNodeId[] {
-    return [...batchImageNodePath(mode, metadataMode), 'result']
+    const nodes: BatchRouteNodeId[] = []
+    if (draft.payload.model === null) nodes.push('model')
+    nodes.push('prompt', draft.payload.batchMode === 'scenes' ? 'scenes' : 'count')
+    if (draft.payload.resolution === null) nodes.push('resolution')
+
+    const detailNode = focusedNode ?? draft.currentNodeId
+    const releaseOnly = detailNode === 'rights' || detailNode === 'delivery'
+    if (!nodes.includes(detailNode)
+        && detailNode !== 'review'
+        && detailNode !== 'result'
+        && (!releaseOnly || draft.payload.output.metadataMode === 'strip-and-sidecar')) {
+        nodes.push(detailNode)
+    }
+    nodes.push('review', 'result')
+    return nodes
 }
 
 function requestedCount(draft: BatchImageDraft): number {
@@ -180,7 +203,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
 }
 
 function BatchStepFrame({
-    draft,
+    nodes,
     nodeId,
     saveStatus,
     title,
@@ -191,7 +214,7 @@ function BatchStepFrame({
     footer,
     children,
 }: {
-    draft: BatchImageDraft
+    nodes: readonly BatchRouteNodeId[]
     nodeId: BatchRouteNodeId
     saveStatus: SaveStatus
     title: string
@@ -204,7 +227,6 @@ function BatchStepFrame({
 }) {
     const { t } = useTranslation()
     const titleRef = useRef<HTMLHeadingElement>(null)
-    const nodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
     const index = nodes.indexOf(nodeId)
 
     useEffect(() => titleRef.current?.focus(), [nodeId])
@@ -308,9 +330,7 @@ function ModelStep({ draft, disabled, onSelect }: {
                                 {option.recommended && <span className="bg-primary px-1.5 py-0.5 text-[11px] text-primary-foreground">{t('guided.batch.recommended', '추천')}</span>}
                             </span>
                             <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
-                                {option.id.includes('full')
-                                    ? t('guided.batch.model.full', '표현 범위와 자유도가 넓어 다양한 이미지를 만들기 좋아요.')
-                                    : t('guided.batch.model.curated', '엄선된 범위 안에서 안정적인 결과를 얻기 좋아요.')}
+                                {t(`guided.single.model.${option.id}`, option.description)}
                             </span>
                         </span>
                     </label>
@@ -378,6 +398,7 @@ function PromptStep({
     disabled,
     onPositive,
     onNegative,
+    onTransparentBackground,
     onCharacterPrompts,
     onOrder,
     onIncomingImportHandled,
@@ -390,11 +411,14 @@ function PromptStep({
     disabled: boolean
     onPositive(value: string): void
     onNegative(value: string): void
+    onTransparentBackground(value: boolean): void
     onCharacterPrompts(value: WorkflowCharacterPrompts): void
     onOrder(value: 'random' | 'sequential'): void
     onIncomingImportHandled(): void
 }) {
     const { t } = useTranslation()
+    const supportsTransparentBackground = draft.payload.model !== null
+        && getNovelAiModelProfile(draft.payload.model)?.capabilities.transparentBackground === true
     const applyImport = (mode: 'replace' | 'append', imported: Parameters<typeof applyGuidedPromptImport>[1]) => {
         const next = applyGuidedPromptImport({ positive, negative, characterPrompts }, imported, {
             mode,
@@ -508,6 +532,25 @@ function PromptStep({
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <p>{t('guided.batch.prompt.help', '영문 태그나 영문 문장을 쓸 수 있어요. 모듈 연결 표시는 실행 직전에 엄격하게 확인합니다.')}</p>
             </div>
+            {supportsTransparentBackground && (
+                <label className="guided-choice-row flex cursor-pointer items-start gap-3 border-y border-border/70 px-2 py-4 sm:px-4">
+                    <input
+                        type="checkbox"
+                        checked={draft.payload.generation.transparentBackground ?? false}
+                        disabled={disabled}
+                        onChange={event => onTransparentBackground(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-[oklch(var(--primary))]"
+                    />
+                    <span>
+                        <span className="block text-sm font-semibold">
+                            {t('guided.single.prompt.transparentBackground', '배경을 투명하게 만들기')}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.prompt.transparentBackgroundHelp', '스티커나 캐릭터 소재처럼 배경 없이 쓰고 싶을 때 켜세요.')}
+                        </span>
+                    </span>
+                </label>
+            )}
             <GuidedCharacterPromptSheet
                 value={characterPrompts}
                 disabled={disabled}
@@ -731,7 +774,7 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
                 : t('guided.metadata.stripOnly', '정화만 · 비권장')
     const rows = [
         { label: t('guided.batch.review.mode', '방식'), value: draft.payload.batchMode, node: 'model' as const },
-        { label: t('guided.batch.review.model', '모델'), value: MODEL_OPTIONS.find(item => item.id === draft.payload.model)?.name ?? '—', node: 'model' as const },
+        { label: t('guided.batch.review.model', '모델'), value: getNaiImageModelName(draft.payload.model), node: 'model' as const },
         { label: t('guided.batch.review.prompt', '프롬프트'), value: draft.payload.prompt.positive || t('guided.batch.review.scenePrompts', '씬별 프롬프트'), node: 'prompt' as const },
         ...(draft.payload.characterPrompts.items.some(character => character.enabled) ? [{
             label: t('guided.batch.review.characters', '캐릭터'),
@@ -742,7 +785,11 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
         }] : []),
         { label: t('guided.batch.review.count', '생성 수'), value: t('guided.batch.review.countValue', '{{count}}장', { count: requestedCount(draft) }), node: draft.payload.batchMode === 'scenes' ? 'scenes' as const : 'count' as const },
         { label: t('guided.batch.review.resolution', '해상도'), value: `${draft.payload.resolution?.width ?? '—'} × ${draft.payload.resolution?.height ?? '—'}`, node: 'resolution' as const },
-        { label: t('guided.batch.review.settings', '생성 설정'), value: `${draft.payload.generation.steps} Steps · ${SAMPLER_OPTIONS.find(item => item.id === draft.payload.generation.sampler)?.label ?? draft.payload.generation.sampler} · CFG ${draft.payload.generation.cfgScale}`, node: 'settings' as const },
+        {
+            label: t('guided.batch.review.settings', '생성 설정'),
+            value: `${draft.payload.generation.steps} Steps · ${SAMPLER_OPTIONS.find(item => item.id === draft.payload.generation.sampler)?.label ?? draft.payload.generation.sampler} · CFG ${draft.payload.generation.cfgScale}${draft.payload.generation.transparentBackground === true ? ` · ${t('guided.single.review.transparentBackground', '투명 배경 사용')}` : ''}`,
+            node: 'settings' as const,
+        },
         {
             label: t('guided.batch.review.output', '저장'),
             value: `${draft.payload.output.generationFolderPath ? `${draft.payload.output.generationFolderPath} · ` : ''}${draft.payload.output.directory} · ${draft.payload.output.imageFormat.toUpperCase()}`,
@@ -769,6 +816,15 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
                     </div>
                 ))}
             </dl>
+            {draft.payload.resolution !== null && (
+                <NovelAiV5UsageLimit
+                    model={draft.payload.model}
+                    width={draft.payload.resolution.width}
+                    height={draft.payload.resolution.height}
+                    steps={draft.payload.generation.steps}
+                    maxAnlas={estimatedAnlas}
+                />
+            )}
             <label className="flex cursor-pointer items-start gap-3 border-y border-primary/35 py-5">
                 <input type="checkbox" checked={consented} onChange={event => onConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
                 <span className="min-w-0 text-sm leading-6">
@@ -970,7 +1026,7 @@ function GuidedBatchStarter({ mode }: { mode: BatchImageMode }) {
                 const result = await repository.commit({ expectedRevision: null, draft })
                 if (result.status === 'conflict') continue
                 announceGuidedDraftChange()
-                navigate(`/guided-preview/batch/${draft.id}/model`)
+                navigate(`/guided-preview/batch/${draft.id}/prompt`)
                 return
             }
             throw new Error('Draft identity remained contended')
@@ -1379,36 +1435,44 @@ export function GuidedBatchImages() {
 
     useEffect(() => {
         if (draft === null) return
-        const availableNodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
-        if (params.nodeId !== undefined && availableNodes.includes(params.nodeId as BatchRouteNodeId)) return
+        const requested = isBatchRouteNodeId(params.nodeId) ? params.nodeId : null
+        const availableNodes = activeNodes(draft, requested)
+        if (requested !== null && availableNodes.includes(requested)) return
         const fallback = availableNodes.includes(draft.currentNodeId)
             ? draft.currentNodeId
-            : 'metadata'
+            : availableNodes[0] ?? 'prompt'
         navigate(`/guided-preview/batch/${draft.id}/${fallback}`, { replace: true })
     }, [draft, navigate, params.nodeId])
 
     if (loading) return <div className="flex min-h-full items-center justify-center" role="status"><LoaderCircle className="h-5 w-5 animate-spin text-primary" /><span className="ml-3 text-sm text-muted-foreground">{t('guided.batch.loading', '초안을 불러오는 중…')}</span></div>
     if (loadError || draft === null) return <div className="mx-auto flex min-h-full max-w-lg items-center px-4"><div className="w-full border-y border-destructive/40 py-8 text-center" role="alert"><CircleAlert className="mx-auto h-6 w-6 text-destructive" /><p className="mt-3 text-sm font-semibold">{t('guided.batch.loadError', '배치 초안을 불러오지 못했어요.')}</p></div></div>
 
-    const nodes = activeNodes(draft.payload.batchMode, draft.payload.output.metadataMode)
-    const requestedNode = params.nodeId as BatchRouteNodeId | undefined
-    const fallbackNode = nodes.includes(draft.currentNodeId) ? draft.currentNodeId : 'metadata'
-    const nodeId = requestedNode !== undefined && nodes.includes(requestedNode) ? requestedNode : fallbackNode
+    const requestedNode = isBatchRouteNodeId(params.nodeId) ? params.nodeId : null
+    const nodes = activeNodes(draft, requestedNode)
+    const fallbackNode = nodes.includes(draft.currentNodeId)
+        ? draft.currentNodeId
+        : nodes[0] ?? 'prompt'
+    const nodeId = requestedNode !== null && nodes.includes(requestedNode) ? requestedNode : fallbackNode
     const locked = draft.status === 'queued' || draft.status === 'completed'
     const total = draft.payload.batchMode === 'scenes'
         ? scenes.reduce((sum, scene) => sum + scene.count, 0)
         : draft.payload.count
+    const costModel = draft.payload.model ?? DEFAULT_NAI_IMAGE_MODEL
+    const pricingBasis = resolveAnlasPricingBasis({
+        model: costModel,
+        activeCredentialsAreOpus,
+    })
     const perImageAnlas = draft.payload.resolution === null ? 0 : calculateAnlasCost({
+        model: costModel,
         width: draft.payload.resolution.width,
         height: draft.payload.resolution.height,
         steps: draft.payload.generation.steps,
         imageCount: 1,
-        pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+        pricingBasis,
     })
     const estimatedAnlas = perImageAnlas * total
     const sceneReady = scenes.length > 0 && scenes.every(scene => scene.name.trim() && scene.positive.trim() && scene.count > 0)
     const canVisit = (target: BatchRouteNodeId): boolean => {
-        if (!nodes.includes(target)) return false
         if (target === 'model') return true
         if (target === 'prompt') return draft.payload.model !== null
         if (target === 'count') return draft.payload.model !== null && positive.trim().length > 0
@@ -1513,7 +1577,7 @@ export function GuidedBatchImages() {
             const ready = await saveEditable() ?? draft
             const now = new Date().toISOString()
             const consent = createAnlasCostConsentSnapshot({
-                pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+                pricingBasis,
                 estimatedAnlas,
                 maxAnlas: estimatedAnlas,
                 estimatedAt: now,
@@ -1576,8 +1640,34 @@ export function GuidedBatchImages() {
     }[nodeId]
 
     return (
-        <BatchStepFrame draft={draft} nodeId={nodeId} saveStatus={saveStatus} title={copy[0]} description={copy[1]} canVisit={canVisit} onVisit={target => void goTo(target)} onBack={back} footer={footer}>
-            {nodeId === 'model' && <ModelStep draft={draft} disabled={locked} onSelect={model => { void patchPayload({ model }).catch(() => undefined) }} />}
+        <BatchStepFrame nodes={nodes} nodeId={nodeId} saveStatus={saveStatus} title={copy[0]} description={copy[1]} canVisit={canVisit} onVisit={target => void goTo(target)} onBack={back} footer={footer}>
+            {nodeId === 'model' && (
+                <ModelStep
+                    draft={draft}
+                    disabled={locked}
+                    onSelect={model => {
+                        setConsented(false)
+                        void commitMutation(current => ({
+                            payload: {
+                                ...current.payload,
+                                model,
+                                generation: {
+                                    ...current.payload.generation,
+                                    scheduler: isNovelAiV5Model(model)
+                                        ? 'karras'
+                                        : current.payload.generation.scheduler,
+                                    variety: isNovelAiV5Model(model)
+                                        ? false
+                                        : current.payload.generation.variety,
+                                    transparentBackground: isNovelAiV5Model(model)
+                                        ? current.payload.generation.transparentBackground ?? false
+                                        : false,
+                                },
+                            },
+                        })).catch(() => undefined)
+                    }}
+                />
+            )}
             {nodeId === 'prompt' && (
                 <PromptStep
                     draft={draft}
@@ -1597,6 +1687,18 @@ export function GuidedBatchImages() {
                         setNegative(value)
                         scheduleEditableSave()
                     }}
+                    onTransparentBackground={value => {
+                        setConsented(false)
+                        void commitMutation(current => ({
+                            payload: {
+                                ...current.payload,
+                                generation: {
+                                    ...current.payload.generation,
+                                    transparentBackground: value,
+                                },
+                            },
+                        })).catch(() => undefined)
+                    }}
                     onCharacterPrompts={value => {
                         editableRef.current = { ...editableRef.current, characterPrompts: value }
                         setCharacterPrompts(value)
@@ -1615,7 +1717,7 @@ export function GuidedBatchImages() {
                     disabled={locked}
                     imageCount={total}
                     estimatedAnlas={estimatedAnlas}
-                    pricingBasis={activeCredentialsAreOpus ? 'all-active-opus' : 'paid'}
+                    pricingBasis={pricingBasis}
                     onResolution={(width, height) => {
                         setConsented(false)
                         void patchPayload({ resolution: { width, height } }).catch(() => undefined)

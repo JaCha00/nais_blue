@@ -1,6 +1,6 @@
 {
   "action": "generate",
-  "input": "1girl, silver hair\nblue eyes, very aesthetic, masterpiece, no text",
+  "input": "1girl, silver hair\nblue eyes, location, very aesthetic, masterpiece, no text",
   "model": "nai-diffusion-4-5-full",
   "parameters": {
     "params_version": 3,
@@ -11,7 +11,7 @@
     "sampler": "k_euler_ancestral",
     "steps": 28,
     "scale": 5,
-    "negative_prompt": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
+    "negative_prompt": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
     "cfg_rescale": 0,
     "noise_schedule": "karras",
     "legacy": false,
@@ -32,7 +32,7 @@
     "stream": "msgpack",
     "v4_prompt": {
       "caption": {
-        "base_caption": "1girl, silver hair\nblue eyes, very aesthetic, masterpiece, no text",
+        "base_caption": "1girl, silver hair\nblue eyes, location, very aesthetic, masterpiece, no text",
         "char_captions": [
           {
             "char_caption": "solo",
@@ -50,7 +50,7 @@
     },
     "v4_negative_prompt": {
       "caption": {
-        "base_caption": "nsfw, lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
+        "base_caption": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page, lowres",
         "char_captions": [
           {
             "char_caption": "bad hands",

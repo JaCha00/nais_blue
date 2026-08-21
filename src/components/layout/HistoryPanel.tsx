@@ -52,6 +52,7 @@ import { QueueActivityLink } from './QueueActivityLink'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useTrashStore } from '@/stores/trash-store'
 import { archiveSceneImage } from '@/services/trash/asset-trash-service'
+import { normalizeNaiImageModelId } from '@/services/nai/model-catalog'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -837,37 +838,24 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
             setIsGenerating(true)
             const newSeed = Math.floor(Math.random() * 4294967295)
 
-            // Map model name to API ID
-            const mapModelNameToId = (name?: string): string => {
-                if (!name) return 'nai-diffusion-4-5-full'
-                const lower = name.toLowerCase()
-                if (lower.includes('4.5') || lower.includes('4-5')) {
-                    if (lower.includes('curated')) return 'nai-diffusion-4-5-curated'
-                    return 'nai-diffusion-4-5-full'
-                }
-                if (lower.includes('v4') || lower.includes('4')) {
-                    if (lower.includes('curated')) return 'nai-diffusion-4-curated-preview'
-                    return 'nai-diffusion-4-full'
-                }
-                if (lower.includes('furry')) return 'nai-diffusion-furry-3'
-                if (lower.includes('v3') || lower.includes('3')) return 'nai-diffusion-3'
-                return 'nai-diffusion-4-5-full'
-            }
-
             const result = await generateImage(token, {
                 prompt: metadata.prompt || '',
                 negative_prompt: metadata.negativePrompt || '',
-                model: mapModelNameToId(metadata.model),
-                width: metadata.width || 832,
-                height: metadata.height || 1216,
-                steps: metadata.steps || 28,
-                cfg_scale: metadata.cfgScale || 5,
-                cfg_rescale: metadata.cfgRescale || 0,
-                sampler: metadata.sampler || 'k_euler',
-                scheduler: metadata.scheduler || 'native',
+                model: normalizeNaiImageModelId(metadata.model)
+                    ?? useGenerationStore.getState().model,
+                width: metadata.width ?? 832,
+                height: metadata.height ?? 1216,
+                steps: metadata.steps ?? 28,
+                cfg_scale: metadata.cfgScale ?? 5,
+                cfg_rescale: metadata.cfgRescale ?? 0,
+                sampler: metadata.sampler ?? 'k_euler',
+                scheduler: metadata.scheduler ?? 'native',
                 smea: metadata.smea ?? true,
                 smea_dyn: metadata.smeaDyn ?? false,
                 variety: metadata.variety ?? false,
+                qualityToggle: metadata.qualityToggle ?? false,
+                ucPreset: metadata.ucPreset ?? 0,
+                transparentBackground: metadata.transparentBackground ?? false,
                 seed: newSeed,
                 imageFormat: useSettingsStore.getState().imageFormat,
             })

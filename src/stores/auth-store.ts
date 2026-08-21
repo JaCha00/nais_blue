@@ -2,7 +2,12 @@ import { create } from 'zustand'
 
 import type { CredentialRef, CredentialVault } from '@/domain/credentials/types'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
-import { getUserInfo, verifyToken, type AnlasInfo } from '@/services/novelai-api'
+import {
+    getUserInfo,
+    verifyToken,
+    type AnlasInfo,
+    type OpusGenerationUsage,
+} from '@/services/novelai-api'
 import { getRuntimeAuthMigrationStorage } from '@/services/credentials/auth-migration-storage'
 import {
     completeLegacyAuthMigration,
@@ -34,8 +39,12 @@ interface LocalAuthState extends AuthStateV3Persisted {
 export interface AuthState extends LocalAuthState {
     isVerified: boolean
     anlas: AnlasInfo | null
+    /** Runtime-only Opus V5 allowance. Never include it in persistence projections. */
+    opusUsage: OpusGenerationUsage | null
     isVerified2: boolean
     anlas2: AnlasInfo | null
+    /** Runtime-only Opus V5 allowance for slot 2. */
+    opusUsage2: OpusGenerationUsage | null
     isLoading: boolean
     isCredentialStateInitialized: boolean
     tokenDialogOpen: boolean
@@ -127,8 +136,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     ...DEFAULT_LOCAL_AUTH,
     isVerified: false,
     anlas: null,
+    opusUsage: null,
     isVerified2: false,
     anlas2: null,
+    opusUsage2: null,
     isLoading: false,
     isCredentialStateInitialized: false,
     tokenDialogOpen: false,
@@ -179,8 +190,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
                 ? { ...nextPersisted, token: current.token, token2: secret }
                 : { ...nextPersisted, token: secret, token2: current.token2 }
             set(slot === 2
-                ? { ...next, isVerified2: true, anlas2: null, isLoading: false }
-                : { ...next, isVerified: true, anlas: null, isLoading: false })
+                ? { ...next, isVerified2: true, anlas2: null, opusUsage2: null, isLoading: false }
+                : { ...next, isVerified: true, anlas: null, opusUsage: null, isLoading: false })
             await get().refreshAnlas(slot)
             return true
         } catch (error) {
@@ -204,12 +215,30 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         const state = get()
         const token = slot === 2 ? state.token2 : state.token
         const verified = slot === 2 ? state.isVerified2 : state.isVerified
-        if (!token || !verified) return
+        const clearUsage = slot === 2 ? { opusUsage2: null } : { opusUsage: null }
+        if (!token || !verified) {
+            set(clearUsage)
+            return
+        }
+        const requestStillMatchesCredential = (): boolean => {
+            const latest = get()
+            return slot === 2
+                ? latest.token2 === token && latest.isVerified2
+                : latest.token === token && latest.isVerified
+        }
         try {
             const userInfo = await getUserInfo(token)
-            if (userInfo !== null) set(slot === 2 ? { anlas2: userInfo.anlas } : { anlas: userInfo.anlas })
+            if (!requestStillMatchesCredential()) return
+            if (userInfo === null) {
+                set(clearUsage)
+                return
+            }
+            set(slot === 2
+                ? { anlas2: userInfo.anlas, opusUsage2: userInfo.usage ?? null }
+                : { anlas: userInfo.anlas, opusUsage: userInfo.usage ?? null })
         } catch (error) {
             reportAuthError(error, 'credential-vault.balance')
+            if (requestStillMatchesCredential()) set(clearUsage)
         }
     },
 
@@ -241,8 +270,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             ? { ...nextPersisted, token: state.token, token2: '' }
             : { ...nextPersisted, token: '', token2: state.token2 }
         set(slot === 2
-            ? { ...next, isVerified2: false, anlas2: null }
-            : { ...next, isVerified: false, anlas: null })
+            ? { ...next, isVerified2: false, anlas2: null, opusUsage2: null }
+            : { ...next, isVerified: false, anlas: null, opusUsage: null })
     },
 
     clearToken: async (slot = 1) => get().deleteCredential(slot),
@@ -254,6 +283,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             : { ...persistedProjection(state), slot1Enabled: enabled }
         await persistAuthStateV3(getRuntimeAuthMigrationStorage(), nextPersisted)
         set(nextPersisted)
+        // An Opus allowance keeps refilling while a slot is disabled. Refresh
+        // after re-enabling so the next quote never presents the stale balance.
+        if (enabled) await get().refreshAnlas(slot)
     },
 
     isSlotActive: (slot) => {
@@ -309,6 +341,8 @@ export async function initializeAuthCredentialState(): Promise<void> {
                 ...hydrated,
                 isVerified: hydrated.token.length > 0,
                 isVerified2: hydrated.token2.length > 0,
+                opusUsage: null,
+                opusUsage2: null,
                 isCredentialStateInitialized: true,
                 authError: null,
             })
@@ -318,6 +352,8 @@ export async function initializeAuthCredentialState(): Promise<void> {
                 ...DEFAULT_LOCAL_AUTH,
                 isVerified: false,
                 isVerified2: false,
+                opusUsage: null,
+                opusUsage2: null,
                 isCredentialStateInitialized: true,
                 authError: 'operation-failed',
             })

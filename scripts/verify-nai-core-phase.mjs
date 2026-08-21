@@ -17,6 +17,7 @@ const files = [
   'src/lib/nai-preset-text.ts',
   'src/services/nai/endpoints.ts',
   'src/services/nai/presets.ts',
+  'src/services/nai/model-catalog.ts',
   'src/services/nai/payload.ts',
   'src/services/nai/stream.ts',
   'src/services/nai/refs.ts',
@@ -34,10 +35,12 @@ for (const file of files) {
   check(`${file} exists`, existsSync(join(root, file)))
 }
 
+const presetText = read('src/lib/nai-preset-text.ts')
 const endpoints = read('src/services/nai/endpoints.ts')
 const payload = read('src/services/nai/payload.ts')
 const stream = read('src/services/nai/stream.ts')
 const refs = read('src/services/nai/refs.ts')
+const modelCatalog = read('src/services/nai/model-catalog.ts')
 const adapter = read('src/services/nai/adapter.ts')
 const client = read('src/services/nai/client.ts')
 const transport = read('src/services/nai/transport.ts')
@@ -105,7 +108,12 @@ function runPayloadFixtureChecks() {
   const presetsModule = loadTsCommonJs('src/services/nai/presets.ts', {
     '@/lib/nai-preset-text': presetTextModule,
   })
+  const modelDefaultModule = loadTsCommonJs('src/domain/generation/model-default.ts')
+  const modelCatalogModule = loadTsCommonJs('src/services/nai/model-catalog.ts', {
+    '@/domain/generation/model-default': modelDefaultModule,
+  })
   const payloadModule = loadTsCommonJs('src/services/nai/payload.ts', {
+    '@/services/nai/model-catalog': modelCatalogModule,
     '@/services/nai/presets': presetsModule,
   })
   const { buildGenerateImagePayload } = payloadModule
@@ -220,6 +228,22 @@ function runPayloadFixtureChecks() {
     assert.equal(built.parameters.mask, 'mask-image')
     assert.equal(built.parameters.inpaintImg2ImgStrength, 0.7)
   })
+
+  fixtureCheck('payload snapshot emits V5 tag hints and V5 UC without Variety coefficient', () => {
+    const built = buildGenerateImagePayload(baseRequest({
+      model: 'nai-diffusion-5-full',
+      variety: true,
+      qualityToggle: true,
+      ucPreset: 0,
+    }))
+    assert.equal(built.input, '1girl, silver hair, very aesthetic, masterpiece, no text')
+    assert.equal(built.parameters.negative_prompt.startsWith('lowres, artistic error'), true)
+    assert.equal(built.parameters.negative_prompt.includes('nsfw'), false)
+    assert.equal(built.parameters.skip_cfg_above_sigma, null)
+    assert.equal(built.parameters.tag_hint_qt, 1)
+    assert.equal(built.parameters.tag_hint_uc_preset, 2)
+    assert.equal(built.parameters.tag_hint_transparent_background, false)
+  })
 }
 
 check('image host is primary NAI host', /https:\/\/image\.novelai\.net/.test(endpoints))
@@ -227,6 +251,13 @@ check('upscale keeps api host exception', /https:\/\/api\.novelai\.net\/ai\/upsc
 check('payload builder exists exactly once', count(payload, /export function buildGenerateImagePayload/g) === 1)
 check('payload computes Variety+ from model and resolution', /varietySigma/.test(payload) && /832 \* 1216/.test(payload) && /Math\.sqrt/.test(payload))
 check('payload emits v4 prompt and negative prompt', /v4_prompt/.test(payload) && /v4_negative_prompt/.test(payload))
+check(
+  'quality tag table records official V4 and V4.5 model suffixes',
+  /'nai-diffusion-4-5-full': 'location, very aesthetic, masterpiece, no text'/.test(presetText) &&
+  /'nai-diffusion-4-5-curated': 'location, masterpiece, no text, -0\.8::feet::, rating:general'/.test(presetText) &&
+  /'nai-diffusion-4-full': 'no text, best quality, very aesthetic, absurdres'/.test(presetText) &&
+  /'nai-diffusion-4-curated-preview': 'rating:general, amazing quality, very aesthetic, absurdres'/.test(presetText)
+)
 check('payload source includes nested character reference legacy_uc false', /director_reference_descriptions/.test(payload) && /legacy_uc:\s*false/.test(payload))
 check('stream parser reads msgpack frames', /getReader\(\)/.test(stream) && /msgpackDecode/.test(stream) && /readNaiImageStream/.test(stream))
 check('stream parser cleans up reader and handles abort', /releaseLock/.test(stream) && /AbortSignal/.test(stream) && /reader\.cancel/.test(stream))
@@ -311,16 +342,17 @@ check(
   /request\.includeWebpCompatibilitySidecar \?\? true/.test(outputMetadataWriter)
 )
 check(
-  'selectable model authority is the verified V4/V4.5 release matrix',
-  /nai-diffusion-4-5-curated/.test(generationStore) &&
-  /nai-diffusion-4-5-full/.test(generationStore) &&
-  /nai-diffusion-4-curated-preview/.test(generationStore) &&
-  /nai-diffusion-4-full/.test(generationStore) &&
-  !/nai-diffusion-3/.test(generationStore) &&
-  !/nai-diffusion-furry-3/.test(generationStore) &&
+  'selectable model authority is the verified V5-first release matrix',
+  /nai-diffusion-5-full/.test(modelCatalog) &&
+  /nai-diffusion-5-curated/.test(modelCatalog) &&
+  /nai-diffusion-4-5-curated/.test(modelCatalog) &&
+  /nai-diffusion-4-5-full/.test(modelCatalog) &&
+  /nai-diffusion-4-curated-preview/.test(modelCatalog) &&
+  /nai-diffusion-4-full/.test(modelCatalog) &&
+  /DEFAULT_NAI_IMAGE_MODEL/.test(modelCatalog) &&
   /normalizeSelectableGenerationModel/.test(generationStore)
 )
-check('payload authority records V4/V4.5 release support', /Release-supported builder authority is V4\/V4\.5/.test(payload))
+check('payload authority records V4/V4.5/V5 release support', /Release-supported builder authority is V4\/V4\.5\/V5/.test(payload))
 
 runPayloadFixtureChecks()
 

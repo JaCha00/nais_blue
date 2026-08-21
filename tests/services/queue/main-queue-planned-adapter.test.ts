@@ -46,6 +46,7 @@ import { enqueuePlannedMainBatch } from '@/services/queue/main-queue-adapter'
 
 const prepared = {
     params: {
+        model: 'nai-diffusion-4-5-full',
         width: 832,
         height: 1_216,
         steps: 28,

@@ -2,17 +2,28 @@ import { describe, expect, it } from 'vitest'
 
 import {
     calculateAnlasCost,
+    resolveAnlasPricingBasis,
     type BaseGenerationAnlasInput,
 } from '@/lib/anlas-calculator'
 import { selectActiveCredentialsAreOpus } from '@/stores/auth-store'
 
-const paid = (input: Omit<BaseGenerationAnlasInput, 'pricingBasis'>) => calculateAnlasCost({
+const legacyModel = 'nai-diffusion-4-5-full'
+const v5Model = 'nai-diffusion-5-full'
+
+const paid = (input: Omit<BaseGenerationAnlasInput, 'pricingBasis' | 'model'>) => calculateAnlasCost({
     ...input,
+    model: legacyModel,
     pricingBasis: 'paid',
 })
-const opus = (input: Omit<BaseGenerationAnlasInput, 'pricingBasis'>) => calculateAnlasCost({
+const opus = (input: Omit<BaseGenerationAnlasInput, 'pricingBasis' | 'model'>) => calculateAnlasCost({
     ...input,
+    model: legacyModel,
     pricingBasis: 'all-active-opus',
+})
+const v5Paid = (input: Omit<BaseGenerationAnlasInput, 'pricingBasis' | 'model'>) => calculateAnlasCost({
+    ...input,
+    model: v5Model,
+    pricingBasis: 'paid',
 })
 
 describe('NovelAI base-generation Anlas estimate', () => {
@@ -61,12 +72,48 @@ describe('NovelAI base-generation Anlas estimate', () => {
     })
 
     it.each([
-        [{ width: 0, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'paid' }, RangeError],
-        [{ width: 1_024.5, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'paid' }, RangeError],
-        [{ width: 1_024, height: 1_024, steps: 0, imageCount: 1, pricingBasis: 'paid' }, RangeError],
-        [{ width: 1_024, height: 1_024, steps: 28, imageCount: 0, pricingBasis: 'paid' }, RangeError],
-        [{ width: 1_024, height: 1_024, steps: 28, imageCount: Number.MAX_SAFE_INTEGER, pricingBasis: 'paid' }, RangeError],
-        [{ width: 1_024, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'unknown' }, TypeError],
+        [832, 1_216, 28, 29],
+        [1_024, 1_024, 28, 30],
+        [1_024, 1_024, 29, 31],
+        [1_536, 1_536, 20, 52],
+        [2_048, 2_048, 50, 150],
+    ])('matches the V5 paid 1.5x production quote for %ix%i at %i steps', (width, height, steps, expected) => {
+        expect(v5Paid({ width, height, steps, imageCount: 1 })).toBe(expected)
+    })
+
+    it('uses paid maximum pricing for V5 even when every active credential is Opus', () => {
+        const pricingBasis = resolveAnlasPricingBasis({
+            model: v5Model,
+            activeCredentialsAreOpus: true,
+        })
+
+        expect(pricingBasis).toBe('paid')
+        expect(calculateAnlasCost({
+            model: v5Model,
+            width: 832,
+            height: 1_216,
+            steps: 28,
+            imageCount: 1,
+            pricingBasis,
+        })).toBe(29)
+        expect(calculateAnlasCost({
+            model: v5Model,
+            width: 832,
+            height: 1_216,
+            steps: 28,
+            imageCount: 1,
+            pricingBasis: 'all-active-opus',
+        })).toBe(29)
+    })
+
+    it.each([
+        [{ model: legacyModel, width: 0, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'paid' }, RangeError],
+        [{ model: legacyModel, width: 1_024.5, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'paid' }, RangeError],
+        [{ model: legacyModel, width: 1_024, height: 1_024, steps: 0, imageCount: 1, pricingBasis: 'paid' }, RangeError],
+        [{ model: legacyModel, width: 1_024, height: 1_024, steps: 28, imageCount: 0, pricingBasis: 'paid' }, RangeError],
+        [{ model: legacyModel, width: 1_024, height: 1_024, steps: 28, imageCount: Number.MAX_SAFE_INTEGER, pricingBasis: 'paid' }, RangeError],
+        [{ model: legacyModel, width: 1_024, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'unknown' }, TypeError],
+        [{ model: '', width: 1_024, height: 1_024, steps: 28, imageCount: 1, pricingBasis: 'paid' }, TypeError],
     ])('rejects invalid estimator input %#', (input, error) => {
         expect(() => calculateAnlasCost(input as BaseGenerationAnlasInput)).toThrow(error)
     })

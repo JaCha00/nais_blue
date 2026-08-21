@@ -44,7 +44,6 @@ import {
     Users,
 } from 'lucide-react'
 import GeminiIcon from '@/assets/gemini-color.svg'
-import { AVAILABLE_MODELS } from '@/stores/generation-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
@@ -55,6 +54,11 @@ import {
     LOW_STEP_CAUTION_THRESHOLD,
     RECOMMENDED_GENERATION_STEPS,
 } from '@/services/generation/generation-quality'
+import {
+    NAI_IMAGE_MODELS,
+    getNovelAiModelProfile,
+    isNovelAiV5Model,
+} from '@/services/nai/model-catalog'
 
 const SAMPLERS = [
     'k_euler',
@@ -88,6 +92,7 @@ export function PromptPanel() {
     const variety = useGenerationDraftStore(state => state.variety)
     const qualityToggle = useGenerationDraftStore(state => state.qualityToggle)
     const ucPreset = useGenerationDraftStore(state => state.ucPreset)
+    const transparentBackground = useGenerationDraftStore(state => state.transparentBackground)
 
     // Zustand 선택적 구독 - generationStore (액션)
     const setAdditionalPrompt = useGenerationDraftStore(state => state.setAdditionalPrompt)
@@ -105,6 +110,7 @@ export function PromptPanel() {
     const setVariety = useGenerationDraftStore(state => state.setVariety)
     const setQualityToggle = useGenerationDraftStore(state => state.setQualityToggle)
     const setUcPreset = useGenerationDraftStore(state => state.setUcPreset)
+    const setTransparentBackground = useGenerationDraftStore(state => state.setTransparentBackground)
 
     // Zustand 선택적 구독 - characterPromptStore
     const characterCount = useCharacterPromptStore(state => state.characters.filter(c => c.enabled).length)
@@ -118,6 +124,9 @@ export function PromptPanel() {
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
     const stepQuality = assessGenerationStepQuality(steps)
     const guidedSurface = new URLSearchParams(location.search).get('guided')
+    const modelProfile = getNovelAiModelProfile(model)
+    const selectedModel = NAI_IMAGE_MODELS.find(candidate => candidate.id === model)
+    const isV5 = isNovelAiV5Model(model)
 
     useEffect(() => {
         if (isGenerating) return
@@ -240,7 +249,10 @@ export function PromptPanel() {
                             <SlidersHorizontal className="h-4 w-4" />
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-[480px] max-h-[85vh] overflow-y-auto">
+                    <DialogContent
+                        className="sm:max-w-[480px] max-h-[85vh] overflow-y-auto"
+                        closeLabel={t('common.close')}
+                    >
                         <DialogHeader>
                             <DialogTitle>{t('parameters.title')}</DialogTitle>
                             <DialogDescription>
@@ -259,18 +271,32 @@ export function PromptPanel() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {AVAILABLE_MODELS.map((m) => (
-                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                        {NAI_IMAGE_MODELS.map((candidate) => (
+                                            <SelectItem key={candidate.id} value={candidate.id}>
+                                                {candidate.name}
+                                                {candidate.recommended
+                                                    ? ` — ${t('parameters.recommended', '추천')}`
+                                                    : candidate.deprecated
+                                                        ? ` — ${t('parameters.legacy', '호환용')}`
+                                                        : ''}
+                                            </SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {selectedModel && (
+                                    <p className="text-xs leading-5 text-muted-foreground">
+                                        {t(
+                                            `parameters.modelDescriptions.${selectedModel.id}`,
+                                            selectedModel.description,
+                                        )}
+                                    </p>
+                                )}
                             </div>
 
                             {/* Resolution (Moved here) */}
-                            {/* Resolution (Moved here) */}
                             <div className="space-y-2">
                                 <Label className="text-sm font-medium">
-                                    {t('settingsPage.general.resolution', '해상도')}
+                                    {t('settings.resolution')}
                                 </Label>
                                 <ResolutionSelector
                                     value={selectedResolution}
@@ -405,7 +431,7 @@ export function PromptPanel() {
                                 </div>
                                 <div className="space-y-2">
                                     <Label>{t('parameters.scheduler')}</Label>
-                                    <Select value={scheduler} onValueChange={setScheduler}>
+                                    <Select value={scheduler} onValueChange={setScheduler} disabled={isV5}>
                                         <SelectTrigger className="rounded-control">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -415,6 +441,11 @@ export function PromptPanel() {
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                    {isV5 && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {t('parameters.v5Karras', 'V5 요청은 Karras로 자동 맞춰져요.')}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -424,7 +455,7 @@ export function PromptPanel() {
                                     <Label className="cursor-pointer" onClick={() => setSmea(!smea)}>
                                         {t('parameters.smea')}
                                     </Label>
-                                    <span className="text-xs text-muted-foreground">Switchable Multi-head External Attention</span>
+                                    <span className="text-xs text-muted-foreground">{t('parameters.smeaHelp')}</span>
                                 </div>
                                 <Switch
                                     checked={smea}
@@ -438,7 +469,7 @@ export function PromptPanel() {
                                     <Label className="cursor-pointer" onClick={() => setSmeaDyn(!smeaDyn)}>
                                         {t('parameters.smeaDyn')}
                                     </Label>
-                                    <span className="text-xs text-muted-foreground">Dynamic SMEA</span>
+                                    <span className="text-xs text-muted-foreground">{t('parameters.smeaDynHelp')}</span>
                                 </div>
                                 <Switch
                                     checked={smeaDyn}
@@ -454,14 +485,41 @@ export function PromptPanel() {
                                     <Label className="cursor-pointer" onClick={() => setVariety(!variety)}>
                                         {t('parameters.variety', 'Variety+')}
                                     </Label>
-                                    <span className="text-xs text-muted-foreground">Increases generation variety</span>
+                                    <span className="text-xs text-muted-foreground">{t('parameters.varietyHelp')}</span>
                                 </div>
                                 <Switch
                                     checked={variety}
+                                    disabled={isV5}
                                     onChange={(e) => setVariety(e.target.checked)}
                                     aria-label={t('parameters.variety', 'Variety+')}
                                 />
                             </div>
+                            {isV5 && (
+                                <p className="-mt-3 text-xs leading-5 text-muted-foreground">
+                                    {t('parameters.v5VarietyPending', 'V5 Variety+의 공식 전송 값이 확인될 때까지 안전하게 꺼 둡니다.')}
+                                </p>
+                            )}
+
+                            {modelProfile?.capabilities.transparentBackground && (
+                                <div className="flex items-center justify-between rounded-control border border-border/70 p-3">
+                                    <div className="flex flex-col gap-1 pr-4">
+                                        <Label
+                                            className="cursor-pointer"
+                                            onClick={() => setTransparentBackground(!transparentBackground)}
+                                        >
+                                            {t('parameters.transparentBackground', '투명 배경')}
+                                        </Label>
+                                        <span className="text-xs leading-5 text-muted-foreground">
+                                            {t('parameters.transparentBackgroundHelp', '배경을 제거하기 쉬운 알파 채널 이미지로 생성해요.')}
+                                        </span>
+                                    </div>
+                                    <Switch
+                                        checked={transparentBackground}
+                                        onChange={(event) => setTransparentBackground(event.target.checked)}
+                                        aria-label={t('parameters.transparentBackground', '투명 배경')}
+                                    />
+                                </div>
+                            )}
 
                             {/* Add Quality Tags */}
                             <div className="flex items-center justify-between">
@@ -469,7 +527,7 @@ export function PromptPanel() {
                                     <Label className="cursor-pointer" onClick={() => setQualityToggle(!qualityToggle)}>
                                         {t('parameters.qualityToggle', 'Add Quality Tags')}
                                     </Label>
-                                    <span className="text-xs text-muted-foreground">Adds quality tags to prompt</span>
+                                    <span className="text-xs text-muted-foreground">{t('parameters.qualityToggleHelp')}</span>
                                 </div>
                                 <Switch
                                     checked={qualityToggle}
@@ -486,11 +544,11 @@ export function PromptPanel() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="0">Heavy</SelectItem>
-                                        <SelectItem value="1">Light</SelectItem>
-                                        <SelectItem value="2">Furry Focus</SelectItem>
-                                        <SelectItem value="3">Human Focus</SelectItem>
-                                        <SelectItem value="4">None</SelectItem>
+                                        <SelectItem value="0">{t('parameters.ucHeavy')}</SelectItem>
+                                        <SelectItem value="1">{t('parameters.ucLight')}</SelectItem>
+                                        <SelectItem value="2">{t('parameters.ucFurry')}</SelectItem>
+                                        <SelectItem value="3">{t('parameters.ucHuman')}</SelectItem>
+                                        <SelectItem value="4">{t('parameters.ucNone')}</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

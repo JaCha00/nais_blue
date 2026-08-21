@@ -1,5 +1,6 @@
 import { motion, useSpring, useTransform } from 'framer-motion'
 import { useEffect, useState, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Minus, Plus } from 'lucide-react'
 
 import './counter.css'
@@ -63,6 +64,7 @@ export default function Counter({
     fontSize = 20,
     className = '',
 }: CounterProps) {
+    const { t } = useTranslation()
     const height = fontSize + 4
     const [isEditing, setIsEditing] = useState(false)
     const [inputValue, setInputValue] = useState(String(value))
@@ -122,7 +124,7 @@ export default function Counter({
                 onClick={handleDecrement}
                 disabled={value <= min}
                 className="counter-button"
-                aria-label="Decrease count"
+                aria-label={t('counter.decrease', 'Decrease count')}
             >
                 <Minus className="w-3 h-3" />
             </button>
@@ -138,6 +140,7 @@ export default function Counter({
                     style={{ fontSize, height, width: `${Math.max(2, inputValue.length + 1)}ch` }}
                     min={min}
                     max={max}
+                    aria-label={t('counter.input', 'Count')}
                 />
             ) : (
                 <button
@@ -145,8 +148,8 @@ export default function Counter({
                     className="counter-display"
                     style={{ fontSize, height }}
                     onClick={() => setIsEditing(true)}
-                    title="Click to edit"
-                    aria-label={`Edit count, current value ${value}`}
+                    title={t('counter.editTitle', 'Click to edit count')}
+                    aria-label={t('counter.edit', 'Edit count, current value {{value}}', { value })}
                 >
                     {places.map((place) => (
                         <Digit key={place} place={place} value={value} height={height} />
@@ -158,7 +161,7 @@ export default function Counter({
                 onClick={handleIncrement}
                 disabled={value >= max}
                 className="counter-button"
-                aria-label="Increase count"
+                aria-label={t('counter.increase', 'Increase count')}
             >
                 <Plus className="w-3 h-3" />
             </button>

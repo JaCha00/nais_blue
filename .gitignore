@@ -68,6 +68,8 @@ docs/*
 !docs/README.md
 !docs/architecture/
 !docs/architecture/**
+!docs/research/
+!docs/research/**
 !docs/releases/
 !docs/releases/**
 

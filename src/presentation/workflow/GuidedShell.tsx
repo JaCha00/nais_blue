@@ -13,6 +13,7 @@ import {
     SheetTitle,
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import { isAndroidRuntime, isMobileRuntime } from '@/platform/runtime'
 import { useLayoutStore } from '@/stores/layout-store'
 import {
     MyWorkActivity,
@@ -22,6 +23,9 @@ import {
 interface GuidedShellProps {
     children: ReactNode
 }
+
+const isMac = navigator.platform.toUpperCase().includes('MAC')
+    || navigator.userAgent.toUpperCase().includes('MAC')
 
 function useDockedActivityRail() {
     const ref = useRef<HTMLDivElement>(null)
@@ -52,22 +56,47 @@ export function GuidedShell({ children }: GuidedShellProps) {
     const home = location.pathname === '/guided-preview' || location.pathname === '/guided-preview/'
 
     return (
-        <div ref={ref} className="flex h-full min-w-0 flex-col bg-background">
+        <div
+            ref={ref}
+            className={cn(
+                'flex h-full min-w-0 flex-col bg-background',
+                isAndroidRuntime && 'android-landscape-safe-inline',
+            )}
+            style={isMobileRuntime ? {
+                // Match the shared app shell when Android WebView safe-area values are zero.
+                paddingTop: isAndroidRuntime
+                    ? 'max(1.5rem, env(safe-area-inset-top))'
+                    : 'env(safe-area-inset-top)',
+                paddingBottom: isAndroidRuntime
+                    ? 'max(3.5rem, env(safe-area-inset-bottom))'
+                    : 'env(safe-area-inset-bottom)',
+            } : undefined}
+        >
             <MyWorkActivityRefreshOwner />
-            <CustomTitleBar showWorkspaceToggles={false} />
+            {!isMac && !isMobileRuntime && <CustomTitleBar showWorkspaceToggles={false} />}
             <header className="flex min-h-14 shrink-0 items-center gap-3 px-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]">
                 <Link to="/guided-preview" className="hidden min-w-0 text-sm font-semibold tracking-[-0.02em] focus-ring min-[360px]:block">
                     NAI Blue
                 </Link>
                 <div className="ml-auto flex items-center gap-1">
                     {!docked && (
-                        <Button variant="ghost" size="sm" onClick={() => openSupportSheet('activity')}>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openSupportSheet('activity')}
+                            aria-label={t('guided.activity.title', '내 작업')}
+                            aria-expanded={activityOpen}
+                            aria-controls="guided-activity-sheet"
+                        >
                             <BriefcaseBusiness className="h-4 w-4 min-[440px]:mr-2" aria-hidden="true" />
                             <span className="hidden min-[440px]:inline">{t('guided.activity.title', '내 작업')}</span>
                         </Button>
                     )}
                     <Button asChild variant="ghost" size="sm">
-                        <Link to="/advanced">
+                        <Link
+                            to="/advanced"
+                            aria-label={t('guided.advanced', '고급 생성 모드')}
+                        >
                             <Wrench className="h-4 w-4 min-[440px]:mr-2" aria-hidden="true" />
                             <span className="hidden min-[440px]:inline">{t('guided.advanced', '고급 생성 모드')}</span>
                         </Link>
@@ -91,7 +120,12 @@ export function GuidedShell({ children }: GuidedShellProps) {
                     open={activityOpen}
                     onOpenChange={(open) => open ? openSupportSheet('activity') : closeSupportSheet()}
                 >
-                    <SheetContent side="right" className="w-full sm:max-w-[400px]" closeLabel={t('common.close', '닫기')}>
+                    <SheetContent
+                        id="guided-activity-sheet"
+                        side="right"
+                        className="w-full sm:max-w-[400px]"
+                        closeLabel={t('common.close', '닫기')}
+                    >
                         <SheetHeader className="sr-only">
                             <SheetTitle>{t('guided.activity.title', '내 작업')}</SheetTitle>
                             <SheetDescription>{t('guided.activity.description', '실행 중인 작업과 계정 상태')}</SheetDescription>

@@ -331,6 +331,7 @@ export const typeFixturePlan = {
         seed: 0,
         qualityToggle: false,
         ucPreset: 0,
+        transparentBackground: false,
         sourceMode: 'text-to-image',
         strength: 0,
         noise: 0,

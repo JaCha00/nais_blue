@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { useGenerationStore } from './generation-store'
 import { indexedDBStorage } from '@/lib/indexed-db'
+import { DEFAULT_NAI_IMAGE_MODEL } from '@/services/nai/model-catalog'
 import {
     DEFAULT_GENERATION_PRESET_ID,
     GENERATION_PRESET_STORE_VERSION,
@@ -35,6 +36,7 @@ export type PresetWorkingCopy = Pick<Preset,
     | 'variety'
     | 'qualityToggle'
     | 'ucPreset'
+    | 'transparentBackground'
     | 'selectedResolution'
 >
 
@@ -42,7 +44,7 @@ const WORKING_COPY_FIELDS = [
     'basePrompt', 'additionalPrompt', 'detailPrompt', 'negativePrompt',
     'model', 'steps', 'cfgScale', 'cfgRescale',
     'sampler', 'scheduler', 'smea', 'smeaDyn', 'variety',
-    'qualityToggle', 'ucPreset', 'selectedResolution',
+    'qualityToggle', 'ucPreset', 'transparentBackground', 'selectedResolution',
 ] as const
 
 function workingCopyFromPreset(preset: Preset): PresetWorkingCopy {
@@ -111,7 +113,7 @@ export const usePresetStore = create<PresetState>()(
                     additionalPrompt: '',
                     detailPrompt: '',
                     negativePrompt: '',
-                    model: 'nai-diffusion-4-5-full',
+                    model: DEFAULT_NAI_IMAGE_MODEL,
                     steps: 28,
                     cfgScale: 5.0,
                     cfgRescale: 0.0,
@@ -122,6 +124,7 @@ export const usePresetStore = create<PresetState>()(
                     variety: false,
                     qualityToggle: true,
                     ucPreset: 0,
+                    transparentBackground: false,
                     selectedResolution: { label: 'Portrait', width: 832, height: 1216 },
                 }
 

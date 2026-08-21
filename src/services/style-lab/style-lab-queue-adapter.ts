@@ -57,10 +57,11 @@ export type StyleLabPreviewSubmissionPolicy =
     | { readonly kind: 'guided'; readonly costConsent: AnlasCostConsentSnapshot }
 
 export function estimateStyleLabPreviewAnlas(
-    params: readonly Pick<GenerationParams, 'width' | 'height' | 'steps'>[],
+    params: readonly Pick<GenerationParams, 'model' | 'width' | 'height' | 'steps'>[],
     pricingBasis: AnlasPricingBasis,
 ): number {
     return params.reduce((total, item) => total + calculateAnlasCost({
+        model: item.model,
         width: item.width,
         height: item.height,
         steps: item.steps,
@@ -70,7 +71,7 @@ export function estimateStyleLabPreviewAnlas(
 }
 
 export function authorizeStyleLabPreviewAnlas(
-    params: readonly Pick<GenerationParams, 'width' | 'height' | 'steps'>[],
+    params: readonly Pick<GenerationParams, 'model' | 'width' | 'height' | 'steps'>[],
     submissionPolicy: StyleLabPreviewSubmissionPolicy,
 ): AnlasCostConsentSnapshot | undefined {
     if (submissionPolicy.kind === 'advanced') return undefined

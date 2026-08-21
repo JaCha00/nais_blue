@@ -13,7 +13,12 @@ import {
     readNaiBlueSidecar,
     type NaiBlueParams,
 } from '@/lib/nai-blue-metadata'
-import { QUALITY_TAGS_SUFFIX, UC_PRESETS_V45_FULL } from '@/lib/nai-preset-text'
+import {
+    QUALITY_TAGS_BY_SELECTABLE_MODEL,
+    UC_PRESETS_BY_SELECTABLE_MODEL,
+    UC_PRESETS_V45_FULL,
+    UC_PRESETS_V5,
+} from '@/lib/nai-preset-text'
 
 /**
  * Decompress gzip data using native Web API or fallback
@@ -83,6 +88,7 @@ export interface NAIMetadata {
     variety?: boolean // Derived from "skip_cfg_above_sigma"
     qualityToggle?: boolean // "qualityToggle" - Add Quality Tags
     ucPreset?: number // "ucPreset" - Undesired Content Preset (0=Heavy, 1=Light, 2=Furry, 3=Human, 4=None)
+    transparentBackground?: boolean // NAI Blue v2 V5 generation option
 
     // Resolution
     width?: number
@@ -634,6 +640,9 @@ function applyNaiBlueOverlay(metadata: NAIMetadata, naiBlue: NaiBlueParams): NAI
         metadata.seed = resolved.seed
         if (typeof resolved.qualityToggle === 'boolean') metadata.qualityToggle = resolved.qualityToggle
         if (typeof resolved.ucPreset === 'number') metadata.ucPreset = resolved.ucPreset
+        if (typeof resolved.transparentBackground === 'boolean') {
+            metadata.transparentBackground = resolved.transparentBackground
+        }
 
         if (naiBlue.characters.length > 0) {
             metadata.v4_prompt = {
@@ -779,22 +788,33 @@ async function extractTextChunkMetadata(bytes: Uint8Array): Promise<NAIMetadata 
 // so we match the stable signatures. Multiple entries cover canonical and
 // shortened variants seen in real exports.
 const QUALITY_TAG_SIGNATURES: Record<string, string[]> = {
-    v45_full: [QUALITY_TAGS_SUFFIX.replace(/^,\s*/, '')],
-    v45_curated: ['masterpiece, no text, -0.8::feet::, rating:general', 'rating:general'],
-    v4_full: ['best quality, very aesthetic, absurdres', 'no text, best quality, very aesthetic, absurdres'],
-    v4_curated: ['amazing quality, very aesthetic, absurdres', 'rating:general, amazing quality, very aesthetic, absurdres'],
+    v5: [QUALITY_TAGS_BY_SELECTABLE_MODEL['nai-diffusion-5-full']],
+    v45_full: [QUALITY_TAGS_BY_SELECTABLE_MODEL['nai-diffusion-4-5-full']],
+    v45_curated: [
+        QUALITY_TAGS_BY_SELECTABLE_MODEL['nai-diffusion-4-5-curated'],
+        'masterpiece, no text, -0.8::feet::, rating:general',
+        'rating:general',
+    ],
+    v4_full: [
+        QUALITY_TAGS_BY_SELECTABLE_MODEL['nai-diffusion-4-full'],
+        'best quality, very aesthetic, absurdres',
+    ],
+    v4_curated: [
+        QUALITY_TAGS_BY_SELECTABLE_MODEL['nai-diffusion-4-curated-preview'],
+        'rating:general, amazing quality, very aesthetic, absurdres',
+    ],
     v3_anime: ['best quality, amazing quality, very aesthetic, absurdres'],
     v3_furry: ['{best quality}, {amazing quality}'],
 }
 
 // UC preset texts prepended to uc when ucPreset=N. Index = preset number.
-// Curated Heavy variants are omitted (rarely used in practice per user).
-const UC_PRESET_PREFIXES: Record<string, Record<number, string>> = {
+// Payload assembly and metadata import share the official model-scoped tables.
+const UC_PRESET_PREFIXES: Readonly<Record<string, Readonly<Record<number, string>>>> = {
+    v5: UC_PRESETS_V5,
     v45_full: UC_PRESETS_V45_FULL,
-    v4_full: {
-        0: 'blurry, lowres, error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, multiple views, logo, too many watermarks',
-        1: 'blurry, lowres, error, worst quality, bad quality, jpeg artifacts, very displeasing',
-    },
+    v45_curated: UC_PRESETS_BY_SELECTABLE_MODEL['nai-diffusion-4-5-curated'],
+    v4_full: UC_PRESETS_BY_SELECTABLE_MODEL['nai-diffusion-4-full'],
+    v4_curated: UC_PRESETS_BY_SELECTABLE_MODEL['nai-diffusion-4-curated-preview'],
     v3_anime: {
         0: 'lowres, {bad}, error, fewer, extra, missing, worst quality, jpeg artifacts, bad quality, watermark, unfinished, displeasing, chromatic aberration, signature, extra digits, artistic error, username, scan, [abstract],',
         1: 'lowres, jpeg artifacts, worst quality, watermark, blurry, very displeasing,',
@@ -806,8 +826,11 @@ const UC_PRESET_PREFIXES: Record<string, Record<number, string>> = {
 function detectModelKey(source: string | null | undefined): string | null {
     if (!source) return null
     const s = source.toLowerCase()
-    if (s.includes('v4.5') || s.includes('4-5')) return 'v45_full'
-    if (s.includes('v4')) return 'v4_full'
+    if (s.includes('v4.5') || s.includes('4-5')) {
+        return s.includes('curated') ? 'v45_curated' : 'v45_full'
+    }
+    if (s.includes('v5') || /\b5\b/.test(s)) return 'v5'
+    if (s.includes('v4')) return s.includes('curated') ? 'v4_curated' : 'v4_full'
     if (s.includes('furry') && s.includes('v3')) return 'v3_furry'
     if (s.includes('v3')) return 'v3_anime'
     return null
@@ -940,6 +963,29 @@ function applyInferredNAIPresets(metadata: NAIMetadata): void {
         }
     }
 
+    if (metadata.transparentBackground === true) {
+        const transparentSignature = 'transparent background'
+        const currentPrompt = metadata.prompt ?? metadata.v4_prompt?.caption?.base_caption
+        const strippedPrompt = currentPrompt === undefined
+            ? null
+            : stripQualityPresetText(currentPrompt, transparentSignature)
+        if (strippedPrompt !== null) metadata.prompt = strippedPrompt
+
+        const caption = metadata.v4_prompt?.caption
+        if (caption?.base_caption) {
+            const strippedCaption = stripQualityPresetText(
+                caption.base_caption,
+                transparentSignature,
+            )
+            if (strippedCaption !== null) {
+                metadata.v4_prompt = {
+                    ...metadata.v4_prompt,
+                    caption: { ...caption, base_caption: strippedCaption },
+                }
+            }
+        }
+    }
+
     if (metadata.ucPreset === undefined && inferred.ucPreset !== undefined) {
         metadata.ucPreset = inferred.ucPreset
         if (inferred.negativePrompt !== undefined) metadata.negativePrompt = inferred.negativePrompt
@@ -1009,6 +1055,15 @@ function convertNAIFormat(data: Record<string, unknown>): NAIMetadata {
         data.undesired_content_preset ??
         data.undesiredContentPreset
     if (typeof rawUcPreset === 'number') metadata.ucPreset = rawUcPreset
+
+    const rawTransparentBackground =
+        data.transparentBackground ??
+        data.transparent_background ??
+        data.tag_hint_transparent_background ??
+        data.straight_alpha
+    if (typeof rawTransparentBackground === 'boolean') {
+        metadata.transparentBackground = rawTransparentBackground
+    }
 
     // Resolution
     if (data.width) metadata.width = Number(data.width)

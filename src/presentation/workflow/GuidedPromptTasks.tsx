@@ -30,6 +30,7 @@ import {
     type GuidedStyleDecision,
 } from '@/application/style-lab/guided-style-comparison'
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
+import { NovelAiV5UsageLimit } from '@/components/credentials/NovelAiV5UsageLimit'
 import { PromptModulePicker, appendPromptModuleLine } from '@/components/fragments/PromptModulePicker'
 import { PromptSlotTabs } from '@/components/prompt/PromptSlotTabs'
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
@@ -43,10 +44,11 @@ import {
     reviseSingleImageDraft,
 } from '@/domain/workflow/single-image-draft'
 import { compactPrompt, formatWeightedPromptTags } from '@/lib/style-lab'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { cn, generateRandomSeed } from '@/lib/utils'
 import { toNativeAssetUrl } from '@/platform/asset-url'
 import { openNativePath } from '@/platform/native-shell'
+import { NAI_IMAGE_MODELS } from '@/services/nai/model-catalog'
 import {
     getAgentWorkspaceAbsolutePath,
     getAgentWorkspaceBridgeStatus,
@@ -84,12 +86,7 @@ export const GUIDED_PROMPT_TASK_STEP_IDS = Object.freeze({
     localAgent: ['preset', 'workspace', 'result'],
 } as const)
 
-const GUIDED_STYLE_MODELS = [
-    { id: 'nai-diffusion-4-5-full', name: 'NAI Diffusion V4.5 Full' },
-    { id: 'nai-diffusion-4-5-curated', name: 'NAI Diffusion V4.5 Curated' },
-    { id: 'nai-diffusion-4-full', name: 'NAI Diffusion V4 Full' },
-    { id: 'nai-diffusion-4-curated-preview', name: 'NAI Diffusion V4 Curated' },
-] as const
+const GUIDED_STYLE_MODELS = NAI_IMAGE_MODELS
 
 const GUIDED_STYLE_RESOLUTIONS = [
     { id: 'portrait', label: 'Portrait', width: 832, height: 1216 },
@@ -458,6 +455,7 @@ function GuidedDirectPromptTask() {
                         seed: initial.payload.generation.seed,
                         qualityToggle: generation.qualityToggle,
                         ucPreset: generation.ucPreset,
+                        transparentBackground: generation.transparentBackground,
                     },
                 },
             })
@@ -688,8 +686,9 @@ function GuidedStyleLabTask() {
 
     const activeTokenCount = Number(Boolean(token1 && verified1 && enabled1))
         + Number(Boolean(token2 && verified2 && enabled2))
-    const pricingBasis = activeCredentialsAreOpus ? 'all-active-opus' as const : 'paid' as const
+    const pricingBasis = resolveAnlasPricingBasis({ model, activeCredentialsAreOpus })
     const estimatedAnlas = calculateAnlasCost({
+        model,
         width: resolution.width,
         height: resolution.height,
         steps: generationSteps,
@@ -909,7 +908,7 @@ function GuidedStyleLabTask() {
                                 <span className="min-w-0">
                                     <span className="block text-sm font-semibold">{option.name}</span>
                                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
-                                        {t(`guided.single.model.${option.id}`, option.id)}
+                                        {t(`guided.single.model.${option.id}`, option.description)}
                                     </span>
                                 </span>
                             </label>
@@ -970,7 +969,7 @@ function GuidedStyleLabTask() {
                             />
                             <p className="mt-2 text-sm leading-6 text-muted-foreground">
                                 {generationSteps <= 28
-                                    ? t('guided.single.settings.stepsFree', '28은 안정적인 기본값이에요. Opus 계정과 1024² 이하 해상도에서는 기본 생성 비용이 들지 않아요.')
+                                    ? t('guided.single.settings.stepsFree', '28은 안정적인 기본값이에요. Opus 포함 사용량이 적용될 수 있고, 실제 최대 Anlas는 검토 화면에서 확인해요.')
                                     : t('guided.single.settings.stepsPaid', '28을 넘으면 Anlas가 필요할 수 있어요. 높다고 항상 더 좋은 결과가 되는 건 아니에요.')}
                             </p>
                         </section>
@@ -1051,10 +1050,18 @@ function GuidedStyleLabTask() {
                         {t('guided.promptTasks.style.preview.costSummary', '두 후보 · 최대 {{cost}} Anlas', { cost: estimatedAnlas.toLocaleString() })}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                        {activeCredentialsAreOpus
+                        {pricingBasis === 'all-active-opus'
                             ? t('guided.promptTasks.style.preview.opusBasis', '활성 계정이 모두 Opus라서 1024² 이하·28 Steps까지는 0 Anlas로 계산해요.')
                             : t('guided.promptTasks.style.preview.paidBasis', '활성 계정의 무료 조건을 확정할 수 없어 안전하게 유료 기준으로 계산해요.')}
                     </p>
+                    <NovelAiV5UsageLimit
+                        model={model}
+                        width={resolution.width}
+                        height={resolution.height}
+                        steps={generationSteps}
+                        maxAnlas={estimatedAnlas}
+                        className="mt-4"
+                    />
                     <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 text-sm leading-6">
                         <input
                             type="checkbox"

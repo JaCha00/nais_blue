@@ -1,9 +1,10 @@
 import { deterministicMigrationId } from '@/lib/composition/legacy-migration-id'
+import { DEFAULT_NAI_IMAGE_MODEL } from '@/domain/generation/model-default'
 
 export const DEFAULT_GENERATION_PRESET_ID = 'default'
 // The Zustand writer and backup preflight share this ceiling so a backup made
 // by the current preset store is always accepted by the matching app build.
-export const GENERATION_PRESET_STORE_VERSION = 3 as const
+export const GENERATION_PRESET_STORE_VERSION = 4 as const
 
 export interface NormalizedGenerationPreset {
     id: string
@@ -25,6 +26,7 @@ export interface NormalizedGenerationPreset {
     variety: boolean
     qualityToggle: boolean
     ucPreset: number
+    transparentBackground: boolean
     selectedResolution: {
         label: string
         width: number
@@ -47,7 +49,7 @@ export const createDefaultGenerationPreset = (): NormalizedGenerationPreset => (
     additionalPrompt: '',
     detailPrompt: '',
     negativePrompt: '',
-    model: 'nai-diffusion-4-5-full',
+    model: DEFAULT_NAI_IMAGE_MODEL,
     steps: 28,
     cfgScale: 5,
     cfgRescale: 0,
@@ -58,6 +60,7 @@ export const createDefaultGenerationPreset = (): NormalizedGenerationPreset => (
     variety: false,
     qualityToggle: true,
     ucPreset: 0,
+    transparentBackground: false,
     selectedResolution: { label: 'Portrait', width: 832, height: 1216 },
 })
 
@@ -107,6 +110,10 @@ export function normalizeLegacyGenerationPreset(value: unknown, index = 0): Norm
         variety: booleanOr(record.variety, fallback.variety),
         qualityToggle: booleanOr(record.qualityToggle, fallback.qualityToggle),
         ucPreset: numberOr(record.ucPreset, fallback.ucPreset),
+        transparentBackground: booleanOr(
+            record.transparentBackground,
+            fallback.transparentBackground,
+        ),
         selectedResolution: {
             label: stringOr(resolution.label, fallback.selectedResolution.label),
             width: numberOr(resolution.width, fallback.selectedResolution.width),

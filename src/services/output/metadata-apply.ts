@@ -1,6 +1,7 @@
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { NAIMetadata } from '@/lib/metadata-parser'
 import type { NaiBlueParamsV2 } from '@/lib/nai-blue-metadata'
+import { normalizeNaiImageModelId } from '@/services/nai/model-catalog'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -33,6 +34,7 @@ interface GenerationPatch {
     variety?: boolean
     qualityToggle?: boolean
     ucPreset?: number
+    transparentBackground?: boolean
     width?: number
     height?: number
     seed?: number
@@ -114,6 +116,7 @@ function generationSnapshotForPreset(targetPresetId: string): Required<Generatio
         variety: source.variety ?? false,
         qualityToggle: source.qualityToggle ?? true,
         ucPreset: source.ucPreset ?? 0,
+        transparentBackground: source.transparentBackground ?? false,
         width: source.selectedResolution.width,
         height: source.selectedResolution.height,
         seed: generation.seed,
@@ -179,21 +182,6 @@ function legacyVibes(metadata: NAIMetadata): MetadataVibeChange[] {
     }))
 }
 
-function normalizeLegacyModel(model: string | undefined): string | undefined {
-    if (model === undefined) return undefined
-    const normalized = model.toLowerCase()
-    if (normalized.startsWith('nai-diffusion-')) return model
-    if (normalized.includes('4.5') || normalized.includes('4-5')) {
-        return normalized.includes('curated') ? 'nai-diffusion-4-5-curated' : 'nai-diffusion-4-5-full'
-    }
-    if (normalized.includes('v4') || /\b4\b/.test(normalized)) {
-        return normalized.includes('curated') ? 'nai-diffusion-4-curated-preview' : 'nai-diffusion-4-full'
-    }
-    if (normalized.includes('furry')) return 'nai-diffusion-furry-3'
-    if (normalized.includes('v3') || /\b3\b/.test(normalized)) return 'nai-diffusion-3'
-    return undefined
-}
-
 /** Explicit compatibility boundary for NAI, pre-rename v1, and A1111 metadata. */
 export function importLegacyMetadataCompatibility(
     metadata: NAIMetadata,
@@ -202,7 +190,7 @@ export function importLegacyMetadataCompatibility(
     const generation: GenerationPatch = {}
     if (options.prompts) Object.assign(generation, promptPatch(metadata))
     if (options.parameters) {
-        const normalizedModel = normalizeLegacyModel(metadata.model)
+        const normalizedModel = normalizeNaiImageModelId(metadata.model)
         Object.assign(generation, {
             ...(normalizedModel === undefined ? {} : { model: normalizedModel }),
             ...(metadata.steps === undefined ? {} : { steps: metadata.steps }),
@@ -253,6 +241,9 @@ function importV2Metadata(
             variety: resolved.variety,
             ...(resolved.qualityToggle === undefined ? {} : { qualityToggle: resolved.qualityToggle }),
             ...(resolved.ucPreset === undefined ? {} : { ucPreset: resolved.ucPreset }),
+            ...(resolved.transparentBackground === undefined
+                ? {}
+                : { transparentBackground: resolved.transparentBackground }),
         })
     }
     if (options.resolution) {
@@ -398,6 +389,9 @@ function applyGenerationPatch(patch: GenerationPatch): void {
     if (patch.variety !== undefined) generation.setVariety(patch.variety)
     if (patch.qualityToggle !== undefined) generation.setQualityToggle(patch.qualityToggle)
     if (patch.ucPreset !== undefined) generation.setUcPreset(patch.ucPreset)
+    if (patch.transparentBackground !== undefined) {
+        generation.setTransparentBackground(patch.transparentBackground)
+    }
     if (patch.width !== undefined && patch.height !== undefined) {
         generation.setSelectedResolution({
             label: `${patch.width}x${patch.height}`,

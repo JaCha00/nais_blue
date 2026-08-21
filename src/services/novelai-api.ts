@@ -13,4 +13,6 @@ export {
     type AnlasInfo,
     type GenerateImageResult,
     type GenerationParams,
+    type NovelAIUserInfo,
+    type OpusGenerationUsage,
 } from '@/services/novelai-types'

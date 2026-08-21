@@ -133,6 +133,7 @@ function paramsFromState(state: Record<string, unknown>): ResolvedGenerationPara
         seed: SHADOW_SEED,
         qualityToggle: booleanValue(state.qualityToggle, true),
         ucPreset: numberValue(state.ucPreset, 0),
+        transparentBackground: booleanValue(state.transparentBackground, false),
         sourceMode: 'text-to-image',
         strength: numberValue(state.strength, 0.7),
         noise: numberValue(state.noise, 0),

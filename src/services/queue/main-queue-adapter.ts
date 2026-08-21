@@ -46,6 +46,7 @@ function estimatePreparedBatchAnlas(
     return prepared.reduce((total, item) => {
         const params = item.params
         return total + calculateAnlasCost({
+            model: params.model,
             width: params.width,
             height: params.height,
             steps: params.steps,

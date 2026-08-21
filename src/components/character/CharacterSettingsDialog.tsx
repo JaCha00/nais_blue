@@ -24,6 +24,8 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useGenerationDraftStore } from '@/stores/generation-draft-store'
+import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
 
 const SafeSlider = ({
     value,
@@ -66,6 +68,8 @@ const SafeSlider = ({
 
 export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean, onOpenChange?: (open: boolean) => void } = {}) {
     const { t } = useTranslation()
+    const model = useGenerationDraftStore(state => state.model)
+    const capabilities = getNovelAiModelProfile(model)?.capabilities
     const {
         characterImages,
         vibeImages,
@@ -388,6 +392,9 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
     const enabledCharCount = characterImages.filter(img => img.enabled !== false).length
     const enabledVibeCount = vibeImages.filter(img => img.enabled !== false).length
     const totalCount = enabledCharCount + enabledVibeCount
+    const preciseReferenceSupported = capabilities?.preciseReference ?? false
+    const vibeTransferSupported = capabilities?.vibeTransfer ?? false
+    const vibeBlockedByCharacterReference = characterImages.some(img => img.enabled !== false)
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -414,8 +421,19 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                         <TabsTrigger value="vibe">{t('characterDialog.tabVibe')}</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="character" className="flex-1 overflow-y-auto min-h-0 pr-1">
-                        <div className="py-2">
+                    <TabsContent value="character" className="relative flex-1 overflow-y-auto min-h-0 pr-1">
+                        {!preciseReferenceSupported && (
+                            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/90 p-6 text-center">
+                                <Lock className="mb-2 h-8 w-8 text-muted-foreground" aria-hidden="true" />
+                                <p className="text-sm font-medium text-foreground">
+                                    {t('characterDialog.v5PrecisePending', 'V5는 아직 Precise Reference를 지원하지 않아요.')}
+                                </p>
+                                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                                    {t('characterDialog.v5ReferenceAlternative', '캐릭터 프롬프트를 사용하거나, 이 참조 이미지를 유지한 채 V4.5로 바꿔 주세요.')}
+                                </p>
+                            </div>
+                        )}
+                        <div className={cn('py-2', !preciseReferenceSupported && 'pointer-events-none opacity-30 grayscale')}>
                             <div
                                 data-local-file-drop
                                 className={cn(
@@ -453,15 +471,17 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                     </TabsContent>
 
                     <TabsContent value="vibe" className="flex-1 overflow-y-auto min-h-0 pr-1 relative">
-                        {characterImages.some(img => img.enabled !== false) && (
+                        {(!vibeTransferSupported || vibeBlockedByCharacterReference) && (
                             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/90">
                                 <Lock className="w-8 h-8 text-muted-foreground mb-2" />
                                 <p className="text-sm font-medium text-muted-foreground text-center px-4">
-                                    {t('characterDialog.vibeDisabledMsg')}
+                                    {!vibeTransferSupported
+                                        ? t('characterDialog.v5VibePending', 'V5는 아직 Vibe Transfer를 지원하지 않아요. 이미지는 보존되며 V4.5에서 다시 사용할 수 있어요.')
+                                        : t('characterDialog.vibeDisabledMsg')}
                                 </p>
                             </div>
                         )}
-                        <div className={characterImages.some(img => img.enabled !== false) ? "pointer-events-none opacity-30 grayscale" : ""}>
+                        <div className={!vibeTransferSupported || vibeBlockedByCharacterReference ? "pointer-events-none opacity-30 grayscale" : ""}>
                             <div className="py-2">
                                 <div
                                     data-local-file-drop

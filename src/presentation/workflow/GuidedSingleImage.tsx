@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
+import { NovelAiV5UsageLimit } from '@/components/credentials/NovelAiV5UsageLimit'
 import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJob } from '@/domain/queue/types'
 import {
@@ -32,7 +33,6 @@ import {
     isSingleImageDraftReady,
     listSingleImageDraftIssues,
     reviseSingleImageDraft,
-    singleImageNodePath,
     type ReviseSingleImageDraftInput,
     type SingleImageDraft,
     type SingleImageGenerationSettings,
@@ -40,7 +40,7 @@ import {
     type SingleImageOutputSettings,
     type WorkflowCharacterPrompts,
 } from '@/domain/workflow/single-image-draft'
-import { calculateAnlasCost } from '@/lib/anlas-calculator'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { cn } from '@/lib/utils'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { writeNativeBinaryFile, writeNativeTextFile } from '@/platform/native-file-system'
@@ -50,6 +50,13 @@ import {
     WorkflowDraftPromptModuleResolutionError,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
+import {
+    DEFAULT_NAI_IMAGE_MODEL,
+    NAI_IMAGE_MODELS,
+    getNaiImageModelName,
+    getNovelAiModelProfile,
+    isNovelAiV5Model,
+} from '@/services/nai/model-catalog'
 import { childOutputRef } from '@/services/output/platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
 import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
@@ -103,8 +110,26 @@ type GuidedSingleImageNodeId = SingleImageNodeId | 'result'
 // Result is presentation-only; persisted workflow node IDs remain stable across draft migrations.
 const GUIDED_SINGLE_IMAGE_NODE_IDS = [...SINGLE_IMAGE_NODE_IDS, 'result'] as const
 
-function activeNodes(metadataMode: SingleImageOutputSettings['metadataMode']): readonly GuidedSingleImageNodeId[] {
-    return [...singleImageNodePath(metadataMode), 'result']
+/**
+ * The beginner path asks only for the prompt, then shows review. Missing
+ * required data and whichever detail page the user elects to edit are inserted
+ * without turning every optional setting into homework.
+ */
+function activeNodes(
+    draft: SingleImageDraft,
+    focusedNode: GuidedSingleImageNodeId | null,
+): readonly GuidedSingleImageNodeId[] {
+    const nodes: GuidedSingleImageNodeId[] = []
+    if (draft.payload.model === null) nodes.push('model')
+    nodes.push('prompt')
+    if (draft.payload.resolution === null) nodes.push('resolution')
+
+    const detailNode = focusedNode ?? draft.currentNodeId
+    if (!nodes.includes(detailNode) && detailNode !== 'review' && detailNode !== 'result') {
+        nodes.push(detailNode)
+    }
+    nodes.push('review', 'result')
+    return nodes
 }
 
 interface GuidedResultProjection {
@@ -116,12 +141,7 @@ interface GuidedResultProjection {
     readonly sourceJobId?: string
 }
 
-const MODEL_OPTIONS = [
-    { id: 'nai-diffusion-4-5-full', name: 'NAI Diffusion V4.5 Full', recommended: true },
-    { id: 'nai-diffusion-4-5-curated', name: 'NAI Diffusion V4.5 Curated', recommended: false },
-    { id: 'nai-diffusion-4-full', name: 'NAI Diffusion V4 Full', recommended: false },
-    { id: 'nai-diffusion-4-curated-preview', name: 'NAI Diffusion V4 Curated', recommended: false },
-] as const
+const MODEL_OPTIONS = NAI_IMAGE_MODELS
 
 const RESOLUTION_OPTIONS = [
     { id: 'portrait', width: 832, height: 1216 },
@@ -151,7 +171,7 @@ function randomSeed(): number {
 }
 
 function getModelName(id: string | null): string {
-    return MODEL_OPTIONS.find(option => option.id === id)?.name ?? id ?? '—'
+    return getNaiImageModelName(id)
 }
 
 function SaveIndicator({ status }: { status: SaveStatus }) {
@@ -337,7 +357,7 @@ function ModelStep({
                                 )}
                             </span>
                             <span className="mt-1.5 block text-xs leading-5 text-muted-foreground">
-                                {t(`guided.single.model.${option.id}`, option.id)}
+                                {t(`guided.single.model.${option.id}`, option.description)}
                             </span>
                         </span>
                     </label>
@@ -348,27 +368,35 @@ function ModelStep({
 }
 
 function PromptStep({
+    model,
     positive,
     negative,
+    transparentBackground,
     characterPrompts,
     incomingImport,
     disabled,
     onPositiveChange,
     onNegativeChange,
+    onTransparentBackgroundChange,
     onCharacterPromptsChange,
     onIncomingImportHandled,
 }: {
+    model: string | null
     positive: string
     negative: string
+    transparentBackground: boolean
     characterPrompts: WorkflowCharacterPrompts
     incomingImport: GuidedPromptImportValue | null
     disabled: boolean
     onPositiveChange(value: string): void
     onNegativeChange(value: string): void
+    onTransparentBackgroundChange(value: boolean): void
     onCharacterPromptsChange(value: WorkflowCharacterPrompts): void
     onIncomingImportHandled(): void
 }) {
     const { t } = useTranslation()
+    const supportsTransparentBackground = model !== null
+        && getNovelAiModelProfile(model)?.capabilities.transparentBackground === true
     const applyImport = (mode: 'replace' | 'append', imported: Parameters<typeof applyGuidedPromptImport>[1]) => {
         const next = applyGuidedPromptImport({ positive, negative, characterPrompts }, imported, {
             mode,
@@ -381,45 +409,6 @@ function PromptStep({
     }
     return (
         <div className="space-y-4">
-            <GuidedPromptFileImport
-                positive={positive}
-                disabled={disabled}
-                incomingImport={incomingImport}
-                onIncomingImportHandled={onIncomingImportHandled}
-                onReplace={value => applyImport('replace', value)}
-                onAppend={value => applyImport('append', value)}
-            />
-            <div className="flex flex-wrap justify-end gap-3">
-                <StructuredPromptModuleLibrary
-                    disabled={disabled}
-                    currentParts={{
-                        base: positive,
-                        negative,
-                        character: characterPrompts.items[0]?.prompt,
-                        'character-negative': characterPrompts.items[0]?.negative,
-                    }}
-                    onInsert={(parts, module) => {
-                        const next = insertStructuredPartsIntoWorkflow({
-                            positive,
-                            negative,
-                            characters: characterPrompts,
-                            parts,
-                            moduleName: module.name,
-                        })
-                        if (next.positive !== positive) onPositiveChange(next.positive)
-                        if (next.negative !== negative) onNegativeChange(next.negative)
-                        if (next.characters !== characterPrompts) onCharacterPromptsChange(next.characters)
-                    }}
-                />
-                <PromptModulePicker
-                    disabled={disabled}
-                    showManageAction={false}
-                    allowInlineManage
-                    createSourceText={positive}
-                    triggerLabel={t('guided.promptModules.legacyTrigger', '한 줄 모듈 불러오기')}
-                    onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
-                />
-            </div>
             <div className="h-64 sm:h-72">
                 <AutocompleteTextarea
                     value={positive}
@@ -435,11 +424,76 @@ function PromptStep({
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <p>{t('guided.single.prompt.tagHelp', '영문 태그나 영문 자연어를 쓸 수 있어요. 태그 추천의 숫자는 학습량이 아니라 참고용 태그 데이터의 게시물 수예요.')}</p>
             </div>
+            {supportsTransparentBackground && (
+                <label className="guided-choice-row flex cursor-pointer items-start gap-3 border-y border-border/70 px-2 py-4 sm:px-4">
+                    <input
+                        type="checkbox"
+                        checked={transparentBackground}
+                        disabled={disabled}
+                        onChange={event => onTransparentBackgroundChange(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-[oklch(var(--primary))]"
+                    />
+                    <span>
+                        <span className="block text-sm font-semibold">
+                            {t('guided.single.prompt.transparentBackground', '배경을 투명하게 만들기')}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.prompt.transparentBackgroundHelp', '스티커나 캐릭터 소재처럼 배경 없이 쓰고 싶을 때 켜세요.')}
+                        </span>
+                    </span>
+                </label>
+            )}
             <GuidedCharacterPromptSheet
                 value={characterPrompts}
                 disabled={disabled}
                 onChange={onCharacterPromptsChange}
             />
+            <details className="border-y border-border/70 py-3" open={incomingImport !== null || undefined}>
+                <summary className="cursor-pointer text-xs font-medium">
+                    {t('guided.single.prompt.moreTools', '파일·모듈에서 가져오기 · 선택')}
+                </summary>
+                <div className="mt-4 space-y-4">
+                    <GuidedPromptFileImport
+                        positive={positive}
+                        disabled={disabled}
+                        incomingImport={incomingImport}
+                        onIncomingImportHandled={onIncomingImportHandled}
+                        onReplace={value => applyImport('replace', value)}
+                        onAppend={value => applyImport('append', value)}
+                    />
+                    <div className="flex flex-wrap justify-end gap-3">
+                        <StructuredPromptModuleLibrary
+                            disabled={disabled}
+                            currentParts={{
+                                base: positive,
+                                negative,
+                                character: characterPrompts.items[0]?.prompt,
+                                'character-negative': characterPrompts.items[0]?.negative,
+                            }}
+                            onInsert={(parts, module) => {
+                                const next = insertStructuredPartsIntoWorkflow({
+                                    positive,
+                                    negative,
+                                    characters: characterPrompts,
+                                    parts,
+                                    moduleName: module.name,
+                                })
+                                if (next.positive !== positive) onPositiveChange(next.positive)
+                                if (next.negative !== negative) onNegativeChange(next.negative)
+                                if (next.characters !== characterPrompts) onCharacterPromptsChange(next.characters)
+                            }}
+                        />
+                        <PromptModulePicker
+                            disabled={disabled}
+                            showManageAction={false}
+                            allowInlineManage
+                            createSourceText={positive}
+                            triggerLabel={t('guided.promptModules.legacyTrigger', '한 줄 모듈 불러오기')}
+                            onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
+                        />
+                    </div>
+                </div>
+            </details>
             <details className="border-y border-border/70 py-3">
                 <summary className="cursor-pointer text-xs font-medium">
                     {t('guided.single.prompt.negativeTitle', '피하고 싶은 내용 추가 · 선택')}
@@ -571,7 +625,7 @@ function SettingsStep({
                 />
                 <p className="mt-2 text-xs leading-5 text-muted-foreground">
                     {steps <= 28
-                        ? t('guided.single.settings.stepsFree', '28은 안정적인 기본값이에요. Opus 계정과 1024² 이하 해상도에서는 기본 생성 비용이 들지 않습니다.')
+                        ? t('guided.single.settings.stepsFree', '28은 안정적인 기본값이에요. Opus 포함 사용량이 적용될 수 있고, 실제 최대 Anlas는 검토 화면에서 확인해요.')
                         : t('guided.single.settings.stepsPaid', '28을 넘으면 Anlas가 필요할 수 있어요. 지시 이행이 나아질 수 있지만, 숫자가 높다고 항상 더 좋은 결과가 되는 건 아니에요.')}
                 </p>
             </section>
@@ -701,6 +755,11 @@ function ReviewStep({
                 </ReviewRow>
                 <ReviewRow label={t('guided.single.review.settings', '생성 설정')} onEdit={submitted ? undefined : () => onEdit('settings')}>
                     {draft.payload.generation.steps} Steps · {SAMPLER_OPTIONS.find(item => item.id === draft.payload.generation.sampler)?.label ?? draft.payload.generation.sampler} · CFG {draft.payload.generation.cfgScale}
+                    {draft.payload.generation.transparentBackground === true && (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.review.transparentBackground', '투명 배경 사용')}
+                        </p>
+                    )}
                 </ReviewRow>
                 <ReviewRow label={t('guided.single.review.account', '계정')} onEdit={submitted ? undefined : onManageAccount}>
                     {activeTokenCount > 0
@@ -741,6 +800,16 @@ function ReviewStep({
                     </p>
                 </ReviewRow>
             </dl>
+
+            {resolution !== null && (
+                <NovelAiV5UsageLimit
+                    model={draft.payload.model}
+                    width={resolution.width}
+                    height={resolution.height}
+                    steps={draft.payload.generation.steps}
+                    maxAnlas={estimatedAnlas}
+                />
+            )}
 
             {submitted ? (
                 <div className="flex items-start gap-3 border-y border-success/40 px-2 py-4 sm:px-4" role="status">
@@ -1083,12 +1152,12 @@ export function GuidedSingleImage() {
     const nodes = useMemo(
         () => draft === null
             ? GUIDED_SINGLE_IMAGE_NODE_IDS
-            : activeNodes(draft.payload.output.metadataMode),
-        [draft],
+            : activeNodes(draft, requestedNodeId),
+        [draft, requestedNodeId],
     )
     const fallbackNode = draft !== null && nodes.includes(draft.currentNodeId)
         ? draft.currentNodeId
-        : 'metadata'
+        : nodes[0] ?? 'prompt'
     const nodeId = requestedNodeId !== null && nodes.includes(requestedNodeId)
         ? requestedNodeId
         : draft === null
@@ -1375,7 +1444,6 @@ export function GuidedSingleImage() {
     }
     const canVisit = (target: GuidedSingleImageNodeId): boolean => {
         const hasPrompt = positive.trim().length > 0
-        if (!nodes.includes(target)) return false
         if (target === 'model') return true
         if (target === 'prompt') return draft.payload.model !== null
         if (target === 'resolution') return draft.payload.model !== null && hasPrompt
@@ -1477,14 +1545,20 @@ export function GuidedSingleImage() {
         if (previous === undefined) navigate('/guided-preview')
         else void goTo(previous)
     }
+    const costModel = draft.payload.model ?? DEFAULT_NAI_IMAGE_MODEL
+    const pricingBasis = resolveAnlasPricingBasis({
+        model: costModel,
+        activeCredentialsAreOpus,
+    })
     const estimatedAnlas = draft.payload.resolution === null
         ? 0
         : calculateAnlasCost({
+            model: costModel,
             width: draft.payload.resolution.width,
             height: draft.payload.resolution.height,
             steps: draft.payload.generation.steps,
             imageCount: 1,
-            pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+            pricingBasis,
         })
 
     const submit = async () => {
@@ -1493,7 +1567,7 @@ export function GuidedSingleImage() {
         try {
             const estimatedAt = new Date().toISOString()
             const costConsent = createAnlasCostConsentSnapshot({
-                pricingBasis: activeCredentialsAreOpus ? 'all-active-opus' : 'paid',
+                pricingBasis,
                 estimatedAnlas,
                 maxAnlas: estimatedAnlas,
                 estimatedAt,
@@ -1571,7 +1645,7 @@ export function GuidedSingleImage() {
     const stepCopy = {
         model: {
             title: t('guided.single.steps.model.title', '어떤 모델을 사용할까요?'),
-            description: t('guided.single.steps.model.description', '처음이라면 지시를 잘 따르고 표현 범위가 넓은 V4.5 Full을 권해요.'),
+            description: t('guided.single.steps.model.description', '처음이라면 자연어 이해와 표현 범위가 가장 넓은 V5 Full을 권해요.'),
         },
         prompt: {
             title: t('guided.single.steps.prompt.title', '어떤 이미지를 만들고 싶나요?'),
@@ -1627,13 +1701,35 @@ export function GuidedSingleImage() {
                 <ModelStep
                     draft={draft}
                     disabled={locked}
-                    onSelect={model => { void patchPayload({ model }).catch(() => undefined) }}
+                    onSelect={model => {
+                        setConsented(false)
+                        void commitMutation(current => ({
+                            payload: {
+                                ...current.payload,
+                                model,
+                                generation: {
+                                    ...current.payload.generation,
+                                    scheduler: isNovelAiV5Model(model)
+                                        ? 'karras'
+                                        : current.payload.generation.scheduler,
+                                    variety: isNovelAiV5Model(model)
+                                        ? false
+                                        : current.payload.generation.variety,
+                                    transparentBackground: isNovelAiV5Model(model)
+                                        ? current.payload.generation.transparentBackground ?? false
+                                        : false,
+                                },
+                            },
+                        })).catch(() => undefined)
+                    }}
                 />
             )}
             {nodeId === 'prompt' && (
                 <PromptStep
+                    model={draft.payload.model}
                     positive={positive}
                     negative={negative}
+                    transparentBackground={draft.payload.generation.transparentBackground ?? false}
                     characterPrompts={characterPrompts}
                     incomingImport={incomingImport}
                     disabled={locked}
@@ -1650,6 +1746,18 @@ export function GuidedSingleImage() {
                         setNegative(value)
                         schedulePromptSave()
                     }}
+                    onTransparentBackgroundChange={value => {
+                        setConsented(false)
+                        void commitMutation(current => ({
+                            payload: {
+                                ...current.payload,
+                                generation: {
+                                    ...current.payload.generation,
+                                    transparentBackground: value,
+                                },
+                            },
+                        })).catch(() => undefined)
+                    }}
                     onCharacterPromptsChange={value => {
                         setConsented(false)
                         characterPromptsRef.current = value
@@ -1663,7 +1771,7 @@ export function GuidedSingleImage() {
                     draft={draft}
                     disabled={locked}
                     estimatedAnlas={estimatedAnlas}
-                    pricingBasis={activeCredentialsAreOpus ? 'all-active-opus' : 'paid'}
+                    pricingBasis={pricingBasis}
                     onSelect={(width, height) => {
                         setConsented(false)
                         void patchPayload({ resolution: { width, height } }).catch(() => undefined)

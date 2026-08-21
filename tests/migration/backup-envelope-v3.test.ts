@@ -23,6 +23,7 @@ import {
 } from '@/lib/auto-backup'
 import { prepareStoreSnapshotRestore } from '@/lib/store-snapshots'
 import type { BackupStoragePort } from '@/lib/indexed-db'
+import { GENERATION_PRESET_STORE_VERSION } from '@/lib/composition/preset-store-migration'
 import { loadFixtureJson } from '../helpers'
 
 class MemoryStorage implements BackupStoragePort {
@@ -148,7 +149,7 @@ describe('Backup Envelope v3', () => {
     it('accepts the current generation preset persistence version', () => {
         const source = rawBackup()
         source['nai-blue-presets'] = {
-            version: 3,
+            version: GENERATION_PRESET_STORE_VERSION,
             state: { presets: [], activePresetId: 'default' },
         }
         const envelope = createBackupEnvelopeV3(source, {
