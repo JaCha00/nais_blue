@@ -24,11 +24,13 @@
 1. **기본 프롬프트**: 공통 그림체, 배경, 카메라, 조명, 인물 관계를 소유한다.
 2. **캐릭터 프롬프트**: 해당 인물의 외형, 의상, 자세, 행동, 대사만 소유한다.
 3. **캐릭터 위치**: 화면 배치와 대사 귀속을 위한 공간 앵커다.
-4. 구조는 `[SECTION]`과 따옴표 없는 `key: value`를 사용한다. 큰따옴표는 실제 렌더링할 텍스트에만 사용한다.
+4. 구조는 대괄호 없는 `SECTION:`과 따옴표 없는 `key: value`를 사용한다. 큰따옴표는 실제 렌더링할 텍스트에만 사용한다.
 5. 공통 artist 태그와 스타일 지문은 기본 프롬프트에 한 번만 둔다.
 
 ### 가중치와 배치 규칙
 
+- 대괄호는 구조 표지가 아니라 약화 가중치로 해석될 수 있다. 프롬프트 제목에 `[SECTION]`을 사용하지 않고 `SECTION:`만 사용한다.
+- 중괄호도 강화 가중치이므로 구조 표지로 사용하지 않는다. `[]`, `{}`, `::`는 의도한 가중치에만 쓴다.
 - 가중 대상이 숫자로 끝나면 닫는 `::` 앞에 공백을 둔다. `2::year 2026::`는 분리될 수 있으므로 `2::year 2026 ::`로 입력한다.
 - 수치 가중치는 최대 `3`까지만 사용한다. 먼저 무가중과 `2`를 비교하고, `3`은 효과가 부족할 때만 시험한다.
 - `year 2026`은 일차적으로 시대감 편향으로 취급한다. 긴 프롬프트 속에서 그림체 고정 장치로 작동한다고 가정하지 않는다.
@@ -178,44 +180,44 @@ X01에서는 Undesired Content의 `text`를 제거하고 수동 `text:`를 사�
 ```text
 high complexity, depthness, faux traditional media, clean lineart, varied line weight, flat color, muted color, limited palette, subtle paper texture, modern Korean webtoon style, 1girl, solo
 
-[CHARACTER]
+CHARACTER:
 identity: a young adult woman in her mid twenties
 hair: short indigo hair
 eyes: balanced amber eyes with the same upper-eyelid design
 clothing: cream trench coat and coral-red scarf
 held object: transparent umbrella
 
-[COMPOSITION]
+COMPOSITION:
 canvas: portrait
 framing: cowboy shot
 camera: slightly low three-quarter view
 face: turned three quarters toward the viewer with both eyes visible
 character anchor: 42 percent from the left and 56 percent from the top
 
-[SCENE_TOPOLOGY]
+SCENE TOPOLOGY:
 foreground: the woman stands beneath the station roof on a damp platform
 midground right: one old illuminated vending machine stands behind the woman
 background left: the open platform edge, railway tracks, and the dark sea remain visible
 architecture: weathered wooden beams connect the roof, wall, bench, and platform into one plausible station structure
 
-[WEATHER_BOUNDARY]
+WEATHER BOUNDARY:
 exposed zone: rain falls beyond the roof edge and remains visible against the sea
 sheltered zone: calm air beneath the roof with damp footprints and shallow puddles
 boundary cue: the roof edge clearly separates falling rain outside from the sheltered platform
 
-[MOTION]
+MOTION:
 wind direction: from screen left to screen right
 scarf: the two scarf ends flow toward screen right in one clean arc
 hair: only the tips move slightly toward screen right while the hairstyle remains readable
 stable shapes: the coat and umbrella retain clear silhouettes
 
-[LIGHTING]
+LIGHTING:
 ambient: cool deep-navy evening light fills the station
 source: the vending machine at screen right emits warm-ivory light
 direction: the warm light travels from screen right toward the woman
 target: a narrow warm rim appears only on the right contour of her cream coat
 
-[STYLE_UNITY]
+STYLE UNITY:
 brush family: use one clean ink-brush family throughout the image
 line hierarchy: medium lines for the face and clothing, thinner lines for the background
 face construction: contemporary webtoon proportions with balanced eyes, a subtle nose bridge, and natural adult features
