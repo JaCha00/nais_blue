@@ -4,6 +4,7 @@ Tag analysis using WD14 Tagger (ONNX Runtime CPU-only)
 Background removal is handled via cloud API (BRIA-RMBG-2.0) in the frontend.
 """
 from dataclasses import asdict
+from datetime import datetime, timezone
 import asyncio
 import os
 import sys
@@ -30,7 +31,7 @@ import pandas as pd
 from huggingface_hub import hf_hub_download
 from asset_plan_preview import router as asset_plan_preview_router
 from asset_postprocess import router as asset_postprocess_router
-from danbooru_tags import verify_prompt
+from danbooru_tags import DANBOORU_TAGS_ENDPOINT, verify_prompt
 from r2_deploy import router as r2_deploy_router
 
 
@@ -252,7 +253,11 @@ def verify_danbooru_prompt(request: DanbooruVerifyPromptRequest):
         ok_threshold=request.ok_threshold,
         fuzzy_limit=request.fuzzy_limit,
     )
-    return {"results": [asdict(result) for result in results]}
+    return {
+        "results": [asdict(result) for result in results],
+        "source": DANBOORU_TAGS_ENDPOINT,
+        "asOf": datetime.now(timezone.utc).isoformat(),
+    }
 
 @app.get("/download-status")
 def get_download_status():

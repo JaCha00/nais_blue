@@ -1,4 +1,12 @@
-import { useState, useRef, useEffect, useId, Fragment, KeyboardEvent, useCallback } from 'react'
+import {
+    useState,
+    useRef,
+    useEffect,
+    useId,
+    Fragment,
+    KeyboardEvent,
+    useCallback,
+} from 'react'
 import { createPortal } from 'react-dom'
 import EditorExport from 'react-simple-code-editor'
 import { getCaretCoordinates } from '@/utils/caret-coords'
@@ -29,6 +37,11 @@ interface AutocompleteTextareaProps {
     readOnly?: boolean
     id?: string
     ariaLabel?: string
+    onPromptContextMenu?: (context: {
+        value: string
+        selectionStart: number
+        selectionEnd: number
+    }) => void
 }
 
 // Single source of truth for Typography to ensure Textarea and Pre match perfectly.
@@ -49,6 +62,7 @@ export function AutocompleteTextarea({
     placeholder,
     id,
     ariaLabel,
+    onPromptContextMenu,
     ...props
 }: AutocompleteTextareaProps) {
     const generatedId = useId()
@@ -564,6 +578,18 @@ export function AutocompleteTextarea({
                     }}
                     onKeyUp={scrollToCaret} // Handle arrow keys
                     onKeyDown={handleKeyDown}
+                    onContextMenu={(event) => {
+                        if (!(event.target instanceof HTMLTextAreaElement)) return
+                        textareaRef.current = event.target
+                        // The context action works from the exact visible text,
+                        // so commit any debounced edit before its owner snapshots it.
+                        flushPendingChange()
+                        onPromptContextMenu?.({
+                            value: event.target.value,
+                            selectionStart: event.target.selectionStart,
+                            selectionEnd: event.target.selectionEnd,
+                        })
+                    }}
 
                     placeholder={placeholder}
                     aria-label={ariaLabel ?? placeholder}

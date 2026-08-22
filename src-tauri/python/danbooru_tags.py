@@ -47,7 +47,7 @@ _FRAGMENT_RE = re.compile(r"^<[^<>]+>$")
 _SEPARATOR_RE = re.compile(r"(?:,|;(?!\|)|\n)+")
 _SPACE_RE = re.compile(r"\s+")
 _UNDERSCORE_RE = re.compile(r"_+")
-_BRACKET_TRANSLATION = str.maketrans("", "", "{}[]()")
+_BRACKET_TRANSLATION = str.maketrans("", "", "{}[]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +65,7 @@ class TagVerifyResult:
     raw: str
     normalized: str
     postCount: int | None
+    exactMatch: bool | None
     status: TagStatus
     suggestions: list[Suggestion] = field(default_factory=list)
     error: str | None = None
@@ -104,6 +105,8 @@ def normalize_tag(raw: str) -> str:
 
     tag = tag.translate(_BRACKET_TRANSLATION)
     tag = tag.strip().lower()
+    if tag.startswith("artist:"):
+        tag = tag.removeprefix("artist:").strip()
     tag = _SPACE_RE.sub("_", tag)
     tag = _UNDERSCORE_RE.sub("_", tag)
     return tag.strip("_")
@@ -133,6 +136,7 @@ def verify_tag(
             raw=raw,
             normalized="",
             postCount=None,
+            exactMatch=None,
             status="SKIPPED",
             suggestions=[],
             error=None,
@@ -144,6 +148,7 @@ def verify_tag(
             raw=raw,
             normalized=normalized,
             postCount=None,
+            exactMatch=None,
             status="RENAMED",
             suggestions=[],
             error=None,
@@ -151,21 +156,22 @@ def verify_tag(
         )
 
     try:
-        post_count = exact_search(normalized)
-        if post_count >= ok_threshold:
-            status: TagStatus = "OK"
-            suggestions: list[Suggestion] = []
-        elif post_count > 0:
-            status = "LOW"
-            suggestions = []
-        else:
+        exact_match, post_count = _exact_lookup(normalized)
+        if not exact_match:
             status = "GHOST"
             suggestions = list(fuzzy_search(normalized, fuzzy_limit))
+        elif post_count >= ok_threshold:
+            status: TagStatus = "OK"
+            suggestions: list[Suggestion] = []
+        else:
+            status = "LOW"
+            suggestions = []
 
         return TagVerifyResult(
             raw=raw,
             normalized=normalized,
             postCount=post_count,
+            exactMatch=exact_match,
             status=status,
             suggestions=suggestions,
             error=None,
@@ -175,6 +181,7 @@ def verify_tag(
             raw=raw,
             normalized=normalized,
             postCount=None,
+            exactMatch=None,
             status="ERROR",
             suggestions=[],
             error=str(error),
@@ -221,14 +228,21 @@ def verify_prompt(
 def exact_search(normalized_tag: str) -> int:
     """Return the exact Danbooru post count for a normalized tag."""
 
+    return _exact_lookup(normalized_tag)[1]
+
+
+@lru_cache(maxsize=CACHE_SIZE)
+def _exact_lookup(normalized_tag: str) -> tuple[bool, int]:
+    """Preserve the difference between a real zero-count tag and no exact tag."""
+
     data = _request_tags({"search[name]": normalized_tag, "limit": "1"})
     exact_match = next(
         (item for item in data if str(item.get("name", "")) == normalized_tag),
         None,
     )
     if exact_match is None:
-        return 0
-    return _as_int(exact_match.get("post_count"))
+        return False, 0
+    return True, _as_int(exact_match.get("post_count"))
 
 
 @lru_cache(maxsize=CACHE_SIZE)

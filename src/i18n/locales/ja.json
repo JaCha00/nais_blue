@@ -1960,6 +1960,24 @@
         "fragment": "フラグメント",
         "imageReference": "イメージ参照"
     },
+    "promptFrequencySort": {
+        "title": "Danbooru頻度で並べ替え",
+        "description": "正式タグを投稿数の少ない順に安定ソートします。投稿数はNovelAIの学習量ではなく、再現性の参考値です。",
+        "loading": "Danbooruタグの頻度を確認しています。",
+        "notEnoughTags": "並べ替えるには、カンマ区切りのタグを2つ以上選択してください。",
+        "sortableCount": "照会 {{count}}件",
+        "movedCount": "移動 {{count}}件",
+        "unresolvedCount": "未登録・失敗 {{count}}件",
+        "fallback": "ライブ照会できなかった{{count}}件を同梱スナップショットで補完しました。",
+        "original": "元の順序",
+        "sorted": "並べ替え後",
+        "alreadySorted": "この基準ですでに並んでいます。",
+        "apply": "並べ替えを適用",
+        "sortAll": "全体を頻度順に並べ替え",
+        "undo": "並べ替えを元に戻す",
+        "contextTitle": "プロンプトの並べ替え",
+        "sortSelection": "選択範囲を頻度順に並べ替え"
+    },
     "characterPromptDialog": {
         "title": "キャラクター管理",
         "description": "キャラクタープリセットを選択して配置してください。",

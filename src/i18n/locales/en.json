@@ -1961,6 +1961,24 @@
         "fragment": "Fragment",
         "imageReference": "Image Reference"
     },
+    "promptFrequencySort": {
+        "title": "Sort by Danbooru frequency",
+        "description": "Stably sorts official tags from lower to higher post count. Post counts are a reproducibility proxy, not NovelAI training totals.",
+        "loading": "Checking Danbooru tag frequencies.",
+        "notEnoughTags": "Select at least two comma-separated tags to sort.",
+        "sortableCount": "Looked up {{count}}",
+        "movedCount": "Moved {{count}}",
+        "unresolvedCount": "Unknown or failed {{count}}",
+        "fallback": "Used the bundled snapshot for {{count}} tag(s) that could not be checked live.",
+        "original": "Original order",
+        "sorted": "Sorted order",
+        "alreadySorted": "This prompt is already sorted by this rule.",
+        "apply": "Apply sort",
+        "sortAll": "Sort all by frequency",
+        "undo": "Undo sort",
+        "contextTitle": "Sort prompt",
+        "sortSelection": "Sort selection by frequency"
+    },
     "characterPromptDialog": {
         "title": "Character Manager",
         "description": "Select and position character presets.",

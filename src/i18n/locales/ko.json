@@ -1969,6 +1969,24 @@
         "fragment": "조각",
         "imageReference": "이미지 참조"
     },
+    "promptFrequencySort": {
+        "title": "Danbooru 빈도 정렬",
+        "description": "정식 태그를 게시글 수가 적은 순서부터 안정 정렬합니다. 게시글 수는 NAI 학습량이 아닌 재현 강도 참고값입니다.",
+        "loading": "Danbooru 태그 빈도를 확인하는 중입니다.",
+        "notEnoughTags": "정렬하려면 쉼표로 구분된 태그가 두 개 이상 필요합니다.",
+        "sortableCount": "조회 {{count}}개",
+        "movedCount": "이동 {{count}}개",
+        "unresolvedCount": "미등록·실패 {{count}}개",
+        "fallback": "실조회하지 못한 {{count}}개 태그는 번들 스냅샷으로 보완했습니다.",
+        "original": "원래 순서",
+        "sorted": "정렬 순서",
+        "alreadySorted": "이미 이 기준으로 정렬되어 있습니다.",
+        "apply": "정렬 적용",
+        "sortAll": "전체 빈도 정렬",
+        "undo": "정렬 되돌리기",
+        "contextTitle": "프롬프트 정렬",
+        "sortSelection": "선택 영역 빈도 정렬"
+    },
     "characterPromptDialog": {
         "title": "캐릭터 관리",
         "description": "캐릭터 프리셋을 선택하고 배치하세요.",
