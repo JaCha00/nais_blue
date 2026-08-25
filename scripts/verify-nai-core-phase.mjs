@@ -243,7 +243,7 @@ function runPayloadFixtureChecks() {
     assert.equal(built.input, '1girl, silver hair, very aesthetic, masterpiece, no text')
     assert.equal(built.parameters.negative_prompt.startsWith('lowres, artistic error'), true)
     assert.equal(built.parameters.negative_prompt.includes('nsfw'), false)
-    assert.equal(built.parameters.skip_cfg_above_sigma, null)
+    assert.equal(built.parameters.skip_cfg_above_sigma, undefined)
     assert.equal(built.parameters.tag_hint_qt, 1)
     assert.equal(built.parameters.tag_hint_uc_preset, 2)
     assert.equal(built.parameters.tag_hint_transparent_background, false)
