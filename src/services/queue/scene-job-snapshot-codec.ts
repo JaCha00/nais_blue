@@ -133,6 +133,8 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
         || !['embedded', 'sidecar-only', 'strip-and-sidecar', 'strip-only'].includes(candidate.sceneWorkflow.outputContext.metadataMode)
         || typeof candidate.sceneWorkflow.outputContext.presetName !== 'string'
         || typeof candidate.sceneWorkflow.outputContext.sceneName !== 'string'
+        || (candidate.sceneWorkflow.outputContext.sceneSubfoldersEnabled !== undefined
+            && typeof candidate.sceneWorkflow.outputContext.sceneSubfoldersEnabled !== 'boolean')
         || (candidate.sceneWorkflow.outputContext.presetPathSegments !== undefined
             && (!Array.isArray(candidate.sceneWorkflow.outputContext.presetPathSegments)
                 || !candidate.sceneWorkflow.outputContext.presetPathSegments.every(segment => typeof segment === 'string')))

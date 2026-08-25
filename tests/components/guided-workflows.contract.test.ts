@@ -167,6 +167,18 @@ describe('Guided single-image production contract', () => {
         expect(sheet).not.toContain('DndContext')
     })
 
+    it('does not erase a legacy Variety+ choice when Guided switches to V5', async () => {
+        const [single, batch] = await Promise.all([
+            source('src/presentation/workflow/GuidedSingleImage.tsx'),
+            source('src/presentation/workflow/GuidedBatchImages.tsx'),
+        ])
+
+        for (const workflow of [single, batch]) {
+            expect(workflow).not.toMatch(/variety:\s*isNovelAiV5Model\(model\)/)
+            expect(workflow).toContain('...current.payload.generation')
+        }
+    })
+
     it('reuses one foldered prompt-module picker across single, batch, and scene editors', async () => {
         const [single, advanced, scene, picker, creator, editor] = await Promise.all([
             source('src/presentation/workflow/GuidedSingleImage.tsx'),

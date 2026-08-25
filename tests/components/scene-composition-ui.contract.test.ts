@@ -14,8 +14,9 @@ describe('Scene composition minimal UI contract', () => {
         expect(sceneMode).toContain('simplified')
         expect(sceneMode).not.toContain('data-testid="scene-bulk-recipe"')
         expect(sceneDetail).toContain('<ScenePromptEditor')
-        expect(editor).toContain("type PromptSlot = keyof ScenePromptConfig")
+        expect(editor).toContain("type PromptSlot = Exclude<keyof ScenePromptConfig")
         expect(editor).toContain("t('scene.copyMainPrompts'")
+        expect(editor).toContain('<SceneCharacterCaptionsEditor')
         expect(sceneMode).toContain('<SceneCompositionCardMeta')
     })
 
@@ -54,6 +55,18 @@ describe('Scene composition minimal UI contract', () => {
         expect(autocomplete).toContain('-webkit-text-fill-color: oklch(var(--muted-foreground))')
     })
 
+    it('edits an ordered Scene-owned character caption array instead of flattening characters', async () => {
+        const editor = await source('src/components/scene/SceneCharacterCaptionsEditor.tsx')
+        const sceneBuilder = await source('src/lib/scene-generation/build-scene-params.ts')
+        const legacyBuilder = await source('src/lib/scene-generation/legacy-build-scene-params.ts')
+
+        expect(editor).toContain('data-testid="scene-character-caption"')
+        expect(editor).toContain('updateSceneCharacterCaptions')
+        expect(editor).toContain("t('scene.addCharacterCaption'")
+        expect(sceneBuilder).toContain('resolveSceneCharacterCaptions(scene)')
+        expect(legacyBuilder).toContain('resolveSceneCharacterCaptions(scene)')
+    })
+
     it('owns resolution per scene and fits every generated preview without cropping', async () => {
         const sceneDetail = await source('src/pages/SceneDetail.tsx')
         const editor = await source('src/components/scene/ScenePromptEditor.tsx')
@@ -67,5 +80,16 @@ describe('Scene composition minimal UI contract', () => {
         expect(sceneDetail).toContain('data-scene-preview-resolution={resolutionLabel}')
         expect(sceneDetail).toContain('className="h-full w-full object-contain"')
         expect(sceneDetail).not.toContain('thumbnailLayout={thumbnailLayout}')
+    })
+
+    it('keeps a saved V4.5 Variety+ choice hidden while a scene uses V5', async () => {
+        const editor = await source('src/components/scene/ScenePromptEditor.tsx')
+
+        expect(editor).toContain('const isV5 = isNovelAiV5Model(generation.model)')
+        expect(editor).toMatch(/\{!isV5 && \([\s\S]*?generation\.variety/)
+        expect(editor).not.toMatch(/generation\.variety[\s\S]*?disabled=\{isV5\}/)
+        expect(editor).toContain("value={isV5 ? 'karras' : generation.scheduler}")
+        expect(editor).toContain('disabled={disabled || isV5}')
+        expect(editor).toContain("t('parameters.v5Karras'")
     })
 })

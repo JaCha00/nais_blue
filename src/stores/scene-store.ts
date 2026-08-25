@@ -37,6 +37,16 @@ export interface ScenePromptConfig {
     characterNegative: string
 }
 
+export interface SceneCharacterCaption {
+    id: string
+    name?: string
+    prompt: string
+    negative: string
+    enabled: boolean
+    /** NovelAI character-caption coordinates use normalized 0..1 image space. */
+    position: { x: number; y: number }
+}
+
 export interface SceneGenerationConfig {
     model: string
     steps: number
@@ -84,6 +94,10 @@ export interface SceneCard {
     scenePrompt: string
     /** Scene-owned prompt module. `scenePrompt` remains as an import/sync compatibility alias. */
     prompts?: Partial<ScenePromptConfig>
+    /** Scene-owned character captions. Undefined promotes the legacy scalar character slots. */
+    characterCaptions?: SceneCharacterCaption[]
+    /** Enables per-caption coordinates for this Scene only. */
+    characterPositionEnabled?: boolean
     /** Scene-owned generation parameters; Main prompt-panel changes never mutate this snapshot. */
     generation?: Partial<SceneGenerationConfig>
     queueCount: number  // Number of images to generate
@@ -108,6 +122,8 @@ export interface SceneFolderTemplate {
     sourceSceneName: string
     scenePrompt: string
     prompts: ScenePromptConfig
+    characterCaptions?: SceneCharacterCaption[]
+    characterPositionEnabled?: boolean
     generation: SceneGenerationConfig
     width?: number
     height?: number
@@ -131,6 +147,32 @@ export function resolveScenePrompts(scene: Pick<SceneCard, 'scenePrompt' | 'prom
     }
 }
 
+/**
+ * New Scene cards own a caption array. Legacy cards are promoted lazily so old
+ * persisted presets keep generating the same single character without a data migration.
+ */
+export function resolveSceneCharacterCaptions(
+    scene: Pick<SceneCard, 'id' | 'name' | 'scenePrompt' | 'prompts' | 'characterCaptions'>,
+): SceneCharacterCaption[] {
+    if (scene.characterCaptions !== undefined) {
+        return scene.characterCaptions.map(caption => ({
+            ...caption,
+            position: { ...caption.position },
+        }))
+    }
+
+    const prompts = resolveScenePrompts(scene)
+    if (!prompts.character.trim() && !prompts.characterNegative.trim()) return []
+    return [{
+        id: `scene:${scene.id}:character`,
+        name: scene.name,
+        prompt: prompts.character,
+        negative: prompts.characterNegative,
+        enabled: true,
+        position: { x: 0.5, y: 0.5 },
+    }]
+}
+
 export function resolveSceneGeneration(scene: Pick<SceneCard, 'generation'>): SceneGenerationConfig {
     return {
         ...DEFAULT_SCENE_GENERATION,
@@ -148,9 +190,12 @@ export interface SceneCompositionRuntimeRecord {
     errors: readonly DeepReadonly<CompositionEngineIssue>[]
 }
 
-export function hasSceneCompositionOverrides(scene: Pick<SceneCard, 'scenePrompt' | 'prompts' | 'generation' | 'width' | 'height' | 'compositionRef'>): boolean {
+export function hasSceneCompositionOverrides(scene: Pick<SceneCard, 'id' | 'name' | 'scenePrompt' | 'prompts' | 'characterCaptions' | 'generation' | 'width' | 'height' | 'compositionRef'>): boolean {
     const ref = scene.compositionRef
     return Object.values(resolveScenePrompts(scene)).some(value => value.trim().length > 0)
+        || resolveSceneCharacterCaptions(scene).some(caption => (
+            caption.prompt.trim().length > 0 || caption.negative.trim().length > 0
+        ))
         || scene.generation !== undefined
         || scene.width !== undefined
         || scene.height !== undefined
@@ -207,6 +252,7 @@ interface SceneState {
     renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
     updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
+    updateSceneCharacterCaptions: (presetId: string, sceneId: string, captions: readonly SceneCharacterCaption[], positionEnabled?: boolean) => void
     updateSceneSettings: (presetId: string, sceneId: string, settings: { width?: number, height?: number, excludePinned?: boolean, metadataMode?: MetadataMode, generationFolderId?: string | undefined }) => void
     updateSceneGeneration: (presetId: string, sceneId: string, generation: Partial<SceneGenerationConfig>) => void
     consumeSceneGenerationSeed: (presetId: string, sceneId: string) => number
@@ -340,11 +386,22 @@ function normalizeQueuedFileNames(values: readonly string[], count: number): str
     return normalized.some(Boolean) ? normalized : undefined
 }
 
+/** Clones nested coordinates so duplicated Scenes and folder defaults never share mutable caption state. */
+function cloneSceneCharacterCaptions(
+    captions: readonly SceneCharacterCaption[] | undefined,
+): SceneCharacterCaption[] | undefined {
+    return captions?.map(caption => ({
+        ...caption,
+        position: { ...caption.position },
+    }))
+}
+
 /** Template cloning isolates folder defaults from later edits to either the source or created Scene. */
 function cloneSceneFolderTemplate(template: SceneFolderTemplate): SceneFolderTemplate {
     return {
         ...template,
         prompts: { ...template.prompts },
+        characterCaptions: cloneSceneCharacterCaptions(template.characterCaptions),
         generation: { ...template.generation },
         ...(template.compositionRef === undefined
             ? {}
@@ -358,6 +415,8 @@ function sceneFolderTemplateFromScene(scene: SceneCard): SceneFolderTemplate {
         sourceSceneName: scene.name,
         scenePrompt: scene.scenePrompt,
         prompts: resolveScenePrompts(scene),
+        characterCaptions: resolveSceneCharacterCaptions(scene),
+        characterPositionEnabled: scene.characterPositionEnabled === true,
         generation: resolveSceneGeneration(scene),
         ...(scene.width === undefined ? {} : { width: scene.width }),
         ...(scene.height === undefined ? {} : { height: scene.height }),
@@ -522,6 +581,7 @@ export const useSceneStore = create<SceneState>()(
                             queueCount: 0,
                             images: [],
                             prompts: scene.prompts ? { ...scene.prompts } : undefined,
+                            characterCaptions: cloneSceneCharacterCaptions(scene.characterCaptions),
                             generation: scene.generation ? { ...scene.generation } : undefined,
                             compositionRef: scene.compositionRef ? structuredClone(scene.compositionRef) : undefined,
                             createdAt: Date.now(),
@@ -588,6 +648,10 @@ export const useSceneStore = create<SceneState>()(
                             name: name || `씬 ${p.scenes.length + 1}`,
                             scenePrompt: template?.scenePrompt ?? '',
                             prompts: template ? { ...template.prompts } : { ...DEFAULT_SCENE_PROMPTS },
+                            characterCaptions: template
+                                ? cloneSceneCharacterCaptions(template.characterCaptions) ?? []
+                                : [],
+                            characterPositionEnabled: template?.characterPositionEnabled === true,
                             generation: template ? { ...template.generation } : { ...DEFAULT_SCENE_GENERATION },
                             queueCount: 0,
                             images: [],
@@ -631,6 +695,10 @@ export const useSceneStore = create<SceneState>()(
                             queueCount: 0,
                             queuedFileNames: undefined,
                             images: [],
+                            prompts: scene.prompts ? { ...scene.prompts } : undefined,
+                            characterCaptions: cloneSceneCharacterCaptions(scene.characterCaptions),
+                            generation: scene.generation ? { ...scene.generation } : undefined,
+                            compositionRef: scene.compositionRef ? structuredClone(scene.compositionRef) : undefined,
                             createdAt: Date.now(),
                         }
                         const index = p.scenes.findIndex(s => s.id === sceneId)
@@ -748,6 +816,32 @@ export const useSceneStore = create<SceneState>()(
                                 prompts,
                                 // Sync and older exports understand this field; generation no longer reads it directly.
                                 scenePrompt: prompts.additional,
+                            }
+                        }),
+                    }
+                    : preset),
+                sceneCompositionResults: withoutSceneCompositionResult(state.sceneCompositionResults, sceneId),
+            })),
+            updateSceneCharacterCaptions: (presetId, sceneId, nextCaptions, positionEnabled) => set(state => ({
+                presets: state.presets.map(preset => preset.id === presetId
+                    ? {
+                        ...preset,
+                        scenes: preset.scenes.map(scene => {
+                            if (scene.id !== sceneId) return scene
+                            const characterCaptions = cloneSceneCharacterCaptions(nextCaptions) ?? []
+                            const legacyCaption = characterCaptions.find(caption => caption.enabled)
+                            return {
+                                ...scene,
+                                characterCaptions,
+                                ...(positionEnabled === undefined
+                                    ? {}
+                                    : { characterPositionEnabled: positionEnabled }),
+                                // Scalar aliases keep old exports readable; generation uses the array above.
+                                prompts: {
+                                    ...resolveScenePrompts(scene),
+                                    character: legacyCaption?.prompt ?? '',
+                                    characterNegative: legacyCaption?.negative ?? '',
+                                },
                             }
                         }),
                     }
@@ -1429,6 +1523,12 @@ export const useSceneStore = create<SceneState>()(
                             ...s,
                             id: s.id || crypto.randomUUID(), // Ensure ID exists
                             images: s.images || [],
+                            prompts: s.prompts ? { ...s.prompts } : undefined,
+                            characterCaptions: Array.isArray(s.characterCaptions)
+                                ? cloneSceneCharacterCaptions(s.characterCaptions)
+                                : undefined,
+                            generation: s.generation ? { ...s.generation } : undefined,
+                            compositionRef: s.compositionRef ? structuredClone(s.compositionRef) : undefined,
                             excludePinned: Boolean(s.excludePinned)
                         }))
                         // If importing a full preset object, try to preserve its ID if unique, otherwise gen new

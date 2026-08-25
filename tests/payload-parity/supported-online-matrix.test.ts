@@ -31,7 +31,7 @@ interface ModelPayloadContract {
     qualitySuffix: string
     negativeBase: string
     ucPreset0Prefix: string
-    skipCfgAboveSigma: number | null
+    skipCfgAboveSigma?: number | null
     v5TagHints?: {
         tag_hint_qt: number
         tag_hint_uc_preset: number
@@ -93,7 +93,8 @@ function expectedForCase(
     expected.input = positive
     expected.parameters.image_format = matrixCase.format
     expected.parameters.negative_prompt = negative
-    expected.parameters.skip_cfg_above_sigma = contract.skipCfgAboveSigma
+    if (contract.skipCfgAboveSigma === undefined) delete expected.parameters.skip_cfg_above_sigma
+    else expected.parameters.skip_cfg_above_sigma = contract.skipCfgAboveSigma
     expected.parameters.v4_prompt = {
         ...expected.parameters.v4_prompt as Record<string, unknown>,
         caption: {

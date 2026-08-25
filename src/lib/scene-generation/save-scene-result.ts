@@ -51,6 +51,8 @@ export interface SaveSceneResultOptions {
         autoR2UploadProfileId?: string | null
         r2Bucket?: string | null
         r2Prefix?: string | null
+        /** Missing on older queued jobs and therefore defaults to the legacy ON behavior. */
+        sceneSubfoldersEnabled?: boolean
         /** Scene-wide or FIFO job-specific filename template captured before execution. */
         filenameTemplate?: string
     }
@@ -68,7 +70,7 @@ const toDataUrl = (imageData: string, mimeType: string): string =>
 const toBase64 = (imageData: string): string =>
     imageData.replace(/^data:image\/[^;]+;base64,/, '')
 
-function sceneOutputDirectory(params: {
+export function resolveSceneOutputDirectory(params: {
     sceneSavePath: string
     useAbsoluteScenePath: boolean
     presetName: string
@@ -78,6 +80,7 @@ function sceneOutputDirectory(params: {
     rotationCharacterFolderName?: string
     exactDirectory?: string
     exactCapabilityFallbackDirectory?: string
+    sceneSubfoldersEnabled?: boolean
 }): { directory: string; capabilityFallbackDirectory: string; nestedSegments: string[] } {
     if (params.exactDirectory?.trim()) {
         return {
@@ -94,7 +97,11 @@ function sceneOutputDirectory(params: {
     const safeCharacterName = params.rotationCharacterFolderName
         ? sanitizePathComponent(params.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(params.rotationCharacterId)
-    const nestedSegments = [...safePresetPath, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
+    const nestedSegments = [
+        ...safePresetPath,
+        ...(safeCharacterName ? [safeCharacterName] : []),
+        ...(params.sceneSubfoldersEnabled === false ? [] : [safeSceneName]),
+    ]
     const relativeRoot = sanitizePathComponent(params.sceneSavePath || 'NAI_Blue_Scene', 'NAI_Blue_Scene')
     const relativeDirectory = [relativeRoot, ...nestedSegments].join('/')
     const requestedRoot = params.sceneSavePath.replace(/[\\/]+$/, '')
@@ -178,7 +185,7 @@ export async function saveSceneResult(
     // OutputWriter owns metadata sanitization for every workflow and both strip modes.
     const dataUrl = rawDataUrl
     const binaryData = Uint8Array.from(atob(toBase64(imageData)), c => c.charCodeAt(0))
-    const destination = sceneOutputDirectory({
+    const destination = resolveSceneOutputDirectory({
         sceneSavePath: ctx.sceneSavePath,
         useAbsoluteScenePath,
         presetName,
@@ -188,6 +195,7 @@ export async function saveSceneResult(
         rotationCharacterFolderName: ctx.rotationCharacterFolderName,
         exactDirectory: options.outputContext?.directory,
         exactCapabilityFallbackDirectory: options.outputContext?.capabilityFallbackDirectory,
+        sceneSubfoldersEnabled: options.outputContext?.sceneSubfoldersEnabled,
     })
     let sessionInvalid = false
     let finalizeRejected = false

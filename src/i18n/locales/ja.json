@@ -2216,12 +2216,8 @@
         "cfgRescale": "CFG Rescale",
         "sampler": "Sampler",
         "scheduler": "Scheduler",
-        "smea": "SMEA",
-        "smeaHelp": "大きな画像の全体へ注意を行き渡らせます。",
-        "smeaDyn": "SMEA DYN",
-        "smeaDynHelp": "生成中に SMEA を動的に調整します。",
         "variety": "Variety+",
-        "varietyHelp": "生成画像ごとの変化を大きくします。",
+        "varietyHelp": "構図が固まった後にCFGを適用し、多様性と彩度を高めます。プロンプトとの一致度が下がる場合があります。",
         "qualityToggle": "品質タグを追加",
         "qualityToggleHelp": "選択したモデルの公式品質タグをプロンプトへ追加します。",
         "ucPreset": "除外内容プリセット",
@@ -2233,7 +2229,6 @@
         "recommended": "おすすめ",
         "legacy": "旧バージョン",
         "v5Karras": "V5 では Karras を自動的に使用します。",
-        "v5VarietyPending": "V5 の Variety+ は、公式設定が確認されるまで無効です。",
         "transparentBackground": "背景を透過",
         "transparentBackgroundHelp": "背景なしですぐ使える透過画像を生成します。"
     },
@@ -2541,7 +2536,9 @@
                 "scene": {
                     "label": "Scene出力フォルダ",
                     "help": "デフォルト: Pictures/NAI_Blue_Scene",
-                    "selectFolder": "Sceneフォルダを選択"
+                    "selectFolder": "Sceneフォルダを選択",
+                    "subfolders": "Sceneごとにサブフォルダーを作成",
+                    "subfoldersHelp": "オフにするとSceneごとのフォルダーを作らず、すべての結果を親フォルダーへ直接保存します。"
                 },
                 "styleLab": {
                     "label": "StyleLab出力フォルダ",

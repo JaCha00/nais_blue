@@ -4,6 +4,7 @@ import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import {
+    resolveSceneCharacterCaptions,
     resolveSceneGeneration,
     resolveScenePrompts,
     useSceneStore,
@@ -125,23 +126,26 @@ export async function buildLegacySceneGenerationParams(
     const excludedPinnedIds = rotation.active && scene.excludePinned
         ? new Set(rotation.pinnedCharacterIds)
         : null
+    const sceneCharacterCaptions = resolveSceneCharacterCaptions(scene)
     const processedCharacterPrompts = rotation.active
         ? await Promise.all(characterState.characters
             .filter(character => character.enabled && !excludedPinnedIds?.has(character.id))
             .map(async character => ({
+                stableId: character.id,
                 prompt: await fragmentSession.process(character.prompt),
                 negative: await fragmentSession.process(character.negative),
                 enabled: true,
                 position: character.position,
             })))
-        : scenePrompts.character.trim() || scenePrompts.characterNegative.trim()
-            ? [{
-                prompt: await fragmentSession.process(scenePrompts.character),
-                negative: await fragmentSession.process(scenePrompts.characterNegative),
+        : await Promise.all(sceneCharacterCaptions
+            .filter(character => character.enabled)
+            .map(async character => ({
+                stableId: character.id,
+                prompt: await fragmentSession.process(character.prompt),
+                negative: await fragmentSession.process(character.negative),
                 enabled: true,
-                position: { x: 0.5, y: 0.5 },
-            }]
-            : []
+                position: character.position,
+            })))
 
     let finalWidth = roundTo64(scene.width || genState.selectedResolution.width)
     let finalHeight = roundTo64(scene.height || genState.selectedResolution.height)
@@ -203,7 +207,9 @@ export async function buildLegacySceneGenerationParams(
             vibeStrength: vibeImagesWithData.map(img => img.strength),
             preEncodedVibes: vibeImagesWithData.map(img => img.encodedVibe || null),
             characterPrompts: processedCharacterPrompts,
-            characterPositionEnabled: rotation.active ? characterState.positionEnabled : false,
+            characterPositionEnabled: rotation.active
+                ? characterState.positionEnabled
+                : scene.characterPositionEnabled === true,
             imageFormat,
             metadataMode: effectiveMetadataMode,
             qualityToggle: sceneGeneration.qualityToggle,

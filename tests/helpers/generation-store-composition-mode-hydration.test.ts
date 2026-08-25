@@ -76,4 +76,46 @@ describe('Main composition mode persistence', () => {
             expectUnresolved()
         }
     })
+
+    it('preserves a V4.5 Variety+ choice while switching through V5', async () => {
+        persistence.value = null
+        persistence.writes = []
+
+        vi.resetModules()
+        const { useGenerationStore } = await import('@/stores/generation-store')
+        useGenerationStore.setState({
+            model: 'nai-diffusion-4-5-full',
+            variety: true,
+        })
+
+        useGenerationStore.getState().setModel('nai-diffusion-5-full')
+        expect(useGenerationStore.getState()).toMatchObject({
+            model: 'nai-diffusion-5-full',
+            variety: true,
+        })
+
+        useGenerationStore.getState().setModel('nai-diffusion-4-5-full')
+        expect(useGenerationStore.getState().variety).toBe(true)
+    })
+
+    it('keeps a latent Variety+ choice when a V5 draft is rehydrated', async () => {
+        persistence.value = JSON.stringify({
+            state: {
+                model: 'nai-diffusion-5-full',
+                variety: true,
+                scheduler: 'karras',
+            },
+            version: 0,
+        })
+        persistence.writes = []
+
+        vi.resetModules()
+        const { useGenerationStore } = await import('@/stores/generation-store')
+        await useGenerationStore.persist.rehydrate()
+
+        expect(useGenerationStore.getState()).toMatchObject({
+            model: 'nai-diffusion-5-full',
+            variety: true,
+        })
+    })
 })

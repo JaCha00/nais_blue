@@ -32,7 +32,7 @@ describe('NovelAI model catalog', () => {
             },
         })
         expect(NAI_IMAGE_MODELS[1]).toMatchObject({
-            inpaintId: 'nai-diffusion-4-5-full-inpainting',
+            inpaintId: 'nai-diffusion-5-curated-inpainting',
             capabilities: { enhanceMax: false, maxCharacters: 32 },
         })
     })
@@ -60,12 +60,12 @@ describe('NovelAI model catalog', () => {
         expect(isNovelAiV5Model('nai-diffusion-5-curated-inpainting')).toBe(true)
         expect(getNovelAiModelProfile('nai-diffusion-5-curated')).toMatchObject({
             modelId: 'nai-diffusion-5-curated',
-            inpaintModelId: 'nai-diffusion-4-5-full-inpainting',
+            inpaintModelId: 'nai-diffusion-5-curated-inpainting',
             capabilities: { transparentBackground: true, vibeTransfer: false },
         })
         expect(getNovelAiModelProfile('nai-diffusion-5-curated-inpainting')).toMatchObject({
             modelId: 'nai-diffusion-5-curated',
-            inpaintModelId: 'nai-diffusion-4-5-full-inpainting',
+            inpaintModelId: 'nai-diffusion-5-curated-inpainting',
         })
         expect(getNovelAiModelProfile('nai-diffusion-4-5-full-inpainting')).toMatchObject({
             modelId: 'nai-diffusion-4-5-full',

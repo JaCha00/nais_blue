@@ -31,6 +31,22 @@ const sourceScene: SceneCard = {
         negative: 'negative',
         characterNegative: 'character negative',
     },
+    characterCaptions: [{
+        id: 'caption:heroine',
+        name: 'Heroine',
+        prompt: 'character',
+        negative: 'character negative',
+        enabled: true,
+        position: { x: 0.25, y: 0.75 },
+    }, {
+        id: 'caption:partner',
+        name: 'Partner',
+        prompt: 'male partner',
+        negative: '',
+        enabled: true,
+        position: { x: 0.8, y: 0.75 },
+    }],
+    characterPositionEnabled: true,
     generation: {
         model: 'nai-diffusion-4-5-full',
         steps: 35,
@@ -79,6 +95,8 @@ describe('Scene folder management', () => {
         expect(created).toMatchObject({
             name: 'Created from default',
             prompts: sourceScene.prompts,
+            characterCaptions: sourceScene.characterCaptions,
+            characterPositionEnabled: true,
             generation: sourceScene.generation,
             width: 1024,
             height: 1024,
@@ -88,6 +106,8 @@ describe('Scene folder management', () => {
         })
         expect(created?.id).not.toBe(sourceScene.id)
         expect(created?.prompts).not.toBe(sourceScene.prompts)
+        expect(created?.characterCaptions).not.toBe(sourceScene.characterCaptions)
+        expect(created?.characterCaptions?.[0].position).not.toBe(sourceScene.characterCaptions?.[0].position)
         expect(created?.generation).not.toBe(sourceScene.generation)
     })
 

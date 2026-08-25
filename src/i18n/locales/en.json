@@ -2217,12 +2217,8 @@
         "cfgRescale": "CFG Rescale",
         "sampler": "Sampler",
         "scheduler": "Scheduler",
-        "smea": "SMEA",
-        "smeaHelp": "Improves attention across larger images.",
-        "smeaDyn": "SMEA DYN",
-        "smeaDynHelp": "Dynamically adjusts SMEA during generation.",
         "variety": "Variety+",
-        "varietyHelp": "Increases variation between generated images.",
+        "varietyHelp": "Applies CFG after the image structure forms to improve diversity and saturation. Prompt relevance may decrease.",
         "qualityToggle": "Add Quality Tags",
         "qualityToggleHelp": "Adds the selected model's official quality tags to the prompt.",
         "ucPreset": "Undesired Content preset",
@@ -2234,7 +2230,6 @@
         "recommended": "Recommended",
         "legacy": "Previous version",
         "v5Karras": "V5 automatically uses the Karras scheduler.",
-        "v5VarietyPending": "V5 Variety+ stays off until its official setting is confirmed.",
         "transparentBackground": "Transparent background",
         "transparentBackgroundHelp": "Creates a transparent image you can use without a background."
     },
@@ -2544,7 +2539,9 @@
                 "scene": {
                     "label": "Scene Output Folder",
                     "help": "Default: Pictures/NAI_Blue_Scene",
-                    "selectFolder": "Select Scene Folder"
+                    "selectFolder": "Select Scene Folder",
+                    "subfolders": "Create a folder for each Scene",
+                    "subfoldersHelp": "Turn this off to save every Scene result directly in its parent folder."
                 },
                 "styleLab": {
                     "label": "Style Lab Output Folder",

@@ -52,7 +52,7 @@ check('exit handler kills only the tracked child handle', includesAll(libRs, [
 ]) && !libRs.includes('tagger-server.exe'))
 check('B Tauri plugin chain is preserved', includesAll(libRs, [
   'tauri_plugin_single_instance::init',
-  'tauri_plugin_updater::Builder::new().build()',
+  'tauri_plugin_updater::Builder::new()',
   'tauri_plugin_process::init()',
 ]) && !libRs.includes(retiredUrlPluginRustModule))
 

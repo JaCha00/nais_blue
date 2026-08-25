@@ -1677,9 +1677,6 @@ export function GuidedBatchImages() {
                                     scheduler: isNovelAiV5Model(model)
                                         ? 'karras'
                                         : current.payload.generation.scheduler,
-                                    variety: isNovelAiV5Model(model)
-                                        ? false
-                                        : current.payload.generation.variety,
                                     transparentBackground: isNovelAiV5Model(model)
                                         ? current.payload.generation.transparentBackground ?? false
                                         : false,

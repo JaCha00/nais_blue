@@ -6,7 +6,7 @@ import {
     ucPresetTagHint,
     type UcPresetIndex,
 } from '@/services/nai/presets'
-import { getNovelAiModelProfile } from '@/services/nai/model-catalog'
+import { getNovelAiModelProfile, isNovelAiV5Model } from '@/services/nai/model-catalog'
 import { assembleV5TextPrompt } from '@/services/nai/text-assembly'
 
 // Release-supported builder authority is V4/V4.5/V5. Retired model identifiers
@@ -86,9 +86,10 @@ export function varietySigma(opts: {
     height: number
 }): number | null {
     if (!opts.variety) return null
-    // V5 exposes Variety+ in the current frontend, but its coefficient has not
-    // been published. Fail closed instead of applying the unrelated V4 value.
-    if (opts.model.startsWith('nai-diffusion-5-')) return null
+    // NovelAI exposes CFG Delay only for V4/V4.5. V5 removes the wire key
+    // entirely, while supported legacy models scale their documented base
+    // coefficient to the requested image area.
+    if (isNovelAiV5Model(opts.model)) return null
     const coef = opts.model.includes('nai-diffusion-4-5') ? 58 : 19
     return coef * Math.sqrt((opts.width * opts.height) / (832 * 1216))
 }
@@ -98,6 +99,8 @@ export function buildGenerateImagePayload(
     opts: BuildOptions = {},
 ): NaiImagePayload {
     const presetModel = getNovelAiModelProfile(req.model)?.modelId ?? req.model
+    const isV5 = isNovelAiV5Model(presetModel)
+    const skipCfgAboveSigma = varietySigma({ ...req, model: presetModel })
     const prompt = mergeQualityTags(
         removeComments(req.prompt),
         req.qualityToggle,
@@ -138,13 +141,15 @@ export function buildGenerateImagePayload(
             legacy: false,
             legacy_v3_extend: false,
             dynamic_thresholding: false,
-            skip_cfg_above_sigma: varietySigma(req),
+            // The production client omits CFG Delay when the selected model does
+            // not support it or when the supported V4/V4.5 control is disabled.
+            ...(skipCfgAboveSigma === null ? {} : { skip_cfg_above_sigma: skipCfgAboveSigma }),
             add_original_image: true,
             prefer_brownian: true,
             ucPreset: req.ucPreset,
             use_coords: req.useCoords,
             qualityToggle: req.qualityToggle,
-            ...(req.model.startsWith('nai-diffusion-5-')
+            ...(isV5
                 ? {
                     tag_hint_qt: qualityPresetTagHint(req.qualityToggle),
                     tag_hint_uc_preset: ucPresetTagHint(req.ucPreset),
@@ -154,8 +159,8 @@ export function buildGenerateImagePayload(
                     ...(req.transparentBackground ? { straight_alpha: true } : {}),
                 }
                 : {}),
-            ...(req.smea === undefined ? {} : { sm: req.smea }),
-            ...(req.smeaDyn === undefined ? {} : { sm_dyn: req.smeaDyn }),
+            // Keep imported SMEA values in application state for backward compatibility,
+            // but NovelAI's current V4/V4.5/V5 client removes both legacy wire flags.
             autoSmea: false,
             controlnet_strength: 1,
             normalize_reference_strength_multiple: true,

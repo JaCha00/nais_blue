@@ -21,7 +21,6 @@
       "qualitySuffix": "very aesthetic, masterpiece, no text",
       "negativeBase": "lowres",
       "ucPreset0Prefix": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
-      "skipCfgAboveSigma": null,
       "v5TagHints": {
         "tag_hint_qt": 1,
         "tag_hint_uc_preset": 2,
@@ -34,7 +33,6 @@
       "qualitySuffix": "very aesthetic, masterpiece, no text",
       "negativeBase": "lowres",
       "ucPreset0Prefix": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page",
-      "skipCfgAboveSigma": null,
       "v5TagHints": {
         "tag_hint_qt": 1,
         "tag_hint_uc_preset": 2,

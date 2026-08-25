@@ -34,12 +34,13 @@ interface AddGenerationFolderInput {
     readonly useAbsolutePath?: boolean
 }
 
-interface SettingsState {
+export interface SettingsState {
     // Save settings
     savePath: string
     useAbsolutePath: boolean  // If true, savePath is absolute path; if false, relative to Pictures folder
     sceneSavePath: string
     useAbsoluteScenePath: boolean
+    sceneSubfoldersEnabled: boolean
     styleLabSavePath: string
     useAbsoluteStyleLabPath: boolean
     toolsSavePath: string
@@ -80,6 +81,7 @@ interface SettingsState {
     // Actions
     setSavePath: (path: string, useAbsolute?: boolean) => void
     setSceneSavePath: (path: string, useAbsolute?: boolean) => void
+    setSceneSubfoldersEnabled: (enabled: boolean) => void
     setStyleLabSavePath: (path: string, useAbsolute?: boolean) => void
     setToolsSavePath: (path: string, useAbsolute?: boolean) => void
     setAutoSave: (autoSave: boolean) => void
@@ -140,6 +142,54 @@ function normalizeGenerationFolderPatch(folder: GenerationFolder, patch: Generat
     }
 }
 
+const SETTINGS_PERSIST_VERSION = 1
+
+/**
+ * Reconciles the legacy savePath authority with the shared folder model before
+ * Zustand exposes hydrated settings. This preserves custom drives across app
+ * updates and supplies new settings without overwriting explicit old values.
+ */
+export function normalizePersistedSettingsState(persistedState: unknown): Partial<SettingsState> {
+    const persisted = typeof persistedState === 'object' && persistedState !== null && !Array.isArray(persistedState)
+        ? persistedState as Partial<SettingsState>
+        : {}
+    const savePath = typeof persisted.savePath === 'string' && persisted.savePath.trim()
+        ? persisted.savePath
+        : 'NAI_Blue_Output'
+    const useAbsolutePath = typeof persisted.useAbsolutePath === 'boolean'
+        ? persisted.useAbsolutePath
+        : false
+    const validFolders = Array.isArray(persisted.generationFolders)
+        ? persisted.generationFolders.filter(isGenerationFolder)
+        : []
+    const hasDefaultFolder = validFolders.some(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID)
+    const generationFolders = (hasDefaultFolder
+        ? validFolders
+        : [createDefaultGenerationFolder(savePath, useAbsolutePath), ...validFolders])
+        .map(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID
+            ? {
+                ...folder,
+                rootDirectory: savePath,
+                useAbsolutePath,
+            }
+            : folder)
+    const activeGenerationFolderId = typeof persisted.activeGenerationFolderId === 'string'
+        && generationFolders.some(folder => folder.id === persisted.activeGenerationFolderId)
+        ? persisted.activeGenerationFolderId
+        : DEFAULT_GENERATION_FOLDER_ID
+
+    return {
+        ...persisted,
+        savePath,
+        useAbsolutePath,
+        sceneSubfoldersEnabled: typeof persisted.sceneSubfoldersEnabled === 'boolean'
+            ? persisted.sceneSubfoldersEnabled
+            : true,
+        generationFolders,
+        activeGenerationFolderId,
+    }
+}
+
 export const useSettingsStore = create<SettingsState>()(
     persist(
         (set) => ({
@@ -147,6 +197,7 @@ export const useSettingsStore = create<SettingsState>()(
             useAbsolutePath: false,  // Default: relative to Pictures folder
             sceneSavePath: 'NAI_Blue_Scene',
             useAbsoluteScenePath: false,
+            sceneSubfoldersEnabled: true,
             styleLabSavePath: 'nai-blue-style',
             useAbsoluteStyleLabPath: false,
             toolsSavePath: 'nai-blue-tools',
@@ -184,6 +235,7 @@ export const useSettingsStore = create<SettingsState>()(
                 sceneSavePath,
                 useAbsoluteScenePath: useAbsolute ?? false
             }),
+            setSceneSubfoldersEnabled: (sceneSubfoldersEnabled) => set({ sceneSubfoldersEnabled }),
             setStyleLabSavePath: (styleLabSavePath, useAbsolute) => set({
                 styleLabSavePath,
                 useAbsoluteStyleLabPath: useAbsolute ?? false
@@ -319,24 +371,18 @@ export const useSettingsStore = create<SettingsState>()(
         {
             name: 'nai-blue-settings',
             storage: createJSONStorage(() => indexedDBStorage),
+            version: SETTINGS_PERSIST_VERSION,
+            migrate: persistedState => normalizePersistedSettingsState(persistedState) as SettingsState,
+            merge: (persistedState, currentState) => ({
+                ...currentState,
+                ...normalizePersistedSettingsState(persistedState),
+            }),
             onRehydrateStorage: () => (state, error) => {
                 if (error) {
                     console.error('[SettingsStore] Hydration failed:', error)
                     return
                 }
-                if (state) {
-                    const validFolders = Array.isArray(state.generationFolders)
-                        ? state.generationFolders.filter(isGenerationFolder)
-                        : []
-                    if (!validFolders.some(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID)) {
-                        validFolders.unshift(createDefaultGenerationFolder(state.savePath, state.useAbsolutePath))
-                    }
-                    state.generationFolders = validFolders
-                    if (!validFolders.some(folder => folder.id === state.activeGenerationFolderId)) {
-                        state.activeGenerationFolderId = DEFAULT_GENERATION_FOLDER_ID
-                    }
-                    console.log('[SettingsStore] Hydrated successfully')
-                }
+                if (state) console.log('[SettingsStore] Hydrated successfully')
             },
         }
     )

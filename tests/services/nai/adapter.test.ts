@@ -92,7 +92,7 @@ describe('adaptGenerationParams V5 capability boundary', () => {
         await expect(adaptGenerationParams('token', params({ model: 'nai-diffusion-5-full' })))
             .resolves.toMatchObject({ request: { model: 'nai-diffusion-5-full-inpainting' } })
         await expect(adaptGenerationParams('token', params({ model: 'nai-diffusion-5-curated' })))
-            .resolves.toMatchObject({ request: { model: 'nai-diffusion-4-5-full-inpainting' } })
+            .resolves.toMatchObject({ request: { model: 'nai-diffusion-5-curated-inpainting' } })
     })
 
     it('allows 32 V5 character prompts and rejects the 33rd before transport work', async () => {

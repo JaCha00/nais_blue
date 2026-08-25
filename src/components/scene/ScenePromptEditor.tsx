@@ -16,8 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/use-toast'
 import { SceneOutputNamingEditor } from '@/components/scene/SceneOutputNamingEditor'
+import { SceneCharacterCaptionsEditor } from '@/components/scene/SceneCharacterCaptionsEditor'
 import { cn, generateRandomSeed } from '@/lib/utils'
 import { AVAILABLE_MODELS } from '@/stores/generation-store'
+import { isNovelAiV5Model } from '@/services/nai/model-catalog'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import {
@@ -42,7 +44,7 @@ const SAMPLERS = [
 
 const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
 
-type PromptSlot = keyof ScenePromptConfig
+type PromptSlot = Exclude<keyof ScenePromptConfig, 'character' | 'characterNegative'>
 
 interface ScenePromptEditorProps {
     scene: SceneCard
@@ -62,7 +64,9 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
     const fontSize = useSettingsStore(state => state.promptFontSize)
     const prompts = resolveScenePrompts(scene)
     const generation = resolveSceneGeneration(scene)
+    const isV5 = isNovelAiV5Model(generation.model)
     const updatePrompts = useSceneStore(state => state.updateScenePrompts)
+    const updateCharacterCaptions = useSceneStore(state => state.updateSceneCharacterCaptions)
     const updateGeneration = useSceneStore(state => state.updateSceneGeneration)
     const updateSettings = useSceneStore(state => state.updateSceneSettings)
     const resolution: Resolution = {
@@ -76,13 +80,12 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
     const detailPrompt = useGenerationDraftStore(state => state.detailPrompt)
     const negativePrompt = useGenerationDraftStore(state => state.negativePrompt)
     const mainCharacters = useCharacterPromptStore(state => state.characters)
+    const mainCharacterPositionEnabled = useCharacterPromptStore(state => state.positionEnabled)
 
     const promptSlots: Array<{ id: PromptSlot; label: string; placeholder: string; negative?: boolean }> = [
         { id: 'base', label: t('prompt.base', '베이스 프롬프트'), placeholder: t('prompt.basePlaceholder', '베이스 프롬프트') },
         { id: 'additional', label: t('prompt.additional', '추가 프롬프트'), placeholder: t('prompt.additionalPlaceholder', '추가 프롬프트') },
-        { id: 'character', label: t('prompt.character', '캐릭터 프롬프트'), placeholder: t('scene.characterPromptPlaceholder', '캐릭터 프롬프트') },
         { id: 'negative', label: t('prompt.negative', '네거티브 프롬프트'), placeholder: t('prompt.negativePlaceholder', '네거티브 프롬프트'), negative: true },
-        { id: 'characterNegative', label: t('scene.characterNegativePrompt', '캐릭터 네거티브'), placeholder: t('scene.characterNegativePromptPlaceholder', '캐릭터 네거티브 프롬프트'), negative: true },
     ]
     const active = promptSlots.find(slot => slot.id === activeSlot) ?? promptSlots[0]
 
@@ -105,10 +108,16 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
         updatePrompts(presetId, scene.id, {
             base: basePrompt,
             additional: combinedAdditional,
-            character: enabledCharacters.map(character => character.prompt).filter(Boolean).join(', '),
             negative: negativePrompt,
-            characterNegative: enabledCharacters.map(character => character.negative).filter(Boolean).join(', '),
         })
+        updateCharacterCaptions(presetId, scene.id, enabledCharacters.map(character => ({
+            id: character.id,
+            name: character.name,
+            prompt: character.prompt,
+            negative: character.negative,
+            enabled: true,
+            position: { ...character.position },
+        })), mainCharacterPositionEnabled)
         toast({ description: t('scene.mainPromptsCopied', '메인 프롬프트를 이 씬에 복사했습니다.') })
     }
 
@@ -175,6 +184,8 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                 />
             </div>
 
+            <SceneCharacterCaptionsEditor scene={scene} presetId={presetId} disabled={disabled} />
+
             <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-2 xl:grid-cols-5">
                 <label className="space-y-1">
                     <span className="text-xs font-medium text-muted-foreground">{t('parameters.model', '모델')}</span>
@@ -231,24 +242,34 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                     </label>
                     <label className="space-y-1">
                         <span className="text-xs text-muted-foreground">{t('parameters.scheduler', '스케줄러')}</span>
-                        <Select value={generation.scheduler} onValueChange={value => patchGeneration('scheduler', value)} disabled={disabled}>
+                        <Select
+                            value={isV5 ? 'karras' : generation.scheduler}
+                            onValueChange={value => patchGeneration('scheduler', value)}
+                            disabled={disabled || isV5}
+                        >
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>{SCHEDULERS.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
                         </Select>
+                        {isV5 && (
+                            <span className="text-xs text-muted-foreground">
+                                {t('parameters.v5Karras', 'V5 요청은 Karras로 자동 맞춰져요.')}
+                            </span>
+                        )}
                     </label>
                     <label className="space-y-1">
                         <span className="text-xs text-muted-foreground">{t('parameters.ucPreset', 'UC Preset')}</span>
                         <Input type="number" value={generation.ucPreset} min={0} max={4} onChange={event => setNumeric('ucPreset', event.target.value, 0, 4)} disabled={disabled} />
                     </label>
-                    {([
-                        ['variety', t('parameters.variety', 'Variety+')],
-                        ['qualityToggle', t('parameters.qualityToggle', '품질 태그')],
-                    ] as const).map(([key, label]) => (
-                        <div key={key} className="flex min-h-10 items-center justify-between rounded-control border border-border px-3">
-                            <Label>{label}</Label>
-                            <Switch checked={generation[key]} onChange={event => patchGeneration(key, event.target.checked)} disabled={disabled} />
+                    {!isV5 && (
+                        <div className="flex min-h-10 items-center justify-between rounded-control border border-border px-3">
+                            <Label>{t('parameters.variety', 'Variety+')}</Label>
+                            <Switch checked={generation.variety} onChange={event => patchGeneration('variety', event.target.checked)} disabled={disabled} />
                         </div>
-                    ))}
+                    )}
+                    <div className="flex min-h-10 items-center justify-between rounded-control border border-border px-3">
+                        <Label>{t('parameters.qualityToggle', '품질 태그')}</Label>
+                        <Switch checked={generation.qualityToggle} onChange={event => patchGeneration('qualityToggle', event.target.checked)} disabled={disabled} />
+                    </div>
                 </div>
                 <SceneOutputNamingEditor presetId={presetId} scene={scene} disabled={disabled} />
             </details>

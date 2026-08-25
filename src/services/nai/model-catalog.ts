@@ -80,7 +80,7 @@ export const NAI_IMAGE_MODELS = [
     },
     {
         id: 'nai-diffusion-5-curated',
-        inpaintId: 'nai-diffusion-4-5-full-inpainting',
+        inpaintId: 'nai-diffusion-5-curated-inpainting',
         name: 'NAI Diffusion V5 Curated',
         description: 'V5 Curated는 엄선된 범위 안에서 안정적인 결과와 스트리밍 작업에 잘 맞아요.',
         recommended: false,
@@ -115,9 +115,6 @@ export const NAI_IMAGE_MODELS = [
 
 const MODEL_IDS = new Set(NAI_IMAGE_MODELS.map(model => model.id))
 const INPAINT_MODEL_TO_BASE = new Map(NAI_IMAGE_MODELS.map(model => [model.inpaintId, model.id]))
-const COMPATIBLE_INPAINT_MODEL_TO_BASE = new Map([
-    ['nai-diffusion-5-curated-inpainting', 'nai-diffusion-5-curated'],
-])
 
 export function isSelectableNaiImageModel(id: string): boolean {
     return MODEL_IDS.has(id)
@@ -137,7 +134,7 @@ export function isNovelAiV5Model(model: string): boolean {
 export function getNovelAiModelProfile(model: string): NovelAiModelProfile | undefined {
     const baseId = MODEL_IDS.has(model)
         ? model
-        : COMPATIBLE_INPAINT_MODEL_TO_BASE.get(model) ?? INPAINT_MODEL_TO_BASE.get(model)
+        : INPAINT_MODEL_TO_BASE.get(model)
     if (baseId === undefined) return undefined
     const baseModel = NAI_IMAGE_MODELS.find(candidate => candidate.id === baseId)
     if (baseModel === undefined) return undefined
@@ -153,8 +150,6 @@ export function normalizeNaiImageModelId(model: string | undefined): string | un
     const raw = model.trim()
     if (raw.length === 0) return undefined
     if (MODEL_IDS.has(raw)) return raw
-    const compatibleBaseId = COMPATIBLE_INPAINT_MODEL_TO_BASE.get(raw)
-    if (compatibleBaseId !== undefined) return compatibleBaseId
     const baseId = INPAINT_MODEL_TO_BASE.get(raw)
     if (baseId !== undefined) return baseId
 

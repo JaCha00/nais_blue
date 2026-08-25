@@ -114,7 +114,9 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
         useAbsolutePath,
         sceneSavePath,
         useAbsoluteScenePath,
+        sceneSubfoldersEnabled,
         setSceneSavePath,
+        setSceneSubfoldersEnabled,
         styleLabSavePath,
         useAbsoluteStyleLabPath,
         setStyleLabSavePath,
@@ -1071,6 +1073,21 @@ export default function Settings({ guidedSection }: SettingsProps = {}) {
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
                                         )}
+                                    </div>
+                                    <div className="flex items-center justify-between gap-4 rounded-control border border-border/60 p-3">
+                                        <div className="space-y-0.5">
+                                            <label htmlFor="scene-subfolders" className="text-sm font-medium">
+                                                {t('settingsPage.save.outputFolders.scene.subfolders', 'Create a folder for each Scene')}
+                                            </label>
+                                            <p className="text-xs text-muted-foreground">
+                                                {t('settingsPage.save.outputFolders.scene.subfoldersHelp', 'Turn this off to save every Scene result directly in its parent folder.')}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            id="scene-subfolders"
+                                            checked={sceneSubfoldersEnabled}
+                                            onChange={(event) => setSceneSubfoldersEnabled(event.target.checked)}
+                                        />
                                     </div>
                                 </div>
 

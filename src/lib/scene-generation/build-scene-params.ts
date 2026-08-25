@@ -21,6 +21,7 @@ import {
     useRotationStore,
 } from '@/stores/character-rotation-store'
 import {
+    resolveSceneCharacterCaptions,
     resolveSceneGeneration,
     resolveScenePrompts,
     useSceneStore,
@@ -221,18 +222,13 @@ async function createSceneCompositionSnapshot(
     const excludedPinnedIds = rotation.active && scene.excludePinned
         ? new Set(rotation.pinnedCharacterIds)
         : null
+    const sceneCharacterCaptions = resolveSceneCharacterCaptions(scene)
     const characters = rotation.active
         ? characterPromptState.characters.filter(character => !excludedPinnedIds?.has(character.id))
-        : scenePrompts.character.trim() || scenePrompts.characterNegative.trim()
-            ? [{
-                id: `scene:${scene.id}:character`,
-                name: scene.name,
-                prompt: scenePrompts.character,
-                negative: scenePrompts.characterNegative,
-                enabled: true,
-                position: { x: 0.5, y: 0.5 },
-            }]
-            : []
+        : sceneCharacterCaptions
+    const characterPositionEnabled = rotation.active
+        ? characterPromptState.positionEnabled
+        : scene.characterPositionEnabled === true
     const rotationSelection = rotation.active ? getRuntimeSelection(rotation, seed) : null
     const runtimeCharacterOverride = rotationSelection === null
         ? undefined
@@ -277,7 +273,7 @@ async function createSceneCompositionSnapshot(
             negative: scenePrompts.negative,
         },
         characters,
-        positionEnabled: rotation.active ? characterPromptState.positionEnabled : false,
+        positionEnabled: characterPositionEnabled,
         references: referenceSnapshots(referenceState.characterImages, referenceState.vibeImages),
         params: {
             model: sceneGeneration.model,
@@ -298,7 +294,7 @@ async function createSceneCompositionSnapshot(
             sourceMode: 'text-to-image',
             strength: generation.strength,
             noise: generation.noise,
-            characterPositionEnabled: rotation.active ? characterPromptState.positionEnabled : false,
+            characterPositionEnabled,
         },
         output: {
             autoSave: true,

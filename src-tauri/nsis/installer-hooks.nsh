@@ -1,14 +1,9 @@
 !macro NSIS_HOOK_PREINSTALL
-  ; Kill any running tagger-server.exe processes before installation
-  ; Use /T to kill child processes as well
+  ; The updater exits the tracked main process before NSIS starts. Only the
+  ; untracked tagger sidecar needs a defensive cleanup before files are replaced.
   nsExec::ExecToLog 'taskkill /F /T /IM tagger-server.exe'
-  ; Wait a moment for processes to fully terminate
   Sleep 500
-  ; Also kill the main app if running (to ensure clean install/update)
-  nsExec::ExecToLog 'taskkill /F /T /IM NAI-Blue.exe'
-  ; Wait for file handles to be released
-  Sleep 1500
-  
+
   ; Disable reboot flag - prevent Windows from requesting restart
   SetRebootFlag false
 !macroend

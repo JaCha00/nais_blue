@@ -275,6 +275,7 @@ async function processSceneWithSlot(
             presetName: preset?.name || 'Default',
             presetPathSegments: getScenePresetPathSegments(sceneState.presets, ctx.activePresetId),
             sceneName: scene.name,
+            sceneSubfoldersEnabled: settingsSnapshot.sceneSubfoldersEnabled,
             ...(filenameTemplate?.trim() ? { filenameTemplate: filenameTemplate.trim() } : {}),
         }
         const outputContext = generationFolder === null

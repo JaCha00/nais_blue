@@ -313,6 +313,10 @@ function scene(id: string, queueCount: number, overrides: Record<string, unknown
         height: overrides.height ?? 1102,
         excludePinned: overrides.excludePinned ?? false,
         ...(overrides.prompts === undefined ? {} : { prompts: overrides.prompts }),
+        ...(overrides.characterCaptions === undefined ? {} : { characterCaptions: overrides.characterCaptions }),
+        ...(overrides.characterPositionEnabled === undefined
+            ? {}
+            : { characterPositionEnabled: overrides.characterPositionEnabled }),
         ...(overrides.generation === undefined ? {} : { generation: overrides.generation }),
         ...(overrides.compositionRef === undefined ? {} : { compositionRef: overrides.compositionRef }),
         ...(overrides.filenameTemplate === undefined ? {} : { filenameTemplate: overrides.filenameTemplate }),
@@ -772,30 +776,50 @@ describe('Scene Composition v2 caller contract', () => {
         expect(new Set(images.map(image => image.url)).size).toBe(2)
     })
 
-    it('uses Scene-owned prompts and parameters without reading Main draft values', async () => {
+    it.each(['legacy', 'v2'] as const)(
+        'uses multiple Scene-owned V4.5 captions and parameters under %s authority',
+        async sceneCompositionMode => {
         resetRuntime(198, [scene('scene-owned', 1, {
+            width: 1216,
+            height: 832,
             prompts: {
                 base: 'scene base',
                 additional: 'scene additional',
-                character: 'scene character',
+                character: 'legacy alias must not win',
                 negative: 'scene negative',
-                characterNegative: 'scene character negative',
+                characterNegative: 'legacy negative alias must not win',
             },
+            characterCaptions: [{
+                id: 'caption:heroine',
+                name: 'Heroine',
+                prompt: 'scene heroine',
+                negative: 'heroine negative',
+                enabled: true,
+                position: { x: 0.25, y: 0.7 },
+            }, {
+                id: 'caption:partner',
+                name: 'Partner',
+                prompt: 'scene male partner',
+                negative: 'partner negative',
+                enabled: true,
+                position: { x: 0.8, y: 0.7 },
+            }],
+            characterPositionEnabled: true,
             generation: {
-                model: 'nai-diffusion-4-5-curated',
-                steps: 37,
-                cfgScale: 6.2,
-                cfgRescale: 0.25,
-                sampler: 'k_dpmpp_2m',
-                scheduler: 'native',
-                variety: false,
+                model: 'nai-diffusion-4-5-full',
+                steps: 28,
+                cfgScale: 7.2,
+                cfgRescale: 0.1,
+                sampler: 'k_euler',
+                scheduler: 'karras',
+                variety: true,
                 qualityToggle: false,
-                ucPreset: 2,
+                ucPreset: 0,
                 seed: 987654,
                 seedLocked: true,
             },
         })])
-        runtime.useSceneStore.setState({ sceneCompositionMode: 'legacy' })
+        runtime.useSceneStore.setState({ sceneCompositionMode })
         runtime.useGenerationStore.setState({
             basePrompt: 'must not leak',
             additionalPrompt: 'must not leak',
@@ -811,23 +835,60 @@ describe('Scene Composition v2 caller contract', () => {
         expect(runtimeCapture.params[0]).toMatchObject({
             prompt: 'scene base, scene additional',
             negative_prompt: 'scene negative',
-            model: 'nai-diffusion-4-5-curated',
-            steps: 37,
-            cfg_scale: 6.2,
-            cfg_rescale: 0.25,
-            sampler: 'k_dpmpp_2m',
-            scheduler: 'native',
+            model: 'nai-diffusion-4-5-full',
+            width: 1216,
+            height: 832,
+            steps: 28,
+            cfg_scale: 7.2,
+            cfg_rescale: 0.1,
+            sampler: 'k_euler',
+            scheduler: 'karras',
             smea: false,
             smea_dyn: false,
             seed: 987654,
             qualityToggle: false,
-            ucPreset: 2,
+            ucPreset: 0,
+            characterPositionEnabled: true,
         })
-        expect(runtimeCapture.params[0]?.characterPrompts).toEqual([expect.objectContaining({
-            prompt: 'scene character',
-            negative: 'scene character negative',
-        })])
+        expect(runtimeCapture.params[0]?.characterPrompts).toEqual([
+            expect.objectContaining({
+                stableId: 'caption:heroine',
+                prompt: 'scene heroine',
+                negative: 'heroine negative',
+                position: { x: 0.25, y: 0.7 },
+            }),
+            expect.objectContaining({
+                stableId: 'caption:partner',
+                prompt: 'scene male partner',
+                negative: 'partner negative',
+                position: { x: 0.8, y: 0.7 },
+            }),
+        ])
         expect(runtimeCapture.params[0]?.prompt).not.toContain('must not leak')
+        expect(runtimeCapture.params[0]?.characterPrompts?.[0]?.prompt).not.toContain('legacy alias')
+
+        const payload = runtimeCapture.requests[0]?.payload
+        const parameters = payload?.parameters as Record<string, any>
+        expect(payload).toMatchObject({ model: 'nai-diffusion-4-5-full' })
+        expect(parameters).toMatchObject({
+            width: 1216,
+            height: 832,
+            steps: 28,
+            scale: 7.2,
+            cfg_rescale: 0.1,
+            sampler: 'k_euler',
+            noise_schedule: 'karras',
+            use_coords: true,
+        })
+        expect(parameters).not.toHaveProperty('tag_hint_qt')
+        expect(parameters.v4_prompt.caption.char_captions).toEqual([
+            { char_caption: 'scene heroine', centers: [{ x: 0.25, y: 0.7 }] },
+            { char_caption: 'scene male partner', centers: [{ x: 0.8, y: 0.7 }] },
+        ])
+        expect(parameters.v4_negative_prompt.caption.char_captions).toEqual([
+            { char_caption: 'heroine negative', centers: [{ x: 0.25, y: 0.7 }] },
+            { char_caption: 'partner negative', centers: [{ x: 0.8, y: 0.7 }] },
+        ])
     })
 
     it('aborts a streaming body and releases the Scene button lock without output', async () => {

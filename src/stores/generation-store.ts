@@ -932,7 +932,6 @@ export const useGenerationStore = create<GenerationState>()(
                 return {
                     model: nextModel,
                     scheduler: isNovelAiV5Model(nextModel) ? 'karras' : state.scheduler,
-                    variety: isNovelAiV5Model(nextModel) ? false : state.variety,
                     transparentBackground: isNovelAiV5Model(nextModel)
                         ? state.transparentBackground
                         : false,
@@ -960,7 +959,7 @@ export const useGenerationStore = create<GenerationState>()(
                     scheduler: isNovelAiV5Model(nextModel) ? 'karras' : preset.scheduler,
                     smea: preset.smea,
                     smeaDyn: preset.smeaDyn,
-                    variety: isNovelAiV5Model(nextModel) ? false : preset.variety ?? false,
+                    variety: preset.variety ?? false,
                     qualityToggle: preset.qualityToggle ?? true,
                     ucPreset: preset.ucPreset ?? 0,
                     transparentBackground: isNovelAiV5Model(nextModel)
@@ -1979,9 +1978,6 @@ export const useGenerationStore = create<GenerationState>()(
                     state.model = normalizeSelectableGenerationModel(state.model)
                     if (isNovelAiV5Model(state.model)) {
                         state.scheduler = 'karras'
-                        // V5's Variety+ coefficient is not part of the public
-                        // launch contract, so old V4 state must not leak into it.
-                        state.variety = false
                     }
                     state.transparentBackground = isNovelAiV5Model(state.model)
                         ? state.transparentBackground ?? false

@@ -174,6 +174,7 @@ async function enqueueSceneQueueTargetsOnce(
                 presetName: preset.name || 'Default',
                 presetPathSegments: getScenePresetPathSegments(sceneState.presets, preset.id),
                 sceneName: '',
+                sceneSubfoldersEnabled: settings.sceneSubfoldersEnabled,
                 ...(generationFolder === null
                     ? {}
                     : {

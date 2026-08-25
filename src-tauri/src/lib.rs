@@ -881,7 +881,22 @@ pub fn run() {
 
     #[cfg(not(mobile))]
     {
-        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        // The updater process consumes this argument after Tauri exits. NSIS
+        // requires /D to be last; perMachine mode deliberately avoids Tauri's
+        // multi-user initializer, which otherwise overwrites this directory.
+        #[cfg(target_os = "windows")]
+        let updater_builder = match std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(|parent| parent.display().to_string()))
+        {
+            Some(install_directory) => tauri_plugin_updater::Builder::new()
+                .installer_arg(format!("/D={install_directory}")),
+            None => tauri_plugin_updater::Builder::new(),
+        };
+        #[cfg(not(target_os = "windows"))]
+        let updater_builder = tauri_plugin_updater::Builder::new();
+
+        builder = builder.plugin(updater_builder.build());
     }
 
     builder

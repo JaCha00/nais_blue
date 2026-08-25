@@ -108,6 +108,15 @@ describe('Main composition UI contract', () => {
         expect(controls).toContain("pricingBasis: 'paid'")
     })
 
+    it('shows Variety+ only for the legacy models that support CFG Delay', async () => {
+        const promptPanel = await source('src/components/layout/PromptPanel.tsx')
+
+        expect(promptPanel).toMatch(/Variety\+ is a V4\/V4\.5 CFG Delay control[\s\S]*?\{!isV5 && \(/)
+        expect(promptPanel).not.toContain('v5VarietyPending')
+        expect(promptPanel).not.toMatch(/checked=\{variety\}[\s\S]*?disabled=\{isV5\}/)
+        expect(promptPanel).not.toMatch(/setSmea|SMEA DYN|parameters\.smea/)
+    })
+
     it('keeps the shared prompt action cancellable while Style Lab owns the generation store', async () => {
         const [controls, command, shortcuts] = await Promise.all([
             source('src/components/prompt/PromptGenerationControls.tsx'),

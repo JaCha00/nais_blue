@@ -87,8 +87,6 @@ export function PromptPanel() {
     const cfgRescale = useGenerationDraftStore(state => state.cfgRescale)
     const sampler = useGenerationDraftStore(state => state.sampler)
     const scheduler = useGenerationDraftStore(state => state.scheduler)
-    const smea = useGenerationDraftStore(state => state.smea)
-    const smeaDyn = useGenerationDraftStore(state => state.smeaDyn)
     const variety = useGenerationDraftStore(state => state.variety)
     const qualityToggle = useGenerationDraftStore(state => state.qualityToggle)
     const ucPreset = useGenerationDraftStore(state => state.ucPreset)
@@ -105,8 +103,6 @@ export function PromptPanel() {
     const setCfgRescale = useGenerationDraftStore(state => state.setCfgRescale)
     const setSampler = useGenerationDraftStore(state => state.setSampler)
     const setScheduler = useGenerationDraftStore(state => state.setScheduler)
-    const setSmea = useGenerationDraftStore(state => state.setSmea)
-    const setSmeaDyn = useGenerationDraftStore(state => state.setSmeaDyn)
     const setVariety = useGenerationDraftStore(state => state.setVariety)
     const setQualityToggle = useGenerationDraftStore(state => state.setQualityToggle)
     const setUcPreset = useGenerationDraftStore(state => state.setUcPreset)
@@ -450,55 +446,21 @@ export function PromptPanel() {
                                 </div>
                             </div>
 
-                            {/* SMEA & SMEA DYN */}
-                            <div className="flex items-center justify-between pt-2">
-                                <div className="flex flex-col gap-1">
-                                    <Label className="cursor-pointer" onClick={() => setSmea(!smea)}>
-                                        {t('parameters.smea')}
-                                    </Label>
-                                    <span className="text-xs text-muted-foreground">{t('parameters.smeaHelp')}</span>
+                            {/* Variety+ is a V4/V4.5 CFG Delay control; V5 omits it from the provider request. */}
+                            {!isV5 && (
+                                <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-1">
+                                        <Label className="cursor-pointer" onClick={() => setVariety(!variety)}>
+                                            {t('parameters.variety', 'Variety+')}
+                                        </Label>
+                                        <span className="text-xs text-muted-foreground">{t('parameters.varietyHelp')}</span>
+                                    </div>
+                                    <Switch
+                                        checked={variety}
+                                        onChange={(e) => setVariety(e.target.checked)}
+                                        aria-label={t('parameters.variety', 'Variety+')}
+                                    />
                                 </div>
-                                <Switch
-                                    checked={smea}
-                                    onChange={(e) => setSmea(e.target.checked)}
-                                    aria-label={t('parameters.smea')}
-                                />
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                                <div className="flex flex-col gap-1">
-                                    <Label className="cursor-pointer" onClick={() => setSmeaDyn(!smeaDyn)}>
-                                        {t('parameters.smeaDyn')}
-                                    </Label>
-                                    <span className="text-xs text-muted-foreground">{t('parameters.smeaDynHelp')}</span>
-                                </div>
-                                <Switch
-                                    checked={smeaDyn}
-                                    disabled={!smea}
-                                    onChange={(e) => setSmeaDyn(e.target.checked)}
-                                    aria-label={t('parameters.smeaDyn')}
-                                />
-                            </div>
-
-                            {/* Variety+ */}
-                            <div className="flex items-center justify-between">
-                                <div className="flex flex-col gap-1">
-                                    <Label className="cursor-pointer" onClick={() => setVariety(!variety)}>
-                                        {t('parameters.variety', 'Variety+')}
-                                    </Label>
-                                    <span className="text-xs text-muted-foreground">{t('parameters.varietyHelp')}</span>
-                                </div>
-                                <Switch
-                                    checked={variety}
-                                    disabled={isV5}
-                                    onChange={(e) => setVariety(e.target.checked)}
-                                    aria-label={t('parameters.variety', 'Variety+')}
-                                />
-                            </div>
-                            {isV5 && (
-                                <p className="-mt-3 text-xs leading-5 text-muted-foreground">
-                                    {t('parameters.v5VarietyPending', 'V5 Variety+의 공식 전송 값이 확인될 때까지 안전하게 꺼 둡니다.')}
-                                </p>
                             )}
 
                             {modelProfile?.capabilities.transparentBackground && (

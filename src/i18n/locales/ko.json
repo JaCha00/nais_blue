@@ -2253,12 +2253,8 @@
         "cfgRescale": "CFG Rescale",
         "sampler": "Sampler",
         "scheduler": "Scheduler",
-        "smea": "SMEA",
-        "smeaHelp": "큰 이미지에서 전체 구도를 더 고르게 살펴봐요.",
-        "smeaDyn": "SMEA DYN",
-        "smeaDynHelp": "생성 과정에서 SMEA 강도를 동적으로 조절해요.",
         "variety": "Variety+",
-        "varietyHelp": "생성 이미지 사이의 변화를 더 크게 만들어요.",
+        "varietyHelp": "형태가 잡힌 뒤 CFG를 적용해 다양성과 채도를 높여요. 프롬프트 일치도는 낮아질 수 있어요.",
         "qualityToggle": "품질 태그 추가",
         "qualityToggleHelp": "선택한 모델의 공식 품질 태그를 프롬프트에 추가해요.",
         "ucPreset": "제외할 요소 프리셋",
@@ -2270,7 +2266,6 @@
         "recommended": "추천",
         "legacy": "이전 버전",
         "v5Karras": "V5에서는 Karras를 자동으로 사용해요.",
-        "v5VarietyPending": "V5의 Variety+는 공식 설정이 확인될 때까지 꺼져 있어요.",
         "transparentBackground": "투명 배경",
         "transparentBackgroundHelp": "배경 없이 바로 쓸 수 있는 투명 이미지로 만들어요."
     },
@@ -2580,7 +2575,9 @@
                 "scene": {
                     "label": "Scene 출력 폴더",
                     "help": "기본값: Pictures/NAI_Blue_Scene",
-                    "selectFolder": "Scene 폴더 선택"
+                    "selectFolder": "Scene 폴더 선택",
+                    "subfolders": "씬별 하위 폴더 생성",
+                    "subfoldersHelp": "끄면 각 씬 폴더를 만들지 않고 모든 결과를 해당 상위 폴더에 바로 저장합니다."
                 },
                 "styleLab": {
                     "label": "StyleLab 출력 폴더",

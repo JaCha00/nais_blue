@@ -58,6 +58,14 @@ describe('sync payload sanitizer', () => {
             width: 832,
             height: 1216,
             excludePinned: true,
+            characterPositionEnabled: true,
+            characterCaptions: [{
+                id: 'caption:heroine', name: 'Heroine', prompt: 'blue hair', negative: 'bad hands', enabled: true,
+                position: { x: 0.25, y: 0.75 }, auth: 'CANARY-SECRET',
+            }, {
+                id: 'caption:partner', name: 'Partner', prompt: 'male partner', negative: '', enabled: true,
+                position: { x: 0.8, y: 0.75 },
+            }],
             compositionRef: {
                 recipeId: 'recipe:1', recipeRevision: 4, auth: 'CANARY-SECRET',
                 extensions: { nativePath: 'CANARY-PATH' },
@@ -71,6 +79,22 @@ describe('sync payload sanitizer', () => {
         })
 
         expect(payload).toEqual({
+            characterCaptions: [{
+                enabled: true,
+                id: 'caption:heroine',
+                name: 'Heroine',
+                negative: 'bad hands',
+                position: { x: 0.25, y: 0.75 },
+                prompt: 'blue hair',
+            }, {
+                enabled: true,
+                id: 'caption:partner',
+                name: 'Partner',
+                negative: '',
+                position: { x: 0.8, y: 0.75 },
+                prompt: 'male partner',
+            }],
+            characterPositionEnabled: true,
             compositionRef: { recipeId: 'recipe:1', recipeRevision: 4 },
             createdAt: 7,
             excludePinned: true,

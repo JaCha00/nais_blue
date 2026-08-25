@@ -42,9 +42,9 @@ describe('NovelAI V5 payload', () => {
                 tag_hint_uc_preset: 2,
                 tag_hint_transparent_background: false,
                 negative_prompt: `${UC_PRESETS_V5[0]}, extra fingers`,
-                sm: true,
-                sm_dyn: true,
             })
+            expect(payload.parameters).not.toHaveProperty('sm')
+            expect(payload.parameters).not.toHaveProperty('sm_dyn')
         },
     )
 
@@ -69,10 +69,23 @@ describe('NovelAI V5 payload', () => {
         expect(legacy.parameters).not.toHaveProperty('straight_alpha')
     })
 
-    it('does not guess a legacy Variety+ coefficient for V5', () => {
+    it('omits the unsupported Variety+ wire key for V5', () => {
         const payload = buildGenerateImagePayload(request({ variety: true }))
 
-        expect(payload.parameters.skip_cfg_above_sigma).toBeNull()
+        expect(payload.parameters).not.toHaveProperty('skip_cfg_above_sigma')
+    })
+
+    it('omits legacy SMEA flags for every selectable V4+ model', () => {
+        for (const model of [
+            'nai-diffusion-5-full',
+            'nai-diffusion-4-5-full',
+            'nai-diffusion-4-full',
+        ]) {
+            const payload = buildGenerateImagePayload(request({ model, smea: true, smeaDyn: true }))
+
+            expect(payload.parameters).not.toHaveProperty('sm')
+            expect(payload.parameters).not.toHaveProperty('sm_dyn')
+        }
     })
 
     it('adds only the provider Enhance MAX flag on img2img payloads', () => {

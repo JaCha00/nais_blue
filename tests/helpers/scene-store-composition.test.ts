@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PromptContribution } from '@/domain/composition/types'
 import {
+    resolveSceneCharacterCaptions,
     resolveSceneGeneration,
     resolveScenePrompts,
     useSceneStore,
@@ -335,6 +336,79 @@ describe('Scene store composition actions', () => {
         expect(useSceneStore.getState().getScene(PRESET_ID, 'scene:a')).toMatchObject({
             queueCount: 2,
             queuedFileNames: ['scene_{seed}', 'third'],
+        })
+    })
+
+    it('promotes legacy character slots but keeps an explicit caption array authoritative', () => {
+        const legacy = scene('scene:legacy-character', {
+            prompts: {
+                character: 'legacy heroine',
+                characterNegative: 'legacy negative',
+            },
+        })
+        expect(resolveSceneCharacterCaptions(legacy)).toEqual([{
+            id: 'scene:scene:legacy-character:character',
+            name: 'Scene scene:legacy-character',
+            prompt: 'legacy heroine',
+            negative: 'legacy negative',
+            enabled: true,
+            position: { x: 0.5, y: 0.5 },
+        }])
+
+        expect(resolveSceneCharacterCaptions({
+            ...legacy,
+            characterCaptions: [],
+        })).toEqual([])
+
+        expect(resolveSceneCharacterCaptions({
+            ...legacy,
+            characterCaptions: [{
+                id: 'caption:explicit',
+                name: 'Explicit',
+                prompt: 'explicit heroine',
+                negative: '',
+                enabled: true,
+                position: { x: 0.2, y: 0.8 },
+            }],
+        })).toEqual([expect.objectContaining({
+            id: 'caption:explicit',
+            prompt: 'explicit heroine',
+        })])
+    })
+
+    it('stores multiple Scene captions and mirrors only the first enabled caption to legacy slots', () => {
+        const captions = [{
+            id: 'caption:disabled',
+            prompt: 'disabled character',
+            negative: 'disabled negative',
+            enabled: false,
+            position: { x: 0.1, y: 0.2 },
+        }, {
+            id: 'caption:heroine',
+            name: 'Heroine',
+            prompt: 'blue-haired heroine',
+            negative: 'bad hands',
+            enabled: true,
+            position: { x: 0.3, y: 0.7 },
+        }, {
+            id: 'caption:partner',
+            name: 'Partner',
+            prompt: 'male partner',
+            negative: '',
+            enabled: true,
+            position: { x: 0.8, y: 0.7 },
+        }]
+
+        useSceneStore.getState().updateSceneCharacterCaptions(PRESET_ID, 'scene:a', captions, true)
+        captions[1].position.x = 1
+
+        const updated = useSceneStore.getState().getScene(PRESET_ID, 'scene:a')!
+        expect(updated.characterPositionEnabled).toBe(true)
+        expect(resolveSceneCharacterCaptions(updated)).toHaveLength(3)
+        expect(resolveSceneCharacterCaptions(updated)[1].position.x).toBe(0.3)
+        expect(resolveScenePrompts(updated)).toMatchObject({
+            character: 'blue-haired heroine',
+            characterNegative: 'bad hands',
         })
     })
 

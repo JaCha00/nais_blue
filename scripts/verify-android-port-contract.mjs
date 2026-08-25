@@ -227,7 +227,7 @@ assert.ok(
     'tagger sidecar startup must have a mobile stub',
 )
 assert.ok(
-    /#\[cfg\(not\(mobile\)\)]\s*\{\s*builder = builder\.plugin\(tauri_plugin_updater::Builder::new\(\)\.build\(\)\);/m.test(
+    /#\[cfg\(not\(mobile\)\)][\s\S]*?tauri_plugin_updater::Builder::new\(\)[\s\S]*?builder = builder\.plugin\(updater_builder\.build\(\)\);/m.test(
         rust,
     ),
     'desktop updater plugin must stay behind a non-mobile cfg gate',
