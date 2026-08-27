@@ -1,5 +1,6 @@
-import { Eye, Layers3, PanelRight, Play, Square } from 'lucide-react'
+import { Eye, Layers3, PanelRight, Play, SlidersHorizontal, Square } from 'lucide-react'
 import { createPortal } from 'react-dom'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { isAndroidRuntime } from '@/platform/runtime'
@@ -10,6 +11,7 @@ export interface MobileCommandDockLabels {
     modules: string
     inspector: string
     resolved: string
+    settings: string
     generate: string
     cancel: string
 }
@@ -19,6 +21,7 @@ const DEFAULT_LABELS: MobileCommandDockLabels = {
     modules: 'Modules',
     inspector: 'Inspector',
     resolved: 'Resolved',
+    settings: 'Settings',
     generate: 'Generate',
     cancel: 'Cancel',
 }
@@ -33,6 +36,8 @@ export interface MobileCommandDockProps {
     onOpenModules?: () => void
     onOpenInspector?: () => void
     onOpenResolved?: () => void
+    onOpenSettings?: () => void
+    count?: ReactNode
     simplified?: boolean
 }
 
@@ -47,6 +52,8 @@ export function MobileCommandDock({
     onOpenModules,
     onOpenInspector,
     onOpenResolved,
+    onOpenSettings,
+    count,
     simplified = false,
 }: MobileCommandDockProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
@@ -67,6 +74,11 @@ export function MobileCommandDock({
             aria-label={labels.commands}
             data-testid={testId}
         >
+            {onOpenSettings && (
+                <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.settings} onClick={onOpenSettings}>
+                    <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
+                </Button>
+            )}
             {!simplified && (
                 <>
                     {onOpenModules && (
@@ -94,6 +106,7 @@ export function MobileCommandDock({
                     )}
                 </>
             )}
+            {count && <div className="shrink-0">{count}</div>}
             <Button
                 type="button"
                 variant={generation.generating ? 'destructive' : 'generate'}

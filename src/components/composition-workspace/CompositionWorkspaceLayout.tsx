@@ -11,6 +11,7 @@ export interface CompositionWorkspaceLayoutProps {
     workspaceClassName?: string
     workspaceLabel?: string
     desktopRails?: boolean
+    commandBarPlacement?: 'top' | 'bottom'
 }
 
 /** 2xl rails and compact canvas-first shell; sheets are mounted by the owning page. */
@@ -24,13 +25,14 @@ export function CompositionWorkspaceLayout({
     workspaceClassName,
     workspaceLabel = 'Composition workspace',
     desktopRails = true,
+    commandBarPlacement = 'top',
 }: CompositionWorkspaceLayoutProps) {
     return (
         <div
             className={cn('flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden', className)}
             data-testid="composition-workspace-layout"
         >
-            {commandBar !== null && commandBar !== undefined && (
+            {commandBarPlacement === 'top' && commandBar !== null && commandBar !== undefined && (
                 <div className="hidden shrink-0 p-2 sm:p-3 md:block">{commandBar}</div>
             )}
             <div className={cn(
@@ -48,6 +50,9 @@ export function CompositionWorkspaceLayout({
                 </section>
                 <div className={cn('hidden min-h-0 min-w-0', desktopRails && '2xl:block')}>{inspector}</div>
             </div>
+            {commandBarPlacement === 'bottom' && commandBar !== null && commandBar !== undefined && (
+                <div className="hidden shrink-0 px-2 pb-2 sm:px-3 sm:pb-3 md:block">{commandBar}</div>
+            )}
             {mobileDock && <div className="md:hidden">{mobileDock}</div>}
         </div>
     )

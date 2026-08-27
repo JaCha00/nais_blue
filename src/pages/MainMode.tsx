@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import Counter from '@/components/ui/counter'
 import { useGenerationStore } from '@/stores/generation-store'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -68,7 +69,7 @@ import {
 import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
-import { normalizeNaiImageModelId } from '@/services/nai/model-catalog'
+import { NAI_IMAGE_MODELS, normalizeNaiImageModelId } from '@/services/nai/model-catalog'
 
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
@@ -119,6 +120,7 @@ export default function MainMode() {
         compositionWarnings,
         compositionErrors,
         lastResolvedPlan,
+        setBatchCount,
         setSelectedRecipeId,
         setSourceImage,
         setI2IMode,
@@ -185,7 +187,7 @@ export default function MainMode() {
                 severity: 'conflict',
                 warningCount: compositionWarnings.length,
                 errorCount: compositionErrors.length,
-                label: t('composition.validation.conflict', 'External edit conflict'),
+                label: t('composition.validation.conflict', '다른 창에서 변경됨'),
             }
         }
         if (profileLoading) {
@@ -647,18 +649,22 @@ export default function MainMode() {
         actionTestId: 'main-generate-action',
         cancelTestId: 'main-generate-action',
     }
-    const recipeOptions = [
-        { value: MAIN_DIRECT_SELECTION_ID, label: t('composition.recipe.direct', 'Direct prompts') },
-        ...assetProfile.recipes.map(recipe => ({
-            value: mainAssetRecipeSelectionId(recipe.id),
-            label: recipe.label || recipe.id,
-            disabled: !recipe.enabled,
-        })),
-    ]
+    const currentModelName = NAI_IMAGE_MODELS.find(candidate => candidate.id === model)?.name ?? model
+    const generationSummary = `${currentModelName} · ${selectedResolution.width}×${selectedResolution.height} · ${steps} ${t('parameters.steps', 'Steps')}`
+    const batchCounter = (
+        <Counter
+            value={batchCount}
+            onChange={setBatchCount}
+            min={1}
+            max={9999}
+            fontSize={16}
+            className="shrink-0"
+        />
+    )
     const workspaceLabels = {
-        modules: t('composition.workspace.modules', 'Modules'),
-        inspector: t('composition.workspace.inspector', 'Inspector'),
-        resolvedPlan: t('composition.plan.title', 'Resolved plan'),
+        modules: t('composition.workspace.modules', '프롬프트 묶음'),
+        inspector: t('composition.workspace.inspector', '적용 내용'),
+        resolvedPlan: t('composition.plan.title', '실제 생성에 쓰일 값'),
         edit: t('common.edit', 'Edit'),
         enable: t('common.enable', 'Enable'),
         disable: t('common.disable', 'Disable'),
@@ -670,13 +676,14 @@ export default function MainMode() {
         <ModuleStack
             modules={moduleStackItems}
             activeModuleId={selectedModuleId}
-            title={t('composition.workspace.moduleStack', 'Module Stack')}
+            title={t('composition.workspace.moduleStack', '적용 순서')}
             disabled={isGenerating}
             height="100%"
             emptyLabel={t('composition.module.emptyRecipe', 'This recipe has no modules.')}
             searchLabel={t('composition.module.search', 'Search modules')}
             labels={workspaceLabels}
             onSelectModule={handleSelectModule}
+            showHeader={false}
         />
     )
     const inspector = (
@@ -687,31 +694,33 @@ export default function MainMode() {
             resolvedPlan={lastResolvedPlan}
             conflict={profileConflict ? {
                 severity: 'error',
-                title: t('composition.conflict.externalEdit', 'External edit detected'),
-                message: profileConflictMessage || t('composition.conflict.review', 'Review the repository conflict before generating.'),
+                title: t('composition.conflict.externalEdit', '다른 창에서 변경됨'),
+                message: profileConflictMessage || t('composition.conflict.review', '다른 창의 변경사항과 겹쳤어요. 생성 전에 내용을 확인해 주세요.'),
                 revision: String(assetProfile.revision),
             } : null}
             disabled={isGenerating}
+            showHeader={false}
             labels={{
-                title: t('composition.workspace.inspector', 'Context Inspector'),
-                noSelection: t('composition.module.selectToInspect', 'Select a module to inspect its resolved state.'),
-                recipe: t('composition.recipe.title', 'Recipe'),
-                kind: t('composition.module.kind', 'Kind'),
-                moduleId: t('composition.module.id', 'Module ID'),
-                overrideDiff: t('composition.override.diff', 'Override diff'),
-                inherited: t('composition.override.inherited', 'Inherited'),
-                override: t('composition.override.value', 'Override'),
-                unchanged: t('composition.override.unchanged', 'Unchanged'),
-                edit: t('composition.module.edit', 'Edit module'),
-                resetOverride: t('composition.override.reset', 'Reset override'),
-                resolvedPlan: t('composition.plan.open', 'Open resolved plan'),
+                title: t('composition.workspace.inspector', '적용 내용'),
+                noSelection: t('composition.module.selectToInspect', '확인할 프롬프트 묶음을 선택하세요.'),
+                recipe: t('composition.recipe.title', '생성 구성'),
+                kind: t('composition.module.kind', '종류'),
+                moduleId: t('composition.module.id', '내부 ID'),
+                technical: t('composition.plan.technical', '기술 정보'),
+                overrideDiff: t('composition.override.diff', '기본값에서 바뀐 항목'),
+                inherited: t('composition.override.inherited', '기본값'),
+                override: t('composition.override.value', '여기서 바꾼 값'),
+                unchanged: t('composition.override.unchanged', '변경 없음'),
+                edit: t('composition.module.edit', '프롬프트 묶음 편집'),
+                resetOverride: t('composition.override.reset', '변경값 초기화'),
+                resolvedPlan: t('composition.plan.open', '실제 생성값 열기'),
             }}
             onOpenResolvedPlan={handleOpenResolvedPlan}
         >
             <div className="p-3 pt-5">
                 <Button type="button" variant="outline" className="w-full justify-start" onClick={handleOpenPromptSheet}>
                     <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    <span className="min-w-0 truncate">{t('composition.compatibility.rawPrompt', 'Advanced raw prompt')}</span>
+                    <span className="min-w-0 truncate">{t('composition.compatibility.rawPrompt', '직접 프롬프트 편집')}</span>
                 </Button>
             </div>
         </CompositionInspector>
@@ -722,20 +731,41 @@ export default function MainMode() {
             issues={[...compositionErrors, ...portableResolvedIssues, ...compositionWarnings]}
             loading={profileLoading}
             error={profileConflict ? profileConflictMessage : null}
-            title={t('composition.plan.title', 'Resolved plan')}
+            title={t('composition.plan.title', '실제 생성에 쓰일 값')}
+            showHeader={false}
+            labels={{
+                loading: t('composition.plan.loading', '생성값을 정리하는 중…'),
+                empty: t('composition.plan.empty', '아직 정리된 생성값이 없어요.'),
+                positive: t('composition.plan.positive', '프롬프트'),
+                negative: t('composition.plan.negative', '피할 내용'),
+                promptParts: t('composition.plan.promptParts', '내부 프롬프트 칸'),
+                characters: t('composition.plan.characters', '캐릭터'),
+                params: t('composition.plan.params', '생성 설정 원본'),
+                paramsWinner: t('composition.plan.paramsWinner', '적용된 출처'),
+                output: t('composition.plan.output', '저장 설정 원본'),
+                warnings: t('composition.plan.warnings', '확인할 내용'),
+                errors: t('composition.plan.errors', '먼저 해결할 문제'),
+                randomTrace: t('composition.plan.randomTrace', '랜덤 선택 기록'),
+                provenance: t('composition.plan.provenance', '값의 출처'),
+                technical: t('composition.plan.technical', '기술 정보'),
+                generationSummary: t('composition.plan.generationSummary', '생성 방식'),
+                saveSummary: t('composition.plan.saveSummary', '저장'),
+                revision: t('composition.plan.revision', '수정본'),
+                metadataEmbedded: t('composition.plan.metadataEmbedded', '이미지에 생성 정보 포함'),
+                metadataSidecar: t('composition.plan.metadataSidecar', '이미지 유지 · 복구 정보 별도 보관'),
+                metadataClean: t('composition.plan.metadataClean', '이미지의 생성 정보 제거 · 복구 정보 별도 보관'),
+                metadataStripped: t('composition.plan.metadataStripped', '이미지의 생성 정보 제거'),
+                repair: t('composition.plan.repair', '문제 해결'),
+            }}
         />
     )
     const commandBar = (
         <div data-testid="main-command-dock">
             <CompositionCommandBar
-                recipe={hasRecipeControls ? {
-                    value: displayedRecipeSelection,
-                    options: recipeOptions,
-                    onChange: handleRecipeSelection,
-                    label: t('composition.recipe.title', 'Recipe'),
-                    disabled: isGenerating || profileLoading,
-                } : undefined}
-                cost={estimatedCost !== null && estimatedCost > 0 ? {
+                summary={generationSummary}
+                onOpenSummary={handleOpenPromptSheet}
+                count={batchCounter}
+                cost={estimatedCost !== null ? {
                     value: `${estimatedCost} Anlas`,
                     label: t('composition.cost.estimated', 'Estimated cost'),
                 } : undefined}
@@ -747,8 +777,8 @@ export default function MainMode() {
                 } : undefined}
                 generation={generationControl}
                 labels={{
-                    modules: t('composition.workspace.modules', 'Modules'),
-                    inspector: t('composition.workspace.inspector', 'Inspector'),
+                    modules: t('composition.workspace.modules', '프롬프트 묶음'),
+                    inspector: t('composition.workspace.inspector', '적용 내용'),
                     generate: t('generate.button', 'Generate'),
                     cancel: t('generate.cancel', 'Cancel'),
                 }}
@@ -763,14 +793,17 @@ export default function MainMode() {
             resolvedAvailable={hasResolvedContent}
             testId="main-command-dock"
             labels={{
-                modules: t('composition.workspace.modules', 'Modules'),
-                inspector: t('composition.workspace.inspector', 'Inspector'),
-                resolved: t('composition.plan.resolved', 'Resolved'),
+                modules: t('composition.workspace.modules', '프롬프트 묶음'),
+                settings: t('parameters.title', '세부 설정'),
+                inspector: t('composition.workspace.inspector', '적용 내용'),
+                resolved: t('composition.plan.resolved', '실제 생성값'),
                 generate: t('generate.button', 'Generate'),
                 cancel: t('generate.cancel', 'Cancel'),
             }}
             onOpenModules={hasModuleSheetContent ? handleOpenModuleStack : undefined}
             onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}
+            onOpenSettings={handleOpenPromptSheet}
+            count={batchCounter}
         />
     ) : null
 
@@ -780,6 +813,7 @@ export default function MainMode() {
             <CompositionWorkspaceLayout
                 desktopRails={false}
                 commandBar={isMobileWorkspace ? null : commandBar}
+                commandBarPlacement="bottom"
                 moduleStack={moduleStack}
                 inspector={inspector}
                 mobileDock={mobileDock}
@@ -956,8 +990,8 @@ export default function MainMode() {
             <CompositionWorkspaceSheet
                 open={moduleSheetOpen}
                 onOpenChange={setModuleSheetOpen}
-                title={t('composition.workspace.moduleStack', 'Module Stack')}
-                description={t('composition.workspace.moduleStackHelp', 'Choose a recipe module to review its applied content and validation state.')}
+                title={t('composition.workspace.moduleStack', '적용 순서')}
+                description={t('composition.workspace.moduleStackHelp', '생성 구성과 프롬프트 묶음의 적용 순서를 확인하세요.')}
                 side={isMobileWorkspace ? 'bottom' : 'left'}
                 level="primary"
                 testId="main-module-stack-sheet"
@@ -965,7 +999,7 @@ export default function MainMode() {
                 returnFocusRef={moduleSheetTriggerRef}
             >
                 <div className="flex min-h-0 flex-col gap-3">
-                    {isMobileWorkspace && <RecipeSelector onChange={handleRecipeSelection} />}
+                    {hasRecipeControls && <RecipeSelector onChange={handleRecipeSelection} />}
                     {moduleStack}
                 </div>
             </CompositionWorkspaceSheet>
@@ -973,8 +1007,8 @@ export default function MainMode() {
             <CompositionWorkspaceSheet
                 open={inspectorSheetOpen}
                 onOpenChange={setInspectorSheetOpen}
-                title={t('composition.workspace.inspector', 'Context Inspector')}
-                description={t('composition.workspace.inspectorHelp', 'Review how the selected module affects prompts and parameters.')}
+                title={t('composition.workspace.inspector', '적용 내용')}
+                description={t('composition.workspace.inspectorHelp', '선택한 프롬프트 묶음이 생성 내용에 어떻게 적용되는지 확인하세요.')}
                 side={isMobileWorkspace ? 'bottom' : 'right'}
                 level="secondary"
                 testId="main-composition-inspector-sheet"
@@ -987,8 +1021,8 @@ export default function MainMode() {
             <CompositionWorkspaceSheet
                 open={resolvedSheetOpen}
                 onOpenChange={setResolvedSheetOpen}
-                title={t('composition.plan.title', 'Resolved plan')}
-                description={t('composition.plan.help', 'Final prompts, parameters, random trace, and provenance.')}
+                title={t('composition.plan.title', '실제 생성에 쓰일 값')}
+                description={t('composition.plan.help', '먼저 결과에 영향을 주는 내용을 보여주고, 원본 값은 기술 정보에 보관합니다.')}
                 side={isMobileWorkspace ? 'bottom' : 'right'}
                 level="secondary"
                 testId="main-resolved-plan-sheet"

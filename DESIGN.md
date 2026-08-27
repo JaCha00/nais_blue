@@ -110,24 +110,24 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 
 ## 5. Components and Information Architecture
 
-- **Workspace shell:** canvas first, no border, `12px` radius. Navigation is a
+- **Workspace shell:** canvas first, no border, and no panel radius. Navigation is a
   five-control rail (four primary destinations plus overflow), not a floating
   pill. Active state uses `--accent` plus primary icon/text; inactive controls
   remain neutral.
-- **Buttons:** control radius `12px`. Primary is a flat `--primary` fill; hover
+- **Buttons:** control radius `6–8px`. Primary is a flat `--primary` fill; hover
   changes tone, active uses a slight opacity/transform response, focus uses a
   2px `--ring`, and disabled retains its footprint at 45% opacity. No gradient.
-- **Inputs/selects/textareas:** `12px` radius, input border, canvas/card surface,
+- **Inputs/selects/textareas:** `6–8px` radius, input border, canvas/card surface,
   44px touch height on coarse pointers, blue focus ring, readable disabled state.
-- **Panels:** `12px` radius for shell-level panels only. Repeated rows use dividers
-  or tonal fills, not cards inside cards.
+- **Panels:** page, panel, section, and repeated settings-group radius is `0`.
+  Popovers and dialogs may use up to `8px`; repeated rows use dividers or tonal
+  fills, not cards inside cards.
 - **Sheets:** full viewport width below `640px`, bounded to `420px` for Prompt and
   `400px` for History above it. Close target is 44px, title/header reserves its
   space, and content respects top/bottom safe areas.
 - **MainMode:** current result/canvas owns the view. Prompt, model, resolution,
-  seed, and token state stay in the authoring surface. On compact widths a bottom
-  command dock keeps generate/cancel and only applicable composition actions
-  reachable without duplicating generation rules.
+  seed, and token state stay in the authoring surface. One bottom action rail owns
+  generate/cancel at every width; the Prompt surface never duplicates that CTA.
 - **SceneMode:** title and critical create/edit controls stay visible. Import,
   rotation, queue, export, and sharing remain reachable in grouped overflow
   menus on compact widths. The preset/view row wraps without horizontal scroll.
@@ -139,8 +139,9 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
   image actions appear as a tonal overlay on hover or keyboard focus.
 - **Prompt command surface:** Base, Additional, Detail, and Negative remain
   directly reachable as slots in one editor. Only the selected slot exposes its
-  textarea; character, fragment, AI assistance, and parameters form one quiet
-  command rail below it. Four equal collapsible cards are prohibited.
+  textarea. Import actions and prompt tools each use one disclosure; Character,
+  image reference, and detailed settings form the quiet three-action rail below.
+  Four equal collapsible cards are prohibited.
 - **Startup rescue:** database-unavailable startup renders one bounded alert panel
   without workspace navigation or generation/edit/save entry points. Retry,
   diagnostic export, backup guidance, and safe exit remain direct native-button
@@ -158,14 +159,12 @@ is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
 
 ### Composition workspace contract
 
-- **Composition command bar:** Generate/cancel is the only unconditional action.
-  Recipe recovery/selection, nonzero estimated cost, Module Stack, and Resolved
-  Plan appear only when their backing data exists; rollout mode and an unresolved
-  “pending” badge are not general authoring controls. At `1536px+` Main and Scene
-  keep the Prompt rail beside the result canvas; contextual tools remain one
-  explicit action away so nested rails do not collapse the canvas. Between
-  `768–1535px` it wraps without horizontal scrolling and opens Module Stack and
-  Inspector sheets. Generate/cancel is never placed in an overflow menu.
+- **Composition action rail:** Generate/cancel is the only unconditional filled
+  action and Main places it below the canvas. Settings summary, estimated cost,
+  image count, and the CTA stay in a single non-wrapping grid; narrower widths
+  collapse settings to one button instead of creating a second row. Module Stack
+  and actual generation values appear only when backing data exists.
+  Generate/cancel is never placed in an overflow menu.
 - **Module Stack row anatomy:** Each fixed-height row has enable state, an
   unabridged accessible module name, visible kind/summary, validation state,
   edit entry, and ordering affordances. The visual name may truncate to protect

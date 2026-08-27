@@ -15,17 +15,19 @@ function leafKeys(value: unknown, prefix = ''): string[] {
 }
 
 describe('Guided B-E workflow contract', () => {
-    it('enables every home choice and exposes the current hub, task, work, and batch routes', async () => {
+    it('uses semantic home choices, expands the second question inline, and preserves deep routes', async () => {
         const home = await source('src/presentation/workflow/GuidedHome.tsx')
         const preview = await source('src/presentation/workflow/GuidedPreview.tsx')
 
-        for (const id of ['A', 'B', 'C', 'D', 'E']) {
+        for (const id of ['single', 'batch', 'prompt', 'library', 'environment']) {
             expect(home).toContain(`id: '${id}'`)
         }
+        for (const id of ['A', 'B', 'C', 'D', 'E']) expect(home).not.toContain(`id: '${id}'`)
         expect(home).not.toContain('cursor-not-allowed')
-        for (const id of ['batch', 'prompt', 'library', 'environment']) {
-            expect(home).toContain(`/guided-preview/guide/${id}`)
-        }
+        expect(home).toContain('<GuidedWorkflowChoices workflowId={selectedWorkflow} />')
+        expect(home).toContain('else setSelectedWorkflow(choice.id)')
+        expect(home).toContain("t('guided.home.resume'")
+        expect(home.indexOf("t('guided.home.resume'")).toBeLessThan(home.indexOf('{choices.map(choice =>'))
         expect(preview).toContain('path="guide/:workflowId"')
         expect(preview).toContain('path="task/:workflowId/:optionId"')
         expect(preview).toContain('path="work/:draftId/:nodeId"')
@@ -124,6 +126,20 @@ describe('Guided single-image production contract', () => {
         expect(single).toContain("onEdit={submitted ? undefined : () => onEdit('prompt')}")
         expect(single).not.toContain("navigate('/advanced')")
         expect(single).not.toContain('setInterval(')
+    })
+
+    it('keeps four stable milestones, excludes the result, and leaves validation beside the blocking step', async () => {
+        const single = await source('src/presentation/workflow/GuidedSingleImage.tsx')
+
+        expect(single).toContain('GUIDED_SINGLE_IMAGE_MILESTONE_COUNT = 4')
+        expect(single).toContain("nodes.push('prompt', 'resolution')")
+        expect(single).toContain("nodes.push('output')")
+        expect(single).toContain("['content', 'shape', 'save', 'review'][milestoneIndex]")
+        expect(single).toContain("nodeId !== 'result'")
+        expect(single).not.toContain('<ol className="mt-3')
+        expect(single).toContain('role="alert"')
+        expect(single).toContain('setStepError(')
+        expect(single).not.toContain("title: t('guided.single.review.blockedTitle'")
     })
 
     it('keeps all Guided single-image copy aligned across locales', () => {

@@ -17,6 +17,7 @@ export interface CompositionInspectorLabels {
     recipe: string
     kind: string
     moduleId: string
+    technical: string
     overrideDiff: string
     inherited: string
     override: string
@@ -27,18 +28,19 @@ export interface CompositionInspectorLabels {
 }
 
 const DEFAULT_LABELS: CompositionInspectorLabels = {
-    title: 'Context inspector',
-    noSelection: 'Select a module or scene to inspect its resolved state.',
-    recipe: 'Recipe',
-    kind: 'Kind',
-    moduleId: 'Module ID',
-    overrideDiff: 'Override diff',
-    inherited: 'Inherited',
-    override: 'Override',
+    title: 'Applied content',
+    noSelection: 'Select a prompt group to see how it is applied.',
+    recipe: 'Generation setup',
+    kind: 'Type',
+    moduleId: 'Internal ID',
+    technical: 'Technical details',
+    overrideDiff: 'Changed defaults',
+    inherited: 'Default',
+    override: 'Changed here',
     unchanged: 'Unchanged',
-    edit: 'Edit module',
-    resetOverride: 'Reset override',
-    resolvedPlan: 'Open resolved plan',
+    edit: 'Edit prompt group',
+    resetOverride: 'Reset changes',
+    resolvedPlan: 'Open actual generation values',
 }
 
 export interface CompositionInspectorProps {
@@ -52,6 +54,7 @@ export interface CompositionInspectorProps {
     disabled?: boolean
     labels?: Partial<CompositionInspectorLabels>
     className?: string
+    showHeader?: boolean
     children?: ReactNode
     onEditModule?: (moduleId: string) => void
     onResetOverride?: () => void
@@ -79,6 +82,7 @@ export function CompositionInspector({
     disabled = false,
     labels: labelsOverride,
     className,
+    showHeader = true,
     children,
     onEditModule,
     onResetOverride,
@@ -89,16 +93,17 @@ export function CompositionInspector({
 
     return (
         <aside
-            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel bg-card', className)}
-            aria-labelledby="composition-inspector-title"
+            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden bg-card', className)}
+            aria-labelledby={showHeader ? 'composition-inspector-title' : undefined}
+            aria-label={showHeader ? undefined : title ?? labels.title}
             data-testid="composition-inspector"
         >
-            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
+            {showHeader && <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
                 <h2 id="composition-inspector-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.title}>
                     {title ?? labels.title}
                 </h2>
                 <ValidationState validation={validation} className="shrink-0" />
-            </header>
+            </header>}
 
             <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
                 {conflict && (
@@ -115,7 +120,12 @@ export function CompositionInspector({
                             <span className="min-w-0">
                                 <strong className="block break-words text-sm">{conflict.title}</strong>
                                 <span className="mt-1 block break-words text-xs text-muted-foreground">{conflict.message}</span>
-                                {conflict.revision && <span className="mt-1 block break-all font-mono text-[11px]">{conflict.revision}</span>}
+                                {conflict.revision && (
+                                    <details className="mt-2">
+                                        <summary className="cursor-pointer text-xs text-muted-foreground">{labels.technical}</summary>
+                                        <span className="mt-1 block break-all font-mono text-[11px]">{conflict.revision}</span>
+                                    </details>
+                                )}
                             </span>
                         </div>
                     </section>
@@ -136,11 +146,16 @@ export function CompositionInspector({
                                             <dd className="min-w-0 break-words">{recipeName}</dd>
                                         </>
                                     )}
-                                    <dt className="text-muted-foreground">{labels.kind}</dt>
-                                    <dd className="min-w-0 break-words font-mono">{module.kind}</dd>
-                                    <dt className="text-muted-foreground">{labels.moduleId}</dt>
-                                    <dd className="min-w-0 break-all font-mono">{module.id}</dd>
                                 </dl>
+                                <details className="mt-3 border-t border-border pt-2">
+                                    <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{labels.technical}</summary>
+                                    <dl className="mt-2 grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-xs">
+                                        <dt className="text-muted-foreground">{labels.kind}</dt>
+                                        <dd className="min-w-0 break-words font-mono">{module.kind}</dd>
+                                        <dt className="text-muted-foreground">{labels.moduleId}</dt>
+                                        <dd className="min-w-0 break-all font-mono">{module.id}</dd>
+                                    </dl>
+                                </details>
                             </section>
                         )}
 
@@ -176,7 +191,6 @@ export function CompositionInspector({
                             <section className="min-w-0 p-3 pt-5">
                                 <h3 className="text-sm font-semibold">{labels.resolvedPlan}</h3>
                                 <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs">{resolvedPlan.positivePrompt || '—'}</p>
-                                <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{resolvedPlan.planHash.digest}</p>
                             </section>
                         )}
                     </>

@@ -11,7 +11,6 @@ import { Link, useNavigate, useParams } from 'react-router'
 import {
     ArrowLeft,
     Check,
-    ChevronRight,
     CircleAlert,
     CircleCheck,
     Download,
@@ -73,6 +72,14 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
 import {
@@ -109,11 +116,19 @@ type GuidedSingleImageNodeId = SingleImageNodeId | 'result'
 
 // Result is presentation-only; persisted workflow node IDs remain stable across draft migrations.
 const GUIDED_SINGLE_IMAGE_NODE_IDS = [...SINGLE_IMAGE_NODE_IDS, 'result'] as const
+const GUIDED_SINGLE_IMAGE_MILESTONE_COUNT = 4
+
+function milestoneIndexForNode(nodeId: GuidedSingleImageNodeId): 0 | 1 | 2 | 3 {
+    if (nodeId === 'model' || nodeId === 'prompt') return 0
+    if (nodeId === 'resolution' || nodeId === 'settings') return 1
+    if (nodeId === 'output' || nodeId === 'metadata' || nodeId === 'rights' || nodeId === 'delivery') return 2
+    return 3
+}
 
 /**
- * The beginner path asks only for the prompt, then shows review. Missing
- * required data and whichever detail page the user elects to edit are inserted
- * without turning every optional setting into homework.
+ * The visible beginner path always crosses the same four milestones. Technical
+ * detail pages are inserted only when opened, so persisted routes stay compatible
+ * without changing the user's 1–4 progress scale.
  */
 function activeNodes(
     draft: SingleImageDraft,
@@ -121,13 +136,13 @@ function activeNodes(
 ): readonly GuidedSingleImageNodeId[] {
     const nodes: GuidedSingleImageNodeId[] = []
     if (draft.payload.model === null) nodes.push('model')
-    nodes.push('prompt')
-    if (draft.payload.resolution === null) nodes.push('resolution')
+    nodes.push('prompt', 'resolution')
 
     const detailNode = focusedNode ?? draft.currentNodeId
-    if (!nodes.includes(detailNode) && detailNode !== 'review' && detailNode !== 'result') {
-        nodes.push(detailNode)
-    }
+    if (detailNode === 'model' && !nodes.includes('model')) nodes.unshift('model')
+    if (detailNode === 'settings') nodes.push('settings')
+    nodes.push('output')
+    if (detailNode === 'metadata' || detailNode === 'rights' || detailNode === 'delivery') nodes.push(detailNode)
     nodes.push('review', 'result')
     return nodes
 }
@@ -194,38 +209,40 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
 }
 
 interface StepFrameProps {
-    nodes: readonly GuidedSingleImageNodeId[]
     nodeId: GuidedSingleImageNodeId
     saveStatus: SaveStatus
     title: string
     description: string
+    error?: string | null
     onBack(): void
-    canVisit(nodeId: GuidedSingleImageNodeId): boolean
-    onVisit(nodeId: GuidedSingleImageNodeId): void
     children: ReactNode
     footer: ReactNode
 }
 
 function StepFrame({
-    nodes,
     nodeId,
     saveStatus,
     title,
     description,
+    error,
     onBack,
-    canVisit,
-    onVisit,
     children,
     footer,
 }: StepFrameProps) {
     const { t } = useTranslation()
     const titleRef = useRef<HTMLHeadingElement>(null)
-    const index = nodes.indexOf(nodeId)
-    const progress = ((index + 1) / nodes.length) * 100
+    const errorRef = useRef<HTMLDivElement>(null)
+    const milestoneIndex = milestoneIndexForNode(nodeId)
+    const progress = ((milestoneIndex + 1) / GUIDED_SINGLE_IMAGE_MILESTONE_COUNT) * 100
+    const milestoneKey = ['content', 'shape', 'save', 'review'][milestoneIndex]
 
     useEffect(() => {
         titleRef.current?.focus()
     }, [nodeId])
+
+    useEffect(() => {
+        if (error !== null && error !== undefined) errorRef.current?.focus()
+    }, [error, nodeId])
 
     return (
         <div className={cn(
@@ -234,75 +251,49 @@ function StepFrame({
                 ? 'max-w-[var(--guided-review-max)]'
                 : 'max-w-[var(--guided-question-max)]',
         )}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="flex items-center gap-3">
                 <Button type="button" variant="ghost" size="icon" onClick={onBack} aria-label={t('guided.single.back', '이전으로')}>
                     <ArrowLeft className="h-5 w-5" aria-hidden="true" />
                 </Button>
-                <nav className="flex min-w-[16rem] flex-1 flex-wrap items-center gap-y-1 text-base leading-6 text-muted-foreground" aria-label={t('guided.single.breadcrumb', '현재 작업 경로')}>
-                    <Link to="/guided-preview" className="hover:text-foreground focus-ring">
-                        {t('guided.single.home', '작업 홈')}
-                    </Link>
-                    <ChevronRight className="mx-1 inline h-3.5 w-3.5" aria-hidden="true" />
-                    <button type="button" onClick={() => onVisit('model')} className="hover:text-foreground focus-ring">
-                        {t('guided.single.title', '이미지 한 장 만들기')}
-                    </button>
-                    <ChevronRight className="mx-1 inline h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="font-medium text-foreground">
-                        {t(`guided.single.steps.${nodeId}.short`, nodeId)}
-                    </span>
-                </nav>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground">
+                    {t('guided.single.title', '이미지 한 장 만들기')}
+                </span>
                 <SaveIndicator status={saveStatus} />
             </div>
 
-            <div className="mt-7" aria-label={t('guided.single.progress', '작업 진행률')}>
+            {nodeId !== 'result' && <div className="mt-7" aria-label={t('guided.single.progress', '작업 진행률')} data-testid="guided-single-progress">
                 <div className="flex items-center justify-between gap-4 text-sm font-medium">
                     <span className="text-primary">
                         {t('guided.single.stepLabel', '단계 {{current}} · {{label}}', {
-                            current: index + 1,
-                            label: t(`guided.single.steps.${nodeId}.short`, nodeId),
+                            current: milestoneIndex + 1,
+                            label: t(`guided.single.milestones.${milestoneKey}`),
                         })}
                     </span>
-                    <span className="font-mono text-muted-foreground" aria-label={t('guided.single.stepA11y', '{{current}}단계, 전체 {{total}}단계', { current: index + 1, total: nodes.length })}>
-                        {index + 1} / {nodes.length}
+                    <span className="font-mono text-muted-foreground" aria-label={t('guided.single.stepA11y', '{{current}}단계, 전체 {{total}}단계', { current: milestoneIndex + 1, total: GUIDED_SINGLE_IMAGE_MILESTONE_COUNT })}>
+                        {milestoneIndex + 1} / {GUIDED_SINGLE_IMAGE_MILESTONE_COUNT}
                     </span>
                 </div>
                 <div className="mt-3 h-px overflow-hidden bg-border">
                     <div className="h-full bg-primary transition-[width] duration-slow" style={{ width: `${progress}%` }} />
                 </div>
-                <ol className="mt-3 flex gap-5 overflow-x-auto pb-1 text-sm font-medium [scrollbar-width:none]" aria-label={t('guided.single.stepNavigation', '세부 단계 이동')}>
-                    {nodes.map((step, stepIndex) => {
-                        const current = step === nodeId
-                        const enabled = canVisit(step)
-                        return (
-                            <li key={step} className="shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => onVisit(step)}
-                                    disabled={!enabled}
-                                    aria-current={current ? 'step' : undefined}
-                                    className={cn(
-                                        'border-b py-1.5 transition-colors focus-ring',
-                                        current
-                                            ? 'border-primary text-foreground'
-                                            : enabled
-                                                ? 'border-transparent text-muted-foreground hover:border-foreground/45 hover:text-foreground'
-                                                : 'cursor-not-allowed border-transparent text-muted-foreground/40',
-                                    )}
-                                >
-                                    <span className="mr-1 font-mono text-sm">{stepIndex + 1}</span>
-                                    {t(`guided.single.steps.${step}.short`, step)}
-                                </button>
-                            </li>
-                        )
-                    })}
-                </ol>
-            </div>
+            </div>}
 
             <section className="flex-1 py-9 sm:py-12">
                 <h1 ref={titleRef} tabIndex={-1} className="max-w-[24ch] text-3xl font-semibold tracking-[-0.03em] outline-none sm:text-4xl">
                     {title}
                 </h1>
                 <p className="mt-3 max-w-[58ch] text-base leading-7 text-muted-foreground">{description}</p>
+                {error && (
+                    <div
+                        ref={errorRef}
+                        role="alert"
+                        tabIndex={-1}
+                        className="mt-5 flex max-w-[58ch] items-start gap-2 border-y border-destructive/40 py-3 text-sm leading-6 text-destructive outline-none"
+                    >
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                        <span>{error}</span>
+                    </div>
+                )}
                 <div className="mt-8">{children}</div>
             </section>
 
@@ -371,33 +362,33 @@ function PromptStep({
     model,
     positive,
     negative,
-    transparentBackground,
     characterPrompts,
     incomingImport,
     disabled,
     onPositiveChange,
     onNegativeChange,
-    onTransparentBackgroundChange,
     onCharacterPromptsChange,
     onIncomingImportHandled,
 }: {
     model: string | null
     positive: string
     negative: string
-    transparentBackground: boolean
     characterPrompts: WorkflowCharacterPrompts
     incomingImport: GuidedPromptImportValue | null
     disabled: boolean
     onPositiveChange(value: string): void
     onNegativeChange(value: string): void
-    onTransparentBackgroundChange(value: boolean): void
     onCharacterPromptsChange(value: WorkflowCharacterPrompts): void
     onIncomingImportHandled(): void
 }) {
     const { t } = useTranslation()
     const modelProfile = model === null ? undefined : getNovelAiModelProfile(model)
-    const supportsTransparentBackground = modelProfile?.capabilities.transparentBackground === true
     const maxCharacters = modelProfile?.capabilities.maxCharacters
+    const [importSheetOpen, setImportSheetOpen] = useState(incomingImport !== null)
+
+    useEffect(() => {
+        if (incomingImport !== null) setImportSheetOpen(true)
+    }, [incomingImport])
     const applyImport = (mode: 'replace' | 'append', imported: Parameters<typeof applyGuidedPromptImport>[1]) => {
         const importedCharacterCount = imported.characters?.length ?? 0
         const availableSlots = maxCharacters === undefined
@@ -444,99 +435,100 @@ function PromptStep({
                 <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <p>{t('guided.single.prompt.tagHelp', '영문 태그나 영문 자연어를 쓸 수 있어요. 태그 추천의 숫자는 학습량이 아니라 참고용 태그 데이터의 게시물 수예요.')}</p>
             </div>
-            {supportsTransparentBackground && (
-                <label className="guided-choice-row flex cursor-pointer items-start gap-3 border-y border-border/70 px-2 py-4 sm:px-4">
-                    <input
-                        type="checkbox"
-                        checked={transparentBackground}
-                        disabled={disabled}
-                        onChange={event => onTransparentBackgroundChange(event.target.checked)}
-                        className="mt-0.5 h-4 w-4 accent-[oklch(var(--primary))]"
-                    />
-                    <span>
-                        <span className="block text-sm font-semibold">
-                            {t('guided.single.prompt.transparentBackground', '배경을 투명하게 만들기')}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                            {t('guided.single.prompt.transparentBackgroundHelp', '스티커나 캐릭터 소재처럼 배경 없이 쓰고 싶을 때 켜세요.')}
-                        </span>
-                    </span>
-                </label>
-            )}
             <GuidedCharacterPromptSheet
                 value={characterPrompts}
                 disabled={disabled}
                 maxCharacters={maxCharacters}
                 onChange={onCharacterPromptsChange}
             />
-            <details className="border-y border-border/70 py-3" open={incomingImport !== null || undefined}>
-                <summary className="cursor-pointer text-xs font-medium">
-                    {t('guided.single.prompt.moreTools', '파일·모듈에서 가져오기 · 선택')}
-                </summary>
-                <div className="mt-4 space-y-4">
-                    <GuidedPromptFileImport
-                        positive={positive}
-                        disabled={disabled}
-                        incomingImport={incomingImport}
-                        onIncomingImportHandled={onIncomingImportHandled}
-                        onReplace={value => applyImport('replace', value)}
-                        onAppend={value => applyImport('append', value)}
-                    />
-                    <div className="flex flex-wrap justify-end gap-3">
-                        <StructuredPromptModuleLibrary
+            <div className="grid gap-px border-y border-border/70 bg-border/70 sm:grid-cols-2">
+                <Sheet open={importSheetOpen} onOpenChange={setImportSheetOpen}>
+                    <SheetTrigger asChild>
+                        <Button type="button" variant="ghost" disabled={disabled} className="h-auto min-h-14 justify-start rounded-none bg-background px-3 py-3 text-left">
+                            <FileJson className="mr-2 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                            {t('guided.single.prompt.moreTools', '파일·저장된 프롬프트에서 가져오기')}
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl" closeLabel={t('common.close', '닫기')}>
+                        <SheetHeader className="border-b border-border/70 pb-4">
+                            <SheetTitle>{t('guided.single.prompt.moreTools', '파일·저장된 프롬프트에서 가져오기')}</SheetTitle>
+                            <SheetDescription>{t('guided.single.prompt.moreToolsHelp', '현재 내용에 덧붙이거나 바꾸고, 저장된 모듈도 선택할 수 있어요.')}</SheetDescription>
+                        </SheetHeader>
+                        <div className="mt-5 space-y-5">
+                            <GuidedPromptFileImport
+                                positive={positive}
+                                disabled={disabled}
+                                incomingImport={incomingImport}
+                                onIncomingImportHandled={onIncomingImportHandled}
+                                onReplace={value => applyImport('replace', value)}
+                                onAppend={value => applyImport('append', value)}
+                            />
+                            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                                <StructuredPromptModuleLibrary
+                                    disabled={disabled}
+                                    currentParts={{
+                                        base: positive,
+                                        negative,
+                                        character: characterPrompts.items[0]?.prompt,
+                                        'character-negative': characterPrompts.items[0]?.negative,
+                                    }}
+                                    onInsert={(parts, module) => {
+                                        const next = insertStructuredPartsIntoWorkflow({
+                                            positive,
+                                            negative,
+                                            characters: characterPrompts,
+                                            parts,
+                                            moduleName: module.name,
+                                        })
+                                        if (next.positive !== positive) onPositiveChange(next.positive)
+                                        if (next.negative !== negative) onNegativeChange(next.negative)
+                                        if (next.characters !== characterPrompts) onCharacterPromptsChange(next.characters)
+                                    }}
+                                />
+                                <PromptModulePicker
+                                    disabled={disabled}
+                                    showManageAction={false}
+                                    allowInlineManage
+                                    createSourceText={positive}
+                                    triggerLabel={t('guided.promptModules.legacyTrigger', '한 줄 모듈 불러오기')}
+                                    onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
+                                />
+                            </div>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+                <Sheet>
+                    <SheetTrigger asChild>
+                        <Button type="button" variant="ghost" disabled={disabled} className="h-auto min-h-14 justify-start rounded-none bg-background px-3 py-3 text-left">
+                            <CircleAlert className="mr-2 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                            {t('guided.single.prompt.negativeTitle', '피하고 싶은 내용')}
+                        </Button>
+                    </SheetTrigger>
+                    <SheetContent side="right" className="w-full sm:max-w-xl" closeLabel={t('common.close', '닫기')}>
+                        <SheetHeader className="border-b border-border/70 pb-4">
+                            <SheetTitle>{t('guided.single.prompt.negativeTitle', '피하고 싶은 내용')}</SheetTitle>
+                            <SheetDescription>{t('guided.single.prompt.negativeHelp', '결과에서 제외하고 싶은 요소가 있을 때만 입력하세요.')}</SheetDescription>
+                        </SheetHeader>
+                        <div className="mt-5 flex justify-end">
+                            <PromptModulePicker
+                                disabled={disabled}
+                                showManageAction={false}
+                                allowInlineManage
+                                createSourceText={negative}
+                                triggerLabel={t('guided.promptModules.negativeTrigger', '제외 모듈 불러오기')}
+                                onSelectLine={line => onNegativeChange(appendPromptModuleLine(negative, line))}
+                            />
+                        </div>
+                        <Textarea
+                            value={negative}
+                            onChange={event => onNegativeChange(event.target.value)}
                             disabled={disabled}
-                            currentParts={{
-                                base: positive,
-                                negative,
-                                character: characterPrompts.items[0]?.prompt,
-                                'character-negative': characterPrompts.items[0]?.negative,
-                            }}
-                            onInsert={(parts, module) => {
-                                const next = insertStructuredPartsIntoWorkflow({
-                                    positive,
-                                    negative,
-                                    characters: characterPrompts,
-                                    parts,
-                                    moduleName: module.name,
-                                })
-                                if (next.positive !== positive) onPositiveChange(next.positive)
-                                if (next.negative !== negative) onNegativeChange(next.negative)
-                                if (next.characters !== characterPrompts) onCharacterPromptsChange(next.characters)
-                            }}
+                            className="mt-3 min-h-40 bg-card"
+                            placeholder={t('guided.single.prompt.negativePlaceholder', '예: lowres, blurry, text')}
                         />
-                        <PromptModulePicker
-                            disabled={disabled}
-                            showManageAction={false}
-                            allowInlineManage
-                            createSourceText={positive}
-                            triggerLabel={t('guided.promptModules.legacyTrigger', '한 줄 모듈 불러오기')}
-                            onSelectLine={line => onPositiveChange(appendPromptModuleLine(positive, line))}
-                        />
-                    </div>
-                </div>
-            </details>
-            <details className="border-y border-border/70 py-3">
-                <summary className="cursor-pointer text-xs font-medium">
-                    {t('guided.single.prompt.negativeTitle', '피하고 싶은 내용 추가 · 선택')}
-                </summary>
-                <div className="mt-3 flex justify-end">
-                    <PromptModulePicker
-                        disabled={disabled}
-                        showManageAction={false}
-                        allowInlineManage
-                        createSourceText={negative}
-                        triggerLabel={t('guided.promptModules.negativeTrigger', '제외 모듈 불러오기')}
-                        onSelectLine={line => onNegativeChange(appendPromptModuleLine(negative, line))}
-                    />
-                </div>
-                <Textarea
-                    value={negative}
-                    onChange={event => onNegativeChange(event.target.value)}
-                    disabled={disabled}
-                    className="mt-3 min-h-28 bg-card"
-                    placeholder={t('guided.single.prompt.negativePlaceholder', '예: lowres, blurry, text')}
-                />
-            </details>
+                    </SheetContent>
+                </Sheet>
+            </div>
         </div>
     )
 }
@@ -618,6 +610,8 @@ function SettingsStep({
 }) {
     const { t } = useTranslation()
     const [steps, setSteps] = useState(draft.payload.generation.steps)
+    const supportsTransparentBackground = draft.payload.model !== null
+        && getNovelAiModelProfile(draft.payload.model)?.capabilities.transparentBackground === true
 
     useEffect(() => setSteps(draft.payload.generation.steps), [draft.payload.generation.steps])
 
@@ -673,6 +667,25 @@ function SettingsStep({
                     </SelectContent>
                 </Select>
             </section>
+            {supportsTransparentBackground && (
+                <label className="guided-choice-row flex cursor-pointer items-start gap-3 border-y border-border/70 px-2 py-4 sm:px-3">
+                    <input
+                        type="checkbox"
+                        checked={draft.payload.generation.transparentBackground ?? false}
+                        disabled={disabled}
+                        onChange={event => onPatch({ transparentBackground: event.target.checked })}
+                        className="mt-0.5 h-4 w-4 accent-[oklch(var(--primary))]"
+                    />
+                    <span>
+                        <span className="block text-sm font-semibold">
+                            {t('guided.single.prompt.transparentBackground', '배경을 투명하게 만들기')}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.prompt.transparentBackgroundHelp', '스티커나 캐릭터 소재처럼 배경 없이 쓸 때 켜세요.')}
+                        </span>
+                    </span>
+                </label>
+            )}
         </div>
     )
 }
@@ -1157,6 +1170,7 @@ export function GuidedSingleImage() {
     const [consented, setConsented] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [submitError, setSubmitError] = useState<string | null>(null)
+    const [stepError, setStepError] = useState<{ nodeId: GuidedSingleImageNodeId; message: string } | null>(null)
     const [queuedJobs, setQueuedJobs] = useState<readonly GenerationJob[]>([])
     const draftRef = useRef<SingleImageDraft | null>(null)
     const saveChainRef = useRef<Promise<void>>(Promise.resolve())
@@ -1512,17 +1526,13 @@ export function GuidedSingleImage() {
                     },
                 }
                 const issue = listSingleImageDraftIssues(reviewDraft)[0]
-                toast({
-                    title: t('guided.single.review.blockedTitle', '검토 전에 한 가지만 확인해 주세요.'),
-                    description: issue === 'character-prompt-invalid'
-                        ? t('guided.single.review.blockedCharacter', '활성 캐릭터의 외형 프롬프트를 입력하거나 해당 캐릭터를 비활성화해 주세요.')
+                const message = issue === 'character-prompt-invalid'
+                    ? t('guided.single.review.blockedCharacter', '활성 캐릭터의 외형 프롬프트를 입력하거나 해당 캐릭터를 비활성화해 주세요.')
                         : issue === 'rights-owner-invalid'
                             ? t('guided.single.review.blockedRightsOwner', '설정에서 XMP 소유자명을 올바르게 입력해 주세요.')
                         : issue === 'rights-effective-date-required'
                             ? t('guided.single.review.blockedRightsDate', '권리 XMP를 사용하려면 설정에서 효력 시작일을 직접 입력해 주세요.')
-                        : t('guided.single.review.blockedGeneral', '비어 있거나 올바르지 않은 항목이 있어 해당 단계로 돌아갑니다.'),
-                    variant: 'destructive',
-                })
+                        : t('guided.single.review.blockedGeneral', '비어 있거나 올바르지 않은 항목이 있어 해당 단계로 돌아갑니다.')
                 const blockingNode: SingleImageNodeId = issue === 'model-required'
                     ? 'model'
                     : issue === 'prompt-required' || issue === 'character-prompt-invalid'
@@ -1534,10 +1544,12 @@ export function GuidedSingleImage() {
                                 : issue === 'output-invalid'
                                     ? 'output'
                                     : 'settings'
+                setStepError({ nodeId: blockingNode, message })
                 if (blockingNode !== nodeId) await goTo(blockingNode)
             }
             return
         }
+        if (target === 'review') setStepError(null)
         try {
             if (promptTimerRef.current !== null) {
                 clearTimeout(promptTimerRef.current)
@@ -1654,7 +1666,7 @@ export function GuidedSingleImage() {
             <Button
                 type="button"
                 onClick={() => { if (nextNode !== undefined) void goTo(nextNode) }}
-                disabled={saveStatus === 'saving' || nextNode === undefined || !canVisit(nextNode)}
+                disabled={saveStatus === 'saving' || nextNode === undefined || (nextNode !== 'review' && !canVisit(nextNode))}
             >
                 {nextNode === 'review'
                     ? t('guided.single.reviewSettings', '설정 검토')
@@ -1708,14 +1720,12 @@ export function GuidedSingleImage() {
 
     return (
         <StepFrame
-            nodes={nodes}
             nodeId={nodeId}
             saveStatus={saveStatus}
             title={stepCopy.title}
             description={stepCopy.description}
+            error={stepError?.nodeId === nodeId ? stepError.message : null}
             onBack={back}
-            canVisit={canVisit}
-            onVisit={target => void goTo(target)}
             footer={footer}
         >
             {nodeId === 'model' && (
@@ -1747,7 +1757,6 @@ export function GuidedSingleImage() {
                     model={draft.payload.model}
                     positive={positive}
                     negative={negative}
-                    transparentBackground={draft.payload.generation.transparentBackground ?? false}
                     characterPrompts={characterPrompts}
                     incomingImport={incomingImport}
                     disabled={locked}
@@ -1763,18 +1772,6 @@ export function GuidedSingleImage() {
                         negativeRef.current = value
                         setNegative(value)
                         schedulePromptSave()
-                    }}
-                    onTransparentBackgroundChange={value => {
-                        setConsented(false)
-                        void commitMutation(current => ({
-                            payload: {
-                                ...current.payload,
-                                generation: {
-                                    ...current.payload.generation,
-                                    transparentBackground: value,
-                                },
-                            },
-                        })).catch(() => undefined)
                     }}
                     onCharacterPromptsChange={value => {
                         setConsented(false)

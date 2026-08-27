@@ -40,10 +40,8 @@ import {
     Unlock,
     SlidersHorizontal,
     Cpu,
-    Puzzle,
     Users,
 } from 'lucide-react'
-import GeminiIcon from '@/assets/gemini-color.svg'
 import { useGenerationDraftStore } from '@/stores/generation-draft-store'
 import { useGenerationSessionStore } from '@/stores/generation-session-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
@@ -74,6 +72,7 @@ const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
 export function PromptPanel() {
     const { t } = useTranslation()
     const location = useLocation()
+    const isAdvancedMode = location.pathname === '/advanced'
     const isSceneMode = location.pathname.startsWith('/scenes')
 
     const additionalPrompt = useGenerationDraftStore(state => state.additionalPrompt)
@@ -171,9 +170,8 @@ export function PromptPanel() {
             {/* Source Image Panel (I2I/Inpaint Mode) */}
             <SourceImagePanel />
 
-            {/* This is the only scrolling region in the prompt sheet. The action
-                rail and generate control below remain reachable on short Android
-                viewports while every prompt field stays available. */}
+            {/* This is the only scrolling region in the prompt sheet, keeping the
+                three authoring helpers reachable on short Android viewports. */}
             <div className="relative mb-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain pr-1">
                 {/* Character Prompt Panel (Accordion Style) - 프롬프트 영역 위에 오버레이 */}
                 <CharacterPromptPanel
@@ -182,12 +180,15 @@ export function PromptPanel() {
                     maxCharacters={modelProfile?.capabilities.maxCharacters}
                 />
 
-                <PromptEditorSurface />
+                <PromptEditorSurface
+                    onOpenAiAssistant={() => setPromptGenOpen(true)}
+                    onOpenFragment={() => setFragmentDialogOpen(true)}
+                    toolsDisabled={isGenerating}
+                />
             </div>
 
             {/* Prompt helpers share a quiet tonal rail; dialogs carry their own hierarchy once opened. */}
-            <div className="mb-4 grid grid-cols-5 border-y border-border/60 py-1">
-                <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
+            <div className="mb-4 grid grid-cols-3 border-y border-border/60 py-1">
                 {/* Character Prompt Toggle Button */}
                 <Tip content={t('prompt.character', '캐릭터')}>
                     <Button
@@ -213,32 +214,7 @@ export function PromptPanel() {
                         )}
                     </Button>
                 </Tip>
-                {/* Fragment Prompt Button */}
-                <Tip content={t('prompt.fragment')}>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-11 w-full min-w-0 rounded-none px-0 text-xs"
-                        onClick={() => setFragmentDialogOpen(true)}
-                        aria-label={t('prompt.fragment')}
-                        disabled={isGenerating}
-                    >
-                        <Puzzle className="h-3.5 w-3.5 shrink-0" />
-                        <span className="sr-only">{t('prompt.fragment')}</span>
-                    </Button>
-                </Tip>
-                {/* AI Prompt Generator Button */}
-                <Tip content={t('promptGenerator.desc', 'Gemini AI로 프롬프트 생성')}>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-full min-w-0 rounded-none hover:bg-accent"
-                        onClick={() => setPromptGenOpen(true)}
-                        aria-label={t('promptGenerator.title', 'AI 프롬프트 생성')}
-                    >
-                        <img src={GeminiIcon} alt="Gemini" className="h-5 w-5" />
-                    </Button>
-                </Tip>
+                <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
                 {/* Parameter Settings Dialog */}
                 <Dialog open={parameterDialogOpen} onOpenChange={setParameterDialogOpen}>
                     <DialogTrigger asChild>
@@ -516,6 +492,18 @@ export function PromptPanel() {
                                 </Select>
                             </div>
 
+                            {!isSceneMode && (
+                                <section className="border-y border-border/60 py-3" aria-label={t('generationFolders.current', '이미지 생성 폴더')}>
+                                    <GenerationFolderPicker
+                                        value={activeGenerationFolderId}
+                                        disabled={isGenerating}
+                                        onChange={selection => {
+                                            if (selection) setActiveGenerationFolder(selection.folder.id)
+                                        }}
+                                    />
+                                </section>
+                            )}
+
                             {/* End of Parameters Dialog Content */}
                         </div>
 
@@ -535,19 +523,9 @@ export function PromptPanel() {
                 }}
             />
 
-            {!isSceneMode && (
-                <section className="mb-3 border-y border-border/60 py-2" aria-label={t('generationFolders.current', '이미지 생성 폴더')}>
-                    <GenerationFolderPicker
-                        value={activeGenerationFolderId}
-                        disabled={isGenerating}
-                        onChange={selection => {
-                            if (selection) setActiveGenerationFolder(selection.folder.id)
-                        }}
-                    />
-                </section>
-            )}
-
-            <PromptGenerationControls isSceneMode={isSceneMode} />
+            {/* MainMode owns the only Advanced generation CTA. Scene and Style Lab
+                keep this route-aware control because their cancel/queue semantics differ. */}
+            {!isAdvancedMode && <PromptGenerationControls isSceneMode={isSceneMode} />}
 
             {/* Fragment Prompt Dialog */}
             <FragmentPromptDialog

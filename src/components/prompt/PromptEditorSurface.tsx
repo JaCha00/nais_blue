@@ -1,9 +1,14 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowDownWideNarrow, Undo2 } from 'lucide-react'
+import { ArrowDownWideNarrow, ChevronDown, PackageOpen, Puzzle, Sparkles, Undo2 } from 'lucide-react'
 
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { Button } from '@/components/ui/button'
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from '@/components/ui/popover'
 import {
     ContextMenu,
     ContextMenuContent,
@@ -51,7 +56,15 @@ interface PromptSortUndo {
  * depends only on GenerationDraft and the font preference, deliberately
  * excluding queue, route, cancellation, and provider command ownership.
  */
-export function PromptEditorSurface() {
+export function PromptEditorSurface({
+    onOpenAiAssistant,
+    onOpenFragment,
+    toolsDisabled = false,
+}: {
+    onOpenAiAssistant?: () => void
+    onOpenFragment?: () => void
+    toolsDisabled?: boolean
+} = {}) {
     const { t } = useTranslation()
     const [activePromptSlot, setActivePromptSlot] = useState<PromptSlot>('base')
     const [contextSnapshot, setContextSnapshot] = useState<PromptContextSnapshot | null>(null)
@@ -177,76 +190,95 @@ export function PromptEditorSurface() {
                 aria-labelledby={`${editorPanelId}-${activePrompt.id}-tab`}
                 className="flex min-h-0 flex-col"
             >
-                <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b border-border/45 px-2 py-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            disabled={!activePrompt.value.trim()}
-                            onClick={() => openFullSort(activePrompt.value)}
-                            data-testid="prompt-frequency-sort-all"
-                        >
-                            <ArrowDownWideNarrow className="mr-1 h-3.5 w-3.5" />
-                            {t('promptFrequencySort.sortAll', '전체 빈도 정렬')}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2 text-xs"
-                            disabled={!canUndoSort}
-                            onClick={undoLastSort}
-                            data-testid="prompt-frequency-sort-undo"
-                        >
-                            <Undo2 className="mr-1 h-3.5 w-3.5" />
-                            {t('promptFrequencySort.undo', '정렬 되돌리기')}
-                        </Button>
-                    </div>
-                    <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
-                        <StructuredPromptModuleLibrary
-                            currentParts={{
-                                base: basePrompt,
-                                detail: detailPrompt,
-                                additional: additionalPrompt,
-                                negative: negativePrompt,
-                                character: characters.find(character => character.enabled)?.prompt,
-                                'character-negative': characters.find(character => character.enabled)?.negative,
-                            }}
-                            triggerLabel={t('promptModuleLibrary.triggerShort', '구조화 모듈')}
-                            triggerClassName="shrink-0"
-                            onInsert={(parts, module) => {
-                                let character = ''
-                                let characterNegative = ''
-                                for (const part of parts) {
-                                    if (part.kind === 'base') setBasePrompt(appendStructuredPromptText(basePrompt, part.content))
-                                    else if (part.kind === 'detail') setDetailPrompt(appendStructuredPromptText(detailPrompt, part.content))
-                                    else if (part.kind === 'additional') setAdditionalPrompt(appendStructuredPromptText(additionalPrompt, part.content))
-                                    else if (part.kind === 'negative') setNegativePrompt(appendStructuredPromptText(negativePrompt, part.content))
-                                    else if (part.kind === 'character') character = appendStructuredPromptText(character, part.content)
-                                    else characterNegative = appendStructuredPromptText(characterNegative, part.content)
-                                }
-                                if (parts.some(part => part.kind === 'character' || part.kind === 'character-negative')) {
-                                    addCharacter({
-                                        name: module.name,
-                                        prompt: character,
-                                        negative: characterNegative,
-                                        enabled: true,
-                                        position: { x: 0.5, y: 0.5 },
-                                    })
-                                    setPositionEnabled(true)
-                                }
-                            }}
-                        />
-                        <PromptModulePicker
-                            triggerLabel={t('guided.promptModules.legacyTriggerShort', '한 줄 모듈')}
-                            triggerClassName="shrink-0"
-                            onSelectLine={line => activePrompt.setValue(
-                                appendPromptModuleLine(activePrompt.value, line),
+                <div className="grid min-h-11 grid-cols-2 border-b border-border/45 px-2 py-1">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button type="button" variant="ghost" size="sm" className="min-w-0 justify-center whitespace-nowrap px-2 text-xs">
+                                <PackageOpen className="mr-1 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span className="truncate">{t('prompt.import', '가져오기')}</span>
+                                <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-64 space-y-1 p-2">
+                            <StructuredPromptModuleLibrary
+                                currentParts={{
+                                    base: basePrompt,
+                                    detail: detailPrompt,
+                                    additional: additionalPrompt,
+                                    negative: negativePrompt,
+                                    character: characters.find(character => character.enabled)?.prompt,
+                                    'character-negative': characters.find(character => character.enabled)?.negative,
+                                }}
+                                triggerLabel={t('promptModuleLibrary.triggerShort', '프롬프트 묶음')}
+                                triggerClassName="w-full justify-start rounded-control border-0 px-2"
+                                onInsert={(parts, module) => {
+                                    let character = ''
+                                    let characterNegative = ''
+                                    for (const part of parts) {
+                                        if (part.kind === 'base') setBasePrompt(appendStructuredPromptText(basePrompt, part.content))
+                                        else if (part.kind === 'detail') setDetailPrompt(appendStructuredPromptText(detailPrompt, part.content))
+                                        else if (part.kind === 'additional') setAdditionalPrompt(appendStructuredPromptText(additionalPrompt, part.content))
+                                        else if (part.kind === 'negative') setNegativePrompt(appendStructuredPromptText(negativePrompt, part.content))
+                                        else if (part.kind === 'character') character = appendStructuredPromptText(character, part.content)
+                                        else characterNegative = appendStructuredPromptText(characterNegative, part.content)
+                                    }
+                                    if (parts.some(part => part.kind === 'character' || part.kind === 'character-negative')) {
+                                        addCharacter({
+                                            name: module.name,
+                                            prompt: character,
+                                            negative: characterNegative,
+                                            enabled: true,
+                                            position: { x: 0.5, y: 0.5 },
+                                        })
+                                        setPositionEnabled(true)
+                                    }
+                                }}
+                            />
+                            <PromptModulePicker
+                                triggerLabel={t('guided.promptModules.legacyTriggerShort', '한 줄 묶음')}
+                                triggerClassName="w-full justify-start rounded-control border-0 px-2"
+                                onSelectLine={line => activePrompt.setValue(
+                                    appendPromptModuleLine(activePrompt.value, line),
+                                )}
+                            />
+                        </PopoverContent>
+                    </Popover>
+
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button type="button" variant="ghost" size="sm" className="min-w-0 justify-center whitespace-nowrap px-2 text-xs">
+                                <Sparkles className="mr-1 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <span className="truncate">{t('prompt.tools', '프롬프트 도구')}</span>
+                                <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-64 space-y-1 p-2">
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="w-full justify-start px-2 text-xs"
+                                disabled={!activePrompt.value.trim()}
+                                onClick={() => openFullSort(activePrompt.value)}
+                                data-testid="prompt-frequency-sort-all"
+                            >
+                                <ArrowDownWideNarrow className="mr-2 h-3.5 w-3.5" />
+                                {t('promptFrequencySort.sortAll', '전체 빈도 정렬')}
+                            </Button>
+                            {onOpenAiAssistant && (
+                                <Button type="button" variant="ghost" size="sm" className="w-full justify-start px-2 text-xs" disabled={toolsDisabled} onClick={onOpenAiAssistant}>
+                                    <Sparkles className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+                                    {t('promptGenerator.title', 'AI 도움받아 쓰기')}
+                                </Button>
                             )}
-                        />
-                    </div>
+                            {onOpenFragment && (
+                                <Button type="button" variant="ghost" size="sm" className="w-full justify-start px-2 text-xs" disabled={toolsDisabled} onClick={onOpenFragment}>
+                                    <Puzzle className="mr-2 h-3.5 w-3.5" aria-hidden="true" />
+                                    {t('prompt.fragment', '조각')}
+                                </Button>
+                            )}
+                        </PopoverContent>
+                    </Popover>
                 </div>
                 <ContextMenu>
                     <ContextMenuTrigger asChild>
@@ -295,6 +327,15 @@ export function PromptEditorSurface() {
                         </ContextMenuItem>
                     </ContextMenuContent>
                 </ContextMenu>
+                {canUndoSort && (
+                    <div className="flex min-h-10 items-center justify-between gap-2 border-t border-border/45 px-3 py-1 text-xs text-muted-foreground" role="status">
+                        <span className="min-w-0 truncate">{t('promptFrequencySort.applied', '빈도순으로 정렬했어요.')}</span>
+                        <Button type="button" variant="ghost" size="sm" className="shrink-0 whitespace-nowrap" onClick={undoLastSort} data-testid="prompt-frequency-sort-undo">
+                            <Undo2 className="mr-1 h-3.5 w-3.5" />
+                            {t('promptFrequencySort.undo', '되돌리기')}
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <PromptFrequencySortDialog

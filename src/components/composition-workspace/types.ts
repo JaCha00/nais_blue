@@ -122,13 +122,13 @@ export interface CompositionWorkspaceLabels {
 }
 
 export const DEFAULT_COMPOSITION_WORKSPACE_LABELS: CompositionWorkspaceLabels = {
-    modules: 'Modules',
-    inspector: 'Inspector',
-    resolvedPlan: 'Resolved plan',
+    modules: 'Prompt groups',
+    inspector: 'Applied content',
+    resolvedPlan: 'Actual generation values',
     edit: 'Edit',
     enable: 'Enable',
     disable: 'Disable',
     moveUp: 'Move up',
     moveDown: 'Move down',
-    empty: 'Nothing selected',
+    empty: 'No prompt groups',
 }

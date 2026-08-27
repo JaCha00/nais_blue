@@ -56,6 +56,7 @@ export interface ModuleStackProps {
     searchLabel?: string
     labels?: Partial<CompositionWorkspaceLabels>
     className?: string
+    showHeader?: boolean
     onSearchChange?: (value: string) => void
     onSelectModule: (moduleId: string) => void
     onToggleModule?: (moduleId: string, enabled: boolean) => void
@@ -75,9 +76,10 @@ export function ModuleStack({
     height = 'min(36rem, 65dvh)',
     emptyLabel,
     searchValue,
-    searchLabel = 'Search modules',
+    searchLabel = 'Search prompt groups',
     labels: labelsOverride,
     className,
+    showHeader = true,
     onSearchChange,
     onSelectModule,
     onToggleModule,
@@ -111,16 +113,17 @@ export function ModuleStack({
 
     return (
         <section
-            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel bg-card', className)}
-            aria-labelledby="composition-module-stack-title"
+            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden bg-card', className)}
+            aria-labelledby={showHeader ? 'composition-module-stack-title' : undefined}
+            aria-label={showHeader ? undefined : title ?? labels.modules}
             data-testid="composition-module-stack"
         >
-            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
+            {showHeader && <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
                 <h2 id="composition-module-stack-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.modules}>
                     {title ?? labels.modules}
                 </h2>
                 <span className="shrink-0 font-mono text-xs text-muted-foreground">{orderedModules.length}</span>
-            </header>
+            </header>}
 
             {onSearchChange && (
                 <label className="relative block p-2">

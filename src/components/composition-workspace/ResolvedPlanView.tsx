@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ReadonlyCompositionIssue, ReadonlyCompositionPlan } from './types'
 import { PromptLengthAssessment } from '@/components/guidance/PromptLengthAssessment'
+import { getNaiImageModelName } from '@/services/nai/model-catalog'
 
 export interface ResolvedPlanViewLabels {
     title: string
@@ -20,13 +21,21 @@ export interface ResolvedPlanViewLabels {
     errors: string
     randomTrace: string
     provenance: string
+    technical: string
+    generationSummary: string
+    saveSummary: string
+    revision: string
+    metadataEmbedded: string
+    metadataSidecar: string
+    metadataClean: string
+    metadataStripped: string
     repair: string
 }
 
 const DEFAULT_LABELS: ResolvedPlanViewLabels = {
-    title: 'Resolved plan',
-    loading: 'Resolving plan…',
-    empty: 'No resolved plan yet.',
+    title: 'Actual generation values',
+    loading: 'Preparing generation values…',
+    empty: 'No generation values yet.',
     positive: 'Positive prompt',
     negative: 'Negative prompt',
     promptParts: 'Prompt slots',
@@ -38,6 +47,14 @@ const DEFAULT_LABELS: ResolvedPlanViewLabels = {
     errors: 'Errors',
     randomTrace: 'Random trace',
     provenance: 'Provenance',
+    technical: 'Technical details',
+    generationSummary: 'Generation setup',
+    saveSummary: 'Save',
+    revision: 'Revision',
+    metadataEmbedded: 'Generation info inside image',
+    metadataSidecar: 'Keep image info and save recovery data separately',
+    metadataClean: 'Remove image info and save recovery data separately',
+    metadataStripped: 'Remove generation info from image',
     repair: 'Repair',
 }
 
@@ -49,6 +66,7 @@ export interface ResolvedPlanViewProps {
     title?: string
     labels?: Partial<ResolvedPlanViewLabels>
     className?: string
+    showHeader?: boolean
     onRepairIssue?: (issue: ReadonlyCompositionIssue) => void
 }
 
@@ -92,25 +110,33 @@ export function ResolvedPlanView({
     title,
     labels: labelsOverride,
     className,
+    showHeader = true,
     onRepairIssue,
 }: ResolvedPlanViewProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
     const issues = suppliedIssues ?? plan?.issues ?? []
     const errors = issues.filter(issue => issue.severity === 'error')
     const warnings = issues.filter(issue => issue.severity === 'warning')
+    const metadataSummary = plan?.outputPolicy.metadataMode === 'embedded'
+        ? labels.metadataEmbedded
+        : plan?.outputPolicy.metadataMode === 'sidecar-only'
+            ? labels.metadataSidecar
+            : plan?.outputPolicy.metadataMode === 'strip-and-sidecar'
+                ? labels.metadataClean
+                : labels.metadataStripped
 
     return (
         <section
-            className={cn('min-w-0 overflow-hidden rounded-panel border border-border bg-card', className)}
-            aria-labelledby="composition-resolved-plan-title"
+            className={cn('min-w-0 overflow-hidden bg-card', className)}
+            aria-labelledby={showHeader ? 'composition-resolved-plan-title' : undefined}
+            aria-label={showHeader ? undefined : title ?? labels.title}
             data-testid="composition-resolved-plan"
         >
-            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border px-3">
+            {showHeader && <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border px-3">
                 <h2 id="composition-resolved-plan-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.title}>
                     {title ?? labels.title}
                 </h2>
-                {plan && <span className="shrink-0 break-all font-mono text-[11px] text-muted-foreground">r{plan.documentRevision}</span>}
-            </header>
+            </header>}
 
             {loading ? (
                 <div className="flex min-h-44 items-center justify-center gap-2 p-4 text-sm text-muted-foreground" role="status">
@@ -161,79 +187,102 @@ export function ResolvedPlanView({
 
                     <PromptLengthAssessment plan={plan} />
 
-                    <PlanSection title={labels.promptParts} count={Object.keys(plan.promptParts).length}>
-                        <dl className="divide-y divide-border border-y border-border">
-                            {Object.entries(plan.promptParts).map(([slot, value]) => (
-                                <div key={slot} className="grid min-w-0 gap-1 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
-                                    <dt className="break-all font-mono text-xs text-muted-foreground">{slot}</dt>
-                                    <dd className="min-w-0"><PlanText>{typeof value === 'string' ? value : JSON.stringify(value)}</PlanText></dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </PlanSection>
+                    <dl className="divide-y divide-border border-y border-border px-3" data-testid="composition-author-summary">
+                        <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                            <dt className="text-sm font-medium text-muted-foreground">{labels.characters}</dt>
+                            <dd className="min-w-0 text-sm">{plan.characters.filter(character => character.enabled).length}</dd>
+                        </div>
+                        <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                            <dt className="text-sm font-medium text-muted-foreground">{labels.generationSummary}</dt>
+                            <dd className="min-w-0 break-words text-sm">{getNaiImageModelName(plan.params.model)} · {plan.params.width}×{plan.params.height} · {plan.params.steps}</dd>
+                        </div>
+                        <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                            <dt className="text-sm font-medium text-muted-foreground">{labels.saveSummary}</dt>
+                            <dd className="min-w-0 break-words text-sm">{plan.outputPolicy.format.toUpperCase()} · {metadataSummary}</dd>
+                        </div>
+                    </dl>
 
-                    <PlanSection title={labels.characters} count={plan.characters.length} open={plan.characters.length > 0}>
-                        {plan.characters.length === 0 ? <p className="text-xs text-muted-foreground">—</p> : (
-                            <div className="divide-y divide-border border-y border-border">
-                                {plan.characters.map(character => (
-                                    <article key={character.characterId} className="min-w-0 py-2">
-                                        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                                            <strong className="min-w-0 break-all font-mono text-xs">{character.characterId}</strong>
-                                            <span className="font-mono text-[11px] text-muted-foreground">
-                                                {character.position.mode === 'manual'
-                                                    ? `${character.position.x}, ${character.position.y}`
-                                                    : character.position.mode}
-                                            </span>
+                    <details className="border-t border-border" data-testid="composition-technical-details">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                            <span>{labels.technical}</span>
+                            <span className="font-mono text-[11px] text-muted-foreground">r{plan.documentRevision}</span>
+                        </summary>
+                        <div className="min-w-0 border-t border-border">
+                            <PlanSection title={labels.promptParts} count={Object.keys(plan.promptParts).length}>
+                                <dl className="divide-y divide-border border-y border-border">
+                                    {Object.entries(plan.promptParts).map(([slot, value]) => (
+                                        <div key={slot} className="grid min-w-0 gap-1 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
+                                            <dt className="break-all font-mono text-xs text-muted-foreground">{slot}</dt>
+                                            <dd className="min-w-0"><PlanText>{typeof value === 'string' ? value : JSON.stringify(value)}</PlanText></dd>
                                         </div>
-                                        <p className="mt-1 whitespace-pre-wrap break-words text-xs">+ {character.positive || '—'}</p>
-                                        <p className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive">− {character.negative || '—'}</p>
-                                    </article>
-                                ))}
-                            </div>
-                        )}
-                    </PlanSection>
+                                    ))}
+                                </dl>
+                            </PlanSection>
 
-                    <PlanSection title={labels.params}>
-                        <JsonValue value={plan.params} />
-                        {plan.provenanceDetails.params.length > 0 && (
-                            <div className="mt-3 divide-y divide-border border-y border-border">
-                                {plan.provenanceDetails.params.map(param => (
-                                    <div key={param.field} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 py-2 text-xs">
-                                        <span className="min-w-0 break-all font-mono">{param.field}</span>
-                                        <span className="shrink-0 text-muted-foreground" aria-label={labels.paramsWinner}>← {param.winner.layer}</span>
+                            <PlanSection title={labels.characters} count={plan.characters.length} open={plan.characters.length > 0}>
+                                {plan.characters.length === 0 ? <p className="text-xs text-muted-foreground">—</p> : (
+                                    <div className="divide-y divide-border border-y border-border">
+                                        {plan.characters.map(character => (
+                                            <article key={character.characterId} className="min-w-0 py-2">
+                                                <div className="flex min-w-0 items-center justify-between gap-2">
+                                                    <strong className="min-w-0 break-all font-mono text-xs">{character.characterId}</strong>
+                                                    <span className="font-mono text-[11px] text-muted-foreground">
+                                                        {character.position.mode === 'manual'
+                                                            ? `${character.position.x}, ${character.position.y}`
+                                                            : character.position.mode}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs">+ {character.positive || '—'}</p>
+                                                <p className="mt-1 whitespace-pre-wrap break-words text-xs text-destructive">− {character.negative || '—'}</p>
+                                            </article>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </PlanSection>
+                                )}
+                            </PlanSection>
 
-                    <PlanSection title={labels.output}>
-                        <JsonValue value={plan.outputPolicy} />
-                    </PlanSection>
-
-                    <PlanSection title={labels.randomTrace} count={plan.randomTrace.length} open={false}>
-                        {plan.randomTrace.length === 0 ? <p className="text-xs text-muted-foreground">—</p> : (
-                            <div className="divide-y divide-border border-y border-border">
-                                {plan.randomTrace.map((trace, index) => (
-                                    <div key={`${trace.ruleId}-${trace.drawIndex}-${index}`} className="min-w-0 py-2 font-mono text-xs">
-                                        <div className="break-all">{trace.streamKey} · {trace.ruleId}</div>
-                                        <div className="mt-1 break-all text-muted-foreground">#{trace.drawIndex} seed {trace.seed} → {String(trace.result)}</div>
+                            <PlanSection title={labels.params}>
+                                <JsonValue value={plan.params} />
+                                {plan.provenanceDetails.params.length > 0 && (
+                                    <div className="mt-3 divide-y divide-border border-y border-border">
+                                        {plan.provenanceDetails.params.map(param => (
+                                            <div key={param.field} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 py-2 text-xs">
+                                                <span className="min-w-0 break-all font-mono">{param.field}</span>
+                                                <span className="shrink-0 text-muted-foreground" aria-label={labels.paramsWinner}>← {param.winner.layer}</span>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </PlanSection>
+                                )}
+                            </PlanSection>
 
-                    <PlanSection title={labels.provenance} open={false}>
-                        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 font-mono text-xs">
-                            <dt className="text-muted-foreground">prompt</dt><dd>{plan.provenanceDetails.prompts.length}</dd>
-                            <dt className="text-muted-foreground">params</dt><dd>{plan.provenanceDetails.params.length}</dd>
-                            <dt className="text-muted-foreground">character</dt><dd>{plan.provenanceDetails.characters.length}</dd>
-                            <dt className="text-muted-foreground">output</dt><dd>{plan.provenanceDetails.outputPolicy.length}</dd>
-                            <dt className="text-muted-foreground">random</dt><dd>{plan.provenanceDetails.randomSelections.length}</dd>
-                            <dt className="text-muted-foreground">hash</dt><dd className="break-all">{plan.planHash.digest}</dd>
-                        </dl>
-                    </PlanSection>
+                            <PlanSection title={labels.output}>
+                                <JsonValue value={plan.outputPolicy} />
+                            </PlanSection>
+
+                            <PlanSection title={labels.randomTrace} count={plan.randomTrace.length} open={false}>
+                                {plan.randomTrace.length === 0 ? <p className="text-xs text-muted-foreground">—</p> : (
+                                    <div className="divide-y divide-border border-y border-border">
+                                        {plan.randomTrace.map((trace, index) => (
+                                            <div key={`${trace.ruleId}-${trace.drawIndex}-${index}`} className="min-w-0 py-2 font-mono text-xs">
+                                                <div className="break-all">{trace.streamKey} · {trace.ruleId}</div>
+                                                <div className="mt-1 break-all text-muted-foreground">#{trace.drawIndex} seed {trace.seed} → {String(trace.result)}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </PlanSection>
+
+                            <PlanSection title={labels.provenance} open={false}>
+                                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 font-mono text-xs">
+                                    <dt className="text-muted-foreground">prompt</dt><dd>{plan.provenanceDetails.prompts.length}</dd>
+                                    <dt className="text-muted-foreground">params</dt><dd>{plan.provenanceDetails.params.length}</dd>
+                                    <dt className="text-muted-foreground">character</dt><dd>{plan.provenanceDetails.characters.length}</dd>
+                                    <dt className="text-muted-foreground">output</dt><dd>{plan.provenanceDetails.outputPolicy.length}</dd>
+                                    <dt className="text-muted-foreground">random</dt><dd>{plan.provenanceDetails.randomSelections.length}</dd>
+                                    <dt className="text-muted-foreground">hash</dt><dd className="break-all">{plan.planHash.digest}</dd>
+                                </dl>
+                            </PlanSection>
+                        </div>
+                    </details>
                 </div>
             )}
         </section>

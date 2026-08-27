@@ -98,7 +98,7 @@
         }
     },
     "guided": {
-        "advanced": "上級生成モード",
+        "advanced": "直接作成",
         "resolutionDetails": {
             "title": "詳細解像度",
             "description": "幅と高さを直接入力できます。値は NovelAI の仕様に合わせて64ピクセル単位に整えられます。",
@@ -118,14 +118,17 @@
             "autosave": "選択内容は自動的に保存されます。",
             "choices": "作業を選択",
             "open": "開始",
+            "openDirectly": "開く",
+            "tools": "その他の作業",
+            "chooseAgain": "別の作業を選ぶ",
             "resume": "続きから作業する",
             "draftCount": "保存済みの下書き {{count}} 件",
             "createError": "新しい下書きを保存できませんでした。少し待ってからもう一度お試しください。",
-            "single": { "title": "一枚の画像を丁寧に作りたい", "description": "モデルから最終設定まで順番に決めます。" },
-            "batch": { "title": "複数の画像を作りたい", "description": "同じ設定、プロンプト変化、シーン作業から選びます。" },
-            "prompt": { "title": "プロンプトを詳しく整えたい", "description": "ローカル AI エージェントの変更を安全に比較します。" },
-            "library": { "title": "生成画像を管理したい", "description": "整理、編集、メタデータ確認、R2 アップロードを案内します。" },
-            "environment": { "title": "作業環境を構成したい", "description": "アカウント、保存先、表示、バックアップを設定します。" }
+            "single": { "title": "画像を一枚作る", "description": "モデルから最終設定まで順番に決めます。" },
+            "batch": { "title": "画像を複数作る", "description": "同じ設定、プロンプト変化、シーン作業から選びます。" },
+            "prompt": { "title": "プロンプトを整える", "description": "ローカル AI エージェントの変更を安全に比較します。" },
+            "library": { "title": "画像を管理", "description": "整理、編集、メタデータ確認、R2 アップロードを案内します。" },
+            "environment": { "title": "作業環境を設定", "description": "アカウント、保存先、表示、バックアップを設定します。" }
         },
         "promptTasks": {
             "back": "戻る",
@@ -438,6 +441,7 @@
             "home": "作業ホーム",
             "breadcrumb": "現在の作業パス",
             "start": "今すぐ始める",
+            "openDirectly": "開く",
             "native": {
                 "unavailable": {
                     "library": "この画像管理作業を開けません。作業ホームに戻って、もう一度選んでください。",
@@ -812,6 +816,12 @@
                 "saved": "自動保存済み",
                 "error": "保存状態をご確認ください"
             },
+            "milestones": {
+                "content": "内容",
+                "shape": "形",
+                "save": "保存と共有",
+                "review": "確認"
+            },
             "steps": {
                 "model": {
                     "short": "モデル",
@@ -877,11 +887,13 @@
                 "label": "作りたい画像",
                 "placeholder": "例: 1girl, blue hair, quiet library, warm afternoon light",
                 "tagHelp": "英語タグまたは英語の文章を使えます。タグ候補の数字は学習量ではなく、参考タグデータの投稿数です。",
-                "negativeTitle": "避けたい内容を追加 · 任意",
+                "negativeTitle": "避けたい内容",
+                "negativeHelp": "結果から除外したい要素がある場合だけ入力してください。",
                 "negativePlaceholder": "例: lowres, blurry, text",
                 "transparentBackground": "背景を透過する",
                 "transparentBackgroundHelp": "ステッカーやキャラクター素材など、背景なしで使いたいときにオンにします。",
-                "moreTools": "ファイル・モジュールから読み込む · 任意"
+                "moreTools": "ファイル・保存済みプロンプトから読み込む",
+                "moreToolsHelp": "現在の内容への追加・置換、保存済みモジュールの選択ができます。"
             },
             "resolution": {
                 "legend": "画像の比率と解像度",
@@ -1275,19 +1287,19 @@
         }
     },
     "composition": {
-        "commandBar": "Compositionコマンド",
-        "modules": "モジュール",
-        "searchModules": "モジュール検索",
-        "noModules": "モジュールなし",
+        "commandBar": "生成コントロール",
+        "modules": "プロンプトグループ",
+        "searchModules": "プロンプトグループを検索",
+        "noModules": "プロンプトグループなし",
         "output": "出力",
-        "externalConflict": "外部のcomposition変更",
-        "externalConflictDescription": "編集前にrepository revisionの競合を解決してください。",
+        "externalConflict": "別のウィンドウで変更されました",
+        "externalConflictDescription": "別のウィンドウの変更と重なっています。編集前に内容を確認してください。",
         "workspace": {
-            "modules": "モジュール",
-            "moduleStack": "モジュールスタック",
-            "moduleStackHelp": "レシピモジュールを選択して、適用内容と検証状態を確認します。",
-            "inspector": "コンテキストインスペクター",
-            "inspectorHelp": "選択したモジュールがプロンプトとパラメーターに与える結果を確認します。"
+            "modules": "プロンプトグループ",
+            "moduleStack": "適用順序",
+            "moduleStackHelp": "生成構成とプロンプトグループの適用順序を確認します。",
+            "inspector": "適用内容",
+            "inspectorHelp": "選択したプロンプトグループが生成内容にどう適用されるか確認します。"
         },
         "mode": {
             "title": "生成方式",
@@ -1296,47 +1308,69 @@
             "current": "現在の生成エンジン"
         },
         "recipe": {
-            "title": "レシピ",
+            "title": "生成構成",
             "direct": "直接プロンプト",
-            "noneSelected": "レシピ未選択",
-            "disabled": "無効なレシピ",
+            "noneSelected": "生成構成が未選択",
+            "disabled": "使用しない生成構成",
             "unavailable": "{{id}}（利用不可）"
         },
         "module": {
-            "noneSelected": "モジュール未選択",
-            "emptyRecipe": "このレシピにはモジュールがありません。",
-            "search": "モジュール検索",
-            "selectToInspect": "解決状態を確認するモジュールを選択してください。",
+            "noneSelected": "プロンプトグループが未選択",
+            "emptyRecipe": "この生成構成にはプロンプトグループがありません。",
+            "search": "プロンプトグループを検索",
+            "selectToInspect": "確認するプロンプトグループを選択してください。",
             "kind": "種類",
-            "id": "モジュールID",
-            "edit": "モジュール編集",
-            "missing": "参照切れモジュール",
+            "id": "内部ID",
+            "edit": "プロンプトグループを編集",
+            "missing": "参照切れプロンプトグループ",
             "repairRequired": "修復が必要",
-            "compatibility": "互換モジュール",
-            "summary": "モジュール概要"
+            "compatibility": "互換プロンプトグループ",
+            "summary": "プロンプトグループ概要"
         },
         "validation": {
             "pending": "検証待ち",
             "legacy": "以前の生成方式",
-            "conflict": "競合"
+            "conflict": "別画面で変更済み"
         },
         "conflict": {
-            "label": "競合",
-            "externalEdit": "外部変更を検出",
-            "review": "生成前にrepositoryの競合を確認してください。"
+            "label": "変更の重複",
+            "externalEdit": "別のウィンドウで変更されました",
+            "review": "別のウィンドウの変更と重なっています。生成前に内容を確認してください。"
         },
         "override": {
-            "diff": "オーバーライド差分",
-            "inherited": "継承値",
-            "value": "オーバーライド",
+            "diff": "デフォルトから変えた項目",
+            "inherited": "デフォルト",
+            "value": "ここで変更した値",
             "unchanged": "変更なし",
-            "reset": "オーバーライドをリセット"
+            "reset": "変更値をリセット"
         },
         "plan": {
-            "title": "解決済みプラン",
-            "open": "解決済みプランを開く",
-            "resolved": "解決結果",
-            "help": "プロンプト、パラメータ、random trace、provenanceを確認します。"
+            "title": "実際の生成に使う値",
+            "open": "生成値を開く",
+            "resolved": "生成値",
+            "help": "結果に関わる値を先に表示し、元の値は技術情報に保存します。",
+            "loading": "生成値を整理しています…",
+            "empty": "生成値はまだありません。",
+            "positive": "プロンプト",
+            "negative": "避ける内容",
+            "promptParts": "内部プロンプト欄",
+            "characters": "キャラクター",
+            "params": "生成設定の元データ",
+            "paramsWinner": "適用元",
+            "output": "保存設定の元データ",
+            "warnings": "確認する内容",
+            "errors": "先に解決する問題",
+            "randomTrace": "ランダム選択記録",
+            "provenance": "値の出所",
+            "technical": "技術情報",
+            "generationSummary": "生成方式",
+            "saveSummary": "保存",
+            "revision": "リビジョン",
+            "metadataEmbedded": "画像に生成情報を含める",
+            "metadataSidecar": "画像の情報を残し、復元情報を別に保存",
+            "metadataClean": "画像の生成情報を削除し、復元情報を別に保存",
+            "metadataStripped": "画像から生成情報を削除",
+            "repair": "問題を解決"
         },
         "cost": { "estimated": "推定コスト" },
         "random": {
@@ -1347,7 +1381,7 @@
         "outputCapabilityFallbackTitle": "このプラットフォーム向けに出力先を変更しました",
         "outputCapabilityFallbackDescription": "{{reason}} 代替手段: {{alternative}}",
         "resourceRepairRequired": "生成前に出力先を修復してください",
-        "compatibility": { "rawPrompt": "詳細rawプロンプト" }
+        "compatibility": { "rawPrompt": "プロンプトを直接編集" }
     },
     "preset": {
         "default": "デフォルト",
@@ -1948,17 +1982,19 @@
     },
     "prompt": {
         "title": "プロンプト",
-        "base": "基本プロンプト",
+        "base": "基本",
         "basePlaceholder": "1girl, beautiful, long hair, standing, looking at viewer...",
-        "additional": "追加プロンプト",
+        "additional": "補強",
         "additionalPlaceholder": "blue eyes, smile, school uniform, ribbon...",
-        "detail": "詳細プロンプト",
+        "detail": "描写",
         "detailPlaceholder": "masterpiece, best quality, highly detailed, absurdres...",
-        "negative": "ネガティブプロンプト",
+        "negative": "除外",
         "negativePlaceholder": "bad anatomy, low quality, blurry, worst quality...",
         "character": "キャラクター",
         "fragment": "フラグメント",
-        "imageReference": "イメージ参照"
+        "imageReference": "イメージ参照",
+        "import": "読み込む",
+        "tools": "プロンプトツール"
     },
     "promptFrequencySort": {
         "title": "Danbooru頻度で並べ替え",
@@ -1975,6 +2011,7 @@
         "apply": "並べ替えを適用",
         "sortAll": "全体を頻度順に並べ替え",
         "undo": "並べ替えを元に戻す",
+        "applied": "頻度順に並べ替えました。",
         "contextTitle": "プロンプトの並べ替え",
         "sortSelection": "選択範囲を頻度順に並べ替え"
     },

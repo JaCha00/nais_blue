@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
 import {
+    ArrowLeft,
     ArrowRight,
     Clock3,
     Images,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
+import { Button } from '@/components/ui/button'
 import { createSingleImageDraft, type WorkflowDraft } from '@/domain/workflow/single-image-draft'
 import { cn } from '@/lib/utils'
 import { generateRandomSeed } from '@/lib/utils'
@@ -21,12 +23,17 @@ import {
     GUIDED_DRAFTS_CHANGED_EVENT,
     announceGuidedDraftChange,
 } from './guided-draft-events'
+import {
+    GuidedWorkflowChoices,
+    type GuidedWorkflowId,
+} from './GuidedWorkflowHub'
 
 interface GuidedChoice {
-    id: 'A' | 'B' | 'C' | 'D' | 'E'
+    id: 'single' | 'batch' | 'prompt' | 'library' | 'environment'
     icon: LucideIcon
     title: string
     description: string
+    direct?: boolean
 }
 
 function ChoiceRow({ choice, busy, openLabel, onSelect }: { choice: GuidedChoice; busy: boolean; openLabel: string; onSelect(): void }) {
@@ -34,14 +41,14 @@ function ChoiceRow({ choice, busy, openLabel, onSelect }: { choice: GuidedChoice
     return (
         <button
             type="button"
+            data-guided-choice={choice.id}
             onClick={onSelect}
             disabled={busy}
             className={cn(
-                'guided-choice-row group flex min-h-24 w-full items-center gap-4 border-b border-border/45 px-3 text-left last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4',
+                'guided-choice-row group flex min-h-24 w-full items-center gap-4 border-b border-border/45 px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4',
                 busy && 'cursor-progress opacity-65',
             )}
         >
-            <span className="w-6 shrink-0 font-mono text-sm font-semibold text-primary">{choice.id}</span>
             <Icon className="h-5 w-5 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
             <span className="min-w-0 flex-1 py-4">
                 <span className="block break-words text-base font-semibold leading-snug text-foreground">{choice.title}</span>
@@ -61,6 +68,7 @@ export function GuidedHome() {
     const [drafts, setDrafts] = useState<readonly WorkflowDraft[]>([])
     const [creating, setCreating] = useState(false)
     const [createError, setCreateError] = useState(false)
+    const [selectedWorkflow, setSelectedWorkflow] = useState<GuidedWorkflowId | null>(null)
     const resumeDraft = drafts[0]
     const resumeNode = resumeDraft === undefined
         ? null
@@ -113,34 +121,36 @@ export function GuidedHome() {
     }
     const choices: GuidedChoice[] = [
         {
-            id: 'A',
+            id: 'single',
             icon: ImageIcon,
-            title: t('guided.home.single.title', '이미지를 한 장 정성스럽게 만들고 싶어요'),
+            title: t('guided.home.single.title', '한 장 만들기'),
             description: t('guided.home.single.description', '모델부터 최종 설정까지 차근차근 정해요.'),
         },
         {
-            id: 'B',
+            id: 'batch',
             icon: Images,
-            title: t('guided.home.batch.title', '이미지를 여러 장 만들고 싶어요'),
+            title: t('guided.home.batch.title', '여러 장 만들기'),
             description: t('guided.home.batch.description', '같은 설정, 랜덤 프롬프트, 씬 작업 중에서 골라요.'),
         },
         {
-            id: 'C',
+            id: 'prompt',
             icon: TextCursorInput,
-            title: t('guided.home.prompt.title', '프롬프트를 상세하게 가다듬고 싶어요'),
+            title: t('guided.home.prompt.title', '프롬프트 다듬기'),
             description: t('guided.home.prompt.description', '로컬 AI 에이전트와 안전하게 수정하고 비교해요.'),
         },
         {
-            id: 'D',
+            id: 'library',
             icon: Library,
-            title: t('guided.home.library.title', '생성한 이미지를 관리하고 싶어요'),
+            title: t('guided.home.library.title', '이미지 정리하기'),
             description: t('guided.home.library.description', '정리, 편집, 메타데이터, R2 업로드를 안내해요.'),
+            direct: true,
         },
         {
-            id: 'E',
+            id: 'environment',
             icon: Settings2,
-            title: t('guided.home.environment.title', '작업 환경을 구성하고 싶어요'),
+            title: t('guided.home.environment.title', '앱 설정하기'),
             description: t('guided.home.environment.description', '계정, 저장 위치, 화면과 백업을 설정해요.'),
+            direct: true,
         },
     ]
 
@@ -150,56 +160,79 @@ export function GuidedHome() {
                 <section aria-labelledby="guided-welcome-title">
                     <p className="mb-2 text-sm font-semibold text-primary">NAI Blue · Guided</p>
                     <h1 id="guided-welcome-title" className="guided-display max-w-[12ch] text-foreground">
-                        {t('guided.home.welcome', '어서오세요!')}
+                        {selectedWorkflow === null
+                            ? t('guided.home.welcome', '어서오세요!')
+                            : t(`guided.workflows.${selectedWorkflow}.title`)}
                     </h1>
                     <p className="mt-3 max-w-[34ch] text-base leading-snug text-muted-foreground">
-                        {t('guided.home.question', '어떤 작업을 하고 싶은지부터 함께 정해볼게요.')}
+                        {selectedWorkflow === null
+                            ? t('guided.home.question', '어떤 작업을 하고 싶은지부터 함께 정해볼게요.')
+                            : t(`guided.workflows.${selectedWorkflow}.description`)}
                     </p>
-                    <p className="mt-2 text-sm leading-snug text-muted-foreground">
-                        {t('guided.home.autosave', '선택한 내용은 자동으로 저장됩니다.')}
-                    </p>
-                    {resumeHref !== null && (
-                        <button
+                    {selectedWorkflow === null ? (
+                        <p className="mt-2 text-sm leading-snug text-muted-foreground">
+                            {t('guided.home.autosave', '선택한 내용은 자동으로 저장됩니다.')}
+                        </p>
+                    ) : (
+                        <Button
                             type="button"
-                            className="guided-choice-row mt-5 flex min-h-16 w-full max-w-sm items-center gap-3 border-y border-border/50 px-2 py-3 text-left hover:text-primary focus-ring"
-                            onClick={() => navigate(resumeHref)}
+                            variant="ghost"
+                            className="mt-4 -ml-3"
+                            onClick={() => setSelectedWorkflow(null)}
                         >
-                            <Clock3 className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-                            <span className="min-w-0 flex-1">
-                                <span className="block text-sm font-semibold">
-                                    {t('guided.home.resume', '이어서 작업하기')}
-                                </span>
-                                <span className="mt-1 block break-words text-xs leading-snug text-muted-foreground">
-                                    {t('guided.home.draftCount', '저장된 초안 {{count}}개', { count: drafts.length })}
-                                </span>
-                            </span>
-                            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+                            {t('guided.home.chooseAgain', '다른 작업 고르기')}
+                        </Button>
                     )}
                 </section>
 
-                <nav aria-label={t('guided.home.choices', '작업 선택')} className="border-y border-border/40">
+                {selectedWorkflow === null ? <nav aria-label={t('guided.home.choices', '작업 선택')} className="border-y border-border/40">
+                    {resumeHref !== null && (
+                        <button
+                            type="button"
+                            className="guided-choice-row group flex min-h-20 w-full items-center gap-4 border-b border-primary/35 bg-primary/[0.04] px-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-4"
+                            onClick={() => navigate(resumeHref)}
+                        >
+                            <Clock3 className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 py-4">
+                                <span className="block text-base font-semibold text-foreground">
+                                    {t('guided.home.resume', '이어서 작업하기')}
+                                </span>
+                                <span className="mt-1 block text-sm text-muted-foreground">
+                                    {t('guided.home.draftCount', '저장된 초안 {{count}}개', { count: drafts.length })}
+                                </span>
+                            </span>
+                            <ArrowRight className="h-4 w-4 text-primary transition-transform duration-fast group-hover:translate-x-1" aria-hidden="true" />
+                        </button>
+                    )}
                     {choices.map(choice => (
-                        <ChoiceRow
-                            key={choice.id}
-                            choice={choice}
-                            busy={creating}
-                            openLabel={t('guided.home.open', '시작')}
-                            onSelect={() => {
-                                if (choice.id === 'A') void startSingleImageDraft()
-                                else if (choice.id === 'B') navigate('/guided-preview/guide/batch')
-                                else if (choice.id === 'C') navigate('/guided-preview/guide/prompt')
-                                else if (choice.id === 'D') navigate('/guided-preview/guide/library')
-                                else navigate('/guided-preview/guide/environment')
-                            }}
-                        />
+                        <div key={choice.id}>
+                            {choice.id === 'prompt' && (
+                                <p className="border-b border-border/45 px-3 py-3 text-xs font-semibold text-muted-foreground sm:px-4">
+                                    {t('guided.home.tools', '다른 작업')}
+                                </p>
+                            )}
+                            <ChoiceRow
+                                choice={choice}
+                                busy={creating}
+                                openLabel={choice.direct
+                                    ? t('guided.home.openDirectly', '바로 열기')
+                                    : t('guided.home.open', '시작')}
+                                onSelect={() => {
+                                    if (choice.id === 'single') void startSingleImageDraft()
+                                    else setSelectedWorkflow(choice.id)
+                                }}
+                            />
+                        </div>
                     ))}
                     {createError && (
                         <p className="px-2 py-3 text-xs text-destructive" role="alert">
                             {t('guided.home.createError', '새 초안을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.')}
                         </p>
                     )}
-                </nav>
+                </nav> : (
+                    <GuidedWorkflowChoices workflowId={selectedWorkflow} />
+                )}
             </div>
         </div>
     )

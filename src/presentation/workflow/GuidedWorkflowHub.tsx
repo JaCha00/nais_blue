@@ -4,7 +4,6 @@ import {
     Activity,
     ArrowRight,
     Bot,
-    ChevronRight,
     CloudUpload,
     Database,
     FileSearch,
@@ -87,6 +86,41 @@ export function isGuidedWorkflowId(value: string | undefined): value is GuidedWo
     return value !== undefined && Object.prototype.hasOwnProperty.call(GUIDED_WORKFLOWS, value)
 }
 
+export function GuidedWorkflowChoices({ workflowId }: { workflowId: GuidedWorkflowId }) {
+    const { t } = useTranslation()
+    const workflow = GUIDED_WORKFLOWS[workflowId]
+    const keyPrefix = `guided.workflows.${workflowId}`
+    const opensExistingTool = workflowId === 'library' || workflowId === 'environment'
+
+    return (
+        <nav className="border-t border-border/70" aria-label={t(`${keyPrefix}.title`)}>
+            {workflow.options.map(option => {
+                const Icon = option.icon
+                const optionKey = `${keyPrefix}.options.${option.id}`
+                return (
+                    <Link
+                        key={option.id}
+                        to={`/guided-preview/task/${workflowId}/${option.id}`}
+                        className="guided-choice-row group grid min-h-24 gap-3 border-b border-border/45 px-3 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4"
+                    >
+                        <Icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
+                        <span className="min-w-0">
+                            <span className="block text-base font-semibold text-foreground">{t(`${optionKey}.title`)}</span>
+                            <span className="mt-1 block text-sm leading-6 text-muted-foreground">{t(`${optionKey}.description`)}</span>
+                        </span>
+                        <span className="flex min-h-11 items-center gap-2 whitespace-nowrap text-sm font-semibold text-primary sm:justify-end">
+                            {opensExistingTool
+                                ? t('guided.workflows.openDirectly', '바로 열기')
+                                : t('guided.workflows.start')}
+                            <ArrowRight className="h-4 w-4 transition-transform duration-fast group-hover:translate-x-1" aria-hidden="true" />
+                        </span>
+                    </Link>
+                )
+            })}
+        </nav>
+    )
+}
+
 export function GuidedWorkflowHub() {
     const { t } = useTranslation()
     const { workflowId } = useParams<{ workflowId: string }>()
@@ -101,15 +135,7 @@ export function GuidedWorkflowHub() {
 
     return (
         <div className="mx-auto min-h-full w-full max-w-[var(--guided-content-max)] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
-            <nav className="flex min-w-0 flex-wrap items-center gap-2 text-base text-muted-foreground" aria-label={t('guided.workflows.breadcrumb')}>
-                <Link to="/guided-preview" className="shrink-0 transition-colors hover:text-foreground focus-ring">
-                    {t('guided.workflows.home')}
-                </Link>
-                <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 break-words font-medium text-foreground">{t(`${keyPrefix}.title`)}</span>
-            </nav>
-
-            <header className="mt-8 max-w-3xl">
+            <header className="max-w-3xl">
                 <span className="flex h-11 w-11 items-center justify-center text-primary">
                     <WorkflowIcon className="h-6 w-6" aria-hidden="true" />
                 </span>
@@ -122,29 +148,9 @@ export function GuidedWorkflowHub() {
                 </p>
             </header>
 
-            <nav className="mt-10 border-t border-border/70" aria-label={t(`${keyPrefix}.title`)}>
-                {workflow.options.map(option => {
-                    const Icon = option.icon
-                    const optionKey = `${keyPrefix}.options.${option.id}`
-                    return (
-                        <Link
-                            key={option.id}
-                            to={`/guided-preview/task/${workflowId}/${option.id}`}
-                            className="guided-choice-row group grid min-h-24 gap-3 border-b border-border/45 px-3 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4"
-                        >
-                            <Icon className="h-5 w-5 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
-                            <span className="min-w-0">
-                                <span className="block text-base font-semibold text-foreground">{t(`${optionKey}.title`)}</span>
-                                <span className="mt-1 block text-sm leading-6 text-muted-foreground">{t(`${optionKey}.description`)}</span>
-                            </span>
-                            <span className="flex min-h-11 items-center gap-2 text-sm font-semibold text-primary sm:justify-end">
-                                {t('guided.workflows.start')}
-                                <ArrowRight className="h-4 w-4 transition-transform duration-fast group-hover:translate-x-1" aria-hidden="true" />
-                            </span>
-                        </Link>
-                    )
-                })}
-            </nav>
+            <div className="mt-10">
+                <GuidedWorkflowChoices workflowId={workflowId} />
+            </div>
         </div>
     )
 }

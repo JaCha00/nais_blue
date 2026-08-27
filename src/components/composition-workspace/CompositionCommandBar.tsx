@@ -8,6 +8,7 @@ import {
     Square,
     Unlock,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -55,14 +56,14 @@ export interface CompositionCommandBarLabels {
 }
 
 const DEFAULT_LABELS: CompositionCommandBarLabels = {
-    commands: 'Composition commands',
-    mode: 'Mode',
-    recipe: 'Recipe',
+    commands: 'Generation actions',
+    mode: 'Generation mode',
+    recipe: 'Generation setup',
     cost: 'Cost',
     seed: 'Seed',
-    modules: 'Modules',
-    inspector: 'Inspector',
-    resolved: 'Resolved',
+    modules: 'Prompt groups',
+    inspector: 'Applied content',
+    resolved: 'Generation values',
     generate: 'Generate',
     cancel: 'Cancel',
     lockSeed: 'Lock seed',
@@ -82,6 +83,9 @@ export interface CompositionCommandBarProps {
     className?: string
     onOpenModules?: () => void
     onOpenInspector?: () => void
+    summary?: string
+    onOpenSummary?: () => void
+    count?: ReactNode
     /** Scene UX: keep internal composition authority out of the user-facing command strip. */
     simplified?: boolean
 }
@@ -132,6 +136,9 @@ export function CompositionCommandBar({
     className,
     onOpenModules,
     onOpenInspector,
+    summary,
+    onOpenSummary,
+    count,
     simplified = false,
 }: CompositionCommandBarProps) {
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
@@ -167,80 +174,85 @@ export function CompositionCommandBar({
     const resolvedAction = resolved?.available ? (
         <Button
             type="button"
-            variant={resolved.open ? 'secondary' : 'outline'}
-            className={simplified ? 'min-w-28' : 'min-w-0 flex-1 px-3'}
+            variant={resolved.open ? 'secondary' : simplified ? 'ghost' : 'outline'}
+            className={simplified ? 'shrink-0 px-2' : 'min-w-0 flex-1 px-3'}
             aria-pressed={resolved.open}
             disabled={disabled}
             onClick={resolved.onOpen}
         >
             <Eye className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{resolved.label ?? labels.resolved}</span>
+            <span className={cn('truncate', simplified && 'hidden xl:inline')}>{resolved.label ?? labels.resolved}</span>
         </Button>
     ) : null
 
     if (simplified) {
         return (
             <header
-                className={cn('flex min-w-0 flex-wrap items-center justify-end gap-2 rounded-panel bg-card p-2', className)}
+                className={cn('grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_minmax(10rem,12rem)] items-center gap-2 border-y border-border/60 bg-card/80 p-2', className)}
                 aria-label={labels.commands}
                 data-testid="composition-command-bar"
             >
-                {mode && (
-                    <CommandSelect
-                        control={{ ...mode, disabled: disabled || mode.disabled }}
-                        label={labels.mode}
-                        className="min-w-48 flex-1 sm:max-w-xs"
-                    />
-                )}
-                {recipe && (
-                    <CommandSelect
-                        control={{ ...recipe, disabled: disabled || recipe.disabled }}
-                        label={labels.recipe}
-                        className="min-w-56 flex-1 sm:max-w-sm"
-                    />
-                )}
-                {validation && (
-                    <div className="flex min-h-10 items-center px-2">
-                        <ValidationState validation={validation} />
-                    </div>
-                )}
-                {cost && (
-                    <span
-                        className={cn(
-                            'mr-auto font-mono text-xs',
-                            cost.severity === 'warning' && 'text-warning',
-                            cost.severity === 'error' && 'text-destructive',
-                            (!cost.severity || cost.severity === 'normal') && 'text-muted-foreground',
-                        )}
-                        aria-label={`${cost.label ?? labels.cost}: ${cost.value}`}
-                    >
-                        {cost.label ? `${cost.label} ` : ''}{cost.value}
-                    </span>
-                )}
-                {seed && (
-                    <label className="flex min-w-48 flex-1 items-center gap-2 sm:max-w-72">
-                        <span className="text-xs font-medium text-muted-foreground">{seed.label ?? labels.seed}</span>
-                        <Input value={seed.value} onChange={event => seed.onChange?.(event.currentTarget.value)} readOnly={!seed.onChange} disabled={disabled || seed.disabled} inputMode="numeric" className="h-10 min-w-0 font-mono" />
-                        {seed.onToggleLock && (
-                            <Button type="button" variant="ghost" size="icon" disabled={disabled || seed.disabled} aria-label={seed.locked ? labels.unlockSeed : labels.lockSeed} onClick={seed.onToggleLock}>
-                                {seed.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                            </Button>
-                        )}
-                    </label>
-                )}
-                {moduleAction}
-                {inspectorAction}
-                {resolvedAction}
+                <div className="flex min-w-0 items-center gap-1">
+                    {summary && (onOpenSummary ? (
+                        <Button type="button" variant="ghost" className="min-w-0 flex-1 justify-start px-2" onClick={onOpenSummary} title={summary}>
+                            <span className="truncate whitespace-nowrap text-sm text-muted-foreground" data-command-label>{summary}</span>
+                        </Button>
+                    ) : (
+                        <span className="min-w-0 flex-1 truncate whitespace-nowrap px-2 text-sm text-muted-foreground" data-command-label title={summary}>{summary}</span>
+                    ))}
+                    {mode && (
+                        <CommandSelect
+                            control={{ ...mode, disabled: disabled || mode.disabled }}
+                            label={labels.mode}
+                            className="hidden min-w-48 flex-1 xl:grid xl:max-w-xs"
+                        />
+                    )}
+                    {recipe && (
+                        <CommandSelect
+                            control={{ ...recipe, disabled: disabled || recipe.disabled }}
+                            label={labels.recipe}
+                            className="hidden min-w-56 flex-1 xl:grid xl:max-w-sm"
+                        />
+                    )}
+                    {validation && <ValidationState validation={validation} />}
+                    {seed && (
+                        <label className="hidden min-w-48 items-center gap-2 xl:flex xl:max-w-72">
+                            <span className="shrink-0 whitespace-nowrap text-xs font-medium text-muted-foreground" data-command-label>{seed.label ?? labels.seed}</span>
+                            <Input value={seed.value} onChange={event => seed.onChange?.(event.currentTarget.value)} readOnly={!seed.onChange} disabled={disabled || seed.disabled} inputMode="numeric" className="h-10 min-w-0 font-mono" />
+                            {seed.onToggleLock && (
+                                <Button type="button" variant="ghost" size="icon" className="shrink-0" disabled={disabled || seed.disabled} aria-label={seed.locked ? labels.unlockSeed : labels.lockSeed} onClick={seed.onToggleLock}>
+                                    {seed.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                                </Button>
+                            )}
+                        </label>
+                    )}
+                    {moduleAction}
+                    {inspectorAction}
+                    {resolvedAction}
+                </div>
+                <span
+                    className={cn(
+                        'min-w-16 whitespace-nowrap text-right font-mono text-xs tabular-nums',
+                        cost?.severity === 'warning' && 'text-warning',
+                        cost?.severity === 'error' && 'text-destructive',
+                        (!cost?.severity || cost.severity === 'normal') && 'text-muted-foreground',
+                    )}
+                    aria-label={cost ? `${cost.label ?? labels.cost}: ${cost.value}` : undefined}
+                    data-command-label
+                >
+                    {cost?.value ?? ''}
+                </span>
+                <div className="shrink-0">{count}</div>
                 <Button
                     type="button"
                     variant={generation.generating ? 'destructive' : 'generate'}
-                    className="min-w-40"
+                    className="min-w-0 whitespace-nowrap"
                     disabled={actionDisabled}
                     onClick={generation.generating ? generation.onCancel : generation.onGenerate}
                     data-testid={generation.generating ? generation.cancelTestId ?? generation.actionTestId : generation.actionTestId}
                 >
                     {generation.generating ? <Square className="mr-2 h-4 w-4" /> : <Play className="mr-2 h-4 w-4" />}
-                    <span className="truncate">{generation.progressLabel ?? (generation.generating ? generation.cancelLabel ?? labels.cancel : generation.generateLabel ?? labels.generate)}</span>
+                    <span className="truncate whitespace-nowrap">{generation.progressLabel ?? (generation.generating ? generation.cancelLabel ?? labels.cancel : generation.generateLabel ?? labels.generate)}</span>
                 </Button>
             </header>
         )
@@ -249,7 +261,7 @@ export function CompositionCommandBar({
     return (
         <header
             className={cn(
-                'grid min-w-0 gap-2 rounded-panel bg-card p-2',
+                'grid min-w-0 gap-2 border-y border-border/60 bg-card/80 p-2',
                 'md:grid-cols-2 xl:grid-cols-[minmax(10rem,0.7fr)_minmax(14rem,1.25fr)_auto_auto_minmax(9rem,0.6fr)_auto] xl:items-center',
                 className,
             )}

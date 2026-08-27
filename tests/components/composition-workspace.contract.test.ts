@@ -165,9 +165,9 @@ describe('composition workspace contextual commands', () => {
         }))
 
         expect(bar).toContain('5 Anlas')
-        expect(bar).toContain('aria-label="Modules"')
-        expect(bar).toContain('Resolved')
-        expect(bar).not.toContain('aria-label="Inspector"')
+        expect(bar).toContain('aria-label="Prompt groups"')
+        expect(bar).toContain('Generation values')
+        expect(bar).not.toContain('aria-label="Applied content"')
         expect(dock).toContain('aria-label="Modules"')
         expect(dock).toContain('aria-label="Resolved"')
         expect(dock).not.toContain('aria-label="Inspector"')
@@ -275,7 +275,7 @@ describe('composition workspace source contracts', () => {
     it('formalizes all requested Composition workspace contracts in DESIGN.md', async () => {
         const design = await source('DESIGN.md')
         for (const contract of [
-            'Composition command bar',
+            'Composition action rail',
             'Module Stack row anatomy',
             'Inspector and sheet behavior',
             'Resolved Plan',

@@ -324,6 +324,19 @@ async function collectCompositionShellReport(page, route) {
                 height: rect.height,
             }]
         })
+        const commandBarElement = Array.from(document.querySelectorAll('[data-testid="composition-command-bar"]')).find(element => {
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 1 && rect.height > 1
+        })
+        const commandLabels = commandBarElement
+            ? Array.from(commandBarElement.querySelectorAll('[data-command-label]')).map(element => getComputedStyle(element).whiteSpace)
+            : []
+        const visiblePromptGenerateActions = Array.from(document.querySelectorAll('[data-testid="prompt-generate-action"]')).filter(element => {
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 1 && rect.height > 1
+        }).length
 
         return {
             layout: visibleRect('[data-testid="composition-workspace-layout"]'),
@@ -337,6 +350,9 @@ async function collectCompositionShellReport(page, route) {
             inspector: visibleRect('[data-testid="composition-inspector"]'),
             action: visibleRect(actionSelector),
             shortActions,
+            commandBarRadius: commandBarElement ? getComputedStyle(commandBarElement).borderRadius : null,
+            commandLabels,
+            visiblePromptGenerateActions,
         }
     }, { currentRoute: route })
 }
@@ -350,6 +366,7 @@ function assertCompositionShell(report, route, viewport) {
         `${context} Generate/Cancel is below 44px (${report.action.width}x${report.action.height})`,
     )
     assert.deepEqual(report.shortActions, [], `${context} has Composition actions below 44px: ${JSON.stringify(report.shortActions)}`)
+    assert.equal(report.visiblePromptGenerateActions, route === '/advanced' ? 0 : report.visiblePromptGenerateActions, `${context} duplicates the Advanced generation CTA inside Prompt`)
 
     if (viewport.mobile) {
         assert.ok(report.dock, `${context} must show the mobile command dock`)
@@ -366,6 +383,8 @@ function assertCompositionShell(report, route, viewport) {
 
     assert.equal(report.dock, null, `${context} must hide the mobile command dock at tablet/desktop widths`)
     assert.ok(report.commandBar, `${context} must show the composition command bar`)
+    assert.equal(report.commandBarRadius, '0px', `${context} command rail must not regain panel radius`)
+    assert.ok(report.commandLabels.every(value => value === 'nowrap'), `${context} command labels must stay on one line: ${JSON.stringify(report.commandLabels)}`)
 
     if (viewport.width >= 1536) {
         if (route === '/advanced') {
@@ -634,6 +653,42 @@ function assertCompositionQuality(report, context) {
     assert.equal(report.fixedCtaSafeInset, true, `${context} fixed CTA overlaps or leaves the system-bar-safe viewport`)
     assert.ok(report.maxNestedCardDepth <= 3, `${context} has excessive nested card depth ${report.maxNestedCardDepth}`)
     assert.deepEqual(report.textOutsideContainer, [], `${context} has text outside its container: ${JSON.stringify(report.textOutsideContainer)}`)
+}
+
+async function assertGuidedSingleMilestoneContract(page, viewport) {
+    await page.locator('[data-guided-choice="single"]').click()
+    await page.waitForURL(/\/guided-preview\/work\/[^/]+\/prompt$/)
+    await page.locator('[data-testid="guided-single-progress"]').waitFor({ state: 'visible' })
+    const collectProgress = () => page.evaluate(() => {
+        const progress = document.querySelector('[data-testid="guided-single-progress"]')
+        return {
+            text: progress?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+            horizontalStepNavigationCount: document.querySelectorAll('[data-testid="guided-single-progress"] ol').length,
+        }
+    })
+    const report = await collectProgress()
+
+    assert.match(report.text, /1\s*\/\s*4/, `Guided single-image progress must start at fixed 1 / 4 @ ${viewport.width}px`)
+    assert.equal(report.horizontalStepNavigationCount, 0, `Guided single-image must not duplicate progress with horizontal step navigation @ ${viewport.width}px`)
+    if (evidenceDir) {
+        await page.screenshot({ path: path.join(evidenceDir, `guided-single-${viewport.width}.png`), animations: 'disabled' })
+    }
+
+    await page.locator('textarea').first().fill('1girl, blue hair')
+    await page.locator('footer button').last().click()
+    await page.waitForURL(/\/resolution$/)
+    await page.waitForFunction(() => document.querySelector('[data-testid="guided-single-progress"]')?.textContent?.includes('2 / 4'))
+
+    await page.locator('footer button').last().click()
+    await page.waitForURL(/\/output$/)
+    await page.waitForFunction(() => document.querySelector('[data-testid="guided-single-progress"]')?.textContent?.includes('3 / 4'))
+
+    await page.locator('footer button').last().click()
+    await page.waitForURL(/\/review$/)
+    await page.waitForFunction(() => document.querySelector('[data-testid="guided-single-progress"]')?.textContent?.includes('4 / 4'))
+    if (evidenceDir) {
+        await page.screenshot({ path: path.join(evidenceDir, `guided-review-${viewport.width}.png`), animations: 'disabled' })
+    }
 }
 
 async function assertCompositionSheetFocusReturn(page, route, viewport) {
@@ -1065,6 +1120,10 @@ async function main() {
                         })
                     }
 
+                    if (route === '/guided-preview' && viewport.width === 390) {
+                        await assertGuidedSingleMilestoneContract(page, viewport)
+                    }
+
                     if (route === '/advanced') {
                         assert.ok(report.mainDock, `/ @ ${viewport.width}px should expose the compact generation dock`)
                         assert.ok(report.mainDock.bottom <= viewport.height + 1, `/ @ ${viewport.width}px command dock leaves the viewport`)
@@ -1075,24 +1134,23 @@ async function main() {
                             const promptSheet = page.locator('#nai-blue-prompt-sheet')
                             await promptSheet.waitFor({ state: 'visible' })
                             const promptReport = await promptSheet.evaluate((sheet) => {
-                                const action = sheet.querySelector('[data-testid="prompt-generate-action"]')
+                                const actions = sheet.querySelectorAll('[data-testid="prompt-generate-action"]')
                                 const surface = sheet.querySelector('[data-testid="prompt-editor-surface"]')
                                 const editor = surface?.querySelector('.prompt-editor-wrapper')
-                                const actionRect = action?.getBoundingClientRect()
                                 const surfaceRect = surface?.getBoundingClientRect()
                                 const editorRect = editor?.getBoundingClientRect()
                                 return {
                                     scrollWidth: sheet.scrollWidth,
                                     clientWidth: sheet.clientWidth,
-                                    actionHeight: actionRect?.height ?? 0,
-                                    actionBottom: actionRect?.bottom ?? Number.POSITIVE_INFINITY,
+                                    actionCount: actions.length,
+                                    tabWhiteSpace: Array.from(sheet.querySelectorAll('[role="tab"]')).map(tab => getComputedStyle(tab).whiteSpace),
                                     surfaceBottom: surfaceRect?.bottom ?? 0,
                                     editorBottom: editorRect?.bottom ?? Number.POSITIVE_INFINITY,
                                 }
                             })
                             assert.ok(promptReport.scrollWidth <= promptReport.clientWidth + 1, 'Prompt Sheet has horizontal overflow')
-                            assert.ok(promptReport.actionHeight >= 44, 'Prompt Sheet generate action is below 44px')
-                            assert.ok(promptReport.actionBottom <= viewport.height + 1, 'Prompt Sheet generate action is not reachable in the viewport')
+                            assert.equal(promptReport.actionCount, 0, 'Prompt Sheet must not duplicate the Advanced generation CTA')
+                            assert.ok(promptReport.tabWhiteSpace.every(value => value === 'nowrap'), `Prompt Sheet tab labels wrap: ${JSON.stringify(promptReport.tabWhiteSpace)}`)
                             assert.ok(promptReport.editorBottom <= promptReport.surfaceBottom + 1, 'Prompt editor escapes its surface vertically')
                             if (evidenceDir) {
                                 await page.screenshot({ path: path.join(evidenceDir, 'prompt-sheet-390.png'), animations: 'disabled' })

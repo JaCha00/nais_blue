@@ -36,7 +36,7 @@ export function PromptSlotTabs({ tabs, activeId, panelId, label, onChange }: Pro
 
     return (
         <div
-            className="grid grid-cols-1 border-b border-border/60 @min-[18rem]:grid-cols-2 @min-[40rem]:grid-flow-col @min-[40rem]:grid-cols-none @min-[40rem]:auto-cols-fr"
+            className="grid grid-cols-4 border-b border-border/60"
             role="tablist"
             aria-label={label}
         >
@@ -55,7 +55,7 @@ export function PromptSlotTabs({ tabs, activeId, panelId, label, onChange }: Pro
                         onClick={() => onChange(tab.id)}
                         onKeyDown={event => selectFromKeyboard(event, index)}
                         className={cn(
-                            'relative min-h-11 min-w-0 break-keep border-b-2 border-border/35 px-1.5 py-2 text-sm leading-snug text-muted-foreground transition-colors duration-standard hover:bg-primary/[0.045] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[40rem]:px-3',
+                            'relative min-h-11 min-w-0 truncate whitespace-nowrap border-b-2 border-border/35 px-1.5 py-2 text-sm leading-snug text-muted-foreground transition-colors duration-standard hover:bg-primary/[0.045] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[40rem]:px-3',
                             active && (tab.negative
                                 ? 'border-destructive font-semibold text-destructive'
                                 : 'border-primary font-semibold text-foreground'),

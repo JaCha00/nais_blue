@@ -9,6 +9,45 @@ import { reducer } from '../../src/components/ui/use-toast'
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 
 describe('External review regression fixes', () => {
+    it('keeps the Advanced action rail and prompt tabs stable without panel-card drift', async () => {
+        const [commandBar, promptEditor, promptTabs, ...panels] = await Promise.all([
+            source('src/components/composition-workspace/CompositionCommandBar.tsx'),
+            source('src/components/prompt/PromptEditorSurface.tsx'),
+            source('src/components/prompt/PromptSlotTabs.tsx'),
+            source('src/components/composition-workspace/ModuleStack.tsx'),
+            source('src/components/composition-workspace/CompositionInspector.tsx'),
+            source('src/components/composition-workspace/ResolvedPlanView.tsx'),
+        ])
+
+        expect(commandBar).toContain('grid-cols-[minmax(0,1fr)_auto_auto_minmax(10rem,12rem)]')
+        expect(commandBar).not.toContain('flex-wrap')
+        expect(commandBar).not.toContain('rounded-panel')
+        expect(promptEditor).not.toContain('flex-wrap')
+        expect(promptTabs).toContain('grid grid-cols-4')
+        expect(promptTabs).toContain('truncate whitespace-nowrap')
+        for (const panel of panels) expect(panel).not.toContain('rounded-panel')
+    })
+
+    it('keeps engine vocabulary out of everyday authoring labels', () => {
+        const forbidden = /\b(?:composition|canonical|repository revision|provenance|plan hash|3-way|override diff|resolved plan)\b/i
+        for (const locale of [ko, en, ja]) {
+            const publicCopy = [
+                locale.composition.commandBar,
+                ...Object.values(locale.composition.workspace),
+                locale.composition.conflict.label,
+                locale.composition.conflict.externalEdit,
+                locale.composition.conflict.review,
+                locale.composition.plan.title,
+                locale.composition.plan.open,
+                locale.composition.plan.resolved,
+                locale.composition.plan.help,
+                locale.composition.compatibility.rawPrompt,
+            ].join(' ')
+            expect(publicCopy).not.toMatch(forbidden)
+            expect(locale.composition.plan.technical.trim()).not.toHaveLength(0)
+        }
+    })
+
     it('preserves native Tab traversal and assigns page cycling to modified keys', async () => {
         const [hook, store] = await Promise.all([
             source('src/hooks/useShortcuts.ts'),

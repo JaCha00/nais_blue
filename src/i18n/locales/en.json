@@ -98,7 +98,7 @@
         }
     },
     "guided": {
-        "advanced": "Advanced generation",
+        "advanced": "Create directly",
         "resolutionDetails": {
             "title": "Detailed resolution",
             "description": "Enter width and height directly. Values are aligned to NovelAI's 64-pixel grid.",
@@ -118,14 +118,17 @@
             "autosave": "Your choices are saved automatically.",
             "choices": "Choose a task",
             "open": "Start",
+            "openDirectly": "Open",
+            "tools": "Other tasks",
+            "chooseAgain": "Choose another task",
             "resume": "Continue where you left off",
             "draftCount": "{{count}} saved drafts",
             "createError": "We couldn't save a new draft. Please try again in a moment.",
-            "single": { "title": "Create one image with care", "description": "Choose the model and final settings one step at a time." },
+            "single": { "title": "Create one image", "description": "Choose the model and final settings one step at a time." },
             "batch": { "title": "Create several images", "description": "Choose repeated settings, prompt variation, or planned scenes." },
-            "prompt": { "title": "Refine an image prompt", "description": "Review safe, structured edits with your local AI agent." },
-            "library": { "title": "Manage generated images", "description": "Organize, edit, inspect metadata, and upload to R2." },
-            "environment": { "title": "Configure the workspace", "description": "Set up accounts, storage, appearance, and backups." }
+            "prompt": { "title": "Refine a prompt", "description": "Review safe, structured edits with your local AI agent." },
+            "library": { "title": "Manage images", "description": "Organize, edit, inspect metadata, and upload to R2." },
+            "environment": { "title": "Workspace settings", "description": "Set up accounts, storage, appearance, and backups." }
         },
         "promptTasks": {
             "back": "Back",
@@ -438,6 +441,7 @@
             "home": "Task home",
             "breadcrumb": "Current task path",
             "start": "Start now",
+            "openDirectly": "Open",
             "native": {
                 "unavailable": {
                     "library": "This image-management task isn't available. Return to Task Home and choose it again.",
@@ -812,6 +816,12 @@
                 "saved": "Autosaved",
                 "error": "Check save status"
             },
+            "milestones": {
+                "content": "Content",
+                "shape": "Shape",
+                "save": "Save and share",
+                "review": "Review"
+            },
             "steps": {
                 "model": {
                     "short": "Model",
@@ -877,11 +887,13 @@
                 "label": "Image to create",
                 "placeholder": "e.g. 1girl, blue hair, quiet library, warm afternoon light",
                 "tagHelp": "You can use English tags or natural language. Numbers in tag suggestions are reference post counts, not the amount of training data.",
-                "negativeTitle": "Add content to avoid · Optional",
+                "negativeTitle": "Content to avoid",
+                "negativeHelp": "Add this only when there are elements you want excluded from the result.",
                 "negativePlaceholder": "e.g. lowres, blurry, text",
                 "transparentBackground": "Make the background transparent",
                 "transparentBackgroundHelp": "Turn this on for stickers, character assets, or anything you want to use without a background.",
-                "moreTools": "Import from a file or module · Optional"
+                "moreTools": "Import from a file or saved prompt",
+                "moreToolsHelp": "Append to or replace the current content, or choose a saved module."
             },
             "resolution": {
                 "legend": "Image aspect ratio and resolution",
@@ -1276,19 +1288,19 @@
         }
     },
     "composition": {
-        "commandBar": "Composition commands",
-        "modules": "Modules",
-        "searchModules": "Search modules",
-        "noModules": "No modules",
+        "commandBar": "Generation controls",
+        "modules": "Prompt groups",
+        "searchModules": "Search prompt groups",
+        "noModules": "No prompt groups",
         "output": "Output",
-        "externalConflict": "External composition edit",
-        "externalConflictDescription": "Resolve the repository revision conflict before editing.",
+        "externalConflict": "Changed in another window",
+        "externalConflictDescription": "Changes from another window overlap. Review them before editing.",
         "workspace": {
-            "modules": "Modules",
-            "moduleStack": "Module Stack",
-            "moduleStackHelp": "Choose a recipe module to review its applied content and validation state.",
-            "inspector": "Context Inspector",
-            "inspectorHelp": "Review how the selected module affects prompts and parameters."
+            "modules": "Prompt groups",
+            "moduleStack": "Applied order",
+            "moduleStackHelp": "Review the applied order of the creation setup and prompt groups.",
+            "inspector": "Applied content",
+            "inspectorHelp": "Review how the selected prompt group affects the generated content."
         },
         "mode": {
             "title": "Generation mode",
@@ -1297,47 +1309,69 @@
             "current": "Current generation engine"
         },
         "recipe": {
-            "title": "Recipe",
+            "title": "Creation setup",
             "direct": "Direct prompts",
-            "noneSelected": "No recipe selected",
-            "disabled": "Disabled recipe",
+            "noneSelected": "No creation setup selected",
+            "disabled": "Unused creation setup",
             "unavailable": "{{id}} (unavailable)"
         },
         "module": {
-            "noneSelected": "No module selected",
-            "emptyRecipe": "This recipe has no modules.",
-            "search": "Search modules",
-            "selectToInspect": "Select a module to inspect its resolved state.",
+            "noneSelected": "No prompt group selected",
+            "emptyRecipe": "This creation setup has no prompt groups.",
+            "search": "Search prompt groups",
+            "selectToInspect": "Select a prompt group to review its applied content.",
             "kind": "Kind",
-            "id": "Module ID",
-            "edit": "Edit module",
-            "missing": "Missing module",
+            "id": "Internal ID",
+            "edit": "Edit prompt group",
+            "missing": "Missing prompt group",
             "repairRequired": "Repair required",
-            "compatibility": "Compatibility module",
-            "summary": "Module summary"
+            "compatibility": "Compatibility prompt group",
+            "summary": "Prompt group summary"
         },
         "validation": {
             "pending": "Validation pending",
             "legacy": "Previous generation mode",
-            "conflict": "Conflict"
+            "conflict": "Changed elsewhere"
         },
         "conflict": {
-            "label": "Conflict",
-            "externalEdit": "External edit detected",
-            "review": "Review the repository conflict before generating."
+            "label": "Overlapping changes",
+            "externalEdit": "Changed in another window",
+            "review": "Changes from another window overlap. Review them before generating."
         },
         "override": {
-            "diff": "Override diff",
-            "inherited": "Inherited",
-            "value": "Override",
+            "diff": "Changed from defaults",
+            "inherited": "Default",
+            "value": "Changed here",
             "unchanged": "Unchanged",
-            "reset": "Reset override"
+            "reset": "Reset changes"
         },
         "plan": {
-            "title": "Resolved plan",
-            "open": "Open resolved plan",
-            "resolved": "Resolved",
-            "help": "Inspect prompts, parameters, random trace, and provenance."
+            "title": "Values used to generate",
+            "open": "Open generation values",
+            "resolved": "Generation values",
+            "help": "See result-facing values first; raw values remain under Technical details.",
+            "loading": "Preparing generation values…",
+            "empty": "No generation values yet.",
+            "positive": "Prompt",
+            "negative": "Content to avoid",
+            "promptParts": "Internal prompt slots",
+            "characters": "Characters",
+            "params": "Raw generation settings",
+            "paramsWinner": "Applied source",
+            "output": "Raw save settings",
+            "warnings": "Needs review",
+            "errors": "Fix before generating",
+            "randomTrace": "Random selection record",
+            "provenance": "Value sources",
+            "technical": "Technical details",
+            "generationSummary": "Generation setup",
+            "saveSummary": "Save",
+            "revision": "Revision",
+            "metadataEmbedded": "Generation info inside image",
+            "metadataSidecar": "Keep image info and save recovery data separately",
+            "metadataClean": "Remove image info and save recovery data separately",
+            "metadataStripped": "Remove generation info from image",
+            "repair": "Fix issue"
         },
         "cost": { "estimated": "Estimated cost" },
         "random": {
@@ -1348,7 +1382,7 @@
         "outputCapabilityFallbackTitle": "Output destination changed for this platform",
         "outputCapabilityFallbackDescription": "{{reason}} Alternative: {{alternative}}",
         "resourceRepairRequired": "Repair output destination before generation",
-        "compatibility": { "rawPrompt": "Advanced raw prompt" }
+        "compatibility": { "rawPrompt": "Edit prompt directly" }
     },
     "preset": {
         "default": "Default",
@@ -1951,15 +1985,17 @@
         "title": "Prompt",
         "base": "Prompt",
         "basePlaceholder": "1girl, beautiful, long hair, standing, looking at viewer...",
-        "additional": "Supporting Details",
+        "additional": "Boost",
         "additionalPlaceholder": "blue eyes, smile, school uniform, ribbon...",
-        "detail": "Fine Details",
+        "detail": "Detail",
         "detailPlaceholder": "masterpiece, best quality, highly detailed, absurdres...",
         "negative": "Exclude",
         "negativePlaceholder": "bad anatomy, low quality, blurry, worst quality...",
         "character": "Character",
         "fragment": "Fragment",
-        "imageReference": "Image Reference"
+        "imageReference": "Image Reference",
+        "import": "Import",
+        "tools": "Prompt tools"
     },
     "promptFrequencySort": {
         "title": "Sort by Danbooru frequency",
@@ -1976,6 +2012,7 @@
         "apply": "Apply sort",
         "sortAll": "Sort all by frequency",
         "undo": "Undo sort",
+        "applied": "Sorted by frequency.",
         "contextTitle": "Sort prompt",
         "sortSelection": "Sort selection by frequency"
     },
