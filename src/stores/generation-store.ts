@@ -13,7 +13,6 @@ import { useCharacterPromptStore } from './character-prompt-store'
 import {
     commitWildcardSequenceProposal,
     createWildcardResolutionSession,
-    createStoreFragmentResolverInput,
 } from '@/lib/fragment-processor'
 import {
     projectFragmentSequenceSnapshot,
@@ -36,15 +35,11 @@ import {
     diagnosticsFromMainResolution,
     MAIN_DIRECT_RECIPE_ID,
     resolveMainComposition,
-    resolveMainRecipeSelection,
     type MainCompositionMode,
-    type MainCompositionSnapshot,
     type MainOutputMaterialization,
-    type MainReferenceSnapshot,
 } from '@/lib/composition/main-adapter'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
-import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import { DEFAULT_GENERATION_FOLDER_ID, resolveGenerationFolder } from '@/domain/generation-folders'
 import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import type { CompositionEngineIssue, CompositionEnginePlan } from '@/domain/composition/engine'
@@ -63,6 +58,10 @@ import {
     prepareMainGeneration,
     type PreparedMainGeneration,
 } from '@/services/generation/main-generation-plan'
+import {
+    buildMainCompositionProjection,
+    buildMainFragmentInput,
+} from '@/services/generation/main-generation-preflight'
 import {
     DEFAULT_NAI_IMAGE_MODEL,
     NAI_IMAGE_MODELS,
@@ -174,27 +173,6 @@ async function resolveMainAssetModulePlan(
         console.warn('[AssetModules] Failed to resolve main generation plan; falling back to direct prompts.', error)
         return null
     }
-}
-
-function collectStringValues(value: unknown, seen = new Set<object>()): string[] {
-    if (typeof value === 'string') return [value]
-    if (value === null || typeof value !== 'object' || seen.has(value)) return []
-    seen.add(value)
-    if (Array.isArray(value)) return value.flatMap(item => collectStringValues(item, seen))
-    return Object.values(value).flatMap(item => collectStringValues(item, seen))
-}
-
-async function buildMainFragmentInput(
-    mode: 'preview' | 'generate',
-    sourceTexts: readonly string[],
-    repository?: FragmentLookupRepository,
-) {
-    return createStoreFragmentResolverInput(sourceTexts, {
-        mode,
-        strictness: 'compatible',
-        maxRecursion: 10,
-        ...(repository === undefined ? {} : { repository }),
-    })
 }
 
 interface MainBatchSequencePlanner {
@@ -465,39 +443,6 @@ interface MainMaterializedReference {
     fidelity: number
     referenceType: 'character' | 'style' | 'character&style'
     cacheKey?: string
-}
-
-function mainRuntimeDigest(value: string | null | undefined): string | undefined {
-    return value ? `sha256:${sha256Utf8(value)}` : undefined
-}
-
-function referenceSnapshots(
-    characterImages: readonly MainMaterializedReference[],
-    vibeImages: readonly MainMaterializedReference[],
-): MainReferenceSnapshot[] {
-    return [
-        ...characterImages.map(image => ({
-            id: image.id,
-            enabled: image.enabled !== false,
-            kind: 'character' as const,
-            referenceType: image.referenceType,
-            strength: image.strength,
-            fidelity: image.fidelity,
-            informationExtracted: image.informationExtracted,
-            // Persisted thumbnails are non-secret and survive byte hydration/release.
-            digest: mainRuntimeDigest(image.thumbnail),
-        })),
-        ...vibeImages.map(image => ({
-            id: image.id,
-            enabled: image.enabled !== false,
-            kind: 'vibe' as const,
-            referenceType: image.referenceType,
-            strength: image.strength,
-            fidelity: image.fidelity,
-            informationExtracted: image.informationExtracted,
-            digest: mainRuntimeDigest(image.thumbnail),
-        })),
-    ]
 }
 
 function clonePlanHash(plan: ReadonlyCompositionPlan): GenerationParams['compositionPlanHash'] {
@@ -1047,14 +992,15 @@ export const useGenerationStore = create<GenerationState>()(
             },
 
             [runMainGenerationAction]: async (run) => {
+                const generationDraft = get()
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
                     model, steps, cfgScale, cfgRescale, sampler, scheduler, smea, smeaDyn, variety,
                     transparentBackground,
                     selectedResolution, batchCount, lastGenerationTime,
                     sourceImage, strength, noise, mask,
-                    compositionMode: requestedCompositionMode, selectedRecipeId,
-                } = get()
+                    compositionMode: requestedCompositionMode,
+                } = generationDraft
                 const compositionMode = effectiveMainCompositionMode(requestedCompositionMode)
 
                 // Main generation follows the same active-credential ordering as
@@ -1137,8 +1083,6 @@ export const useGenerationStore = create<GenerationState>()(
                     streamProgress: 0,  // Reset streaming progress
                     ...unresolvedMainCompositionState(),
                 })
-                const sourceImageDigest = mainRuntimeDigest(sourceImage)
-                const maskDigest = mainRuntimeDigest(mask)
                 const batchSequencePlanner = run.kind === 'prepare'
                     ? createMainBatchSequencePlanner()
                     : null
@@ -1194,99 +1138,35 @@ export const useGenerationStore = create<GenerationState>()(
                             const assetProfile = useAssetModuleStore.getState().profile
                             const { usePresetStore } = await import('./preset-store')
                             const paramsPresetState = usePresetStore.getState()
-                            const recipeSelection = resolveMainRecipeSelection(assetProfile, selectedRecipeId)
-                            const effectiveAssetRecipe = recipeSelection.isDirect
-                                ? undefined
-                                : assetProfile.recipes.find(recipe => recipe.id === recipeSelection.recipeId)
-                            const effectiveAssetFragmentSources = effectiveAssetRecipe === undefined
-                                ? []
-                                : collectStringValues({
-                                    steps: effectiveAssetRecipe.steps,
-                                    modules: effectiveAssetRecipe.steps.map(step => assetProfile.modules[step.moduleId]),
-                                })
-                            const fragment = await buildMainFragmentInput(
-                                compositionMode === 'v2' ? 'generate' : 'preview',
-                                [
-                                    effectiveBasePrompt,
-                                    inpaintingPrompt,
-                                    additionalPrompt,
-                                    detailPrompt,
-                                    negativePrompt,
-                                    ...characterPromptState.characters.flatMap(character => [
-                                        character.prompt,
-                                        character.negative,
-                                    ]),
-                                    ...effectiveAssetFragmentSources,
-                                ],
-                                batchSequencePlanner?.repository,
-                            )
-                            if (get().isCancelled || get().generationSessionId !== sessionId) break
-
-                            const engineDefaults: MainCompositionSnapshot['params'] = {
-                                model,
-                                width: roundTo64(selectedResolution.width),
-                                height: roundTo64(selectedResolution.height),
-                                steps,
-                                cfgScale,
-                                cfgRescale,
-                                sampler,
-                                scheduler,
-                                smea,
-                                smeaDyn,
-                                variety,
-                                seed: currentSeed,
-                                qualityToggle: get().qualityToggle,
-                                ucPreset: get().ucPreset,
-                                transparentBackground,
-                                sourceMode: 'text-to-image',
-                                strength,
-                                noise,
-                                characterPositionEnabled: characterPromptState.positionEnabled,
-                            }
-                            const snapshot: MainCompositionSnapshot = {
+                            const projection = buildMainCompositionProjection({
+                                generation: generationDraft,
+                                effectiveBasePrompt,
                                 profile: assetProfile,
-                                selectedRecipeId,
-                                prompt: {
-                                    base: effectiveBasePrompt,
-                                    inpainting: inpaintingPrompt,
-                                    additional: additionalPrompt,
-                                    detail: detailPrompt,
-                                    negative: negativePrompt,
-                                },
                                 characters: characterPromptState.characters,
                                 characterPresets: characterPromptState.presets,
                                 characterGroups: characterPromptState.groups,
                                 positionEnabled: characterPromptState.positionEnabled,
-                                references: referenceSnapshots(
-                                    referenceStateBeforeLoad.characterImages,
-                                    referenceStateBeforeLoad.vibeImages,
-                                ),
+                                characterImages: referenceStateBeforeLoad.characterImages,
+                                vibeImages: referenceStateBeforeLoad.vibeImages,
                                 paramsPresets: paramsPresetState.presets,
                                 activeParamsPresetId: paramsPresetState.activePresetId,
-                                params: engineDefaults,
-                                output: {
-                                    autoSave: settings.autoSave,
-                                    savePath: settings.savePath,
-                                    useAbsolutePath: settings.useAbsolutePath,
-                                    imageFormat: settings.imageFormat,
-                                    metadataMode: settings.metadataMode,
-                                    portableRoot: runtimeCapabilities.absoluteOutputPath.supported
-                                        ? 'pictures'
-                                        : 'app-data',
-                                },
-                                source: {
-                                    hasSourceImage: Boolean(sourceImage),
-                                    hasMask: Boolean(mask),
-                                    sourceImageDigest,
-                                    maskDigest,
-                                    width: finalWidth,
-                                    height: finalHeight,
-                                    strength,
-                                    noise,
-                                },
-                            }
+                                output: settings,
+                                portableRoot: runtimeCapabilities.absoluteOutputPath.supported ? 'pictures' : 'app-data',
+                                paramsWidth: roundTo64(selectedResolution.width),
+                                paramsHeight: roundTo64(selectedResolution.height),
+                                sourceWidth: finalWidth,
+                                sourceHeight: finalHeight,
+                                seed: currentSeed,
+                            })
+                            const fragment = await buildMainFragmentInput(
+                                compositionMode === 'v2' ? 'generate' : 'preview',
+                                projection.fragmentSourceTexts,
+                                batchSequencePlanner?.repository,
+                            )
+                            if (get().isCancelled || get().generationSessionId !== sessionId) break
+
                             const composition = resolveMainComposition({
-                                snapshot,
+                                snapshot: projection.snapshot,
                                 requestId: `main-request:${sessionId}:${i}`,
                                 now: new Date(startTime).toISOString(),
                                 seed: currentSeed,

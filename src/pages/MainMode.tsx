@@ -6,6 +6,10 @@ import Counter from '@/components/ui/counter'
 import { useGenerationStore } from '@/stores/generation-store'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useCharacterStore } from '@/stores/character-store'
+import { useCharacterPromptStore } from '@/stores/character-prompt-store'
+import { useFragmentStore } from '@/stores/fragment-store'
+import { usePresetStore } from '@/stores/preset-store'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { parseMetadataFromBase64 } from '@/lib/metadata-parser'
@@ -70,6 +74,15 @@ import { RecipeSelector } from '@/components/composition/RecipeSelector'
 import { runtimeCapabilities } from '@/platform/capabilities'
 import { assessPortableCompositionPlan } from '@/platform/portable-resources'
 import { NAI_IMAGE_MODELS, normalizeNaiImageModelId } from '@/services/nai/model-catalog'
+import {
+    buildMainCompositionProjection,
+    buildMainFragmentInput,
+    mainPreflightBlocksGeneration,
+    preflightMainGeneration,
+    type MainGenerationPreflight,
+} from '@/services/generation/main-generation-preflight'
+import { resolveGenerationFolder, DEFAULT_GENERATION_FOLDER_ID } from '@/domain/generation-folders'
+import { useShallow } from 'zustand/react/shallow'
 
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
@@ -102,6 +115,45 @@ function rawRecipeId(selectionId: string | null, directRecipeId: string): string
 
 export default function MainMode() {
     const { t } = useTranslation()
+    const generationState = useGenerationStore(useShallow(state => ({
+        previewImage: state.previewImage,
+        isGenerating: state.isGenerating,
+        selectedResolution: state.selectedResolution,
+        lastGenerationTime: state.lastGenerationTime,
+        batchCount: state.batchCount,
+        currentBatch: state.currentBatch,
+        streamProgress: state.streamProgress,
+        model: state.model,
+        steps: state.steps,
+        basePrompt: state.basePrompt,
+        additionalPrompt: state.additionalPrompt,
+        detailPrompt: state.detailPrompt,
+        negativePrompt: state.negativePrompt,
+        inpaintingPrompt: state.inpaintingPrompt,
+        cfgScale: state.cfgScale,
+        cfgRescale: state.cfgRescale,
+        sampler: state.sampler,
+        scheduler: state.scheduler,
+        smea: state.smea,
+        smeaDyn: state.smeaDyn,
+        variety: state.variety,
+        seed: state.seed,
+        qualityToggle: state.qualityToggle,
+        ucPreset: state.ucPreset,
+        transparentBackground: state.transparentBackground,
+        sourceImage: state.sourceImage,
+        mask: state.mask,
+        strength: state.strength,
+        noise: state.noise,
+        isCancelled: state.isCancelled,
+        generatingMode: state.generatingMode,
+        compositionMode: state.compositionMode,
+        selectedRecipeId: state.selectedRecipeId,
+        setBatchCount: state.setBatchCount,
+        setSelectedRecipeId: state.setSelectedRecipeId,
+        setSourceImage: state.setSourceImage,
+        setI2IMode: state.setI2IMode,
+    })))
     const {
         previewImage,
         isGenerating,
@@ -113,31 +165,73 @@ export default function MainMode() {
         streamProgress,
         model,
         steps,
+        basePrompt,
+        additionalPrompt,
+        detailPrompt,
+        negativePrompt,
+        inpaintingPrompt,
+        cfgScale,
+        cfgRescale,
+        sampler,
+        scheduler,
+        smea,
+        smeaDyn,
+        variety,
+        seed,
+        qualityToggle,
+        ucPreset,
+        transparentBackground,
+        sourceImage,
+        mask,
+        strength,
+        noise,
         isCancelled,
         generatingMode,
         compositionMode,
         selectedRecipeId,
-        compositionWarnings,
-        compositionErrors,
-        lastResolvedPlan,
         setBatchCount,
         setSelectedRecipeId,
         setSourceImage,
         setI2IMode,
-    } = useGenerationStore()
+    } = generationState
 
     const navigate = useNavigate()
-    const { setActiveImage } = useToolsStore()
+    const setActiveImage = useToolsStore(state => state.setActiveImage)
     const assetProfile = useAssetModuleStore(state => state.profile)
     const profileLoading = useAssetModuleStore(state => state.isLoading)
     const profileConflict = useAssetModuleStore(state => state.hasConflict)
     const profileConflictMessage = useAssetModuleStore(state => state.conflictMessage)
+    const settings = useSettingsStore(useShallow(state => ({
+        autoSave: state.autoSave,
+        savePath: state.savePath,
+        useAbsolutePath: state.useAbsolutePath,
+        imageFormat: state.imageFormat,
+        metadataMode: state.metadataMode,
+        generationFolders: state.generationFolders,
+        activeGenerationFolderId: state.activeGenerationFolderId,
+    })))
+    const characterPromptState = useCharacterPromptStore(useShallow(state => ({
+        characters: state.characters,
+        presets: state.presets,
+        groups: state.groups,
+        positionEnabled: state.positionEnabled,
+    })))
+    const referenceState = useCharacterStore(useShallow(state => ({
+        characterImages: state.characterImages,
+        vibeImages: state.vibeImages,
+    })))
+    const paramsPresetState = usePresetStore(useShallow(state => ({
+        presets: state.presets,
+        activePresetId: state.activePresetId,
+    })))
+    const fragmentRevision = useFragmentStore(state => state.sequenceState.revision)
     const activeCredentialsAreOpus = useAuthStore(selectActiveCredentialsAreOpus)
     const isMobileWorkspace = useMediaQuery('(max-width: 767px)')
     const [moduleSheetOpen, setModuleSheetOpen] = useState(false)
     const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false)
     const [resolvedSheetOpen, setResolvedSheetOpen] = useState(false)
     const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
+    const [preflight, setPreflight] = useState<MainGenerationPreflight | null>(null)
     const moduleSheetTriggerRef = useRef<HTMLElement | null>(null)
     const inspectorSheetTriggerRef = useRef<HTMLElement | null>(null)
     const resolvedSheetTriggerRef = useRef<HTMLElement | null>(null)
@@ -147,9 +241,6 @@ export default function MainMode() {
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     // Inpainting dialog state
     const [inpaintDialogOpen, setInpaintDialogOpen] = useState(false)
-
-    // Get more store functions for regenerate with metadata
-    const genStore = useGenerationStore()
 
     const directRecipeId = getMainDirectRecipeId(assetProfile.recipes)
     const firstEnabledRecipe = assetProfile.recipes.find(recipe => recipe.enabled)
@@ -175,18 +266,132 @@ export default function MainMode() {
             ? t('composition.recipe.direct', 'Direct prompts')
             : effectiveRecipeId ?? t('composition.recipe.noneSelected', 'Select a recipe'))
 
-    const portableResolvedIssues = useMemo(() => lastResolvedPlan === null
+    const activeGenerationFolder = useMemo(() => resolveGenerationFolder(
+        settings.generationFolders,
+        settings.activeGenerationFolderId,
+        {
+            directory: settings.savePath,
+            useAbsolutePath: settings.useAbsolutePath,
+        },
+    ), [
+        settings.activeGenerationFolderId,
+        settings.generationFolders,
+        settings.savePath,
+        settings.useAbsolutePath,
+    ])
+    const effectiveBasePrompt = [activeGenerationFolder?.commonPrompt.trim(), basePrompt]
+        .filter(Boolean)
+        .join(', ')
+
+    useEffect(() => {
+        let current = true
+        setPreflight(null)
+        if (compositionMode === 'legacy') return () => { current = false }
+
+        const resolvePreflight = async () => {
+            const width = Math.round(selectedResolution.width / 64) * 64
+            const height = Math.round(selectedResolution.height / 64) * 64
+            const projection = buildMainCompositionProjection({
+                generation: generationState,
+                effectiveBasePrompt,
+                profile: assetProfile,
+                characters: characterPromptState.characters,
+                characterPresets: characterPromptState.presets,
+                characterGroups: characterPromptState.groups,
+                positionEnabled: characterPromptState.positionEnabled,
+                characterImages: referenceState.characterImages,
+                vibeImages: referenceState.vibeImages,
+                paramsPresets: paramsPresetState.presets,
+                activeParamsPresetId: paramsPresetState.activePresetId,
+                output: settings,
+                portableRoot: runtimeCapabilities.absoluteOutputPath.supported ? 'pictures' : 'app-data',
+                paramsWidth: width,
+                paramsHeight: height,
+                sourceWidth: width,
+                sourceHeight: height,
+                seed: seed || 1,
+            })
+            const fragment = await buildMainFragmentInput('preview', projection.fragmentSourceTexts)
+            if (!current) return
+
+            const pricingBasis = resolveAnlasPricingBasis({ model, activeCredentialsAreOpus })
+            const next = preflightMainGeneration({
+                snapshot: projection.snapshot,
+                requestId: 'main-preflight',
+                now: new Date().toISOString(),
+                seed: seed || 1,
+                fragment,
+            }, { batchCount, pricingBasis })
+            if (current) setPreflight(next)
+        }
+
+        void resolvePreflight().catch(() => {
+            if (current) setPreflight(null)
+        })
+        return () => { current = false }
+    }, [
+        activeCredentialsAreOpus,
+        additionalPrompt,
+        assetProfile,
+        basePrompt,
+        batchCount,
+        cfgRescale,
+        cfgScale,
+        characterPromptState.characters,
+        characterPromptState.groups,
+        characterPromptState.positionEnabled,
+        characterPromptState.presets,
+        compositionMode,
+        detailPrompt,
+        effectiveBasePrompt,
+        fragmentRevision,
+        inpaintingPrompt,
+        mask,
+        model,
+        negativePrompt,
+        noise,
+        paramsPresetState.activePresetId,
+        paramsPresetState.presets,
+        qualityToggle,
+        referenceState.characterImages,
+        referenceState.vibeImages,
+        sampler,
+        scheduler,
+        seed,
+        selectedRecipeId,
+        selectedResolution.height,
+        selectedResolution.width,
+        settings.autoSave,
+        settings.imageFormat,
+        settings.metadataMode,
+        settings.savePath,
+        settings.useAbsolutePath,
+        smea,
+        smeaDyn,
+        sourceImage,
+        steps,
+        strength,
+        transparentBackground,
+        ucPreset,
+        variety,
+    ])
+
+    const resolvedPlan = preflight?.diagnostics.plan ?? null
+    const resolvedWarnings = preflight?.diagnostics.warnings ?? []
+    const resolvedErrors = preflight?.diagnostics.errors ?? []
+
+    const portableResolvedIssues = useMemo(() => resolvedPlan === null
         ? []
         : portableIssuesForResolvedPlan(
-            assessPortableCompositionPlan(lastResolvedPlan, runtimeCapabilities).issues,
-        ), [lastResolvedPlan])
+            assessPortableCompositionPlan(resolvedPlan, runtimeCapabilities).issues,
+        ), [resolvedPlan])
 
     const validation = useMemo<CompositionValidationSummary>(() => {
         if (profileConflict) {
             return {
                 severity: 'conflict',
-                warningCount: compositionWarnings.length,
-                errorCount: compositionErrors.length,
+                warningCount: resolvedWarnings.length,
+                errorCount: resolvedErrors.length,
                 label: t('composition.validation.conflict', '다른 창에서 변경됨'),
             }
         }
@@ -196,32 +401,32 @@ export default function MainMode() {
         if (compositionMode === 'legacy') {
             return { severity: 'disabled', label: t('composition.validation.legacy', 'Legacy') }
         }
-        if (compositionErrors.length + portableResolvedIssues.length > 0) {
+        if (resolvedErrors.length + portableResolvedIssues.length > 0) {
             return {
                 severity: 'error',
-                errorCount: compositionErrors.length + portableResolvedIssues.length,
-                warningCount: compositionWarnings.length,
+                errorCount: resolvedErrors.length + portableResolvedIssues.length,
+                warningCount: resolvedWarnings.length,
             }
         }
-        if (compositionWarnings.length > 0) {
-            return { severity: 'warning', warningCount: compositionWarnings.length }
+        if (resolvedWarnings.length > 0) {
+            return { severity: 'warning', warningCount: resolvedWarnings.length }
         }
-        return lastResolvedPlan === null
-            ? { severity: 'disabled', label: t('composition.validation.pending', 'Not resolved') }
+        return resolvedPlan === null
+            ? { severity: 'loading', label: t('composition.plan.loading', 'Resolving…') }
             : { severity: 'valid' }
     }, [
-        compositionErrors.length,
         compositionMode,
-        compositionWarnings.length,
-        lastResolvedPlan,
         portableResolvedIssues.length,
         profileConflict,
         profileLoading,
+        resolvedErrors.length,
+        resolvedPlan,
+        resolvedWarnings.length,
         t,
     ])
 
     const moduleStackItems = useMemo<ModuleStackItem[]>(() => {
-        const allIssues = [...compositionErrors, ...compositionWarnings]
+        const allIssues = [...resolvedErrors, ...resolvedWarnings]
         const canonicalById = new Map(runtimeDocument?.modules.map(module => [module.id, module]) ?? [])
         const recipeModuleIds = canonicalRecipe?.steps.map(step => step.moduleId)
             ?? legacyRecipe?.steps.map(step => step.moduleId)
@@ -274,33 +479,45 @@ export default function MainMode() {
     }, [
         assetProfile.modules,
         canonicalRecipe,
-        compositionErrors,
-        compositionWarnings,
         legacyRecipe,
+        resolvedErrors,
+        resolvedWarnings,
         runtimeDocument,
         t,
     ])
 
     const selectedModule = moduleStackItems.find(module => module.id === selectedModuleId) ?? null
-    const generationDisabled = (isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)
-    const pricingBasis = resolveAnlasPricingBasis({ model, activeCredentialsAreOpus })
-    const estimatedCost = displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
-        ? calculateAnlasCost({
-            model,
-            width: selectedResolution.width,
-            height: selectedResolution.height,
-            steps,
-            imageCount: 1,
-            pricingBasis,
-        }) * batchCount
-        : null
+    const blockingResolutionError = resolvedErrors.length + portableResolvedIssues.length > 0
+    const preflightAuthoritative = compositionMode === 'v2'
+    const ownsActiveGeneration = isGenerating && generatingMode === 'main'
+    const generationDisabled = (isGenerating && generatingMode !== 'main')
+        || (isGenerating && isCancelled)
+        || (!ownsActiveGeneration && mainPreflightBlocksGeneration(compositionMode, {
+            profileConflict,
+            profileLoading,
+            preflightReady: preflight !== null,
+            resolutionError: blockingResolutionError,
+        }))
+    const draftPricingBasis = resolveAnlasPricingBasis({ model, activeCredentialsAreOpus })
+    const estimatedCost = preflightAuthoritative
+        ? preflight?.estimatedCost ?? null
+        : displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID
+            ? calculateAnlasCost({
+                model,
+                width: selectedResolution.width,
+                height: selectedResolution.height,
+                steps,
+                imageCount: 1,
+                pricingBasis: draftPricingBasis,
+            }) * batchCount
+            : null
     const hasRecipeControls = assetProfile.recipes.length > 0
         || displayedRecipeSelection !== MAIN_DIRECT_SELECTION_ID
     const hasModuleTools = moduleStackItems.length > 0
     const hasModuleSheetContent = hasRecipeControls || hasModuleTools
-    const resolvedErrorCount = compositionErrors.length + portableResolvedIssues.length
-    const resolvedWarningCount = compositionWarnings.length
-    const hasResolvedContent = lastResolvedPlan !== null
+    const resolvedErrorCount = resolvedErrors.length + portableResolvedIssues.length
+    const resolvedWarningCount = resolvedWarnings.length
+    const hasResolvedContent = resolvedPlan !== null
         || resolvedErrorCount > 0
         || resolvedWarningCount > 0
         || profileConflict
@@ -315,6 +532,7 @@ export default function MainMode() {
     // Regenerate with metadata - direct API call without modifying UI
     const handleRegenerateWithMetadata = async () => {
         if (!previewImage || isGenerating) return
+        const genStore = useGenerationStore.getState()
 
         const token = useAuthStore.getState().token
         if (!token) {
@@ -636,21 +854,46 @@ export default function MainMode() {
     // Format time (s.ms)
     const formatTime = (ms: number) => (ms / 1000).toFixed(1)
 
+    const reviewingBlockedPlan = !isGenerating
+        && preflightAuthoritative
+        && !profileLoading
+        && (profileConflict || blockingResolutionError)
     const generationControl = {
         generating: isGenerating && generatingMode === 'main',
-        disabled: generationDisabled,
+        disabled: generationDisabled && !reviewingBlockedPlan,
         progressLabel: isGenerating && generatingMode === 'main' && batchCount > 1
             ? `${t('generate.cancel', '취소')} (${currentBatch}/${batchCount})`
             : undefined,
-        generateLabel: t('generate.button', '생성'),
+        generateLabel: reviewingBlockedPlan
+            ? profileConflict
+                ? t('composition.conflict.reviewAction', '변경사항 확인')
+                : t('composition.plan.reviewIssues', '문제 확인')
+            : t('generate.button', '생성'),
         cancelLabel: t('generate.cancel', '취소'),
-        onGenerate: handlePrimaryGeneration,
+        onGenerate: reviewingBlockedPlan ? handleOpenResolvedPlan : handlePrimaryGeneration,
         onCancel: () => void cancelMainGenerationCommand(),
         actionTestId: 'main-generate-action',
         cancelTestId: 'main-generate-action',
     }
-    const currentModelName = NAI_IMAGE_MODELS.find(candidate => candidate.id === model)?.name ?? model
-    const generationSummary = `${currentModelName} · ${selectedResolution.width}×${selectedResolution.height} · ${steps} ${t('parameters.steps', 'Steps')}`
+    const resolvedParams = preflightAuthoritative ? resolvedPlan?.params : undefined
+    const resolvedModel = resolvedParams?.model ?? model
+    const currentModelName = NAI_IMAGE_MODELS.find(candidate => candidate.id === resolvedModel)?.name ?? resolvedModel
+    const resolvedOutput = preflightAuthoritative ? preflight?.resolution.output ?? null : null
+    const outputDirectory = activeGenerationFolder?.id !== DEFAULT_GENERATION_FOLDER_ID
+        ? activeGenerationFolder?.directory
+        : resolvedOutput?.directory ?? settings.savePath
+    const outputSummary = preflightAuthoritative && resolvedOutput === null
+        ? t('composition.plan.loading', 'Resolving…')
+        : [
+            (resolvedOutput?.format ?? settings.imageFormat).toUpperCase(),
+            (resolvedOutput?.autoSave ?? settings.autoSave)
+                ? outputDirectory || t('composition.plan.saveSummary', 'Saved locally')
+                : t('composition.plan.previewOnly', 'Preview only'),
+            activeGenerationFolder?.r2.autoUpload
+                ? t('composition.plan.r2Configured', 'R2 upload configured')
+                : t('composition.plan.uploadOff', 'Upload off'),
+        ].join(' · ')
+    const generationSummary = `${currentModelName} · ${resolvedParams?.width ?? selectedResolution.width}×${resolvedParams?.height ?? selectedResolution.height} · ${resolvedParams?.steps ?? steps} ${t('parameters.steps', 'Steps')} · ${outputSummary}`
     const batchCounter = (
         <Counter
             value={batchCount}
@@ -691,7 +934,7 @@ export default function MainMode() {
             module={selectedModule}
             recipeName={selectedRecipeName}
             validation={validation}
-            resolvedPlan={lastResolvedPlan}
+            resolvedPlan={resolvedPlan}
             conflict={profileConflict ? {
                 severity: 'error',
                 title: t('composition.conflict.externalEdit', '다른 창에서 변경됨'),
@@ -725,11 +968,11 @@ export default function MainMode() {
             </div>
         </CompositionInspector>
     )
-    const resolvedPlan = (
+    const resolvedPlanPanel = (
         <ResolvedPlanView
-            plan={lastResolvedPlan}
-            issues={[...compositionErrors, ...portableResolvedIssues, ...compositionWarnings]}
-            loading={profileLoading}
+            plan={resolvedPlan}
+            issues={[...resolvedErrors, ...portableResolvedIssues, ...resolvedWarnings]}
+            loading={profileLoading || preflight === null}
             error={profileConflict ? profileConflictMessage : null}
             title={t('composition.plan.title', '실제 생성에 쓰일 값')}
             showHeader={false}
@@ -1029,7 +1272,7 @@ export default function MainMode() {
                 closeLabel={t('common.close', 'Close')}
                 returnFocusRef={resolvedSheetTriggerRef}
             >
-                {resolvedPlan}
+                {resolvedPlanPanel}
             </CompositionWorkspaceSheet>
 
             {/* Metadata Dialog */}

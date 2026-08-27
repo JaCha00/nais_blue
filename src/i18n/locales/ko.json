@@ -1344,7 +1344,8 @@
         "conflict": {
             "label": "변경사항 겹침",
             "externalEdit": "다른 창에서 변경됨",
-            "review": "다른 창의 변경사항과 겹쳤어요. 생성 전에 내용을 확인해 주세요."
+            "review": "다른 창의 변경사항과 겹쳤어요. 생성 전에 내용을 확인해 주세요.",
+            "reviewAction": "변경사항 확인"
         },
         "override": {
             "diff": "기본값에서 바뀐 항목",
@@ -1374,12 +1375,16 @@
             "technical": "기술 정보",
             "generationSummary": "생성 방식",
             "saveSummary": "저장",
+            "previewOnly": "미리보기만",
+            "r2Configured": "R2 자동 업로드 설정됨",
+            "uploadOff": "업로드 안 함",
             "revision": "수정본",
             "metadataEmbedded": "이미지에 생성 정보 포함",
             "metadataSidecar": "이미지 유지 · 복구 정보 별도 보관",
             "metadataClean": "이미지의 생성 정보 제거 · 복구 정보 별도 보관",
             "metadataStripped": "이미지의 생성 정보 제거",
-            "repair": "문제 해결"
+            "repair": "문제 해결",
+            "reviewIssues": "문제 확인"
         },
         "cost": { "estimated": "예상 비용" },
         "random": {

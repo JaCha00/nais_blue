@@ -1336,7 +1336,8 @@
         "conflict": {
             "label": "Overlapping changes",
             "externalEdit": "Changed in another window",
-            "review": "Changes from another window overlap. Review them before generating."
+            "review": "Changes from another window overlap. Review them before generating.",
+            "reviewAction": "Review changes"
         },
         "override": {
             "diff": "Changed from defaults",
@@ -1366,12 +1367,16 @@
             "technical": "Technical details",
             "generationSummary": "Generation setup",
             "saveSummary": "Save",
+            "previewOnly": "Preview only",
+            "r2Configured": "R2 auto-upload configured",
+            "uploadOff": "Upload off",
             "revision": "Revision",
             "metadataEmbedded": "Generation info inside image",
             "metadataSidecar": "Keep image info and save recovery data separately",
             "metadataClean": "Remove image info and save recovery data separately",
             "metadataStripped": "Remove generation info from image",
-            "repair": "Fix issue"
+            "repair": "Fix issue",
+            "reviewIssues": "Review issues"
         },
         "cost": { "estimated": "Estimated cost" },
         "random": {

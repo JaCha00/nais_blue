@@ -1335,7 +1335,8 @@
         "conflict": {
             "label": "変更の重複",
             "externalEdit": "別のウィンドウで変更されました",
-            "review": "別のウィンドウの変更と重なっています。生成前に内容を確認してください。"
+            "review": "別のウィンドウの変更と重なっています。生成前に内容を確認してください。",
+            "reviewAction": "変更内容を確認"
         },
         "override": {
             "diff": "デフォルトから変えた項目",
@@ -1365,12 +1366,16 @@
             "technical": "技術情報",
             "generationSummary": "生成方式",
             "saveSummary": "保存",
+            "previewOnly": "プレビューのみ",
+            "r2Configured": "R2自動アップロード設定済み",
+            "uploadOff": "アップロードなし",
             "revision": "リビジョン",
             "metadataEmbedded": "画像に生成情報を含める",
             "metadataSidecar": "画像の情報を残し、復元情報を別に保存",
             "metadataClean": "画像の生成情報を削除し、復元情報を別に保存",
             "metadataStripped": "画像から生成情報を削除",
-            "repair": "問題を解決"
+            "repair": "問題を解決",
+            "reviewIssues": "問題を確認"
         },
         "cost": { "estimated": "推定コスト" },
         "random": {

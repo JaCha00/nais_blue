@@ -175,7 +175,7 @@ export function CompositionCommandBar({
         <Button
             type="button"
             variant={resolved.open ? 'secondary' : simplified ? 'ghost' : 'outline'}
-            className={simplified ? 'shrink-0 px-2' : 'min-w-0 flex-1 px-3'}
+            className={simplified ? 'min-w-11 shrink-0 px-2' : 'min-w-0 flex-1 px-3'}
             aria-pressed={resolved.open}
             disabled={disabled}
             onClick={resolved.onOpen}
