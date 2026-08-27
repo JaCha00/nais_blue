@@ -28,6 +28,8 @@ describe('Composition workspace locale parity', () => {
         expect(leafKeys(ja.composition)).toEqual(leafKeys(en.composition))
         expect(leafKeys(ko.scene.composition)).toEqual(leafKeys(en.scene.composition))
         expect(leafKeys(ja.scene.composition)).toEqual(leafKeys(en.scene.composition))
+        expect(leafKeys(ko.generate)).toEqual(leafKeys(en.generate))
+        expect(leafKeys(ja.generate)).toEqual(leafKeys(en.generate))
     })
 
     it('defines every Composition workspace key referenced by Main and Scene', async () => {

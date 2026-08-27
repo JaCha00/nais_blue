@@ -353,6 +353,11 @@ async function collectCompositionShellReport(page, route) {
             commandBarRadius: commandBarElement ? getComputedStyle(commandBarElement).borderRadius : null,
             commandLabels,
             visiblePromptGenerateActions,
+            dockGroupCount: document.querySelectorAll([
+                '[data-testid="main-command-dock"] [data-testid="composition-mobile-settings"]',
+                '[data-testid="main-command-dock"] [data-testid="composition-mobile-count"]',
+                '[data-testid="main-command-dock"] [data-command-group="primary"]',
+            ].join(',')).length,
         }
     }, { currentRoute: route })
 }
@@ -378,6 +383,9 @@ function assertCompositionShell(report, route, viewport) {
             report.action.top >= report.dock.top - 1 && report.action.bottom <= report.dock.bottom + 1,
             `${context} Generate/Cancel is not inside the dock`,
         )
+        if (route === '/advanced') {
+            assert.equal(report.dockGroupCount, 3, `${context} must expose exactly Settings, quantity, and Generate groups`)
+        }
         return
     }
 
@@ -693,7 +701,9 @@ async function assertGuidedSingleMilestoneContract(page, viewport) {
 
 async function assertCompositionSheetFocusReturn(page, route, viewport) {
     const dock = page.locator('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]')
-    const trigger = dock.locator('[data-testid="composition-open-modules"]')
+    const trigger = dock.locator(route === '/advanced'
+        ? '[data-testid="composition-mobile-settings"]'
+        : '[data-testid="composition-open-modules"]')
     const sheetTestId = route === '/advanced' ? 'main-module-stack-sheet' : 'scene-modules-sheet'
     const sheet = page.locator(`[data-testid="${sheetTestId}"]`)
 

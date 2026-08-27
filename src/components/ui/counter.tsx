@@ -1,4 +1,4 @@
-import { motion, useSpring, useTransform } from 'framer-motion'
+import { motion, useReducedMotion, useSpring, useTransform } from 'framer-motion'
 import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Minus, Plus } from 'lucide-react'
@@ -65,6 +65,7 @@ export default function Counter({
     className = '',
 }: CounterProps) {
     const { t } = useTranslation()
+    const shouldReduceMotion = useReducedMotion()
     const height = fontSize + 4
     const [isEditing, setIsEditing] = useState(false)
     const [inputValue, setInputValue] = useState(String(value))
@@ -151,9 +152,11 @@ export default function Counter({
                     title={t('counter.editTitle', 'Click to edit count')}
                     aria-label={t('counter.edit', 'Edit count, current value {{value}}', { value })}
                 >
-                    {places.map((place) => (
-                        <Digit key={place} place={place} value={value} height={height} />
-                    ))}
+                    {shouldReduceMotion
+                        ? <span className="counter-static-number">{value}</span>
+                        : places.map((place) => (
+                            <Digit key={place} place={place} value={value} height={height} />
+                        ))}
                 </button>
             )}
             <button

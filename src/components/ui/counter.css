@@ -59,6 +59,10 @@
     justify-content: center;
 }
 
+.counter-static-number {
+    min-width: 1ch;
+}
+
 .counter-input {
     background: oklch(var(--background));
     border: 1px solid oklch(var(--primary));

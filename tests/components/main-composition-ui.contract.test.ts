@@ -52,7 +52,7 @@ describe('Main composition UI contract', () => {
         expect(mainMode).toContain('returnFocusRef={inspectorSheetTriggerRef}')
         expect(mainMode).toContain('returnFocusRef={resolvedSheetTriggerRef}')
         expect(mainMode).toContain('inspectorSheetTriggerRef.current = currentTrigger()')
-        expect(mainMode).not.toContain('setModuleSheetOpen(false)')
+        expect(mainMode).toMatch(/const handleOpenPromptFromSettings[\s\S]*?setModuleSheetOpen\(false\)[\s\S]*?requestAnimationFrame\(handleOpenPromptSheet\)/)
     })
 
     it('hands a selected module from its sheet to the Inspector at every desktop width', async () => {
@@ -69,6 +69,29 @@ describe('Main composition UI contract', () => {
         expect(mainMode).not.toContain('LAYOUT_SHEET_EVENTS')
         expect(mainMode).toContain("t('composition.compatibility.rawPrompt', '직접 프롬프트 편집')")
         expect(mainMode).not.toContain('<AutocompleteTextarea')
+    })
+
+    it('keeps the simplified mobile dock to Settings, quantity, and a quantity-aware primary action', async () => {
+        const mainMode = await source('src/pages/MainMode.tsx')
+        const mobileStart = mainMode.indexOf('const mobileDock =')
+        const mobileEnd = mainMode.indexOf('\n\n    return (', mobileStart)
+        const mobileDock = mainMode.slice(mobileStart, mobileEnd)
+
+        expect(mobileDock).toContain('onOpenSettings={handleOpenModuleStack}')
+        expect(mobileDock).toContain('count={mobileCountButton}')
+        expect(mobileDock).toContain('simplified')
+        expect(mobileDock).toContain("t('generate.settings'")
+        expect(mobileDock).toContain("t('generate.imagesButton'")
+        expect(mobileDock).not.toContain('onOpenModules=')
+        expect(mobileDock).not.toContain('onOpenResolved=')
+        expect(mainMode).toContain('data-testid="main-mobile-count"')
+        expect(mainMode).toContain('className="min-w-11 px-2 tabular-nums"')
+        expect(mainMode).toContain('data-testid="main-mobile-settings-hub"')
+        expect(mainMode).toContain("t('composition.compatibility.rawPrompt'")
+        expect(mainMode).toContain("t('composition.plan.open'")
+        expect(mainMode).toContain('{batchCounter}')
+        expect(mainMode).toContain('<RecipeSelector onChange={handleRecipeSelection} />')
+        expect(mainMode).toContain('{moduleStack}')
     })
 
     it('keeps prompt authoring free of duplicated composition diagnostics', async () => {
@@ -206,7 +229,7 @@ describe('Main composition UI contract', () => {
         expect(mainMode).toContain(': displayedRecipeSelection === MAIN_DIRECT_SELECTION_ID')
         expect(mainMode).toContain("if (compositionMode === 'legacy') return")
         expect(mainMode).not.toContain('lastResolvedPlan')
-        expect(mainMode).toContain('onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}')
+        expect(mainMode).toContain('onClick={handleOpenResolvedPlan}')
         expect(mainMode).toContain('<RecipeSelector onChange={handleRecipeSelection} />')
         expect(mainMode).toContain('commandBarPlacement="bottom"')
     })

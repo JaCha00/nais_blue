@@ -75,8 +75,18 @@ export function MobileCommandDock({
             data-testid={testId}
         >
             {onOpenSettings && (
-                <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={labels.settings} onClick={onOpenSettings}>
-                    <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size={simplified ? 'default' : 'icon'}
+                    className={simplified ? 'shrink-0 px-2' : undefined}
+                    disabled={disabled}
+                    aria-label={labels.settings}
+                    data-testid="composition-mobile-settings"
+                    onClick={onOpenSettings}
+                >
+                    <SlidersHorizontal className={cn('h-5 w-5', simplified && 'mr-1')} aria-hidden="true" />
+                    {simplified && <span>{labels.settings}</span>}
                 </Button>
             )}
             {!simplified && (
@@ -106,7 +116,7 @@ export function MobileCommandDock({
                     )}
                 </>
             )}
-            {count && <div className="shrink-0">{count}</div>}
+            {count && <div className="shrink-0" data-testid="composition-mobile-count">{count}</div>}
             <Button
                 type="button"
                 variant={generation.generating ? 'destructive' : 'generate'}
@@ -116,6 +126,7 @@ export function MobileCommandDock({
                 data-testid={generation.generating
                     ? generation.cancelTestId ?? generation.actionTestId
                     : generation.actionTestId}
+                data-command-group="primary"
             >
                 {generation.generating
                     ? <Square className="mr-2 h-4 w-4 shrink-0" aria-hidden="true" />

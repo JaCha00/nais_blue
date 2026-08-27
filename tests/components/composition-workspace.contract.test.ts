@@ -172,6 +172,26 @@ describe('composition workspace contextual commands', () => {
         expect(dock).toContain('aria-label="Resolved"')
         expect(dock).not.toContain('aria-label="Inspector"')
     })
+
+    it('renders the simplified Main-style dock as exactly three command groups', () => {
+        const dock = renderToStaticMarkup(createElement(MobileCommandDock, {
+            generation: { ...generation, generateLabel: 'Generate 3 images' },
+            labels: { settings: 'Settings' },
+            onOpenSettings: () => undefined,
+            count: createElement('button', { type: 'button', 'aria-label': 'Edit image count, currently 3' }, '3 images'),
+            simplified: true,
+        }))
+
+        expect(dock.match(/<button/g)).toHaveLength(3)
+        expect(dock).toContain('data-testid="composition-mobile-settings"')
+        expect(dock).toContain('data-testid="composition-mobile-count"')
+        expect(dock).toContain('data-command-group="primary"')
+        expect(dock).toContain('Settings')
+        expect(dock).toContain('3 images')
+        expect(dock).toContain('Generate 3 images')
+        expect(dock).not.toContain('aria-label="Modules"')
+        expect(dock).not.toContain('aria-label="Resolved"')
+    })
 })
 
 describe('composition workspace source contracts', () => {
@@ -251,6 +271,13 @@ describe('composition workspace source contracts', () => {
         expect(layout).toContain('grid-cols-[minmax(16rem,20rem)_minmax(0,1fr)_minmax(18rem,24rem)]')
         expect(layout).toContain('overflow-x-hidden')
         expect(layout).not.toContain('<main')
+    })
+
+    it('renders Counter values immediately when reduced motion is requested', async () => {
+        const counter = await source('src/components/ui/counter.tsx')
+
+        expect(counter).toContain('useReducedMotion()')
+        expect(counter).toMatch(/shouldReduceMotion[\s\S]*?<span className="counter-static-number">\{value\}<\/span>[\s\S]*?: places\.map/)
     })
 
     it('covers resolved prompts, params winners, output, issues, random trace, and provenance', async () => {

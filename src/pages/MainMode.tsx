@@ -810,6 +810,12 @@ export default function MainMode() {
         setModuleSheetOpen(true)
     }
 
+    const handleOpenPromptFromSettings = () => {
+        setModuleSheetOpen(false)
+        // Let the settings sheet restore focus before the shell opens its Prompt sheet.
+        requestAnimationFrame(handleOpenPromptSheet)
+    }
+
     const handleSelectModule = (moduleId: string) => {
         setSelectedModuleId(moduleId)
         // The Main workspace keeps its desktop rails disabled, so a module chosen
@@ -903,6 +909,18 @@ export default function MainMode() {
             fontSize={16}
             className="shrink-0"
         />
+    )
+    const mobileCountButton = (
+        <Button
+            type="button"
+            variant="ghost"
+            className="min-w-11 px-2 tabular-nums"
+            aria-label={t('generate.editCount', 'Edit image count, current count {{count}}', { count: batchCount })}
+            data-testid="main-mobile-count"
+            onClick={handleOpenModuleStack}
+        >
+            {t('generate.countShort', '{{count}} images', { count: batchCount })}
+        </Button>
     )
     const workspaceLabels = {
         modules: t('composition.workspace.modules', '프롬프트 묶음'),
@@ -1032,21 +1050,21 @@ export default function MainMode() {
     )
     const mobileDock = isMobileWorkspace ? (
         <MobileCommandDock
-            generation={generationControl}
-            resolvedAvailable={hasResolvedContent}
+            generation={{
+                ...generationControl,
+                generateLabel: reviewingBlockedPlan
+                    ? generationControl.generateLabel
+                    : t('generate.imagesButton', 'Generate {{count}} images', { count: batchCount }),
+            }}
             testId="main-command-dock"
             labels={{
-                modules: t('composition.workspace.modules', '프롬프트 묶음'),
-                settings: t('parameters.title', '세부 설정'),
-                inspector: t('composition.workspace.inspector', '적용 내용'),
-                resolved: t('composition.plan.resolved', '실제 생성값'),
+                settings: t('generate.settings', 'Settings'),
                 generate: t('generate.button', 'Generate'),
                 cancel: t('generate.cancel', 'Cancel'),
             }}
-            onOpenModules={hasModuleSheetContent ? handleOpenModuleStack : undefined}
-            onOpenResolved={hasResolvedContent ? handleOpenResolvedPlan : undefined}
-            onOpenSettings={handleOpenPromptSheet}
-            count={batchCounter}
+            onOpenSettings={handleOpenModuleStack}
+            count={mobileCountButton}
+            simplified
         />
     ) : null
 
@@ -1233,8 +1251,12 @@ export default function MainMode() {
             <CompositionWorkspaceSheet
                 open={moduleSheetOpen}
                 onOpenChange={setModuleSheetOpen}
-                title={t('composition.workspace.moduleStack', '적용 순서')}
-                description={t('composition.workspace.moduleStackHelp', '생성 구성과 프롬프트 묶음의 적용 순서를 확인하세요.')}
+                title={isMobileWorkspace
+                    ? t('generate.settings', 'Settings')
+                    : t('composition.workspace.moduleStack', '적용 순서')}
+                description={isMobileWorkspace
+                    ? t('generate.settingsHelp', 'Edit prompts, order, image count, and resolved generation values.')
+                    : t('composition.workspace.moduleStackHelp', '생성 구성과 프롬프트 묶음의 적용 순서를 확인하세요.')}
                 side={isMobileWorkspace ? 'bottom' : 'left'}
                 level="primary"
                 testId="main-module-stack-sheet"
@@ -1242,6 +1264,21 @@ export default function MainMode() {
                 returnFocusRef={moduleSheetTriggerRef}
             >
                 <div className="flex min-h-0 flex-col gap-3">
+                    {isMobileWorkspace && (
+                        <div className="grid gap-3" data-testid="main-mobile-settings-hub">
+                            <div className="flex min-w-0 items-center justify-between gap-3 rounded-control border border-border/60 p-2">
+                                <span className="min-w-0 text-sm font-medium">{t('generate.countLabel', 'Image count')}</span>
+                                {batchCounter}
+                            </div>
+                            <Button type="button" variant="outline" className="w-full justify-start" onClick={handleOpenPromptFromSettings}>
+                                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                                <span className="min-w-0 truncate">{t('composition.compatibility.rawPrompt', '직접 프롬프트 편집')}</span>
+                            </Button>
+                            <Button type="button" variant="outline" className="w-full justify-start" onClick={handleOpenResolvedPlan}>
+                                {t('composition.plan.open', '실제 생성값 열기')}
+                            </Button>
+                        </div>
+                    )}
                     {hasRecipeControls && <RecipeSelector onChange={handleRecipeSelection} />}
                     {moduleStack}
                 </div>
