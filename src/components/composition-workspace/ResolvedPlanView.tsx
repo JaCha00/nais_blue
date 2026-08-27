@@ -1,10 +1,12 @@
 import { AlertCircle, AlertTriangle, CircleDashed, LoaderCircle, Wrench } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { ReadonlyCompositionIssue, ReadonlyCompositionPlan } from './types'
 import { PromptLengthAssessment } from '@/components/guidance/PromptLengthAssessment'
 import { getNaiImageModelName } from '@/services/nai/model-catalog'
+import { presentCompositionIssue, type CompositionIssueTranslator } from './issue-presentation'
 
 export interface ResolvedPlanViewLabels {
     title: string
@@ -22,8 +24,16 @@ export interface ResolvedPlanViewLabels {
     randomTrace: string
     provenance: string
     technical: string
+    issueDiagnostics: string
     generationSummary: string
     saveSummary: string
+    generationFolder: string
+    outputDirectory: string
+    format: string
+    metadata: string
+    r2AutoUpload: string
+    r2Configured: string
+    r2Off: string
     revision: string
     metadataEmbedded: string
     metadataSidecar: string
@@ -48,8 +58,16 @@ const DEFAULT_LABELS: ResolvedPlanViewLabels = {
     randomTrace: 'Random trace',
     provenance: 'Provenance',
     technical: 'Technical details',
+    issueDiagnostics: 'Issue diagnostics',
     generationSummary: 'Generation setup',
     saveSummary: 'Save',
+    generationFolder: 'Generation folder',
+    outputDirectory: 'Local output directory',
+    format: 'Format',
+    metadata: 'Metadata',
+    r2AutoUpload: 'R2 auto-upload',
+    r2Configured: 'Configured',
+    r2Off: 'Off',
     revision: 'Revision',
     metadataEmbedded: 'Generation info inside image',
     metadataSidecar: 'Keep image info and save recovery data separately',
@@ -67,7 +85,13 @@ export interface ResolvedPlanViewProps {
     labels?: Partial<ResolvedPlanViewLabels>
     className?: string
     showHeader?: boolean
+    saveContext?: {
+        generationFolderPath: string
+        outputDirectory: string
+        r2AutoUpload: boolean
+    }
     onRepairIssue?: (issue: ReadonlyCompositionIssue) => void
+    canRepairIssue?: (issue: ReadonlyCompositionIssue) => boolean
 }
 
 function JsonValue({ value }: { value: unknown }) {
@@ -111,8 +135,11 @@ export function ResolvedPlanView({
     labels: labelsOverride,
     className,
     showHeader = true,
+    saveContext,
     onRepairIssue,
+    canRepairIssue,
 }: ResolvedPlanViewProps) {
+    const { t, i18n } = useTranslation()
     const labels = { ...DEFAULT_LABELS, ...labelsOverride }
     const issues = suppliedIssues ?? plan?.issues ?? []
     const errors = issues.filter(issue => issue.severity === 'error')
@@ -124,6 +151,7 @@ export function ResolvedPlanView({
             : plan?.outputPolicy.metadataMode === 'strip-and-sidecar'
                 ? labels.metadataClean
                 : labels.metadataStripped
+    const translateIssue: CompositionIssueTranslator = key => i18n.exists(key) ? t(key) : undefined
 
     return (
         <section
@@ -148,7 +176,7 @@ export function ResolvedPlanView({
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
                     <span className="min-w-0 whitespace-pre-wrap break-words">{error}</span>
                 </div>
-            ) : !plan ? (
+            ) : !plan && issues.length === 0 ? (
                 <div className="flex min-h-44 items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
                     <CircleDashed className="h-4 w-4" aria-hidden="true" />
                     {labels.empty}
@@ -164,6 +192,8 @@ export function ResolvedPlanView({
                                     tone="error"
                                     repairLabel={labels.repair}
                                     onRepairIssue={onRepairIssue}
+                                    canRepairIssue={canRepairIssue}
+                                    translateIssue={translateIssue}
                                 />
                             )}
                             {warnings.length > 0 && (
@@ -173,12 +203,14 @@ export function ResolvedPlanView({
                                     tone="warning"
                                     repairLabel={labels.repair}
                                     onRepairIssue={onRepairIssue}
+                                    canRepairIssue={canRepairIssue}
+                                    translateIssue={translateIssue}
                                 />
                             )}
                         </section>
                     )}
 
-                    <PlanSection title={labels.positive}>
+                    {plan ? <><PlanSection title={labels.positive}>
                         <PlanText>{plan.positivePrompt}</PlanText>
                     </PlanSection>
                     <PlanSection title={labels.negative}>
@@ -196,19 +228,59 @@ export function ResolvedPlanView({
                             <dt className="text-sm font-medium text-muted-foreground">{labels.generationSummary}</dt>
                             <dd className="min-w-0 break-words text-sm">{getNaiImageModelName(plan.params.model)} · {plan.params.width}×{plan.params.height} · {plan.params.steps}</dd>
                         </div>
-                        <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
-                            <dt className="text-sm font-medium text-muted-foreground">{labels.saveSummary}</dt>
-                            <dd className="min-w-0 break-words text-sm">{plan.outputPolicy.format.toUpperCase()} · {metadataSummary}</dd>
+                        {saveContext ? <>
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.generationFolder}</dt>
+                                <dd className="min-w-0 break-words text-sm">{saveContext.generationFolderPath}</dd>
+                            </div>
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.outputDirectory}</dt>
+                                <dd className="min-w-0 break-words text-sm">{saveContext.outputDirectory}</dd>
+                            </div>
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.format}</dt>
+                                <dd className="min-w-0 break-words text-sm">{plan.outputPolicy.format.toUpperCase()}</dd>
+                            </div>
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.metadata}</dt>
+                                <dd className="min-w-0 break-words text-sm">{metadataSummary}</dd>
+                            </div>
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.r2AutoUpload}</dt>
+                                <dd className="min-w-0 break-words text-sm">{saveContext.r2AutoUpload ? labels.r2Configured : labels.r2Off}</dd>
+                            </div>
+                        </> : (
+                            <div className="grid min-w-0 gap-1 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                                <dt className="text-sm font-medium text-muted-foreground">{labels.saveSummary}</dt>
+                                <dd className="min-w-0 break-words text-sm">{plan.outputPolicy.format.toUpperCase()} · {metadataSummary}</dd>
+                            </div>
+                        )}
+                    </dl></> : (
+                        <div className="flex min-h-28 items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                            <CircleDashed className="h-4 w-4" aria-hidden="true" />
+                            {labels.empty}
                         </div>
-                    </dl>
+                    )}
 
                     <details className="border-t border-border" data-testid="composition-technical-details">
                         <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                             <span>{labels.technical}</span>
-                            <span className="font-mono text-[11px] text-muted-foreground">r{plan.documentRevision}</span>
+                            {plan && <span className="font-mono text-[11px] text-muted-foreground">r{plan.documentRevision}</span>}
                         </summary>
                         <div className="min-w-0 border-t border-border">
-                            <PlanSection title={labels.promptParts} count={Object.keys(plan.promptParts).length}>
+                            {issues.length > 0 && (
+                                <PlanSection title={labels.issueDiagnostics} count={issues.length} open={false}>
+                                    <JsonValue value={issues.map(issue => ({
+                                        code: issue.code,
+                                        messageKey: issue.messageKey,
+                                        repairHintKey: issue.repairHintKey,
+                                        actionId: issue.actionId,
+                                        fieldPath: issue.fieldPath,
+                                        entityRef: issue.entityRef,
+                                    }))} />
+                                </PlanSection>
+                            )}
+                            {plan && <><PlanSection title={labels.promptParts} count={Object.keys(plan.promptParts).length}>
                                 <dl className="divide-y divide-border border-y border-border">
                                     {Object.entries(plan.promptParts).map(([slot, value]) => (
                                         <div key={slot} className="grid min-w-0 gap-1 py-2 sm:grid-cols-[7rem_minmax(0,1fr)] sm:gap-3">
@@ -281,6 +353,7 @@ export function ResolvedPlanView({
                                     <dt className="text-muted-foreground">hash</dt><dd className="break-all">{plan.planHash.digest}</dd>
                                 </dl>
                             </PlanSection>
+                            </>}
                         </div>
                     </details>
                 </div>
@@ -295,12 +368,16 @@ function IssueGroup({
     tone,
     repairLabel,
     onRepairIssue,
+    canRepairIssue,
+    translateIssue,
 }: {
     title: string
     issues: readonly ReadonlyCompositionIssue[]
     tone: 'warning' | 'error'
     repairLabel: string
     onRepairIssue?: (issue: ReadonlyCompositionIssue) => void
+    canRepairIssue?: (issue: ReadonlyCompositionIssue) => boolean
+    translateIssue: CompositionIssueTranslator
 }) {
     const Icon = tone === 'error' ? AlertCircle : AlertTriangle
     return (
@@ -310,26 +387,32 @@ function IssueGroup({
                 {title} ({issues.length})
             </h3>
             <ul className="mt-2 divide-y divide-border">
-                {issues.map((issue, index) => (
+                {issues.map((issue, index) => {
+                    const presentation = presentCompositionIssue(issue, translateIssue)
+                    const repairable = onRepairIssue !== undefined
+                        && issue.actionId !== undefined
+                        && (canRepairIssue?.(issue) ?? true)
+                    return (
                     <li key={`${issue.code}-${issue.fieldPath.join('.')}-${index}`} className="flex min-w-0 items-center gap-2 py-2">
                         <span className="min-w-0 flex-1">
-                            <strong className="block break-all font-mono text-xs">{issue.code}</strong>
-                            <span className="mt-1 block break-words text-xs text-muted-foreground">{issue.messageKey}</span>
+                            <strong className="block break-words text-sm">{presentation.title}</strong>
+                            <span className="mt-1 block break-words text-xs text-muted-foreground">{presentation.description}</span>
                         </span>
-                        {onRepairIssue && issue.actionId && (
+                        {repairable && (
                             <Button
                                 type="button"
                                 variant="outline"
-                                size="icon"
                                 className="shrink-0"
-                                aria-label={`${repairLabel} ${issue.code}`}
+                                aria-label={`${repairLabel}: ${presentation.title}`}
                                 onClick={() => onRepairIssue(issue)}
                             >
                                 <Wrench className="h-4 w-4" aria-hidden="true" />
+                                {repairLabel}
                             </Button>
                         )}
                     </li>
-                ))}
+                    )
+                })}
             </ul>
         </div>
     )

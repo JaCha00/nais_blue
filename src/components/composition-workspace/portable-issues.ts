@@ -8,7 +8,8 @@ export function portableIssuesForResolvedPlan(
     return issues.map(issue => ({
         code: issue.code,
         severity: 'error',
-        messageKey: `${issue.message} ${issue.repairAction.label}`,
+        messageKey: `composition.issue.${portableIssueKey(issue.code)}`,
+        repairHintKey: `composition.repair.${portableRepairKey(issue.code)}`,
         fieldPath: issue.resourceId === 'output-destination'
             ? ['outputPolicy', 'destination']
             : ['resources', issue.resourceId ?? 'unknown'],
@@ -18,4 +19,22 @@ export function portableIssuesForResolvedPlan(
             ? {}
             : { entityRef: { kind: issue.resourceId === 'output-destination' ? 'output' : 'resource', id: issue.resourceId } }),
     }))
+}
+
+function portableIssueKey(code: PortableResourceIssue['code']): string {
+    switch (code) {
+        case 'E_PORTABLE_PATH_INVALID': return 'portablePathInvalid'
+        case 'E_PORTABLE_PATH_ROOT_UNSUPPORTED': return 'portablePathRootUnsupported'
+        case 'E_PORTABLE_PATH_TOKEN_MISSING': return 'portablePathTokenMissing'
+        case 'E_PORTABLE_PATH_PLATFORM_MISMATCH': return 'portablePathPlatformMismatch'
+    }
+}
+
+function portableRepairKey(code: PortableResourceIssue['code']): string {
+    switch (code) {
+        case 'E_PORTABLE_PATH_INVALID': return 'repairPortableLocation'
+        case 'E_PORTABLE_PATH_ROOT_UNSUPPORTED': return 'copyPortableToAppData'
+        case 'E_PORTABLE_PATH_TOKEN_MISSING': return 'locatePortableResource'
+        case 'E_PORTABLE_PATH_PLATFORM_MISMATCH': return 'replacePortableLocation'
+    }
 }

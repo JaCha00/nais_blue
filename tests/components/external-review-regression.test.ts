@@ -48,6 +48,30 @@ describe('External review regression fixes', () => {
         }
     })
 
+    it('keeps storage-result labels in parity and describes R2 as configuration state', () => {
+        for (const locale of [ko, en, ja]) {
+            for (const key of ['generationFolder', 'outputDirectory', 'format', 'metadata', 'r2AutoUpload', 'r2Configured', 'r2Off', 'openStorage'] as const) {
+                expect(locale.composition.plan[key].trim()).not.toHaveLength(0)
+            }
+            expect(locale.composition.plan.r2Configured).not.toMatch(/ready|scheduled|준비|예정|準備|予定/i)
+            expect(locale.composition.plan.uploadOff).toMatch(/R2/i)
+        }
+    })
+
+    it('projects Main storage authority into presentation props without widening the engine plan', async () => {
+        const [main, resolved] = await Promise.all([
+            source('src/pages/MainMode.tsx'),
+            source('src/components/composition-workspace/ResolvedPlanView.tsx'),
+        ])
+
+        expect(main).toContain("navigate('/settings?section=storage')")
+        expect(main).toContain('generationFolderPath: activeGenerationFolder.path')
+        expect(main).toContain('outputDirectory,')
+        expect(main).toContain('r2AutoUpload: activeGenerationFolder.r2.autoUpload')
+        expect(resolved).toContain('saveContext?: {')
+        expect(resolved).not.toMatch(/CompositionEnginePlan[^\n]*saveContext/)
+    })
+
     it('preserves native Tab traversal and assigns page cycling to modified keys', async () => {
         const [hook, store] = await Promise.all([
             source('src/hooks/useShortcuts.ts'),

@@ -77,6 +77,7 @@ export interface ReadonlyCompositionIssue {
     readonly code: string
     readonly severity: 'warning' | 'error'
     readonly messageKey: string
+    readonly repairHintKey?: string
     readonly fieldPath: readonly (string | number)[]
     readonly actionId?: string
     readonly blocking: boolean

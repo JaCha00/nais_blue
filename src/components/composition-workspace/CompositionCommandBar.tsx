@@ -40,6 +40,14 @@ export interface CompositionResolvedControl {
     onOpen: () => void
 }
 
+export interface CompositionStorageControl {
+    folder: string
+    format: string
+    r2Status: string
+    label: string
+    onOpen: () => void
+}
+
 export interface CompositionCommandBarLabels {
     commands: string
     mode: string
@@ -85,6 +93,7 @@ export interface CompositionCommandBarProps {
     onOpenInspector?: () => void
     summary?: string
     onOpenSummary?: () => void
+    storage?: CompositionStorageControl
     count?: ReactNode
     /** Scene UX: keep internal composition authority out of the user-facing command strip. */
     simplified?: boolean
@@ -138,6 +147,7 @@ export function CompositionCommandBar({
     onOpenInspector,
     summary,
     onOpenSummary,
+    storage,
     count,
     simplified = false,
 }: CompositionCommandBarProps) {
@@ -200,6 +210,20 @@ export function CompositionCommandBar({
                     ) : (
                         <span className="min-w-0 flex-1 truncate whitespace-nowrap px-2 text-sm text-muted-foreground" data-command-label title={summary}>{summary}</span>
                     ))}
+                    {storage && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            className="grid min-w-0 flex-1 grid-cols-[minmax(3rem,1fr)_auto] justify-start px-2 text-muted-foreground"
+                            aria-label={`${storage.label}: ${storage.folder} · ${storage.format} · ${storage.r2Status}`}
+                            title={`${storage.folder} · ${storage.format} · ${storage.r2Status}`}
+                            onClick={storage.onOpen}
+                            data-testid="composition-open-storage"
+                        >
+                            <span className="truncate whitespace-nowrap text-left text-sm">{storage.folder}</span>
+                            <span className="shrink-0 whitespace-nowrap text-sm"> · {storage.format}<span className="hidden xl:inline"> · {storage.r2Status}</span></span>
+                        </Button>
+                    )}
                     {mode && (
                         <CommandSelect
                             control={{ ...mode, disabled: disabled || mode.disabled }}

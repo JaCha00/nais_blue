@@ -1,5 +1,6 @@
 export * from './types'
 export * from './portable-issues'
+export * from './issue-presentation'
 export * from './ValidationState'
 export * from './ModuleStack'
 export * from './CompositionInspector'

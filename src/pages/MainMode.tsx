@@ -59,6 +59,7 @@ import {
 import type {
     CompositionValidationSummary,
     ModuleStackItem,
+    ReadonlyCompositionIssue,
 } from '@/components/composition-workspace/types'
 import {
     CompositionCommandBar,
@@ -831,6 +832,41 @@ export default function MainMode() {
         setResolvedSheetOpen(true)
     }
 
+    const repairSurface = (issue: ReadonlyCompositionIssue): 'modules' | 'prompt' | 'storage' | null => {
+        switch (issue.actionId) {
+            case 'select-recipe':
+            case 'repair-module-reference':
+            case 'enable-module':
+            case 'review-extension':
+                return 'modules'
+            case 'repair-reference':
+            case 'adjust-parameter':
+            case 'choose-character-position-mode':
+            case 'restore-fragment':
+            case 'break-fragment-cycle':
+            case 'review-fragment-lookup':
+            case 'select-verified-model':
+            case 'clamp-character-position':
+                return 'prompt'
+            case 'review-output-path':
+                return 'storage'
+            default:
+                return null
+        }
+    }
+    const canRepairIssue = (issue: ReadonlyCompositionIssue) => repairSurface(issue) !== null
+    const handleRepairIssue = (issue: ReadonlyCompositionIssue) => {
+        const surface = repairSurface(issue)
+        if (surface === null) return
+        setResolvedSheetOpen(false)
+        // Match the existing sheet handoff: restore focus before opening the repair surface.
+        requestAnimationFrame(() => {
+            if (surface === 'modules') handleOpenModuleStack()
+            else if (surface === 'prompt') handleOpenPromptSheet()
+            else navigate('/settings?section=storage')
+        })
+    }
+
     // Memory cleanup on unmount - release large Base64 data when leaving main mode
     // This prevents OOM when switching between modes (Issue #6)
     useEffect(() => {
@@ -888,18 +924,14 @@ export default function MainMode() {
     const outputDirectory = activeGenerationFolder?.id !== DEFAULT_GENERATION_FOLDER_ID
         ? activeGenerationFolder?.directory
         : resolvedOutput?.directory ?? settings.savePath
-    const outputSummary = preflightAuthoritative && resolvedOutput === null
-        ? t('composition.plan.loading', 'Resolving…')
-        : [
-            (resolvedOutput?.format ?? settings.imageFormat).toUpperCase(),
-            (resolvedOutput?.autoSave ?? settings.autoSave)
-                ? outputDirectory || t('composition.plan.saveSummary', 'Saved locally')
-                : t('composition.plan.previewOnly', 'Preview only'),
-            activeGenerationFolder?.r2.autoUpload
-                ? t('composition.plan.r2Configured', 'R2 upload configured')
-                : t('composition.plan.uploadOff', 'Upload off'),
-        ].join(' · ')
-    const generationSummary = `${currentModelName} · ${resolvedParams?.width ?? selectedResolution.width}×${resolvedParams?.height ?? selectedResolution.height} · ${resolvedParams?.steps ?? steps} ${t('parameters.steps', 'Steps')} · ${outputSummary}`
+    const outputFormat = (resolvedOutput?.format ?? settings.imageFormat).toUpperCase()
+    const generationFolderPath = activeGenerationFolder?.path
+        ?? outputDirectory
+        ?? t('composition.plan.previewOnly', 'Preview only')
+    const r2Status = activeGenerationFolder?.r2.autoUpload
+        ? t('composition.plan.r2Configured', 'R2 upload configured')
+        : t('composition.plan.uploadOff', 'R2 auto-upload off')
+    const generationSummary = `${currentModelName} · ${resolvedParams?.width ?? selectedResolution.width}×${resolvedParams?.height ?? selectedResolution.height} · ${resolvedParams?.steps ?? steps} ${t('parameters.steps', 'Steps')}`
     const batchCounter = (
         <Counter
             value={batchCount}
@@ -994,6 +1026,11 @@ export default function MainMode() {
             error={profileConflict ? profileConflictMessage : null}
             title={t('composition.plan.title', '실제 생성에 쓰일 값')}
             showHeader={false}
+            saveContext={activeGenerationFolder && outputDirectory ? {
+                generationFolderPath: activeGenerationFolder.path,
+                outputDirectory,
+                r2AutoUpload: activeGenerationFolder.r2.autoUpload,
+            } : undefined}
             labels={{
                 loading: t('composition.plan.loading', '생성값을 정리하는 중…'),
                 empty: t('composition.plan.empty', '아직 정리된 생성값이 없어요.'),
@@ -1009,8 +1046,16 @@ export default function MainMode() {
                 randomTrace: t('composition.plan.randomTrace', '랜덤 선택 기록'),
                 provenance: t('composition.plan.provenance', '값의 출처'),
                 technical: t('composition.plan.technical', '기술 정보'),
+                issueDiagnostics: t('composition.plan.issueDiagnostics', '문제 진단 정보'),
                 generationSummary: t('composition.plan.generationSummary', '생성 방식'),
                 saveSummary: t('composition.plan.saveSummary', '저장'),
+                generationFolder: t('composition.plan.generationFolder', '생성 폴더'),
+                outputDirectory: t('composition.plan.outputDirectory', '실제 로컬 출력 경로'),
+                format: t('composition.plan.format', '최종 형식'),
+                metadata: t('composition.plan.metadata', '메타데이터'),
+                r2AutoUpload: t('composition.plan.r2AutoUpload', 'R2 자동 업로드'),
+                r2Configured: t('composition.plan.r2Configured', '설정됨'),
+                r2Off: t('composition.plan.r2Off', '꺼짐'),
                 revision: t('composition.plan.revision', '수정본'),
                 metadataEmbedded: t('composition.plan.metadataEmbedded', '이미지에 생성 정보 포함'),
                 metadataSidecar: t('composition.plan.metadataSidecar', '이미지 유지 · 복구 정보 별도 보관'),
@@ -1018,6 +1063,8 @@ export default function MainMode() {
                 metadataStripped: t('composition.plan.metadataStripped', '이미지의 생성 정보 제거'),
                 repair: t('composition.plan.repair', '문제 해결'),
             }}
+            canRepairIssue={canRepairIssue}
+            onRepairIssue={handleRepairIssue}
         />
     )
     const commandBar = (
@@ -1025,6 +1072,13 @@ export default function MainMode() {
             <CompositionCommandBar
                 summary={generationSummary}
                 onOpenSummary={handleOpenPromptSheet}
+                storage={{
+                    folder: generationFolderPath,
+                    format: outputFormat,
+                    r2Status,
+                    label: t('composition.plan.openStorage', '저장 설정 열기'),
+                    onOpen: () => navigate('/settings?section=storage'),
+                }}
                 count={batchCounter}
                 cost={estimatedCost !== null ? {
                     value: `${estimatedCost} Anlas`,

@@ -173,6 +173,28 @@ describe('composition workspace contextual commands', () => {
         expect(dock).not.toContain('aria-label="Inspector"')
     })
 
+    it('keeps storage settings separately actionable with every displayed value in its accessible name', () => {
+        const bar = renderToStaticMarkup(createElement(CompositionCommandBar, {
+            generation,
+            simplified: true,
+            summary: 'V4.5 · 832×1216 · 28 Steps',
+            onOpenSummary: () => undefined,
+            storage: {
+                folder: 'Default / Portraits',
+                format: 'WEBP',
+                r2Status: 'R2 auto-upload off',
+                label: 'Open storage settings',
+                onOpen: () => undefined,
+            },
+        }))
+
+        expect(bar).toContain('data-testid="composition-open-storage"')
+        expect(bar).toContain('aria-label="Open storage settings: Default / Portraits · WEBP · R2 auto-upload off"')
+        expect(bar).toContain('V4.5 · 832×1216 · 28 Steps')
+        expect(bar).toContain('Default / Portraits')
+        expect(bar).toContain('WEBP')
+    })
+
     it('renders the simplified Main-style dock as exactly three command groups', () => {
         const dock = renderToStaticMarkup(createElement(MobileCommandDock, {
             generation: { ...generation, generateLabel: 'Generate 3 images' },
