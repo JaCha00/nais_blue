@@ -304,7 +304,7 @@ export function CharacterRotationDialog({ open, onOpenChange }: CharacterRotatio
                     <div className="flex items-start gap-2 rounded-xl bg-muted/30 p-3 text-xs text-muted-foreground">
                         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                         <span>
-                            시작 시 현재 큐를 저장하고 캐릭터마다 복원합니다. 출력은 프리셋/캐릭터/씬 폴더에 저장됩니다.
+                            시작 시 현재 큐를 저장하고 캐릭터마다 복원합니다. 출력은 프리셋/Character_Scenes/캐릭터/씬 폴더에 저장됩니다.
                         </span>
                     </div>
                 </div>

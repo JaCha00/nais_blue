@@ -1,4 +1,5 @@
 import { canonicalSerialize, hashCanonicalValue } from '@/domain/composition/canonical-serialize'
+import { CHARACTER_SCENES_DIRECTORY_NAME } from '@/domain/generation-folders'
 import {
     assertJobTransition,
     isGenerationJobState,
@@ -242,7 +243,13 @@ function projectionOutputDirectory(snapshot: GenerationJobSnapshot): string | nu
         : typeof policy.outputContext.presetName === 'string'
             ? [policy.outputContext.presetName]
             : []
-    if (typeof policy.outputContext.sceneName === 'string') segments.push(policy.outputContext.sceneName)
+    if (typeof policy.saveContext.rotationCharacterFolderName === 'string') {
+        segments.push(CHARACTER_SCENES_DIRECTORY_NAME, policy.saveContext.rotationCharacterFolderName)
+    }
+    if (policy.outputContext.sceneSubfoldersEnabled !== false
+        && typeof policy.outputContext.sceneName === 'string') {
+        segments.push(policy.outputContext.sceneName)
+    }
     return [policy.saveContext.sceneSavePath, ...segments].filter(Boolean).join('/')
 }
 

@@ -1,6 +1,10 @@
 import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
+import { CHARACTER_SCENES_DIRECTORY_NAME } from '@/domain/generation-folders'
 import { createThumbnail } from '@/lib/image-utils'
-import { getRotationCharacterFolderName, sanitizePathComponent } from '@/lib/scene-output-path'
+import {
+    getRotationCharacterFolderName,
+    sanitizePathComponent,
+} from '@/lib/scene-output-path'
 import { type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
 import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
@@ -99,7 +103,7 @@ export function resolveSceneOutputDirectory(params: {
         : getRotationCharacterFolderName(params.rotationCharacterId)
     const nestedSegments = [
         ...safePresetPath,
-        ...(safeCharacterName ? [safeCharacterName] : []),
+        ...(safeCharacterName ? [CHARACTER_SCENES_DIRECTORY_NAME, safeCharacterName] : []),
         ...(params.sceneSubfoldersEnabled === false ? [] : [safeSceneName]),
     ]
     const relativeRoot = sanitizePathComponent(params.sceneSavePath || 'NAI_Blue_Scene', 'NAI_Blue_Scene')

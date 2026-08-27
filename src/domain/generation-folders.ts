@@ -2,6 +2,8 @@ import { isR2BucketName, normalizeR2Prefix } from '@/domain/r2/types'
 
 export const DEFAULT_GENERATION_FOLDER_ID = 'generation-folder-default'
 export const MAX_GENERATION_FOLDER_NAME_LENGTH = 96
+/** Rotation output gets one stable parent without changing explicit flat destinations. */
+export const CHARACTER_SCENES_DIRECTORY_NAME = 'Character_Scenes'
 
 export interface GenerationFolderR2Policy {
     readonly autoUpload: boolean

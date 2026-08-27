@@ -486,7 +486,9 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
             const sceneBaseDir = (sceneSavePath || 'NAI_Blue_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAI_Blue_Scene'
             const scenePicturePath = await getMediaStorageRoot()
 
-            // Helper function to load scene images from a directory (supports presetName/sceneName structure)
+            // Scene output can contain nested preset paths and the dedicated
+            // Character_Scenes parent. A bounded recursive walk supports both
+            // current and legacy layouts without encoding another fixed depth.
             const loadSceneImagesFromDir = async (baseDir: string, useBaseDir: boolean = false) => {
                 try {
                     const checkExists = useBaseDir
@@ -495,103 +497,54 @@ export function HistoryPanel({ guided = false }: { guided?: boolean } = {}) {
 
                     if (!checkExists) return
 
-                    const presetOrSceneDirs = useBaseDir
-                        ? await readDir(sceneBaseDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                        : await readDir(baseDir)
+                    const MAX_SCENE_SCAN_DEPTH = 8
+                    const imageExtension = /\.(?:png|jpe?g|webp)$/i
+                    const visitDirectory = async (
+                        directory: string,
+                        scopedSegments: readonly string[],
+                        depth: number,
+                    ): Promise<void> => {
+                        let entries
+                        try {
+                            entries = useBaseDir
+                                ? await readDir(directory, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                                : await readDir(directory)
+                        } catch (error) {
+                            console.warn(`Failed to read Scene output directory ${directory}:`, error)
+                            return
+                        }
 
-                    for (const presetOrSceneDir of presetOrSceneDirs) {
-                        if (presetOrSceneDir.isDirectory) {
-                            try {
-                                const presetFolderPath = useBaseDir
-                                    ? `${sceneBaseDir}/${presetOrSceneDir.name}`
-                                    : await joinNativePath(baseDir, presetOrSceneDir.name)
-
-                                const presetContents = useBaseDir
-                                    ? await readDir(presetFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                                    : await readDir(presetFolderPath)
-
-                                for (const item of presetContents) {
-                                    if (item.isDirectory) {
-                                        // This is the sceneName folder (new structure: presetName/sceneName/)
-                                        const sceneFolderPath = useBaseDir
-                                            ? `${presetFolderPath}/${item.name}`
-                                            : await joinNativePath(presetFolderPath, item.name)
-
-                                        const sceneFiles = useBaseDir
-                                            ? await readDir(sceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                                            : await readDir(sceneFolderPath)
-
-                                        for (const file of sceneFiles) {
-                                            if (file.isDirectory && file.name) {
-                                                // Rotation output uses presetName/characterName/sceneName/image.
-                                                const rotationSceneFolderPath = useBaseDir
-                                                    ? `${sceneFolderPath}/${file.name}`
-                                                    : await joinNativePath(sceneFolderPath, file.name)
-                                                const rotationFiles = useBaseDir
-                                                    ? await readDir(rotationSceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
-                                                    : await readDir(rotationSceneFolderPath)
-
-                                                for (const rotationFile of rotationFiles) {
-                                                    if (rotationFile.name && (rotationFile.name.toLowerCase().endsWith('.png') || rotationFile.name.toLowerCase().endsWith('.jpg') || rotationFile.name.toLowerCase().endsWith('.webp'))) {
-                                                        const fullPath = useBaseDir
-                                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name, rotationFile.name)
-                                                            : await joinNativePath(rotationSceneFolderPath, rotationFile.name)
-
-                                                        if (images.some(img => img.path === fullPath)) continue
-
-                                                        const match = rotationFile.name.match(/_(\d+)\.[^.]+$/)
-                                                        const timestamp = match ? parseInt(match[1]) : 0
-
-                                                        images.push({
-                                                            name: rotationFile.name,
-                                                            path: fullPath,
-                                                            timestamp,
-                                                            type: 'scene'
-                                                        })
-                                                    }
-                                                }
-                                            } else if (file.name && (file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.webp'))) {
-                                                const fullPath = useBaseDir
-                                                    ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name, file.name)
-                                                    : await joinNativePath(sceneFolderPath, file.name)
-
-                                                if (images.some(img => img.path === fullPath)) continue
-
-                                                const match = file.name.match(/_(\d+)\.[^.]+$/)
-                                                const timestamp = match ? parseInt(match[1]) : 0
-
-                                                images.push({
-                                                    name: file.name,
-                                                    path: fullPath,
-                                                    timestamp,
-                                                    type: 'scene'
-                                                })
-                                            }
-                                        }
-                                    } else if (item.name && (item.name.toLowerCase().endsWith('.png') || item.name.toLowerCase().endsWith('.jpg') || item.name.toLowerCase().endsWith('.webp'))) {
-                                        // This is a direct image file (old structure: sceneName/image.png)
-                                        const fullPath = useBaseDir
-                                            ? await joinNativePath(scenePicturePath, sceneBaseDir, presetOrSceneDir.name, item.name)
-                                            : await joinNativePath(presetFolderPath, item.name)
-
-                                        if (images.some(img => img.path === fullPath)) continue
-
-                                        const match = item.name.match(/_(\d+)\.[^.]+$/)
-                                        const timestamp = match ? parseInt(match[1]) : 0
-
-                                        images.push({
-                                            name: item.name,
-                                            path: fullPath,
-                                            timestamp,
-                                            type: 'scene'
-                                        })
-                                    }
-                                }
-                            } catch (e) {
-                                console.warn(`Failed to read preset/scene dir ${presetOrSceneDir.name}:`, e)
+                        for (const entry of entries) {
+                            if (entry.isDirectory) {
+                                if (entry.isSymlink || depth >= MAX_SCENE_SCAN_DEPTH) continue
+                                const nextDirectory = useBaseDir
+                                    ? `${directory}/${entry.name}`
+                                    : await joinNativePath(directory, entry.name)
+                                await visitDirectory(nextDirectory, [...scopedSegments, entry.name], depth + 1)
+                                continue
                             }
+                            if (!entry.name || !imageExtension.test(entry.name)) continue
+
+                            const fullPath = useBaseDir
+                                ? await joinNativePath(scenePicturePath, ...scopedSegments, entry.name)
+                                : await joinNativePath(directory, entry.name)
+                            if (images.some(img => img.path === fullPath)) continue
+
+                            const match = entry.name.match(/_(\d+)\.[^.]+$/)
+                            images.push({
+                                name: entry.name,
+                                path: fullPath,
+                                timestamp: match ? parseInt(match[1]) : 0,
+                                type: 'scene',
+                            })
                         }
                     }
+
+                    await visitDirectory(
+                        useBaseDir ? sceneBaseDir : baseDir,
+                        useBaseDir ? [sceneBaseDir] : [],
+                        0,
+                    )
                 } catch (e) {
                     console.warn('Failed to load scene images from:', baseDir, e)
                 }

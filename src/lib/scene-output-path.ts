@@ -1,5 +1,6 @@
 import { BaseDirectory, exists, mkdir } from '@tauri-apps/plugin-fs'
 import { join } from '@tauri-apps/api/path'
+import { CHARACTER_SCENES_DIRECTORY_NAME } from '@/domain/generation-folders'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import {
     getMediaStorageRoot,
@@ -47,10 +48,13 @@ export async function resolveSceneOutputPath(request: SceneOutputPathRequest): P
         ? sanitizePathComponent(request.rotationCharacterFolderName, 'Character')
         : getRotationCharacterFolderName(request.rotationCharacterId)
     const sceneRoot = sanitizePathComponent(request.sceneSavePath || 'NAI_Blue_Scene', 'NAI_Blue_Scene')
-    const pathSegments = [sceneRoot, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName]
+    const characterSegments = safeCharacterName
+        ? [CHARACTER_SCENES_DIRECTORY_NAME, safeCharacterName]
+        : []
+    const pathSegments = [sceneRoot, safePresetName, ...characterSegments, safeSceneName]
 
     if (shouldUseAbsoluteMediaPath(request.useAbsoluteScenePath) && request.sceneSavePath) {
-        const directoryPath = await join(request.sceneSavePath, safePresetName, ...(safeCharacterName ? [safeCharacterName] : []), safeSceneName)
+        const directoryPath = await join(request.sceneSavePath, safePresetName, ...characterSegments, safeSceneName)
         if (!(await exists(directoryPath))) {
             await mkdir(directoryPath, { recursive: true })
         }

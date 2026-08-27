@@ -745,7 +745,6 @@ function CharacterCard({
 
     const [renameDialogOpen, setRenameDialogOpen] = useState(false)
     const [newName, setNewName] = useState(character.name || '')
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // 외부에서 캐릭터가 변경되면 로컬 상태 동기화
     useEffect(() => {
@@ -756,39 +755,18 @@ function CharacterCard({
         setLocalNegative(character.negative)
     }, [character.negative])
 
-    // 디바운스된 저장
-    const savePrompt = useCallback((value: string) => {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-        debounceRef.current = setTimeout(() => {
-            onUpdate({ prompt: value })
-        }, 500)
-    }, [onUpdate])
-
-    const saveNegative = useCallback((value: string) => {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-        debounceRef.current = setTimeout(() => {
-            onUpdate({ negative: value })
-        }, 500)
-    }, [onUpdate])
-
+    // AutocompleteTextarea owns the typing debounce and flushes on unmount.
+    // Commit each forwarded field independently so prompt and negative edits
+    // cannot cancel one another when the panel closes immediately afterward.
     const handlePromptChange = useCallback((value: string) => {
         setLocalPrompt(value)
-        savePrompt(value)
-    }, [savePrompt])
+        onUpdate({ prompt: value })
+    }, [onUpdate])
 
     const handleNegativeChange = useCallback((value: string) => {
         setLocalNegative(value)
-        saveNegative(value)
-    }, [saveNegative])
-
-    // 컴포넌트 언마운트 시 저장
-    useEffect(() => {
-        return () => {
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current)
-            }
-        }
-    }, [])
+        onUpdate({ negative: value })
+    }, [onUpdate])
 
     return (
         <>

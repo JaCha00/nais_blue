@@ -18,6 +18,7 @@ import {
     ScanEye,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { CHARACTER_SCENES_DIRECTORY_NAME } from '@/domain/generation-folders'
 import { AutocompleteTextarea } from "@/components/ui/AutocompleteTextarea";
 import { Tip } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -100,9 +101,21 @@ async function findSceneFolderUnderPreset(presetPath: string, safeSceneName: str
     if (!(await exists(presetPath))) return null
 
     try {
+        // Rotation outputs now live under one stable parent. Search it first,
+        // then retain the former preset/character/scene layout as a fallback.
+        const characterSceneRoot = await joinNativePath(presetPath, CHARACTER_SCENES_DIRECTORY_NAME)
+        if (await exists(characterSceneRoot)) {
+            const characterFolders = await readDir(characterSceneRoot)
+            for (const entry of characterFolders) {
+                if (!entry.isDirectory) continue
+                const rotationScenePath = await joinNativePath(characterSceneRoot, entry.name, safeSceneName)
+                if (await exists(rotationScenePath)) return rotationScenePath
+            }
+        }
+
         const characterFolders = await readDir(presetPath)
         for (const entry of characterFolders) {
-            if (!entry.isDirectory) continue
+            if (!entry.isDirectory || entry.name === CHARACTER_SCENES_DIRECTORY_NAME) continue
             const rotationScenePath = await joinNativePath(presetPath, entry.name, safeSceneName)
             if (await exists(rotationScenePath)) return rotationScenePath
         }

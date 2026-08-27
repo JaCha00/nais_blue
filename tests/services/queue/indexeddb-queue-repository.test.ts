@@ -352,6 +352,47 @@ describe('normalized IndexedDB durable queue repository', () => {
         queue.close()
     })
 
+    it('projects rotation Scene jobs under the shared character parent', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('rotation-output-directory-projection'))
+        const fixedSnapshot = createGenerationJobSnapshot({
+            prompt: { positive: 'prompt', negative: '' },
+            parameters: { seed: 7 },
+            outputPolicy: {
+                workflow: 'scene',
+                saveContext: {
+                    activePresetId: 'preset-a',
+                    sceneSavePath: 'E:\\NAI\\Scenes',
+                    rotationCharacterFolderName: 'Hero',
+                },
+                outputContext: {
+                    presetPathSegments: ['Preset A'],
+                    sceneName: 'Opening',
+                },
+            },
+            resources: [],
+            resumability: 'resumable',
+        })
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:scene', workflow: 'scene', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:scene',
+            },
+            jobs: [jobInput({
+                batchId: 'batch:scene',
+                workflow: 'scene',
+                sceneId: 'scene:opening',
+                snapshot: fixedSnapshot,
+            })],
+        })
+
+        const page = await queue.listJobProjections({ batchId: 'batch:scene' })
+        expect(page.items[0]).toMatchObject({
+            outputDirectory: 'E:\\NAI\\Scenes/Preset A/Character_Scenes/Hero/Opening',
+        })
+        queue.close()
+    })
+
     it('orders the oldest batch before a newer batch ordinal while preserving priority', async () => {
         const factory = new IDBFactory()
         const queue = repository(factory, databaseName('cross-batch-order'))

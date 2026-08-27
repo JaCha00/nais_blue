@@ -184,7 +184,12 @@ export function ScenePromptEditor({ scene, presetId, disabled = false }: ScenePr
                 />
             </div>
 
-            <SceneCharacterCaptionsEditor scene={scene} presetId={presetId} disabled={disabled} />
+            <SceneCharacterCaptionsEditor
+                scene={scene}
+                presetId={presetId}
+                availableCharacters={mainCharacters}
+                disabled={disabled}
+            />
 
             <div className="mt-3 grid gap-2 border-t border-border pt-3 sm:grid-cols-2 xl:grid-cols-5">
                 <label className="space-y-1">

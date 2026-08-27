@@ -57,12 +57,22 @@ describe('Scene composition minimal UI contract', () => {
 
     it('edits an ordered Scene-owned character caption array instead of flattening characters', async () => {
         const editor = await source('src/components/scene/SceneCharacterCaptionsEditor.tsx')
+        const mainCharacterPanel = await source('src/components/character/CharacterPromptPanel.tsx')
         const sceneBuilder = await source('src/lib/scene-generation/build-scene-params.ts')
         const legacyBuilder = await source('src/lib/scene-generation/legacy-build-scene-params.ts')
 
         expect(editor).toContain('data-testid="scene-character-caption"')
         expect(editor).toContain('updateSceneCharacterCaptions')
         expect(editor).toContain("t('scene.addCharacterCaption'")
+        expect(editor).toContain('<DndContext')
+        expect(editor).toContain('data-testid="scene-available-characters"')
+        expect(editor).toContain('testId="scene-character-included-zone"')
+        expect(editor).toContain('testId="scene-character-excluded-zone"')
+        expect(editor).toContain('placeSceneCharacterCaption')
+        expect(await source('src/components/scene/ScenePromptEditor.tsx')).toContain('availableCharacters={mainCharacters}')
+        expect(mainCharacterPanel).toContain('onUpdate({ prompt: value })')
+        expect(mainCharacterPanel).toContain('onUpdate({ negative: value })')
+        expect(mainCharacterPanel).not.toContain('const debounceRef')
         expect(sceneBuilder).toContain('resolveSceneCharacterCaptions(scene)')
         expect(legacyBuilder).toContain('resolveSceneCharacterCaptions(scene)')
     })

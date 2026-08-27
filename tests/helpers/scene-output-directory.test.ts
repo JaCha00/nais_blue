@@ -12,14 +12,24 @@ const base = {
 }
 
 describe('Scene output directory policy', () => {
-    it('keeps the legacy Scene folder by default and removes only that last segment when disabled', () => {
+    it('groups rotation characters under one parent and removes only the Scene leaf when disabled', () => {
         expect(resolveSceneOutputDirectory(base)).toMatchObject({
-            directory: 'E:\\NAI\\Scenes/Story_Arc/Hero_01/Opening_Shot',
-            nestedSegments: ['Story_Arc', 'Hero_01', 'Opening_Shot'],
+            directory: 'E:\\NAI\\Scenes/Story_Arc/Character_Scenes/Hero_01/Opening_Shot',
+            nestedSegments: ['Story_Arc', 'Character_Scenes', 'Hero_01', 'Opening_Shot'],
         })
         expect(resolveSceneOutputDirectory({ ...base, sceneSubfoldersEnabled: false })).toMatchObject({
-            directory: 'E:\\NAI\\Scenes/Story_Arc/Hero_01',
-            nestedSegments: ['Story_Arc', 'Hero_01'],
+            directory: 'E:\\NAI\\Scenes/Story_Arc/Character_Scenes/Hero_01',
+            nestedSegments: ['Story_Arc', 'Character_Scenes', 'Hero_01'],
+        })
+    })
+
+    it('does not add the character parent to an ordinary Scene output', () => {
+        expect(resolveSceneOutputDirectory({
+            ...base,
+            rotationCharacterFolderName: undefined,
+        })).toMatchObject({
+            directory: 'E:\\NAI\\Scenes/Story_Arc/Opening_Shot',
+            nestedSegments: ['Story_Arc', 'Opening_Shot'],
         })
     })
 
