@@ -62,6 +62,7 @@ import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repo
 import { enqueuePlannedMainBatch } from '@/services/queue/main-queue-adapter'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useGenerationStore } from '@/stores/generation-store'
+import { usePresetStore, type PresetWorkingCopy } from '@/stores/preset-store'
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { Button } from '@/components/ui/button'
 import {
@@ -823,15 +824,19 @@ function ReviewStep({
                         </p>
                     )}
                 </ReviewRow>
-                <ReviewRow label={t('guided.single.review.cost', '최대 비용')}>
+                <ReviewRow label={estimatedAnlas === 0
+                    ? t('guided.single.review.estimatedCost', '예상 비용')
+                    : t('guided.single.review.cost', '예상 최대 비용')}>
                     <span className="font-semibold">
                         {estimatedAnlas === 0
-                            ? t('guided.single.review.free', '0 Anlas')
+                            ? t('guided.single.review.free', '0 Anlas · 무료 조건')
                             : t('guided.single.review.maxAnlas', '최대 {{cost}} Anlas', { cost: estimatedAnlas })}
                     </span>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                        {t('guided.single.review.costGuard', '이 상한을 넘는 설정으로 바뀌면 실행하지 않고 다시 확인할게요.')}
-                    </p>
+                    {estimatedAnlas > 0 && (
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {t('guided.single.review.costGuard', '이 상한을 넘는 설정으로 바뀌면 실행하지 않고 다시 확인할게요.')}
+                        </p>
+                    )}
                 </ReviewRow>
             </dl>
 
@@ -861,7 +866,7 @@ function ReviewStep({
                         </p>
                     </div>
                 </div>
-            ) : (
+            ) : estimatedAnlas > 0 ? (
                 <label className="guided-choice-row flex cursor-pointer items-start gap-3 border-y border-border/70 px-2 py-4 sm:px-4">
                     <input
                         type="checkbox"
@@ -871,15 +876,19 @@ function ReviewStep({
                     />
                     <span>
                         <span className="block text-sm font-semibold">
-                            {estimatedAnlas === 0
-                                ? t('guided.single.review.consentFree', '현재 무료 조건을 확인했어요.')
-                                : t('guided.single.review.consentPaid', '최대 {{cost}} Anlas 사용에 동의해요.', { cost: estimatedAnlas })}
+                            {t('guided.single.review.consentPaid', '최대 {{cost}} Anlas 사용에 동의해요.', { cost: estimatedAnlas })}
                         </span>
                         <span className="mt-1 block text-xs leading-5 text-muted-foreground">
                             {t('guided.single.review.consentHelp', '동의한 예상치와 상한은 이 작업 스냅샷에 함께 저장됩니다.')}
                         </span>
                     </span>
                 </label>
+            ) : null}
+
+            {!submitted && (
+                <p className="text-xs leading-5 text-muted-foreground">
+                    {t('guided.single.review.queueHelp', '다른 작업이 실행 중이면 다음 순서에서 자동으로 시작합니다.')}
+                </p>
             )}
 
             {submitError !== null && (
@@ -904,11 +913,11 @@ function ReviewStep({
                         type="button"
                         className="sm:flex-1"
                         onClick={onSubmit}
-                        disabled={!consented || activeTokenCount === 0 || submitting || !isSingleImageDraftReady(draft)}
+                        disabled={(estimatedAnlas > 0 && !consented) || activeTokenCount === 0 || submitting || !isSingleImageDraftReady(draft)}
                     >
                         {submitting && <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                         <ImageIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-                        {t('guided.single.review.enqueue', '이미지 1장 대기열에 추가')}
+                        {t('guided.single.review.enqueue', '이미지 1장 만들기')}
                     </Button>
                 )}
             </div>
@@ -950,6 +959,7 @@ function ResultStep({
     const [previewError, setPreviewError] = useState(false)
     const [previewAttempt, setPreviewAttempt] = useState(0)
     const [saving, setSaving] = useState<'image' | 'metadata' | null>(null)
+    const saveSnapshot = usePresetStore(state => state.saveSnapshot)
     const fileStem = `nai-blue-guided-${draft.id.replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 80)}`
 
     useEffect(() => {
@@ -1022,6 +1032,44 @@ function ResultStep({
         } finally {
             setSaving(null)
         }
+    }
+
+    const savePreset = () => {
+        if (result === null || draft.payload.resolution === null) return
+        const generation = draft.payload.generation
+        const resolution = draft.payload.resolution
+        const workingCopy: PresetWorkingCopy = {
+            basePrompt: result.prompt,
+            additionalPrompt: '',
+            detailPrompt: '',
+            negativePrompt: draft.payload.prompt.negative,
+            model: draft.payload.model ?? DEFAULT_NAI_IMAGE_MODEL,
+            steps: generation.steps,
+            cfgScale: generation.cfgScale,
+            cfgRescale: generation.cfgRescale,
+            sampler: generation.sampler,
+            scheduler: generation.scheduler,
+            smea: generation.smea,
+            smeaDyn: generation.smeaDyn,
+            variety: generation.variety,
+            qualityToggle: generation.qualityToggle,
+            ucPreset: generation.ucPreset,
+            transparentBackground: generation.transparentBackground ?? false,
+            selectedResolution: {
+                label: `${resolution.width} × ${resolution.height}`,
+                width: resolution.width,
+                height: resolution.height,
+            },
+        }
+        const timestamp = new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'short',
+            timeStyle: 'short',
+        }).format(new Date())
+        saveSnapshot(`Guided · ${timestamp}`, workingCopy)
+        toast({
+            title: t('guided.single.result.presetSaved', '프롬프트와 생성 설정을 프리셋에 저장했어요.'),
+            variant: 'success',
+        })
     }
 
     if (queueIssue !== null) {
@@ -1105,7 +1153,7 @@ function ResultStep({
                 <figcaption className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
                     <span>{getModelName(draft.payload.model)}</span>
                     <span className="font-mono">
-                        {draft.payload.resolution?.width} × {draft.payload.resolution?.height} · Seed {result.seed}
+                        {draft.payload.resolution?.width} × {draft.payload.resolution?.height}
                     </span>
                 </figcaption>
             </figure>
@@ -1118,34 +1166,41 @@ function ResultStep({
                     {t('guided.single.result.keepTitle', '이 설정이 마음에 든다면?')}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    {t('guided.single.result.keepDescription', '이미지는 이미 지정 폴더에 저장되었어요. 설정 JSON도 함께 보존하면 나중에 같은 조건을 쉽게 다시 확인할 수 있어요.')}
+                    {t('guided.single.result.keepDescription', '같은 설정으로 다시 만들거나 프롬프트를 수정하고, 자주 쓸 설정은 프리셋으로 저장할 수 있어요.')}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                    <Button type="button" onClick={() => void saveMetadata()} disabled={saving !== null}>
-                        {saving === 'metadata'
-                            ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                            : <FileJson className="mr-2 h-4 w-4" aria-hidden="true" />}
-                        {t('guided.single.result.saveMetadata', '이번 설정 보존하기')}
+                    <Button type="button" onClick={onRegenerate}>
+                        <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {t('guided.single.result.regenerate', '같은 설정으로 다시 만들기')}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={onEdit}>
+                        <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {t('guided.single.result.edit', '프롬프트 수정하기')}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={savePreset}>
+                        {t('guided.single.result.savePreset', '이 설정을 프리셋으로 저장')}
                     </Button>
                     <Button type="button" variant="outline" onClick={() => void saveImage()} disabled={saving !== null}>
                         {saving === 'image'
                             ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                             : <Download className="mr-2 h-4 w-4" aria-hidden="true" />}
-                        {t('guided.single.result.saveImage', '이미지 다른 곳에 저장')}
+                        {t('guided.single.result.saveImage', '이미지를 다른 곳에 저장')}
                     </Button>
                 </div>
             </section>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <Button type="button" variant="outline" onClick={onRegenerate}>
-                    <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t('guided.single.result.regenerate', '같은 설정 · 새 Seed로 다시 만들기')}
+            <details className="border-y border-border/70 py-4">
+                <summary className="cursor-pointer text-sm font-semibold">
+                    {t('guided.single.result.technicalDetails', '기술 정보')}
+                </summary>
+                <p className="mt-3 font-mono text-xs text-muted-foreground">Seed {result.seed}</p>
+                <Button type="button" variant="ghost" className="mt-2" onClick={() => void saveMetadata()} disabled={saving !== null}>
+                    {saving === 'metadata'
+                        ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        : <FileJson className="mr-2 h-4 w-4" aria-hidden="true" />}
+                    {t('guided.single.result.saveMetadata', '설정 JSON 내보내기')}
                 </Button>
-                <Button type="button" variant="outline" onClick={onEdit}>
-                    <Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t('guided.single.result.edit', '설정 수정하기')}
-                </Button>
-            </div>
+            </details>
         </div>
     )
 }

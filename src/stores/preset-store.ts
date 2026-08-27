@@ -68,6 +68,15 @@ function workingCopiesEqual(left: PresetWorkingCopy | null, right: PresetWorking
     })
 }
 
+function createUniquePresetId(presets: readonly Preset[]): string {
+    const baseId = Date.now().toString()
+    if (!presets.some(preset => preset.id === baseId)) return baseId
+
+    let suffix = 1
+    while (presets.some(preset => preset.id === `${baseId}-${suffix}`)) suffix++
+    return `${baseId}-${suffix}`
+}
+
 interface PresetState {
     presets: Preset[]
     activePresetId: string
@@ -86,6 +95,7 @@ interface PresetState {
     saveActivePreset: () => void
     revertActivePreset: () => void
     saveWorkingCopyAs: (name: string) => void
+    saveSnapshot: (name: string, workingCopy: PresetWorkingCopy) => string
     loadPreset: (id: string) => void
     renamePreset: (id: string, name: string) => void
     reorderPresets: (oldIndex: number, newIndex: number) => void
@@ -240,6 +250,24 @@ export const usePresetStore = create<PresetState>()(
                     savedSnapshot: workingCopy,
                     dirty: false,
                 }))
+            },
+
+            // Guided completion persists a detached snapshot through the same
+            // Zustand persistence path while leaving the active draft and
+            // generation controls untouched for the user to continue editing.
+            saveSnapshot: (name, workingCopy) => {
+                const createdAt = Date.now()
+                const newPreset: Preset = {
+                    ...createDefaultPreset(),
+                    ...workingCopy,
+                    selectedResolution: { ...workingCopy.selectedResolution },
+                    id: createUniquePresetId(get().presets),
+                    name,
+                    createdAt,
+                    isDefault: undefined,
+                }
+                set(state => ({ presets: [...state.presets, newPreset] }))
+                return newPreset.id
             },
 
             loadPreset: (id) => {

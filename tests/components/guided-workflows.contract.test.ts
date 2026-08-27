@@ -167,6 +167,56 @@ describe('Guided single-image production contract', () => {
         expect(promptTasks).toContain("pricingBasis === 'all-active-opus'")
     })
 
+    it('lets free single-image work run without consent and prioritizes honest result actions', async () => {
+        const single = await source('src/presentation/workflow/GuidedSingleImage.tsx')
+
+        expect(single).toContain(') : estimatedAnlas > 0 ? (')
+        expect(single).toContain('disabled={(estimatedAnlas > 0 && !consented)')
+        expect(single).toContain("t('guided.single.review.free', '0 Anlas · 무료 조건')")
+        expect(single).toContain("t('guided.single.review.enqueue', '이미지 1장 만들기')")
+        expect(single).toContain("t('guided.single.review.queueHelp', '다른 작업이 실행 중이면 다음 순서에서 자동으로 시작합니다.')")
+
+        const resultStart = single.indexOf('<section className="border-y border-primary/30 py-6" aria-labelledby="guided-result-keep-title">')
+        const result = single.slice(resultStart)
+        const orderedActions = [
+            "t('guided.single.result.regenerate'",
+            "t('guided.single.result.edit'",
+            "t('guided.single.result.savePreset'",
+            "t('guided.single.result.saveImage'",
+            "t('guided.single.result.technicalDetails'",
+            "t('guided.single.result.saveMetadata'",
+        ]
+        let previous = -1
+        for (const action of orderedActions) {
+            const current = result.indexOf(action)
+            expect(current).toBeGreaterThan(previous)
+            previous = current
+        }
+        expect(result).toContain('<Button type="button" onClick={onRegenerate}>')
+        expect(result).toContain('<Button type="button" variant="outline" onClick={onEdit}>')
+        expect(result).toContain('<details className="border-y border-border/70 py-4">')
+        expect(result).toContain('variant="ghost"')
+        expect(result).toContain('Seed {result.seed}')
+        const captionStart = single.indexOf('<figcaption className="mt-4')
+        const captionEnd = single.indexOf('</figcaption>', captionStart)
+        expect(single.slice(captionStart, captionEnd)).not.toContain('Seed')
+    })
+
+    it('saves only the completed single-image prompt and generation working copy as a preset', async () => {
+        const single = await source('src/presentation/workflow/GuidedSingleImage.tsx')
+
+        expect(single).toContain('const saveSnapshot = usePresetStore(state => state.saveSnapshot)')
+        expect(single).toContain('basePrompt: result.prompt')
+        expect(single).toContain("additionalPrompt: ''")
+        expect(single).toContain("detailPrompt: ''")
+        expect(single).toContain('negativePrompt: draft.payload.prompt.negative')
+        expect(single).toContain('selectedResolution: {')
+        expect(single).toContain('saveSnapshot(`Guided · ${timestamp}`, workingCopy)')
+        for (const excluded of ['seed:', 'output:', 'metadataMode:', 'characterPrompts:']) {
+            expect(single.slice(single.indexOf('const workingCopy: PresetWorkingCopy = {'), single.indexOf('saveSnapshot(`Guided · ${timestamp}`'))).not.toContain(excluded)
+        }
+    })
+
     it('keeps character prompts inside each Guided draft and behind one compact sheet', async () => {
         const [single, batch, sheet] = await Promise.all([
             source('src/presentation/workflow/GuidedSingleImage.tsx'),

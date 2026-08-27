@@ -70,6 +70,7 @@ import { enqueuePlannedMainBatch } from '@/services/queue/main-queue-adapter'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { getFragmentCanonicalPath, useFragmentStore } from '@/stores/fragment-store'
+import { usePresetStore, type PresetWorkingCopy } from '@/stores/preset-store'
 import {
     createWorkflowDraftMainBatchPlanner,
     WorkflowDraftCharacterPromptValidationError,
@@ -164,23 +165,6 @@ function requestedCount(draft: BatchImageDraft): number {
     return draft.payload.batchMode === 'scenes'
         ? draft.payload.scenes.reduce((sum, scene) => sum + scene.count, 0)
         : draft.payload.count
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function promptAndSeed(job: GenerationJob): { prompt: string; seed: number | null } {
-    const parameters = job.snapshot.parameters
-    const generationParams = isRecord(parameters) && isRecord(parameters.generationParams)
-        ? parameters.generationParams
-        : null
-    return {
-        prompt: job.snapshot.prompt.positive,
-        seed: generationParams !== null && Number.isSafeInteger(generationParams.seed)
-            ? generationParams.seed as number
-            : null,
-    }
 }
 
 function SaveIndicator({ status }: { status: SaveStatus }) {
@@ -846,18 +830,32 @@ function ReviewStep({ draft, activeTokenCount, estimatedAnlas, consented, submit
                     maxAnlas={estimatedAnlas}
                 />
             )}
-            <label className="flex cursor-pointer items-start gap-3 border-y border-primary/35 py-5">
-                <input type="checkbox" checked={consented} onChange={event => onConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
-                <span className="min-w-0 text-sm leading-6">
-                    <span className="block font-semibold">{t('guided.batch.review.costConsent', '최대 {{cost}} Anlas 비용으로 대기열에 추가할게요.', { cost: estimatedAnlas.toLocaleString() })}</span>
-                    <span className="mt-1 block text-muted-foreground">{t('guided.batch.review.queueHelp', '같은 계정에서는 한 번에 한 작업만 실행하고, 다음 작업은 자동으로 이어서 시작해요.')}</span>
+            <div className="border-y border-border/70 py-4 text-sm">
+                <span className="text-muted-foreground">
+                    {estimatedAnlas === 0
+                        ? t('guided.batch.review.estimatedCost', '예상 비용')
+                        : t('guided.batch.review.maximumEstimatedCost', '예상 최대 비용')}
                 </span>
-            </label>
+                <span className="ml-3 font-semibold">
+                    {estimatedAnlas === 0
+                        ? t('guided.batch.review.free', '0 Anlas · 무료 조건')
+                        : t('guided.batch.review.maxAnlas', '최대 {{cost}} Anlas', { cost: estimatedAnlas.toLocaleString() })}
+                </span>
+            </div>
+            {estimatedAnlas > 0 && (
+                <label className="flex cursor-pointer items-start gap-3 border-y border-primary/35 py-5">
+                    <input type="checkbox" checked={consented} onChange={event => onConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
+                    <span className="min-w-0 text-sm leading-6">
+                        <span className="block font-semibold">{t('guided.batch.review.costConsent', '최대 {{cost}} Anlas 사용에 동의해요.', { cost: estimatedAnlas.toLocaleString() })}</span>
+                    </span>
+                </label>
+            )}
+            <p className="text-sm leading-6 text-muted-foreground">{t('guided.batch.review.queueHelp', '다른 작업이 실행 중이면 다음 순서에서 자동으로 시작합니다.')}</p>
             {activeTokenCount === 0 && <p className="text-sm text-destructive" role="alert">{t('guided.batch.review.tokenRequired', '먼저 사용할 NovelAI API 토큰을 등록해 주세요.')}</p>}
             {submitError !== null && <p className="text-sm text-destructive" role="alert">{submitError}</p>}
-            <Button type="button" className="w-full" onClick={onSubmit} disabled={!consented || submitting || activeTokenCount === 0 || !isBatchImageDraftReady(draft)}>
+            <Button type="button" className="w-full" onClick={onSubmit} disabled={(estimatedAnlas > 0 && !consented) || submitting || activeTokenCount === 0 || !isBatchImageDraftReady(draft)}>
                 {submitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Images className="mr-2 h-4 w-4" aria-hidden="true" />}
-                {t('guided.batch.review.enqueue', '{{count}}장을 대기열에 추가', { count: requestedCount(draft) })}
+                {t('guided.batch.review.enqueue', '{{count}}장 만들기', { count: requestedCount(draft) })}
             </Button>
         </div>
     )
@@ -879,7 +877,6 @@ function ResultCard({ job, format }: { job: GenerationJob; format: 'png' | 'webp
     const { t } = useTranslation()
     const [url, setUrl] = useState<string | null>(null)
     const [failed, setFailed] = useState(false)
-    const facts = promptAndSeed(job)
     const artifactId = job.artifactReference?.artifactId ?? null
     useEffect(() => {
         let active = true
@@ -906,8 +903,8 @@ function ResultCard({ job, format }: { job: GenerationJob; format: 'png' | 'webp
                         : <LoaderCircle className="h-5 w-5 animate-spin text-primary" aria-label={t('guided.batch.result.previewLoading', '미리보기 불러오는 중')} />}
             </div>
             <figcaption className="mt-3 min-w-0 text-xs leading-5 text-muted-foreground">
-                <span className="block font-mono text-foreground">#{job.ordinal + 1}{facts.seed === null ? '' : ` · Seed ${facts.seed}`}</span>
-                <span className="mt-1 block line-clamp-2 break-words">{facts.prompt}</span>
+                <span className="block font-mono text-foreground">#{job.ordinal + 1}</span>
+                <span className="mt-1 block line-clamp-2 break-words">{job.snapshot.prompt.positive}</span>
             </figcaption>
         </figure>
     )
@@ -933,6 +930,7 @@ function ResultGallery({
     onRetry(): void
 }) {
     const { t } = useTranslation()
+    const saveSnapshot = usePresetStore(state => state.saveSnapshot)
     const succeeded = summary?.states.succeeded ?? jobs.length
     const total = summary?.total ?? requestedCount(draft)
     const attention = (summary?.states.failed ?? 0) + (summary?.states.blocked ?? 0)
@@ -943,6 +941,43 @@ function ResultGallery({
         + (summary?.states.running ?? 0)
         + (summary?.states.recovering ?? 0)
     const finishedWithIssues = summary !== null && total > 0 && active === 0 && succeeded !== total
+    const savePreset = () => {
+        if (draft.payload.resolution === null) return
+        const generation = draft.payload.generation
+        const resolution = draft.payload.resolution
+        const workingCopy: PresetWorkingCopy = {
+            basePrompt: draft.payload.prompt.positive,
+            additionalPrompt: '',
+            detailPrompt: '',
+            negativePrompt: draft.payload.prompt.negative,
+            model: draft.payload.model ?? DEFAULT_NAI_IMAGE_MODEL,
+            steps: generation.steps,
+            cfgScale: generation.cfgScale,
+            cfgRescale: generation.cfgRescale,
+            sampler: generation.sampler,
+            scheduler: generation.scheduler,
+            smea: generation.smea,
+            smeaDyn: generation.smeaDyn,
+            variety: generation.variety,
+            qualityToggle: generation.qualityToggle,
+            ucPreset: generation.ucPreset,
+            transparentBackground: generation.transparentBackground ?? false,
+            selectedResolution: {
+                label: `${resolution.width} × ${resolution.height}`,
+                width: resolution.width,
+                height: resolution.height,
+            },
+        }
+        const timestamp = new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'short',
+            timeStyle: 'short',
+        }).format(new Date())
+        saveSnapshot(`Guided · ${timestamp}`, workingCopy)
+        toast({
+            title: t('guided.batch.result.presetSaved', '프롬프트와 생성 설정을 프리셋에 저장했어요.'),
+            variant: 'success',
+        })
+    }
     return (
         <div className="space-y-8">
             <div className="border-y border-border/70 py-5" aria-live="polite">
@@ -988,8 +1023,9 @@ function ResultGallery({
                 <h2 className="mt-2 text-2xl font-semibold tracking-[-0.025em]">{t('guided.batch.result.keepTitle', '이 설정이 마음에 든다면?')}</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{t('guided.batch.result.keepHelp', '초안은 이미 보존되어 있어요. 같은 설정으로 다시 만들거나 프롬프트를 조금 바꿔 이어갈 수 있어요.')}</p>
                 <div className="mt-5 flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" onClick={onRetry}><RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />{t('guided.batch.result.regenerate', '새 Seed로 다시 만들기')}</Button>
-                    <Button type="button" variant="outline" onClick={onEdit}>{t('guided.batch.result.edit', '설정 수정하기')}</Button>
+                    <Button type="button" onClick={onRetry}><RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />{t('guided.batch.result.regenerate', '같은 설정으로 다시 만들기')}</Button>
+                    <Button type="button" variant="outline" onClick={onEdit}>{t('guided.batch.result.edit', '프롬프트 수정하기')}</Button>
+                    <Button type="button" variant="outline" onClick={savePreset}>{t('guided.batch.result.savePreset', '이 설정을 프리셋으로 저장')}</Button>
                     <Button asChild variant="ghost"><Link to="/guided-preview/task/batch/queue">{t('guided.batch.result.queue', '대기열 관리')}</Link></Button>
                 </div>
             </section>

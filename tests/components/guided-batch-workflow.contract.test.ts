@@ -75,6 +75,52 @@ describe('Guided batch production contract', () => {
         expect(component).not.toContain('setInterval(')
     })
 
+    it('lets free batches run without consent and keeps queue behavior as help text', async () => {
+        const component = await source('src/presentation/workflow/GuidedBatchImages.tsx')
+
+        expect(component).toContain('{estimatedAnlas > 0 && (')
+        expect(component).toContain('disabled={(estimatedAnlas > 0 && !consented)')
+        expect(component).toContain("t('guided.batch.review.free', '0 Anlas · 무료 조건')")
+        expect(component).toContain("t('guided.batch.review.enqueue', '{{count}}장 만들기'")
+        expect(component).toContain("t('guided.batch.review.queueHelp', '다른 작업이 실행 중이면 다음 순서에서 자동으로 시작합니다.')")
+    })
+
+    it('prioritizes repeat, prompt editing, and preset save without exposing seeds in card captions', async () => {
+        const component = await source('src/presentation/workflow/GuidedBatchImages.tsx')
+        const resultStart = component.indexOf('<section className="border-y border-primary/30 py-6">')
+        const result = component.slice(resultStart)
+
+        const repeat = result.indexOf("t('guided.batch.result.regenerate'")
+        const edit = result.indexOf("t('guided.batch.result.edit'")
+        const preset = result.indexOf("t('guided.batch.result.savePreset'")
+        const queue = result.indexOf("t('guided.batch.result.queue'")
+        expect(repeat).toBeGreaterThanOrEqual(0)
+        expect(repeat).toBeLessThan(edit)
+        expect(edit).toBeLessThan(preset)
+        expect(preset).toBeLessThan(queue)
+        expect(result).toContain('<Button type="button" onClick={onRetry}>')
+        expect(result).toContain('<Button type="button" variant="outline" onClick={onEdit}>')
+        expect(component).toContain('<span className="block font-mono text-foreground">#{job.ordinal + 1}</span>')
+        expect(component).not.toContain('` · Seed ${facts.seed}`')
+    })
+
+    it('saves only the common batch prompt and generation working copy as a preset', async () => {
+        const component = await source('src/presentation/workflow/GuidedBatchImages.tsx')
+        const projectionStart = component.indexOf('const workingCopy: PresetWorkingCopy = {')
+        const projectionEnd = component.indexOf('saveSnapshot(`Guided · ${timestamp}`', projectionStart)
+        const projection = component.slice(projectionStart, projectionEnd)
+
+        expect(component).toContain('const saveSnapshot = usePresetStore(state => state.saveSnapshot)')
+        expect(projection).toContain('basePrompt: draft.payload.prompt.positive')
+        expect(projection).toContain("additionalPrompt: ''")
+        expect(projection).toContain("detailPrompt: ''")
+        expect(projection).toContain('negativePrompt: draft.payload.prompt.negative')
+        expect(projection).toContain('selectedResolution: {')
+        for (const excluded of ['seed:', 'output:', 'metadataMode:', 'characterPrompts:', 'batchMode:']) {
+            expect(projection).not.toContain(excluded)
+        }
+    })
+
     it('persists the visible output folder and format without coupling them to cost consent', async () => {
         const [component, outputStep] = await Promise.all([
             source('src/presentation/workflow/GuidedBatchImages.tsx'),
