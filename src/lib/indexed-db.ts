@@ -21,6 +21,7 @@ const STORE_NAME = 'keyval'
 const DB_TIMEOUT_MS = 10000 // 10초 타임아웃
 
 export const STRUCTURED_PROMPT_MODULE_STORE_KEY = 'nai-blue-structured-prompt-modules' as const
+export const SCENE_DOCUMENT_STORE_KEY = 'nai-blue-scene-documents' as const
 
 // Central backup registry used by full exports, size diagnostics, and the
 // store snapshot layer so new persisted stores are added in one place.
@@ -32,6 +33,7 @@ export const BACKUP_STORE_KEYS = [
     'nai-blue-settings',
     'nai-blue-auth',
     'nai-blue-scenes',
+    SCENE_DOCUMENT_STORE_KEY,
     'nai-blue-character-rotation',
     'nai-blue-shortcuts',
     'nai-blue-theme',
@@ -79,6 +81,7 @@ export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
     'nai-blue-auth',
     'nai-blue-auth-v3-migration-complete',
     'nai-blue-scenes',
+    SCENE_DOCUMENT_STORE_KEY,
     'nai-blue-composition-repository',
     'nai-blue-composition-migration-backup',
     'nai-blue-backup-restore-journal',
