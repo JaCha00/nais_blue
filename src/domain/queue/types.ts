@@ -1,4 +1,9 @@
 import type { JsonValue } from '@/domain/composition/types'
+import type {
+    ProviderAttemptEvidence,
+    ProviderAttemptTransition,
+    ProviderExecutionEnvelope,
+} from './provider-result'
 
 export const GENERATION_JOB_STATES = [
     'queued',
@@ -26,8 +31,20 @@ export type GenerationWorkflow = 'main' | 'scene' | 'style-lab'
 export type SnapshotResourceRole = 'source' | 'mask' | 'character-reference' | 'vibe-reference' | 'other'
 export type SnapshotResourcePersistence = 'managed-app-data' | 'portable' | 'volatile'
 export type SnapshotResumability = 'resumable' | 'non-resumable'
-export type QueueBlockReason = 'missing-resource' | 'digest-mismatch' | 'non-resumable-resource'
+export type QueueBlockReason =
+    | 'missing-resource'
+    | 'digest-mismatch'
+    | 'non-resumable-resource'
+    | 'provider-outcome-unknown'
+    | 'provider-result-lost'
 export type QueueFailurePolicy = 'continue' | 'pause-on-fatal' | 'stop-on-first-error'
+
+/** Keeps canonical Main plans aligned with the Queue policy actually enforced at runtime. */
+export const CURRENT_MAIN_QUEUE_POLICY = Object.freeze({
+    retryPolicyId: 'main-queue-retry-v1',
+    maxConcurrency: 2,
+})
+
 export type GenerationBatchState = 'active' | 'paused' | 'stopped'
 export type QueuePauseReason = 'user' | 'authentication' | 'local-io' | 'compatibility' | 'fatal' | 'first-error'
 export type QueueBatchOrigin = 'fresh' | 'legacy-conversion' | 'retry'
@@ -57,6 +74,8 @@ export interface GenerationSnapshotResource {
 
 export interface GenerationJobSnapshot {
     readonly schemaVersion: 1
+    /** Absent only on legacy snapshots that retain the pre-Phase-3 executor contract. */
+    readonly providerExecutionEnvelope?: ProviderExecutionEnvelope
     readonly prompt: GenerationSnapshotPrompt
     readonly parameters: JsonValue
     readonly outputPolicy: JsonValue
@@ -156,6 +175,7 @@ export interface QueueResourceRecord {
 export type GenerationAttemptOutcome = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted'
 
 export interface GenerationAttempt {
+    readonly recordSchemaVersion: 2
     readonly id: string
     readonly jobId: string
     readonly attemptNumber: number
@@ -164,6 +184,10 @@ export interface GenerationAttempt {
     readonly outcome: GenerationAttemptOutcome
     readonly diagnosticEventId: string | null
     readonly failureKind?: QueueFailureKind | null
+    /** Null marks a legacy attempt whose historical Provider dispatch facts are unknowable. */
+    readonly providerEvidence: ProviderAttemptEvidence | null
+    readonly providerTransitions: readonly ProviderAttemptTransition[]
+    readonly executionEnvelopeHash: `sha256:${string}` | null
 }
 
 export interface GenerationJobProjection {

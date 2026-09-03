@@ -2,12 +2,13 @@ import { evaluateQueueRetry } from '@/domain/queue/retry-policy'
 import { isTerminalJobState } from '@/domain/queue/state-machine'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import type { QueueTokenSlot } from '@/application/queue/queue-token-provider'
-import type {
-    GenerationJob,
-    GenerationWorkflow,
-    QueueArtifactReference,
-    QueueBlockReason,
-    QueueFailureKind,
+import {
+    CURRENT_MAIN_QUEUE_POLICY,
+    type GenerationJob,
+    type GenerationWorkflow,
+    type QueueArtifactReference,
+    type QueueBlockReason,
+    type QueueFailureKind,
 } from '@/domain/queue/types'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 
@@ -118,6 +119,7 @@ function executionLimit(workflow: GenerationWorkflow): number {
     // Main sequence dependencies are ordered separately below. Ordinary Main and
     // Scene jobs may use both configured provider accounts; Style Lab keeps its
     // existing single-worker presentation contract.
+    if (workflow === 'main') return CURRENT_MAIN_QUEUE_POLICY.maxConcurrency
     return workflow === 'style-lab' ? 1 : 2
 }
 

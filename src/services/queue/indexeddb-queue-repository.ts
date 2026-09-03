@@ -12,6 +12,15 @@ import {
 } from '@/domain/queue/summary'
 import { GENERATION_JOB_STATES } from '@/domain/queue/types'
 import type {
+    ProviderAttemptEvidence,
+    ProviderAttemptTransition,
+    ProviderBillingRisk,
+    ProviderDispatchState,
+    ProviderExecutionEnvelope,
+    ProviderOutcome,
+    SpoolReceipt,
+} from '@/domain/queue/provider-result'
+import type {
     GenerationAttempt,
     GenerationBatch,
     GenerationBatchProjectionMeta,
@@ -22,6 +31,7 @@ import type {
     GenerationJobProgress,
     GenerationJobSnapshot,
     GenerationJobState,
+    GenerationSnapshotResource,
     GenerationWorkflow,
     QueueArtifactReference,
     QueueBatchOrigin,
@@ -40,7 +50,7 @@ import {
 
 // Physical database names stay stable so generation jobs survive the rename.
 export const QUEUE_DATABASE_NAME = 'nai-blue-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 5
+export const QUEUE_DATABASE_VERSION = 6
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
@@ -229,6 +239,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+    const keys = Object.keys(value)
+    return keys.length === expected.length
+        && expected.every(key => Object.prototype.hasOwnProperty.call(value, key))
+}
+
+export interface RecordProviderAttemptTransitionInput {
+    jobId: string
+    attemptNumber: number
+    leaseOwner: string
+    leaseToken: string
+    now: string
+    expectedEvidence: ProviderAttemptEvidence
+    nextEvidence: ProviderAttemptEvidence
+    diagnosticEventId?: string | null
+    blockReason?: Extract<QueueBlockReason, 'provider-outcome-unknown' | 'provider-result-lost'>
+}
+
 function projectionOutputDirectory(snapshot: GenerationJobSnapshot): string | null {
     const policy = snapshot.outputPolicy
     if (!isRecord(policy)) return null
@@ -269,6 +297,277 @@ function assertWorkflow(value: unknown): asserts value is GenerationWorkflow {
     if (value !== 'main' && value !== 'scene' && value !== 'style-lab') {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'workflow is invalid')
     }
+}
+
+const PROVIDER_DISPATCH_STATES = new Set<ProviderDispatchState>([
+    'prepared',
+    'connect-failed-before-dispatch',
+    'possibly-dispatched',
+    'response-started',
+    'response-complete',
+    'result-spooled',
+    'result-lost',
+])
+const PROVIDER_OUTCOMES = new Set<ProviderOutcome>(['running', 'known-failure', 'succeeded', 'unknown'])
+const PROVIDER_BILLING_RISKS = new Set<ProviderBillingRisk>(['none', 'possible', 'confirmed'])
+const PROVIDER_ATTEMPT_OUTCOMES = new Set(['running', 'succeeded', 'failed', 'cancelled', 'interrupted'])
+const QUEUE_FAILURE_KINDS = new Set<QueueFailureKind>([
+    'transient', 'rate-limited', 'timeout', 'authentication', 'decode', 'local-io', 'compatibility', 'fatal',
+])
+const PROVIDER_STATE_ORDER: Readonly<Record<ProviderDispatchState, number>> = Object.freeze({
+    prepared: 0,
+    'connect-failed-before-dispatch': 1,
+    'possibly-dispatched': 1,
+    'response-started': 2,
+    'response-complete': 3,
+    'result-spooled': 4,
+    'result-lost': 4,
+})
+const BILLING_RISK_ORDER: Readonly<Record<ProviderBillingRisk, number>> = Object.freeze({
+    none: 0,
+    possible: 1,
+    confirmed: 2,
+})
+
+type StoredAttemptRecord = GenerationAttempt & { jobAttemptKey: IDBValidKey }
+
+function assertProviderDigest(value: unknown, field: string): asserts value is `sha256:${string}` {
+    if (typeof value !== 'string' || !/^sha256:[a-f0-9]{64}$/i.test(value)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', `${field} is invalid`)
+    }
+}
+
+function assertProviderExecutionEnvelope(
+    value: unknown,
+    resources: readonly GenerationSnapshotResource[],
+): asserts value is ProviderExecutionEnvelope {
+    if (!isRecord(value)
+        || !hasExactKeys(value, [
+            'schemaVersion', 'provider', 'compatibilityProfileId', 'payloadBuilderRevision',
+            'modelCatalogRevision', 'action', 'responseMode', 'semanticIntentHash', 'queueResourceBindings',
+        ])
+        || value.schemaVersion !== 1
+        || value.provider !== 'novelai'
+        || typeof value.compatibilityProfileId !== 'string'
+        || typeof value.payloadBuilderRevision !== 'string'
+        || typeof value.modelCatalogRevision !== 'string'
+        || (value.action !== 'generate' && value.action !== 'img2img' && value.action !== 'infill')
+        || (value.responseMode !== 'standard' && value.responseMode !== 'streaming')
+        || !Array.isArray(value.queueResourceBindings)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider execution envelope is invalid')
+    }
+    assertIdentifier(value.compatibilityProfileId, 'compatibility profile id')
+    assertIdentifier(value.payloadBuilderRevision, 'payload builder revision')
+    assertIdentifier(value.modelCatalogRevision, 'model catalog revision')
+    if (/[\\/]/.test(value.compatibilityProfileId)
+        || /[\\/]/.test(value.payloadBuilderRevision)
+        || /[\\/]/.test(value.modelCatalogRevision)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider envelope identifiers must not be paths')
+    }
+    assertProviderDigest(value.semanticIntentHash, 'semantic intent hash')
+    const seenBindings = new Set<string>()
+    for (const binding of value.queueResourceBindings) {
+        if (!isRecord(binding)
+            || !hasExactKeys(binding, ['resourceId', 'role', 'digest'])
+            || typeof binding.resourceId !== 'string'
+            || (binding.role !== 'source'
+                && binding.role !== 'mask'
+                && binding.role !== 'vibe-reference'
+                && binding.role !== 'character-reference')) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider resource binding is invalid')
+        }
+        assertIdentifier(binding.resourceId, 'Provider resource id')
+        if (/[\\/]/.test(binding.resourceId)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider resource id must not be a path')
+        }
+        assertProviderDigest(binding.digest, 'Provider resource digest')
+        const identity = `${binding.resourceId}\u0000${binding.role}\u0000${binding.digest}`
+        if (seenBindings.has(identity)
+            || !resources.some(resource => resource.resourceId === binding.resourceId
+                && resource.role === binding.role
+                && resource.digest === binding.digest)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider resource binding does not match the snapshot')
+        }
+        seenBindings.add(identity)
+    }
+    const providerRoles = new Set(['source', 'mask', 'vibe-reference', 'character-reference'])
+    const providerResources = resources.filter(resource => providerRoles.has(resource.role))
+    const expectedBindings = new Set(providerResources.map(resource => (
+        `${resource.resourceId}\u0000${resource.role}\u0000${resource.digest}`
+    )))
+    if (expectedBindings.size !== providerResources.length
+        || seenBindings.size !== expectedBindings.size
+        || [...expectedBindings].some(identity => !seenBindings.has(identity))) {
+        throw new QueueRepositoryError(
+            'E_QUEUE_RECORD_INVALID',
+            'Provider resource bindings must exactly match the snapshot resources',
+        )
+    }
+}
+
+function assertSpoolReceipt(value: unknown, attemptId: string): asserts value is SpoolReceipt {
+    if (!isRecord(value)
+        || !hasExactKeys(value, [
+            'schemaVersion', 'spoolId', 'attemptId', 'contentType', 'byteLength', 'sha256', 'committedAt',
+        ])
+        || value.schemaVersion !== 1
+        || value.attemptId !== attemptId
+        || typeof value.spoolId !== 'string'
+        || value.spoolId.length === 0
+        || value.spoolId.length > 256
+        || /[\\/]/.test(value.spoolId)
+        || typeof value.contentType !== 'string'
+        || value.contentType.length === 0
+        || value.contentType.length > 128
+        || !Number.isSafeInteger(value.byteLength)
+        || (value.byteLength as number) < 0) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'spool receipt is invalid')
+    }
+    assertProviderDigest(value.sha256, 'spool checksum')
+    assertTimestamp(value.committedAt, 'spool commit time')
+}
+
+function assertProviderEvidence(value: unknown, attemptId: string): asserts value is ProviderAttemptEvidence {
+    if (!isRecord(value)
+        || !hasExactKeys(value, [
+            'dispatchState', 'providerOutcome', 'billingRisk', 'responseDigest', 'spoolReceipt',
+        ])
+        || !PROVIDER_DISPATCH_STATES.has(value.dispatchState as ProviderDispatchState)
+        || !PROVIDER_OUTCOMES.has(value.providerOutcome as ProviderOutcome)
+        || !PROVIDER_BILLING_RISKS.has(value.billingRisk as ProviderBillingRisk)
+        || (value.responseDigest !== null && typeof value.responseDigest !== 'string')
+        || (value.spoolReceipt !== null && !isRecord(value.spoolReceipt))) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider attempt evidence is invalid')
+    }
+    if (value.responseDigest !== null) assertProviderDigest(value.responseDigest, 'provider response digest')
+    if (value.spoolReceipt !== null) assertSpoolReceipt(value.spoolReceipt, attemptId)
+
+    const state = value.dispatchState as ProviderDispatchState
+    if (state === 'prepared'
+        && (value.providerOutcome !== 'running' || value.billingRisk !== 'none'
+            || value.responseDigest !== null || value.spoolReceipt !== null)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'prepared provider evidence is inconsistent')
+    }
+    if (state === 'connect-failed-before-dispatch'
+        && (value.providerOutcome !== 'known-failure' || value.billingRisk !== 'none'
+            || value.responseDigest !== null || value.spoolReceipt !== null)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'pre-dispatch failure evidence is inconsistent')
+    }
+    if ((state === 'possibly-dispatched' || state === 'response-started')
+        && ((value.providerOutcome !== 'running' && value.providerOutcome !== 'unknown')
+            || value.billingRisk !== 'possible'
+            || value.spoolReceipt !== null || value.responseDigest !== null)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'in-flight provider evidence is inconsistent')
+    }
+    if (state === 'response-complete'
+        && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
+            || value.responseDigest === null || value.spoolReceipt !== null)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'complete response evidence is inconsistent')
+    }
+    if (state === 'result-spooled'
+        && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
+            || value.responseDigest === null || value.spoolReceipt === null
+            || value.spoolReceipt.sha256 !== value.responseDigest)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'spooled provider evidence is inconsistent')
+    }
+    if (state === 'result-lost'
+        && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
+            || value.responseDigest === null || value.spoolReceipt !== null)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'lost provider result evidence is inconsistent')
+    }
+}
+
+function assertMonotonicProviderEvidence(from: ProviderAttemptEvidence, to: ProviderAttemptEvidence): void {
+    const fromState = from.dispatchState
+    const toState = to.dispatchState
+    const validTerminalCorrection = fromState === 'result-spooled' && toState === 'result-lost'
+    const validStateAdvance = (fromState === 'prepared'
+            && (toState === 'connect-failed-before-dispatch' || toState === 'possibly-dispatched'))
+        || (fromState === 'possibly-dispatched' && toState === 'response-started')
+        || (fromState === 'response-started' && toState === 'response-complete')
+        || (fromState === 'response-complete' && (toState === 'result-spooled' || toState === 'result-lost'))
+        || validTerminalCorrection
+        || (fromState === toState && from.providerOutcome === 'running' && to.providerOutcome !== 'running')
+    if (!validStateAdvance
+        || PROVIDER_STATE_ORDER[toState] < PROVIDER_STATE_ORDER[fromState]
+        || BILLING_RISK_ORDER[to.billingRisk] < BILLING_RISK_ORDER[from.billingRisk]
+        || (from.providerOutcome !== 'running'
+            && fromState !== 'response-complete'
+            && !validTerminalCorrection)
+        || (fromState === toState && canonicalSerialize(from) === canonicalSerialize(to))) {
+        throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider attempt evidence must advance monotonically')
+    }
+}
+
+function parseGenerationAttempt(value: unknown): StoredAttemptRecord {
+    if (!isRecord(value)
+        || value.recordSchemaVersion !== 2
+        || typeof value.id !== 'string'
+        || typeof value.jobId !== 'string'
+        || !Number.isSafeInteger(value.attemptNumber)
+        || (value.attemptNumber as number) < 1
+        || !Array.isArray(value.providerTransitions)
+        || !PROVIDER_ATTEMPT_OUTCOMES.has(value.outcome as string)
+        || (value.diagnosticEventId !== null && typeof value.diagnosticEventId !== 'string')
+        || (value.failureKind !== undefined
+            && value.failureKind !== null
+            && !QUEUE_FAILURE_KINDS.has(value.failureKind as QueueFailureKind))) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'queue attempt record is invalid')
+    }
+    assertIdentifier(value.jobId, 'attempt job id')
+    if (value.id !== `${value.jobId}:${value.attemptNumber}` || value.id.length > 273) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'attempt id is invalid')
+    }
+    assertTimestamp(value.startedAt, 'attempt start time')
+    if (value.finishedAt !== null) assertTimestamp(value.finishedAt, 'attempt finish time')
+    if (value.executionEnvelopeHash !== null) {
+        assertProviderDigest(value.executionEnvelopeHash, 'execution envelope hash')
+    }
+    const expectedKey = [value.jobId, value.attemptNumber]
+    if (canonicalSerialize(value.jobAttemptKey) !== canonicalSerialize(expectedKey)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'attempt ordering key is invalid')
+    }
+    if (value.providerEvidence === null) {
+        if (value.providerTransitions.length !== 0 || value.executionEnvelopeHash !== null) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'legacy attempt evidence is inconsistent')
+        }
+        return value as unknown as StoredAttemptRecord
+    }
+    assertProviderEvidence(value.providerEvidence, value.id)
+    let current: ProviderAttemptEvidence = {
+        dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
+        responseDigest: null, spoolReceipt: null,
+    }
+    let previousTransitionTime = Date.parse(value.startedAt as string)
+    for (const transition of value.providerTransitions) {
+        if (!isRecord(transition)
+            || !hasExactKeys(transition, [
+                'attemptId', 'jobId', 'attemptNumber', 'occurredAt', 'from', 'to', 'diagnosticEventId',
+            ])
+            || transition.attemptId !== value.id
+            || transition.jobId !== value.jobId
+            || transition.attemptNumber !== value.attemptNumber
+            || (transition.diagnosticEventId !== null && typeof transition.diagnosticEventId !== 'string')) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider attempt transition is invalid')
+        }
+        assertTimestamp(transition.occurredAt, 'provider transition time')
+        const transitionTime = Date.parse(transition.occurredAt)
+        if (transitionTime < previousTransitionTime) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider transition journal time moved backwards')
+        }
+        assertProviderEvidence(transition.from, value.id)
+        assertProviderEvidence(transition.to, value.id)
+        if (canonicalSerialize(transition.from) !== canonicalSerialize(current)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider transition chain is invalid')
+        }
+        assertMonotonicProviderEvidence(transition.from, transition.to)
+        current = transition.to
+        previousTransitionTime = transitionTime
+    }
+    if (canonicalSerialize(current) !== canonicalSerialize(value.providerEvidence)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider evidence does not match its transition journal')
+    }
+    return value as unknown as StoredAttemptRecord
 }
 
 function assertFailurePolicy(value: unknown): asserts value is QueueFailurePolicy {
@@ -450,7 +749,7 @@ function snapshotFromRecord(value: unknown, expectedHash: unknown): GenerationJo
         || (value.resumability !== 'resumable' && value.resumability !== 'non-resumable')) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job snapshot is invalid')
     }
-    const snapshot = createGenerationJobSnapshot({
+    const legacySnapshot = createGenerationJobSnapshot({
         prompt: {
             positive: value.prompt.positive,
             negative: value.prompt.negative,
@@ -463,6 +762,19 @@ function snapshotFromRecord(value: unknown, expectedHash: unknown): GenerationJo
             ? {}
             : { nonResumableReason: value.nonResumableReason as 'volatile-resource' | 'runtime-only-capability' }),
     })
+    const snapshot: GenerationJobSnapshot = value.providerExecutionEnvelope === undefined
+        ? legacySnapshot
+        : (() => {
+            assertProviderExecutionEnvelope(
+                value.providerExecutionEnvelope,
+                value.resources as unknown as GenerationSnapshotResource[],
+            )
+            return {
+                ...legacySnapshot,
+                providerExecutionEnvelope: structuredClone(value.providerExecutionEnvelope),
+            }
+        })()
+    assertGenerationJobSnapshotSafe(snapshot)
     if (typeof expectedHash !== 'string' || hashGenerationJobSnapshot(snapshot) !== expectedHash) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job snapshot hash mismatch')
     }
@@ -618,6 +930,9 @@ function storedJobFromInput(input: EnqueueGenerationJobInput, queueSequence: num
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job ordering or attempt budget is invalid')
     }
     assertGenerationJobSnapshotSafe(input.snapshot)
+    if (input.snapshot.providerExecutionEnvelope !== undefined) {
+        assertProviderExecutionEnvelope(input.snapshot.providerExecutionEnvelope, input.snapshot.resources)
+    }
     const base = {
         recordSchemaVersion: 4 as const,
         id: input.id,
@@ -848,6 +1163,27 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
             }
         }
         batchRequest.onerror = () => transaction.abort()
+    }
+    if (oldVersion < 6) {
+        const attempts = transaction.objectStore('attempts')
+        const cursorRequest = attempts.openCursor()
+        cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result
+            if (cursor === null) return
+            if (!isRecord(cursor.value)) {
+                transaction.abort()
+                return
+            }
+            cursor.update({
+                ...cursor.value,
+                recordSchemaVersion: 2,
+                providerEvidence: null,
+                providerTransitions: [],
+                executionEnvelopeHash: null,
+            })
+            cursor.continue()
+        }
+        cursorRequest.onerror = () => transaction.abort()
     }
 }
 
@@ -1609,7 +1945,17 @@ export class IndexedDBQueueRepository {
                 }
                 const attemptNumber = stored.attemptCount + 1
                 next = { ...next, attemptCount: attemptNumber }
+                const providerEvidence: ProviderAttemptEvidence | null = stored.snapshot.providerExecutionEnvelope === undefined
+                    ? null
+                    : {
+                        dispatchState: 'prepared',
+                        providerOutcome: 'running',
+                        billingRisk: 'none',
+                        responseDigest: null,
+                        spoolReceipt: null,
+                    }
                 const attempt: GenerationAttempt & { jobAttemptKey: IDBValidKey } = {
+                    recordSchemaVersion: 2,
                     id: `${stored.id}:${attemptNumber}`,
                     jobId: stored.id,
                     attemptNumber,
@@ -1617,6 +1963,11 @@ export class IndexedDBQueueRepository {
                     finishedAt: null,
                     outcome: 'running',
                     diagnosticEventId: null,
+                    providerEvidence,
+                    providerTransitions: [],
+                    executionEnvelopeHash: stored.snapshot.providerExecutionEnvelope === undefined
+                        ? null
+                        : `sha256:${hashCanonicalValue(stored.snapshot.providerExecutionEnvelope)}`,
                     jobAttemptKey: [stored.id, attemptNumber],
                 }
                 await requestResult(attempts.add(attempt))
@@ -2144,12 +2495,157 @@ export class IndexedDBQueueRepository {
         return recoveredIds
     }
 
+    /** Appends one lease-owned Provider fact and can atomically fail closed without creating another store. */
+    async recordProviderAttemptTransition(
+        input: RecordProviderAttemptTransitionInput,
+    ): Promise<GenerationAttempt> {
+        assertIdentifier(input.jobId, 'provider transition job id')
+        assertIdentifier(input.leaseOwner, 'provider transition lease owner')
+        assertIdentifier(input.leaseToken, 'provider transition lease token')
+        assertTimestamp(input.now, 'provider transition time')
+        if (!Number.isSafeInteger(input.attemptNumber) || input.attemptNumber < 1) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider transition attempt number is invalid')
+        }
+        const attemptId = `${input.jobId}:${input.attemptNumber}`
+        assertProviderEvidence(input.expectedEvidence, attemptId)
+        assertProviderEvidence(input.nextEvidence, attemptId)
+        assertMonotonicProviderEvidence(input.expectedEvidence, input.nextEvidence)
+        if (input.diagnosticEventId !== undefined && input.diagnosticEventId !== null) {
+            assertIdentifier(input.diagnosticEventId, 'provider transition diagnostic id')
+            if (/[\\/]/.test(input.diagnosticEventId)) {
+                throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'provider diagnostic must be an opaque event id')
+            }
+        }
+        const requiredBlockReason = input.nextEvidence.dispatchState === 'result-lost'
+            ? 'provider-result-lost'
+            : input.nextEvidence.providerOutcome === 'unknown'
+                ? 'provider-outcome-unknown'
+                : undefined
+        if (input.blockReason !== requiredBlockReason) {
+            throw new QueueRepositoryError(
+                'E_QUEUE_RECORD_INVALID',
+                'Provider unknown/lost evidence and its fail-closed Queue block must be recorded together',
+            )
+        }
+
+        const written = await this.runTransaction(
+            ['attempts', 'batches', 'jobs', 'leases'],
+            'readwrite',
+            async transaction => {
+                const attempts = transaction.objectStore('attempts')
+                const batches = transaction.objectStore('batches')
+                const jobs = transaction.objectStore('jobs')
+                const leases = transaction.objectStore('leases')
+                const [attemptValue, jobValue, leaseValue] = await Promise.all([
+                    requestResult(attempts.get(attemptId)),
+                    requestResult(jobs.get(input.jobId)),
+                    requestResult(leases.get(input.jobId)),
+                ])
+                if (attemptValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'active Provider attempt is missing')
+                }
+                if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
+                const attempt = parseGenerationAttempt(attemptValue)
+                const job = parseStoredJob(jobValue)
+                const lease = parseLease(leaseValue)
+                if (job.state !== 'running'
+                    || job.attemptCount !== input.attemptNumber
+                    || attempt.jobId !== job.id
+                    || attempt.outcome !== 'running'
+                    || lease === null
+                    || lease.owner !== input.leaseOwner
+                    || lease.token !== input.leaseToken
+                    || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
+                    throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Provider attempt lease is no longer owned')
+                }
+                if (attempt.providerEvidence === null) {
+                    throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Legacy attempts cannot acquire invented Provider evidence')
+                }
+                if (canonicalSerialize(attempt.providerEvidence) !== canonicalSerialize(input.expectedEvidence)) {
+                    throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider attempt evidence changed')
+                }
+                const previousTime = attempt.providerTransitions.length === 0
+                    ? attempt.startedAt
+                    : attempt.providerTransitions[attempt.providerTransitions.length - 1].occurredAt
+                if (Date.parse(input.now) < Date.parse(previousTime)) {
+                    throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider transition time moved backwards')
+                }
+                const transition: ProviderAttemptTransition = {
+                    attemptId,
+                    jobId: job.id,
+                    attemptNumber: input.attemptNumber,
+                    occurredAt: input.now,
+                    from: structuredClone(input.expectedEvidence),
+                    to: structuredClone(input.nextEvidence),
+                    diagnosticEventId: input.diagnosticEventId ?? null,
+                }
+                const nextAttempt: StoredAttemptRecord = {
+                    ...attempt,
+                    providerEvidence: structuredClone(input.nextEvidence),
+                    providerTransitions: [...attempt.providerTransitions, transition],
+                    diagnosticEventId: input.diagnosticEventId ?? attempt.diagnosticEventId,
+                    ...(input.blockReason === undefined
+                        ? {}
+                        : { finishedAt: input.now, outcome: 'interrupted' as const }),
+                }
+                await requestResult(attempts.put(nextAttempt))
+
+                let blockedVersion: number | null = null
+                if (input.blockReason !== undefined) {
+                    const batchValue = await requestResult(batches.get(job.batchId))
+                    if (batchValue === undefined) {
+                        throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+                    }
+                    const batch = parseBatch(batchValue)
+                    try {
+                        assertJobTransition(job.state, 'blocked')
+                    } catch (error) {
+                        throw normalizeRepositoryError(error)
+                    }
+                    const blocked = {
+                        ...updateJobState(job, 'blocked', input.now),
+                        blockReason: input.blockReason,
+                        lastDiagnosticEventId: input.diagnosticEventId ?? job.lastDiagnosticEventId,
+                    }
+                    await Promise.all([
+                        requestResult(jobs.put(blocked)),
+                        requestResult(leases.delete(job.id)),
+                        requestResult(batches.put(withBatchProjectionDelta(batch, job, blocked))),
+                    ])
+                    blockedVersion = blocked.version
+                }
+                return { attempt: nextAttempt, blockedVersion }
+            },
+        )
+
+        const attempts = await this.listAttempts(input.jobId)
+        const readback = attempts.find(attempt => attempt.attemptNumber === input.attemptNumber)
+        if (readback === undefined
+            || canonicalSerialize(readback.providerEvidence) !== canonicalSerialize(input.nextEvidence)
+            || readback.providerTransitions.length !== written.attempt.providerTransitions.length) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Provider attempt transition readback mismatch')
+        }
+        if (written.blockedVersion !== null) {
+            const job = await this.getJob(input.jobId)
+            if (job === null
+                || job.version !== written.blockedVersion
+                || job.state !== 'blocked'
+                || job.blockReason !== input.blockReason
+                || job.leaseOwner !== null) {
+                throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Provider block transition readback mismatch')
+            }
+        }
+        return readback
+    }
+
     async listAttempts(jobId: string): Promise<GenerationAttempt[]> {
+        assertIdentifier(jobId, 'attempt job id')
         return this.runTransaction(['attempts'], 'readonly', async transaction => {
             const index = transaction.objectStore('attempts').index('by-job-attempt')
             const range = this.keyRange.bound([jobId], [jobId, []])
-            const values = await requestResult(index.getAll(range)) as (GenerationAttempt & { jobAttemptKey: IDBValidKey })[]
+            const values = await requestResult(index.getAll(range)) as unknown[]
             return values
+                .map(parseGenerationAttempt)
                 .sort((left, right) => left.attemptNumber - right.attemptNumber)
                 .map(({ jobAttemptKey: _jobAttemptKey, ...attempt }) => structuredClone(attempt))
         })

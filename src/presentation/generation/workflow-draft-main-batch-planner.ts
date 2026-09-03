@@ -15,6 +15,7 @@ import type {
 import type { WorkflowDraftRepositoryPort } from '@/application/workflow/workflow-draft-repository'
 import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
+import { CURRENT_MAIN_QUEUE_POLICY } from '@/domain/queue/types'
 import {
     isBatchImageDraftReady,
     isSingleImageDraftReady,
@@ -331,6 +332,14 @@ function projectPreparedJob(prepared: PreparedMainGeneration): PreparedGeneratio
     const params = prepared.params
     const resources = resourceProjection(params)
     const pathHash = (value: string | null): Sha256Digest | null => value ? digest(value) : null
+    // Canonical plans promise fail-only collision handling. Keep legacy Guided
+    // planning unchanged while making the reviewed executable match that promise.
+    const canonicalPrepared = prepared.output.collisionPolicy === 'error'
+        ? prepared
+        : Object.freeze({
+            ...prepared,
+            output: Object.freeze({ ...prepared.output, collisionPolicy: 'error' as const }),
+        })
     return Object.freeze({
         semantic: {
             prompt: params.prompt,
@@ -395,7 +404,7 @@ function projectPreparedJob(prepared: PreparedMainGeneration): PreparedGeneratio
             collisionPolicy: 'fail' as const,
             deliveryRequired: prepared.output.autoSave,
         },
-        prepared,
+        prepared: canonicalPrepared,
     })
 }
 
@@ -416,7 +425,7 @@ export function createWorkflowDraftPreparedJobPlanner(
     return Object.freeze(planner)
 }
 
-export const WORKFLOW_DRAFT_RETRY_POLICY_ID = 'main-queue-retry-v1' as const
+export const WORKFLOW_DRAFT_RETRY_POLICY_ID = CURRENT_MAIN_QUEUE_POLICY.retryPolicyId
 
 function createRandomSeed(): number {
     const values = new Uint32Array(1)
@@ -443,7 +452,7 @@ export function createWorkflowDraftGenerationPlanDependencies(
             failurePolicy: 'continue',
             retryPolicyId: WORKFLOW_DRAFT_RETRY_POLICY_ID,
             maxAttempts: 3,
-            maxConcurrency: 2,
+            maxConcurrency: CURRENT_MAIN_QUEUE_POLICY.maxConcurrency,
             pricingBasis: options.pricingBasis,
         },
         estimateAnlas: job => calculateAnlasCost({

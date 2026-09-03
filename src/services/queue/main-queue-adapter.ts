@@ -2,11 +2,25 @@ import {
     planMainBatch,
     type MainBatchPlannerPort,
 } from '@/application/generation/plan-main-batch'
+import type {
+    GenerationPlan,
+    PlanGenerationInput,
+    PlanGenerationResult,
+    PlanIssue,
+} from '@/application/generation/generation-plan-contract'
+import {
+    replayGenerationPlan,
+    type PlanGenerationDependencies,
+} from '@/application/generation/plan-generation'
 import {
     assertAnlasCostConsentAllows,
     type AnlasCostConsentSnapshot,
 } from '@/domain/queue/anlas-cost-consent'
-import type { QueueResourceRecord } from '@/domain/queue/types'
+import {
+    CURRENT_MAIN_QUEUE_POLICY,
+    type QueueFailurePolicy,
+    type QueueResourceRecord,
+} from '@/domain/queue/types'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
@@ -36,11 +50,28 @@ export interface EnqueuePlannedMainBatchOptions {
     readonly idempotencyScope?: string
 }
 
+export interface EnqueueReviewedMainPlanOptions {
+    readonly reviewed: GenerationPlan<PreparedMainGeneration>
+    readonly input: Omit<PlanGenerationInput, 'seedPolicy'>
+    readonly dependencies: PlanGenerationDependencies<PreparedMainGeneration>
+    readonly submissionPolicy: EnqueuePlannedMainBatchOptions['submissionPolicy']
+    /** Defaults to the stable reviewed plan identity for retry-safe Queue writes. */
+    readonly idempotencyScope?: string
+}
+
+export type EnqueueReviewedMainPlanResult =
+    | { readonly status: 'enqueued'; readonly queue: CreateBatchAndEnqueueResult }
+    | Exclude<PlanGenerationResult<PreparedMainGeneration>, { readonly status: 'ready' }>
+
 interface EnqueueMainBatchOptions {
     readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
     readonly submissionPolicy:
         | { readonly kind: 'advanced' }
         | EnqueuePlannedMainBatchOptions['submissionPolicy']
+    readonly queuePolicy?: {
+        readonly failurePolicy: QueueFailurePolicy
+        readonly maxAttempts: number
+    }
     readonly idempotencyScope?: string
 }
 
@@ -85,6 +116,125 @@ export async function enqueuePlannedMainBatch(
     options: EnqueuePlannedMainBatchOptions,
 ): Promise<CreateBatchAndEnqueueResult | null> {
     return enqueueMainBatch(options)
+}
+
+/**
+ * Revalidates the reviewed plan and its saved seeds before touching presentation,
+ * resources, codecs, or Queue storage. The current Queue can select credentials
+ * only at execution time, so pinned affinity is rejected until it can be preserved.
+ */
+export async function enqueueReviewedMainPlan(
+    options: EnqueueReviewedMainPlanOptions,
+): Promise<EnqueueReviewedMainPlanResult> {
+    const replayed = await replayGenerationPlan(
+        options.reviewed,
+        options.input,
+        options.dependencies,
+    )
+    if (replayed.status !== 'ready') return replayed
+
+    if (replayed.plan.executionPolicy.credentialDispatch.kind === 'pinned') {
+        const issue: PlanIssue = Object.freeze({
+            code: 'unsupported-pinned-credential-affinity',
+            severity: 'blocking',
+            fieldPath: 'executionPolicy.credentialDispatch',
+            message: 'The current Queue cannot preserve pinned credential affinity.',
+        })
+        return Object.freeze({
+            status: 'unsupported',
+            capability: issue.code,
+            issues: Object.freeze([issue]),
+        })
+    }
+
+    const executionPolicy = replayed.plan.executionPolicy
+    const unsupportedPolicyIssues: PlanIssue[] = []
+    if (executionPolicy.retryPolicyId !== CURRENT_MAIN_QUEUE_POLICY.retryPolicyId) {
+        unsupportedPolicyIssues.push(Object.freeze({
+            code: 'unsupported-retry-policy',
+            severity: 'blocking',
+            fieldPath: 'executionPolicy.retryPolicyId',
+            message: 'The reviewed retry policy is not implemented by the current Queue.',
+        }))
+    }
+    if (executionPolicy.maxConcurrency !== CURRENT_MAIN_QUEUE_POLICY.maxConcurrency) {
+        unsupportedPolicyIssues.push(Object.freeze({
+            code: 'unsupported-main-queue-concurrency',
+            severity: 'blocking',
+            fieldPath: 'executionPolicy.maxConcurrency',
+            message: 'The reviewed concurrency limit is not implemented by the current Queue.',
+        }))
+    }
+    if (unsupportedPolicyIssues.length > 0) {
+        return Object.freeze({
+            status: 'unsupported',
+            capability: unsupportedPolicyIssues[0].code,
+            issues: Object.freeze(unsupportedPolicyIssues),
+        })
+    }
+    if ((executionPolicy.failurePolicy !== 'continue' && executionPolicy.failurePolicy !== 'stop')
+        || !Number.isSafeInteger(executionPolicy.maxAttempts)
+        || executionPolicy.maxAttempts < 1) {
+        const issue: PlanIssue = Object.freeze({
+            code: 'invalid-queue-execution-policy',
+            severity: 'blocking',
+            fieldPath: 'executionPolicy',
+            message: 'The reviewed Queue execution policy is invalid.',
+        })
+        return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
+    }
+
+    const consent = options.submissionPolicy?.kind === 'guided'
+        ? options.submissionPolicy.costConsent
+        : undefined
+    try {
+        assertAnlasCostConsentAllows(consent, replayed.plan.estimatedAnlas)
+    } catch {
+        const issue: PlanIssue = Object.freeze({
+            code: 'invalid-anlas-cost-consent',
+            severity: 'blocking',
+            fieldPath: 'submissionPolicy.costConsent',
+            message: 'A current Anlas cost consent matching the reviewed estimate is required.',
+        })
+        return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
+    }
+    if (consent.pricingBasis !== executionPolicy.pricingBasis
+        || consent.maxAnlas > replayed.plan.budget.maxAnlas) {
+        const issue: PlanIssue = Object.freeze({
+            code: 'cost-consent-plan-mismatch',
+            severity: 'blocking',
+            fieldPath: 'submissionPolicy.costConsent',
+            message: 'The cost consent does not match the reviewed pricing basis and budget.',
+        })
+        return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
+    }
+
+    const prepared = replayed.plan.jobs.map(job => job.prepared)
+    const queue = await enqueueMainBatch({
+        planner: {
+            getRequestedCount: () => prepared.length,
+            prepareBatch: async () => prepared,
+        },
+        submissionPolicy: options.submissionPolicy,
+        queuePolicy: {
+            failurePolicy: executionPolicy.failurePolicy === 'stop'
+                ? 'stop-on-first-error'
+                : 'continue',
+            maxAttempts: executionPolicy.maxAttempts,
+        },
+        idempotencyScope: options.idempotencyScope ?? replayed.plan.planId,
+    })
+    if (queue !== null) return { status: 'enqueued', queue }
+
+    return {
+        status: 'invalid',
+        issues: [{
+            code: 'invalid-replayed-job-count',
+            severity: 'blocking',
+            fieldPath: 'jobs',
+            message: 'The replayed plan did not contain a queueable job count.',
+        }],
+    }
 }
 
 async function enqueueMainBatch(
@@ -154,7 +304,7 @@ async function enqueueMainBatch(
             ordinal,
             snapshot: item.snapshot,
             compositionPlanHash: item.compositionPlanHash,
-            maxAttempts: 3,
+            maxAttempts: options.queuePolicy?.maxAttempts ?? 3,
             idempotencyKey: `main-enqueue-${idempotencyScope}-${ordinal}`,
         }))
         return await getRuntimeQueueRepository().createBatchAndEnqueue({
@@ -162,7 +312,7 @@ async function enqueueMainBatch(
                 id: batchId,
                 workflow: 'main',
                 createdAt,
-                failurePolicy: 'continue',
+                failurePolicy: options.queuePolicy?.failurePolicy ?? 'continue',
                 origin: 'fresh',
                 idempotencyKey: `main-enqueue-${idempotencyScope}`,
             },

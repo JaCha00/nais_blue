@@ -93,6 +93,9 @@ describe('Workflow Draft canonical generation adapter', () => {
             '1girl, dress',
             '1girl, jacket',
         ])
+        expect(wrapped.plan.jobs.every(job => (
+            job.prepared.output.collisionPolicy === 'error'
+        ))).toBe(true)
         expect(wrapped.plan.executionPolicy).toMatchObject({
             failurePolicy: 'continue',
             retryPolicyId: WORKFLOW_DRAFT_RETRY_POLICY_ID,
