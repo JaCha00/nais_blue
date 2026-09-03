@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
     createDefaultGenerationFolder,
     generationFolderDescendantIds,
+    normalizeGenerationFolderV1Projection,
     resolveGenerationFolder,
     type GenerationFolder,
 } from '@/domain/generation-folders'
@@ -82,5 +83,24 @@ describe('generation folder resolution', () => {
             folder({ id: 'child', name: 'child', parentId: 'root' }),
             folder({ id: 'grandchild', name: 'grandchild', parentId: 'child' }),
         ], 'root').sort()).toEqual(['child', 'grandchild'])
+    })
+
+    it('adds and synchronizes the default root while falling back from a stale active ID', () => {
+        const child = folder({ id: 'child', name: 'Child' })
+        const projection = normalizeGenerationFolderV1Projection({
+            savePath: 'E:\\NAI\\Images',
+            useAbsolutePath: true,
+            generationFolders: [child],
+            activeGenerationFolderId: 'missing',
+        })
+
+        expect(projection.generationFolders).toHaveLength(2)
+        expect(projection.generationFolders[0]).toMatchObject({
+            id: 'generation-folder-default',
+            rootDirectory: 'E:\\NAI\\Images',
+            useAbsolutePath: true,
+        })
+        expect(projection.generationFolders[1]).toEqual(child)
+        expect(projection.activeGenerationFolderId).toBe('generation-folder-default')
     })
 })

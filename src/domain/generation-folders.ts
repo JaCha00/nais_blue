@@ -46,6 +46,14 @@ export interface GenerationFolderSelection {
     readonly r2Ready: boolean
 }
 
+/** Legacy Zustand fields needed to reproduce V1 folder hydration and resolution. */
+export interface GenerationFolderV1Projection {
+    readonly savePath: string
+    readonly useAbsolutePath: boolean
+    readonly generationFolders: GenerationFolder[]
+    readonly activeGenerationFolderId: string
+}
+
 export interface GenerationFolderDefaults {
     readonly directory: string
     readonly useAbsolutePath: boolean
@@ -85,6 +93,38 @@ export function createDefaultGenerationFolder(
         createdAt: now,
         updatedAt: now,
     }
+}
+
+/**
+ * Projects unknown V1 settings through the same legacy save-path authority used
+ * by Zustand hydration, without introducing a new persisted document or write.
+ */
+export function normalizeGenerationFolderV1Projection(value: unknown): GenerationFolderV1Projection {
+    const persisted = typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {}
+    const savePath = typeof persisted.savePath === 'string' && persisted.savePath.trim()
+        ? persisted.savePath
+        : 'NAI_Blue_Output'
+    const useAbsolutePath = typeof persisted.useAbsolutePath === 'boolean'
+        ? persisted.useAbsolutePath
+        : false
+    const validFolders = Array.isArray(persisted.generationFolders)
+        ? persisted.generationFolders.filter(isGenerationFolder)
+        : []
+    const hasDefaultFolder = validFolders.some(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID)
+    const generationFolders = (hasDefaultFolder
+        ? validFolders
+        : [createDefaultGenerationFolder(savePath, useAbsolutePath), ...validFolders])
+        .map(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID
+            ? { ...folder, rootDirectory: savePath, useAbsolutePath }
+            : folder)
+    const activeGenerationFolderId = typeof persisted.activeGenerationFolderId === 'string'
+        && generationFolders.some(folder => folder.id === persisted.activeGenerationFolderId)
+        ? persisted.activeGenerationFolderId
+        : DEFAULT_GENERATION_FOLDER_ID
+
+    return { savePath, useAbsolutePath, generationFolders, activeGenerationFolderId }
 }
 
 function folderChain(folders: readonly GenerationFolder[], folderId: string): GenerationFolder[] | null {

@@ -6,8 +6,8 @@ import {
     DEFAULT_GENERATION_FOLDER_ID,
     createDefaultGenerationFolder,
     generationFolderDescendantIds,
-    isGenerationFolder,
     isGenerationFolderName,
+    normalizeGenerationFolderV1Projection,
     type GenerationFolder,
 } from '@/domain/generation-folders'
 import { isR2BucketName, normalizeR2Prefix } from '@/domain/r2/types'
@@ -153,40 +153,14 @@ export function normalizePersistedSettingsState(persistedState: unknown): Partia
     const persisted = typeof persistedState === 'object' && persistedState !== null && !Array.isArray(persistedState)
         ? persistedState as Partial<SettingsState>
         : {}
-    const savePath = typeof persisted.savePath === 'string' && persisted.savePath.trim()
-        ? persisted.savePath
-        : 'NAI_Blue_Output'
-    const useAbsolutePath = typeof persisted.useAbsolutePath === 'boolean'
-        ? persisted.useAbsolutePath
-        : false
-    const validFolders = Array.isArray(persisted.generationFolders)
-        ? persisted.generationFolders.filter(isGenerationFolder)
-        : []
-    const hasDefaultFolder = validFolders.some(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID)
-    const generationFolders = (hasDefaultFolder
-        ? validFolders
-        : [createDefaultGenerationFolder(savePath, useAbsolutePath), ...validFolders])
-        .map(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID
-            ? {
-                ...folder,
-                rootDirectory: savePath,
-                useAbsolutePath,
-            }
-            : folder)
-    const activeGenerationFolderId = typeof persisted.activeGenerationFolderId === 'string'
-        && generationFolders.some(folder => folder.id === persisted.activeGenerationFolderId)
-        ? persisted.activeGenerationFolderId
-        : DEFAULT_GENERATION_FOLDER_ID
+    const folderProjection = normalizeGenerationFolderV1Projection(persistedState)
 
     return {
         ...persisted,
-        savePath,
-        useAbsolutePath,
+        ...folderProjection,
         sceneSubfoldersEnabled: typeof persisted.sceneSubfoldersEnabled === 'boolean'
             ? persisted.sceneSubfoldersEnabled
             : true,
-        generationFolders,
-        activeGenerationFolderId,
     }
 }
 
