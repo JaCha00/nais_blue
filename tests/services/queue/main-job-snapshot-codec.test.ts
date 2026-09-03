@@ -13,7 +13,9 @@ import {
 import {
     CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
     LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiGenerationCompatibility,
 } from '@/services/nai/compatibility'
+import { CURRENT_NAI_MODEL_CATALOG_REVISION } from '@/services/nai/model-catalog'
 
 function params(overrides: Partial<GenerationParams> = {}): GenerationParams {
     return {
@@ -94,6 +96,67 @@ describe('Main Job Snapshot codec', () => {
             resumability: 'resumable',
         })
         expect(Object.isFrozen(encoded.snapshot)).toBe(true)
+        expect(encoded.snapshot).not.toHaveProperty('providerExecutionEnvelope')
+    })
+
+    it('optionally builds the reviewed Provider envelope from current execution authorities', () => {
+        const sourceEdit = prepared({
+            params: params({ sourceImage: 'data:image/png;base64,AA==' }),
+            streaming: true,
+            sourceEdit: true,
+        })
+        const resources = [{
+            resourceId: 'resource:source',
+            role: 'source' as const,
+            persistence: 'managed-app-data' as const,
+            digest: `sha256:${'b'.repeat(64)}`,
+            reference: { relativePath: 'queue-resources/source.bin' } as JsonValue,
+        }, {
+            resourceId: 'resource:vibe',
+            role: 'vibe-reference' as const,
+            persistence: 'managed-app-data' as const,
+            digest: `sha256:${'c'.repeat(64)}`,
+            reference: { relativePath: 'queue-resources/vibe.bin' } as JsonValue,
+        }]
+        const compatibility = queryNaiGenerationCompatibility(
+            sourceEdit.params,
+            CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+            false,
+        )
+        const semanticIntentHash = `sha256:${'d'.repeat(64)}` as const
+
+        const encoded = encodeMainJobSnapshot(
+            sourceEdit,
+            { ...dehydrated, resources },
+            undefined,
+            { compatibilityProfileId: compatibility.compatibilityProfileId, semanticIntentHash },
+        )
+
+        expect(encoded.snapshot.providerExecutionEnvelope).toEqual({
+            schemaVersion: 1,
+            provider: 'novelai',
+            compatibilityProfileId: compatibility.compatibilityProfileId,
+            payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+            modelCatalogRevision: CURRENT_NAI_MODEL_CATALOG_REVISION,
+            action: 'img2img',
+            responseMode: 'standard',
+            semanticIntentHash,
+            queueResourceBindings: resources.map(({ resourceId, role, digest }) => ({
+                resourceId, role, digest,
+            })),
+        })
+    })
+
+    it('fails closed when reviewed and fresh compatibility identities differ', () => {
+        expect(() => encodeMainJobSnapshot(
+            prepared(),
+            dehydrated,
+            undefined,
+            {
+                compatibilityProfileId: 'nai:stale-profile',
+                semanticIntentHash: `sha256:${'d'.repeat(64)}`,
+            },
+        )).toThrowError(QueueExecutionError)
     })
 
     it('round-trips valid payloads and classifies malformed payloads as fatal', () => {

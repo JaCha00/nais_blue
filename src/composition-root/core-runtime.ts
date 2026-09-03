@@ -4,6 +4,7 @@ import { createZustandMainQueuePresentation } from '@/presentation/queue/zustand
 import { createZustandStyleLabQueuePresentation } from '@/presentation/queue/zustand-style-lab-queue-presentation'
 import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
 import { configureRuntimeQueueDependencies } from '@/services/queue/runtime'
+import { DesktopProviderResultSpool } from '@/adapters/generation/desktop-provider-result-spool'
 import { useAuthStore } from '@/stores/auth-store'
 
 /**
@@ -25,6 +26,7 @@ export function initializeCoreRuntime(): void {
     configureRuntimeQueueDependencies({
         tokenProvider: queueTokenProvider,
         mainQueue: {
+            providerResultSpool: new DesktopProviderResultSpool(),
             planner: createZustandMainBatchPlanner(),
             presentation: createZustandMainQueuePresentation(),
         },

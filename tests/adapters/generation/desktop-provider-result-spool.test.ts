@@ -204,4 +204,18 @@ describe('DesktopProviderResultSpool', () => {
             code: 'conflict',
         })
     })
+
+    it('accepts the maximum Queue-derived attempt ID and rejects one character beyond it', async () => {
+        const storage = new MemoryStorage()
+        const spool = new DesktopProviderResultSpool(storage)
+        const maximumAttemptId = `${'j'.repeat(256)}:${'9'.repeat(16)}`
+        expect(maximumAttemptId).toHaveLength(273)
+
+        await expect(spool.commit(input({ attemptId: maximumAttemptId })))
+            .resolves.toMatchObject({ attemptId: maximumAttemptId })
+        await expect(spool.commit(input({
+            spoolId: 'spool-2',
+            attemptId: `${maximumAttemptId}0`,
+        }))).rejects.toMatchObject({ code: 'invalid-input' })
+    })
 })

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+    hashGenerationSemanticIntent,
     planGeneration,
     replayGenerationPlan,
     type PlanGenerationDependencies,
@@ -116,9 +117,14 @@ describe('planGeneration', () => {
         expect(second.plan.planHash).toBe(first.plan.planHash)
         expect(second.plan.semanticPlanHash).toBe(first.plan.semanticPlanHash)
         expect(first.plan.planId).toBe(first.plan.planHash)
+        expect(hashGenerationSemanticIntent(first.plan.jobs[0].semantic)).toMatch(/^sha256:[a-f0-9]{64}$/)
+        expect(hashGenerationSemanticIntent(first.plan.jobs[0].semantic))
+            .toBe(hashGenerationSemanticIntent(second.plan.jobs[0].semantic))
 
         const promptChanged = await readyPlan(baseInput, dependencies(workflowDraft({ prompt: 'red hair' })))
         expect(promptChanged.plan.semanticPlanHash).not.toBe(first.plan.semanticPlanHash)
+        expect(hashGenerationSemanticIntent(promptChanged.plan.jobs[0].semantic))
+            .not.toBe(hashGenerationSemanticIntent(first.plan.jobs[0].semantic))
         expect(promptChanged.plan.planHash).not.toBe(first.plan.planHash)
 
         const seedChanged = await readyPlan({

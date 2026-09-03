@@ -60,9 +60,16 @@ const tauriStorage: ProviderResultSpoolStorage = {
     },
 }
 
-function assertIdentifier(value: string, label: string): void {
+function assertSpoolId(value: string): void {
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value)) {
-        throw new ProviderResultSpoolError('invalid-input', `${label} is invalid`)
+        throw new ProviderResultSpoolError('invalid-input', 'spoolId is invalid')
+    }
+}
+
+/** Queue job IDs are 256 chars and a safe-integer attempt suffix adds up to 17. */
+function assertAttemptId(value: string): void {
+    if (value.length === 0 || value.length > 273) {
+        throw new ProviderResultSpoolError('invalid-input', 'attemptId is invalid')
     }
 }
 
@@ -118,8 +125,8 @@ function parseReceipt(bytes: Uint8Array): SpoolReceipt {
         || !Number.isFinite(Date.parse(value.committedAt))) {
         throw new ProviderResultSpoolError('corrupt-receipt', 'Provider result spool receipt is invalid')
     }
-    assertIdentifier(value.spoolId, 'spoolId')
-    assertIdentifier(value.attemptId, 'attemptId')
+    assertSpoolId(value.spoolId)
+    assertAttemptId(value.attemptId)
     return Object.freeze(value as unknown as SpoolReceipt)
 }
 
@@ -148,7 +155,7 @@ export class DesktopProviderResultSpool implements ProviderResultSpool {
         readonly receipt: SpoolReceipt
         readonly bytes: Uint8Array
     }> {
-        assertIdentifier(spoolId, 'spoolId')
+        assertSpoolId(spoolId)
         if (!await this.storage.exists(receiptPath(spoolId)) || !await this.storage.exists(dataPath(spoolId))) {
             throw new ProviderResultSpoolError('missing', 'Provider result spool is missing')
         }
@@ -164,8 +171,8 @@ export class DesktopProviderResultSpool implements ProviderResultSpool {
     }
 
     async commit(input: SpoolCommitInput): Promise<SpoolReceipt> {
-        assertIdentifier(input.spoolId, 'spoolId')
-        assertIdentifier(input.attemptId, 'attemptId')
+        assertSpoolId(input.spoolId)
+        assertAttemptId(input.attemptId)
         assertTimestamp(input.committedAt, 'committedAt')
         if (!input.contentType.trim() || input.contentType.length > 128 || input.bytes.byteLength === 0) {
             throw new ProviderResultSpoolError('invalid-input', 'Spool content must have a bounded type and non-empty bytes')
@@ -222,7 +229,7 @@ export class DesktopProviderResultSpool implements ProviderResultSpool {
     }
 
     async removeIfEligible(input: SpoolRemovalEligibility): Promise<boolean> {
-        assertIdentifier(input.spoolId, 'spoolId')
+        assertSpoolId(input.spoolId)
         const now = assertTimestamp(input.now, 'now')
         const terminalAt = assertTimestamp(input.terminalAt, 'terminalAt')
         if (!input.storageTerminal || !input.requiredReleaseTerminal

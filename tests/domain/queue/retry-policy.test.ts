@@ -21,7 +21,14 @@ describe('durable queue retry policy', () => {
             maxAttempts: 10,
             failureKind: 'rate-limited',
             now: NOW,
+            retryAfterMs: 30_000,
         })).toMatchObject({ decision: 'retry', delayMs: 30_000 })
+        expect(evaluateQueueRetry({
+            attemptCount: 1,
+            maxAttempts: 3,
+            failureKind: 'rate-limited',
+            now: NOW,
+        })).toEqual({ decision: 'fail', reason: 'non-retryable' })
     })
 
     it('never retries blocked/non-retryable work or an exhausted attempt budget', () => {
@@ -39,5 +46,22 @@ describe('durable queue retry policy', () => {
             failureKind: 'timeout',
             now: NOW,
         })).toEqual({ decision: 'fail', reason: 'max-attempts' })
+    })
+
+    it.each([
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.MAX_SAFE_INTEGER,
+        Number.MAX_SAFE_INTEGER + 1,
+        -1,
+        1.5,
+    ])('rejects an unsafe or non-finite Provider Retry-After delay (%s)', retryAfterMs => {
+        expect(evaluateQueueRetry({
+            attemptCount: 1,
+            maxAttempts: 3,
+            failureKind: 'rate-limited',
+            now: NOW,
+            retryAfterMs,
+        })).toEqual({ decision: 'fail', reason: 'non-retryable' })
     })
 })

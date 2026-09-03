@@ -45,6 +45,13 @@ function digest(value: unknown): Sha256Digest {
     return `sha256:${hashCanonicalValue(value)}`
 }
 
+/** Hashes one reviewed job's Provider meaning without output or execution policy. */
+export function hashGenerationSemanticIntent(
+    semantic: PreparedGenerationJobDraft['semantic'],
+): Sha256Digest {
+    return digest(projectForCompositionPlanHash(semantic))
+}
+
 function issue(code: string, fieldPath: string, message: string): PlanIssue {
     return Object.freeze({ code, severity: 'blocking', fieldPath, message })
 }

@@ -9,6 +9,7 @@ import type {
     PlanIssue,
 } from '@/application/generation/generation-plan-contract'
 import {
+    hashGenerationSemanticIntent,
     replayGenerationPlan,
     type PlanGenerationDependencies,
 } from '@/application/generation/plan-generation'
@@ -33,7 +34,10 @@ import {
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
 import { QueueExecutionError } from './durable-queue-coordinator'
-import { encodeMainJobSnapshot } from './main-job-snapshot-codec'
+import {
+    encodeMainJobSnapshot,
+    type MainProviderExecutionReviewContext,
+} from './main-job-snapshot-codec'
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
 import {
     dehydrateGenerationParams,
@@ -72,6 +76,7 @@ interface EnqueueMainBatchOptions {
         readonly failurePolicy: QueueFailurePolicy
         readonly maxAttempts: number
     }
+    readonly providerExecutionContexts?: readonly MainProviderExecutionReviewContext[]
     readonly idempotencyScope?: string
 }
 
@@ -209,7 +214,20 @@ export async function enqueueReviewedMainPlan(
         return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
     }
 
+    if (replayed.plan.jobs.some((job, ordinal) => job.ordinal !== ordinal)) {
+        const issue: PlanIssue = Object.freeze({
+            code: 'invalid-replayed-job-ordinals',
+            severity: 'blocking',
+            fieldPath: 'jobs',
+            message: 'Replayed job ordinals must be contiguous and ordered before Queue encoding.',
+        })
+        return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
+    }
     const prepared = replayed.plan.jobs.map(job => job.prepared)
+    const providerExecutionContexts = replayed.plan.jobs.map(job => ({
+        compatibilityProfileId: job.compatibility.compatibilityProfileId,
+        semanticIntentHash: hashGenerationSemanticIntent(job.semantic),
+    }))
     const queue = await enqueueMainBatch({
         planner: {
             getRequestedCount: () => prepared.length,
@@ -222,6 +240,7 @@ export async function enqueueReviewedMainPlan(
                 : 'continue',
             maxAttempts: executionPolicy.maxAttempts,
         },
+        providerExecutionContexts,
         idempotencyScope: options.idempotencyScope ?? replayed.plan.planId,
     })
     if (queue !== null) return { status: 'enqueued', queue }
@@ -260,6 +279,13 @@ async function enqueueMainBatch(
         const plan = await planMainBatch({
             planner: options.planner,
             preflight: prepared => {
+                if (options.providerExecutionContexts !== undefined
+                    && options.providerExecutionContexts.length !== prepared.length) {
+                    throw new QueueExecutionError(
+                        'fatal',
+                        'Reviewed Provider execution context count does not match the prepared batch',
+                    )
+                }
                 const incompatible = prepared
                     .map(item => queryNaiGenerationCompatibility(
                         item.params,
@@ -282,10 +308,13 @@ async function enqueueMainBatch(
                 assertAnlasCostConsentAllows(consent, estimatedAnlas)
                 costConsent = consent
             },
-            materialize: async prepared => {
+            materialize: async (prepared, ordinal) => {
                 const dehydrated = await dehydrateGenerationParams(prepared.params, materializer, resourceCache)
                 for (const record of dehydrated.records) resources.set(record.id, record)
-                return encodeMainJobSnapshot(prepared, dehydrated, costConsent)
+                const providerExecution = options.providerExecutionContexts?.[ordinal]
+                return providerExecution === undefined
+                    ? encodeMainJobSnapshot(prepared, dehydrated, costConsent)
+                    : encodeMainJobSnapshot(prepared, dehydrated, costConsent, providerExecution)
             },
         })
         // The durable repository requires the exact requested count before its

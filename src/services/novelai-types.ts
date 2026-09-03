@@ -8,8 +8,9 @@ export class NovelAIHttpError extends Error {
     readonly status: number
     readonly responseBody: string
     readonly retryable: boolean
+    readonly retryAfter: string | null
 
-    constructor(status: number, responseBody: string) {
+    constructor(status: number, responseBody: string, retryAfter: string | null = null) {
         // The raw provider body stays available only for the diagnostic
         // redactor. Error.message is safe for existing retry/UI callers.
         super(`NovelAI request failed (${status})`)
@@ -17,6 +18,7 @@ export class NovelAIHttpError extends Error {
         this.status = status
         this.responseBody = responseBody
         this.retryable = status === 429 || (status >= 500 && status < 600)
+        this.retryAfter = retryAfter
     }
 }
 

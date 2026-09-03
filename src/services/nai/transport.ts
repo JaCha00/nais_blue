@@ -13,6 +13,16 @@ export type NaiTransportStage =
     | 'body-first-byte'
     | 'stream-heartbeat'
 
+export type NaiProviderObservation =
+    | { readonly stage: 'before-request' }
+    | { readonly stage: 'possibly-dispatched' }
+    | { readonly stage: 'response-started'; readonly status: number; readonly retryAfter: string | null }
+    | { readonly stage: 'response-complete'; readonly status: number; readonly retryAfter: string | null }
+
+export type NaiProviderObserver = (
+    observation: NaiProviderObservation,
+) => void | Promise<void>
+
 export type NaiProviderFaultPoint =
     | 'before-request'
     | 'after-dispatch'
@@ -31,6 +41,8 @@ export interface NaiTransportRequest {
     timeoutMs: number
     signal?: AbortSignal
     onStage?: (stage: NaiTransportStage) => void
+    /** Awaited evidence seam; callers persist each observation before transport advances. */
+    observer?: NaiProviderObserver
     /** Optional deterministic test seam; production requests leave it absent. */
     faultInjector?: NaiProviderFaultInjector
 }
@@ -64,9 +76,10 @@ export class NaiTransportNetworkError extends Error {
     readonly kind = 'network' as const
     readonly phase = 'transport-network'
 
-    constructor() {
+    constructor(cause?: unknown) {
         super('NovelAI network transport failed')
         this.name = 'NaiTransportNetworkError'
+        if (cause !== undefined) (this as Error & { cause?: unknown }).cause = cause
     }
 }
 
@@ -133,7 +146,7 @@ class RequestLifetime {
         if (error instanceof NaiTransportCancelledError || error instanceof NaiTransportTimeoutError) return error
         if (error instanceof DOMException && error.name === 'AbortError') return new NaiTransportCancelledError()
         if (error instanceof Error && error.name === 'AbortError') return new NaiTransportCancelledError()
-        return new NaiTransportNetworkError()
+        return new NaiTransportNetworkError(error)
     }
 
     finish(): void {
@@ -168,14 +181,30 @@ function requestHeaders(request: NaiTransportRequest): Record<string, string> {
     }
 }
 
-function observeResponse(
+async function observeProvider(
+    lifetime: RequestLifetime,
+    observer: NaiTransportRequest['observer'],
+    observation: NaiProviderObservation,
+): Promise<void> {
+    if (lifetime.failure !== null) throw lifetime.failure
+    if (observer === undefined) return
+    await lifetime.race(Promise.resolve().then(() => observer(observation)))
+}
+
+async function observeResponse(
     response: Response,
     lifetime: RequestLifetime,
     endpoint: NaiGenerationEndpoint,
     onStage: NaiTransportRequest['onStage'],
     faultInjector: NaiTransportRequest['faultInjector'],
-): Response {
+    observer: NaiTransportRequest['observer'],
+): Promise<Response> {
+    const responseObservation = {
+        status: response.status,
+        retryAfter: response.headers.get('Retry-After'),
+    }
     if (!response.body) {
+        await observeProvider(lifetime, observer, { stage: 'response-complete', ...responseObservation })
         lifetime.finish()
         return response
     }
@@ -203,6 +232,7 @@ function observeResponse(
             try {
                 const { done, value } = await lifetime.race(reader.read())
                 if (done) {
+                    await observeProvider(lifetime, observer, { stage: 'response-complete', ...responseObservation })
                     if (faultInjector !== undefined) {
                         await faultInjector('after-response-received')
                     }
@@ -250,14 +280,17 @@ export function createFetchNaiTransport(
         kind,
         async request(request) {
             validateTimeout(request.timeoutMs)
-            if (request.signal?.aborted) throw new NaiTransportCancelledError()
-
-            if (request.faultInjector !== undefined) {
-                await request.faultInjector('before-request')
-                if (request.signal?.aborted) throw new NaiTransportCancelledError()
-            }
             const lifetime = new RequestLifetime(request.signal, request.timeoutMs)
+            let preservePreparationError = false
             try {
+                await observeProvider(lifetime, request.observer, { stage: 'before-request' })
+                if (request.faultInjector !== undefined) {
+                    preservePreparationError = true
+                    await request.faultInjector('before-request')
+                    preservePreparationError = false
+                    if (request.signal?.aborted) throw new NaiTransportCancelledError()
+                }
+                await observeProvider(lifetime, request.observer, { stage: 'possibly-dispatched' })
                 request.onStage?.('dns-connect')
                 const pending = fetchImpl(endpointUrl(request.endpoint), {
                     method: 'POST',
@@ -273,9 +306,23 @@ export function createFetchNaiTransport(
                 }
                 const response = await observedPending
                 request.onStage?.('response-headers')
-                return observeResponse(response, lifetime, request.endpoint, request.onStage, request.faultInjector)
+                await observeProvider(lifetime, request.observer, {
+                    stage: 'response-started',
+                    status: response.status,
+                    retryAfter: response.headers.get('Retry-After'),
+                })
+                return observeResponse(
+                    response,
+                    lifetime,
+                    request.endpoint,
+                    request.onStage,
+                    request.faultInjector,
+                    request.observer,
+                )
             } catch (error) {
-                const normalized = lifetime.normalize(error)
+                const normalized = preservePreparationError && lifetime.failure === null
+                    ? error
+                    : lifetime.normalize(error)
                 lifetime.finish()
                 throw normalized
             }
@@ -330,110 +377,130 @@ export function createRustNaiTransport(
         kind: 'android-rust-reqwest',
         async request(request) {
             validateTimeout(request.timeoutMs)
-            if (request.signal?.aborted) throw new NaiTransportCancelledError()
-
-            if (request.faultInjector !== undefined) {
-                await request.faultInjector('before-request')
-                if (request.signal?.aborted) throw new NaiTransportCancelledError()
-            }
             const lifetime = new RequestLifetime(request.signal, request.timeoutMs)
-            const requestId = nativeRequestId()
-            let responseResolved = false
-            let nativeComplete = false
-            let bodyController: ReadableStreamDefaultController<Uint8Array> | null = null
-            let resolveResponse!: (response: Response) => void
-            let rejectResponse!: (error: Error) => void
-            const responsePromise = new Promise<Response>((resolve, reject) => {
-                resolveResponse = resolve
-                rejectResponse = reject
-            })
-            const body = new ReadableStream<Uint8Array>({
-                start(controller) {
-                    bodyController = controller
-                },
-                cancel() {
-                    lifetime.cancel()
-                },
-            })
-
-            const rejectNative = (error: Error): void => {
-                nativeComplete = true
-                if (!responseResolved) rejectResponse(error)
-                lifetime.fail(error)
-            }
-
-            const onEvent = bindings.createChannel<NaiNativeTransportEvent>(event => {
-                if (event.type === 'dns-connect' || event.type === 'request-sent') {
-                    request.onStage?.(event.type)
-                    return
-                }
-                if (event.type === 'response-headers') {
-                    if (responseResolved) return
-                    responseResolved = true
-                    request.onStage?.('response-headers')
-                    resolveResponse(new Response(body, {
-                        status: event.status,
-                        headers: event.contentType ? { 'content-type': event.contentType } : undefined,
-                    }))
-                    return
-                }
-                if (event.type === 'body-chunk') {
-                    if (nativeComplete || lifetime.failure) return
-                    try {
-                        bodyController?.enqueue(decodeNativeBodyChunk(event.bytesBase64))
-                    } catch {
-                        rejectNative(new NaiTransportNetworkError())
-                    }
-                    return
-                }
-                if (event.type === 'end') {
-                    nativeComplete = true
-                    if (!lifetime.failure) bodyController?.close()
-                    return
-                }
-                if (event.type === 'timeout') {
-                    rejectNative(new NaiTransportTimeoutError(request.timeoutMs))
-                    return
-                }
-                if (event.type === 'cancelled') {
-                    rejectNative(new NaiTransportCancelledError())
-                    return
-                }
-                const error = new NaiTransportNetworkError()
-                nativeComplete = true
-                if (!responseResolved) rejectResponse(error)
-                lifetime.fail(error)
-            })
-            lifetime.onAbort(() => {
-                if (nativeComplete) return
-                void bindings.invoke<boolean>('cancel_nai_request', { requestId }).catch(() => undefined)
-            })
-
-            void bindings.invoke<void>('nai_generate_request', {
-                requestId,
-                endpoint: request.endpoint,
-                token: request.token,
-                payload: request.payload,
-                timeoutMs: request.timeoutMs,
-                onEvent,
-            }).catch(() => {
-                if (nativeComplete || lifetime.failure) return
-                const error = new NaiTransportNetworkError()
-                nativeComplete = true
-                if (!responseResolved) rejectResponse(error)
-                lifetime.fail(error)
-            })
-
+            let preservePreparationError = false
             try {
+                await observeProvider(lifetime, request.observer, { stage: 'before-request' })
+                if (request.faultInjector !== undefined) {
+                    preservePreparationError = true
+                    await request.faultInjector('before-request')
+                    preservePreparationError = false
+                    if (request.signal?.aborted) throw new NaiTransportCancelledError()
+                }
+                await observeProvider(lifetime, request.observer, { stage: 'possibly-dispatched' })
+                const requestId = nativeRequestId()
+                let responseResolved = false
+                let nativeComplete = false
+                let bodyController: ReadableStreamDefaultController<Uint8Array> | null = null
+                let resolveResponse!: (response: Response) => void
+                let rejectResponse!: (error: Error) => void
+                const responsePromise = new Promise<Response>((resolve, reject) => {
+                    resolveResponse = resolve
+                    rejectResponse = reject
+                })
+                const body = new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        bodyController = controller
+                    },
+                    cancel() {
+                        lifetime.cancel()
+                    },
+                })
+
+                const rejectNative = (error: Error): void => {
+                    nativeComplete = true
+                    if (!responseResolved) rejectResponse(error)
+                    lifetime.fail(error)
+                }
+
+                const onEvent = bindings.createChannel<NaiNativeTransportEvent>(event => {
+                    if (event.type === 'dns-connect' || event.type === 'request-sent') {
+                        request.onStage?.(event.type)
+                        return
+                    }
+                    if (event.type === 'response-headers') {
+                        if (responseResolved) return
+                        responseResolved = true
+                        request.onStage?.('response-headers')
+                        const response = new Response(body, {
+                            status: event.status,
+                            headers: event.contentType ? { 'content-type': event.contentType } : undefined,
+                        })
+                        void observeProvider(lifetime, request.observer, {
+                            stage: 'response-started',
+                            status: event.status,
+                            // The current Rust event does not expose Retry-After.
+                            retryAfter: null,
+                        }).then(() => resolveResponse(response)).catch(error => {
+                            rejectNative(error instanceof Error ? error : new NaiTransportNetworkError(error))
+                        })
+                        return
+                    }
+                    if (event.type === 'body-chunk') {
+                        if (nativeComplete || lifetime.failure) return
+                        try {
+                            bodyController?.enqueue(decodeNativeBodyChunk(event.bytesBase64))
+                        } catch {
+                            rejectNative(new NaiTransportNetworkError())
+                        }
+                        return
+                    }
+                    if (event.type === 'end') {
+                        nativeComplete = true
+                        if (!lifetime.failure) bodyController?.close()
+                        return
+                    }
+                    if (event.type === 'timeout') {
+                        rejectNative(new NaiTransportTimeoutError(request.timeoutMs))
+                        return
+                    }
+                    if (event.type === 'cancelled') {
+                        rejectNative(new NaiTransportCancelledError())
+                        return
+                    }
+                    const error = new NaiTransportNetworkError()
+                    nativeComplete = true
+                    if (!responseResolved) rejectResponse(error)
+                    lifetime.fail(error)
+                })
+                lifetime.onAbort(() => {
+                    if (nativeComplete) return
+                    void bindings.invoke<boolean>('cancel_nai_request', { requestId }).catch(() => undefined)
+                })
+
+                void bindings.invoke<void>('nai_generate_request', {
+                    requestId,
+                    endpoint: request.endpoint,
+                    token: request.token,
+                    payload: request.payload,
+                    timeoutMs: request.timeoutMs,
+                    onEvent,
+                }).catch(() => {
+                    if (nativeComplete || lifetime.failure) return
+                    const error = new NaiTransportNetworkError()
+                    nativeComplete = true
+                    if (!responseResolved) rejectResponse(error)
+                    lifetime.fail(error)
+                })
+
                 const observedResponse = lifetime.race(responsePromise)
                 void observedResponse.catch(() => undefined)
                 if (request.faultInjector !== undefined) {
                     await request.faultInjector('after-dispatch')
                 }
                 const response = await observedResponse
-                return observeResponse(response, lifetime, request.endpoint, request.onStage, request.faultInjector)
+                return observeResponse(
+                    response,
+                    lifetime,
+                    request.endpoint,
+                    request.onStage,
+                    request.faultInjector,
+                    request.observer,
+                )
             } catch (error) {
-                const normalized = lifetime.normalize(error)
+                const normalized = preservePreparationError && lifetime.failure === null
+                    ? error
+                    : lifetime.normalize(error)
                 lifetime.finish()
                 throw normalized
             }

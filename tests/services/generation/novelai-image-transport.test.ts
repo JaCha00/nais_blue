@@ -71,6 +71,41 @@ describe('NovelAI image transport', () => {
         expect(provider.generateImage).toHaveBeenCalledWith('credential', params, signal, faultInjector)
     })
 
+    it('forwards opt-in durable observation and typed-error mode', async () => {
+        const signal = new AbortController().signal
+        const observer = vi.fn()
+        const executionHooks = { observer, errorMode: 'throw' as const }
+
+        await executeNovelAIImageTransport({
+            token: 'credential',
+            params,
+            imageFormat: 'png',
+            streaming: false,
+            signal,
+            executionHooks,
+        })
+        await executeNovelAIImageTransport({
+            token: 'credential',
+            params,
+            imageFormat: 'webp',
+            streaming: true,
+            signal,
+            executionHooks,
+        })
+
+        expect(provider.generateImage).toHaveBeenCalledWith(
+            'credential', params, signal, undefined, executionHooks,
+        )
+        expect(provider.generateImageStream).toHaveBeenCalledWith(
+            'credential',
+            params,
+            expect.any(Function),
+            signal,
+            undefined,
+            executionHooks,
+        )
+    })
+
     it('normalizes streaming previews without changing progress or result', async () => {
         provider.generateImageStream.mockImplementation(async (
             _token: string,

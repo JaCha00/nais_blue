@@ -47,7 +47,9 @@ export function getRuntimeDurableQueueCoordinator(): DurableQueueCoordinator {
     const dependencies = runtimeDependencies
     runtimeCoordinator ??= new DurableQueueCoordinator({
         repository: getRuntimeQueueRepository(),
-        startup: initializeQueueAfterRestart,
+        startup: () => initializeQueueAfterRestart({
+            providerResultSpool: dependencies.mainQueue.providerResultSpool,
+        }),
         tokenProvider: () => dependencies.tokenProvider.getActiveTokenSlots(),
         executor: {
             execute: async (job, context) => {

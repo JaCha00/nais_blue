@@ -5,12 +5,15 @@ import {
     type AnlasCostConsentSnapshot,
 } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import type { ProviderExecutionEnvelope, ProviderSha256 } from '@/domain/queue/provider-result'
 import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
     CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
     LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiGenerationCompatibility,
 } from '@/services/nai/compatibility'
+import { CURRENT_NAI_MODEL_CATALOG_REVISION } from '@/services/nai/model-catalog'
 import {
     DEFAULT_RIGHTS_OWNER,
     isRightsEffectiveDate,
@@ -63,6 +66,11 @@ export interface EncodedMainJobSnapshot {
     readonly compositionPlanHash: string | null
 }
 
+export interface MainProviderExecutionReviewContext {
+    readonly compatibilityProfileId: string
+    readonly semanticIntentHash: ProviderSha256
+}
+
 function asJson(value: unknown): JsonValue {
     return JSON.parse(JSON.stringify(value)) as JsonValue
 }
@@ -84,6 +92,7 @@ export function encodeMainJobSnapshot(
     prepared: PreparedMainGeneration,
     dehydrated: Pick<DehydratedGenerationResult, 'parameters' | 'resources'>,
     costConsent?: AnlasCostConsentSnapshot,
+    providerExecution?: MainProviderExecutionReviewContext,
 ): EncodedMainJobSnapshot {
     const fileName = prepared.output.fileName ?? ensureImageFileExtension(
         `NAI_Blue_${prepared.params.seed}`,
@@ -123,6 +132,44 @@ export function encodeMainJobSnapshot(
             },
         },
     }
+    let providerExecutionEnvelope: ProviderExecutionEnvelope | undefined
+    if (providerExecution !== undefined) {
+        if (!/^sha256:[a-f0-9]{64}$/.test(providerExecution.semanticIntentHash)) invalidSnapshot()
+        const streaming = prepared.streaming && !prepared.sourceEdit
+        const compatibility = queryNaiGenerationCompatibility(
+            prepared.params,
+            CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+            streaming,
+        )
+        if (compatibility.compatibilityProfileId !== providerExecution.compatibilityProfileId) {
+            throw new QueueExecutionError(
+                'compatibility',
+                'Reviewed Main compatibility profile changed before snapshot encoding',
+            )
+        }
+        const queueResourceBindings = dehydrated.resources.flatMap(resource => {
+            if (resource.role !== 'source'
+                && resource.role !== 'mask'
+                && resource.role !== 'vibe-reference'
+                && resource.role !== 'character-reference') return []
+            return [{
+                resourceId: resource.resourceId,
+                role: resource.role,
+                digest: resource.digest as ProviderSha256,
+            }]
+        })
+        providerExecutionEnvelope = {
+            schemaVersion: 1,
+            provider: 'novelai',
+            compatibilityProfileId: compatibility.compatibilityProfileId,
+            payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+            modelCatalogRevision: CURRENT_NAI_MODEL_CATALOG_REVISION,
+            action: compatibility.action,
+            responseMode: streaming ? 'streaming' : 'standard',
+            semanticIntentHash: providerExecution.semanticIntentHash,
+            queueResourceBindings,
+        }
+    }
     return {
         snapshot: createGenerationJobSnapshot({
             prompt: {
@@ -138,6 +185,7 @@ export function encodeMainJobSnapshot(
             }),
             resources: dehydrated.resources,
             resumability: 'resumable',
+            ...(providerExecutionEnvelope === undefined ? {} : { providerExecutionEnvelope }),
         }),
         compositionPlanHash: prepared.params.compositionPlanHash === undefined
             ? null

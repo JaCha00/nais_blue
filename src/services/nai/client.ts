@@ -21,6 +21,7 @@ import {
     getNaiAuxiliaryFetch,
     getRuntimeNaiTransport,
     type NaiProviderFaultInjector,
+    type NaiProviderObserver,
     type NaiTransportStage,
 } from '@/services/nai/transport'
 import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/error-registry'
@@ -35,6 +36,12 @@ import {
 
 export const NAI_STANDARD_TIMEOUT_MS = 120_000
 export const NAI_STREAM_TIMEOUT_MS = 120_000
+
+export interface NaiGenerationExecutionHooks {
+    readonly observer?: NaiProviderObserver
+    /** Opt-in Queue mode; existing presentation callers keep failure results. */
+    readonly errorMode?: 'result' | 'throw'
+}
 
 function isAbortError(error: unknown): boolean {
     return error instanceof NaiTransportCancelledError
@@ -195,6 +202,7 @@ export async function generateImage(
     params: GenerationParams,
     signal?: AbortSignal,
     faultInjector?: NaiProviderFaultInjector,
+    hooks?: NaiGenerationExecutionHooks,
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
@@ -212,11 +220,12 @@ export async function generateImage(
             timeoutMs: NAI_STANDARD_TIMEOUT_MS,
             onStage: observeTransportStage(operation),
             faultInjector,
+            observer: hooks?.observer,
         })
 
         if (!response.ok) {
             const errorText = await response.text()
-            throw new NovelAIHttpError(response.status, errorText)
+            throw new NovelAIHttpError(response.status, errorText, response.headers.get('Retry-After'))
         }
 
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
@@ -238,6 +247,7 @@ export async function generateImage(
             cancelled: isAbortError(error),
             timeout: isTimeoutError(error),
         })
+        if (hooks?.errorMode === 'throw') throw error
         return {
             success: false,
             error: error instanceof NovelAiModelCapabilityError ? error.message : event.userSummary,
@@ -255,6 +265,7 @@ export async function generateImageStream(
     onProgress?: (progress: number, partialImage?: string) => void,
     signal?: AbortSignal,
     faultInjector?: NaiProviderFaultInjector,
+    hooks?: NaiGenerationExecutionHooks,
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
@@ -272,11 +283,12 @@ export async function generateImageStream(
             timeoutMs: NAI_STREAM_TIMEOUT_MS,
             onStage: observeTransportStage(operation),
             faultInjector,
+            observer: hooks?.observer,
         })
 
         if (!response.ok) {
             const errorText = await response.text()
-            throw new NovelAIHttpError(response.status, errorText)
+            throw new NovelAIHttpError(response.status, errorText, response.headers.get('Retry-After'))
         }
         if (!response.body) return { success: false, error: '스트리밍 응답 없음' }
 
@@ -319,6 +331,7 @@ export async function generateImageStream(
             cancelled: isAbortError(error),
             timeout: isTimeoutError(error),
         })
+        if (hooks?.errorMode === 'throw') throw error
         return {
             success: false,
             error: error instanceof NovelAiModelCapabilityError ? error.message : event.userSummary,

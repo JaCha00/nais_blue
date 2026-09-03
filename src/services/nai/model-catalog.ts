@@ -2,6 +2,9 @@ import { DEFAULT_NAI_IMAGE_MODEL } from '@/domain/generation/model-default'
 
 export { DEFAULT_NAI_IMAGE_MODEL } from '@/domain/generation/model-default'
 
+/** Immutable revision of the model IDs and capability semantics below. */
+export const CURRENT_NAI_MODEL_CATALOG_REVISION = 'nai-blue-model-catalog-v1' as const
+
 export interface NaiImageModelCapabilities {
     readonly imageToImage: boolean
     readonly inpainting: boolean

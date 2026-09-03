@@ -257,6 +257,17 @@ export interface RecordProviderAttemptTransitionInput {
     blockReason?: Extract<QueueBlockReason, 'provider-outcome-unknown' | 'provider-result-lost'>
 }
 
+export interface ReconcileProviderAttemptAfterRestartInput {
+    jobId: string
+    attemptNumber: number
+    now: string
+    expectedEvidence: ProviderAttemptEvidence
+    nextEvidence: ProviderAttemptEvidence
+    disposition: 'blocked' | 'queued-spooled' | 'failed-known'
+    diagnosticEventId?: string | null
+    blockReason?: Extract<QueueBlockReason, 'provider-outcome-unknown' | 'provider-result-lost'>
+}
+
 function projectionOutputDirectory(snapshot: GenerationJobSnapshot): string | null {
     const policy = snapshot.outputPolicy
     if (!isRecord(policy)) return null
@@ -459,10 +470,15 @@ function assertProviderEvidence(value: unknown, attemptId: string): asserts valu
             || value.spoolReceipt !== null || value.responseDigest !== null)) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'in-flight provider evidence is inconsistent')
     }
-    if (state === 'response-complete'
-        && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
-            || value.responseDigest === null || value.spoolReceipt !== null)) {
-        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'complete response evidence is inconsistent')
+    if (state === 'response-complete') {
+        const succeeded = value.providerOutcome === 'succeeded'
+            && value.billingRisk === 'confirmed'
+        const knownHttpFailure = value.providerOutcome === 'known-failure'
+            && value.billingRisk === 'possible'
+            && value.responseDigest === null
+        if ((!succeeded && !knownHttpFailure) || value.spoolReceipt !== null) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'complete response evidence is inconsistent')
+        }
     }
     if (state === 'result-spooled'
         && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
@@ -472,7 +488,7 @@ function assertProviderEvidence(value: unknown, attemptId: string): asserts valu
     }
     if (state === 'result-lost'
         && (value.providerOutcome !== 'succeeded' || value.billingRisk !== 'confirmed'
-            || value.responseDigest === null || value.spoolReceipt !== null)) {
+            || value.spoolReceipt !== null)) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'lost provider result evidence is inconsistent')
     }
 }
@@ -497,6 +513,16 @@ function assertMonotonicProviderEvidence(from: ProviderAttemptEvidence, to: Prov
         || (fromState === toState && canonicalSerialize(from) === canonicalSerialize(to))) {
         throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider attempt evidence must advance monotonically')
     }
+}
+
+function providerEvidenceForbidsGenericRetry(evidence: ProviderAttemptEvidence | null): boolean {
+    if (evidence === null) return false
+    return evidence.providerOutcome === 'unknown'
+        || evidence.dispatchState === 'possibly-dispatched'
+        || evidence.dispatchState === 'response-started'
+        || evidence.dispatchState === 'result-spooled'
+        || evidence.dispatchState === 'result-lost'
+        || (evidence.dispatchState === 'response-complete' && evidence.providerOutcome === 'succeeded')
 }
 
 function parseGenerationAttempt(value: unknown): StoredAttemptRecord {
@@ -2363,9 +2389,16 @@ export class IndexedDBQueueRepository {
                 throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
             }
             const attemptId = `${stored.id}:${stored.attemptCount}`
-            const attempt = await requestResult(attempts.get(attemptId))
-            if (!isRecord(attempt)) {
+            const attemptValue = await requestResult(attempts.get(attemptId))
+            if (!isRecord(attemptValue)) {
                 throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Active queue attempt is missing')
+            }
+            const attempt = parseGenerationAttempt(attemptValue)
+            if (providerEvidenceForbidsGenericRetry(attempt.providerEvidence)) {
+                throw new QueueRepositoryError(
+                    'E_QUEUE_INVALID_TRANSITION',
+                    'Provider-dispatched attempts cannot use generic retry',
+                )
             }
             await requestResult(attempts.put({
                 ...attempt,
@@ -2461,19 +2494,21 @@ export class IndexedDBQueueRepository {
                     await requestResult(leases.delete(stored.id))
                     continue
                 }
-                const next = updateJobState(stored, 'recovering', now)
                 if (stored.state === 'running') {
                     const attemptId = `${stored.id}:${stored.attemptCount}`
-                    const attempt = await requestResult(attempts.get(attemptId))
-                    if (!isRecord(attempt)) {
+                    const attemptValue = await requestResult(attempts.get(attemptId))
+                    if (!isRecord(attemptValue)) {
                         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Expired running attempt is missing')
                     }
+                    const attempt = parseGenerationAttempt(attemptValue)
+                    if (providerEvidenceForbidsGenericRetry(attempt.providerEvidence)) continue
                     await requestResult(attempts.put({
                         ...attempt,
                         finishedAt: now,
                         outcome: 'interrupted',
                     }))
                 }
+                const next = updateJobState(stored, 'recovering', now)
                 const batchValue = await requestResult(batches.get(stored.batchId))
                 if (batchValue === undefined) {
                     throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
@@ -2493,6 +2528,214 @@ export class IndexedDBQueueRepository {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Lease recovery readback mismatch')
         }
         return recoveredIds
+    }
+
+    /** Requeues downstream storage without closing the already-succeeded Provider attempt. */
+    async requeueSpooledResult(input: {
+        jobId: string
+        attemptNumber: number
+        leaseOwner: string
+        leaseToken: string
+        now: string
+        readyAt: string
+        lastDiagnosticEventId?: string | null
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'spooled retry transition time')
+        assertTimestamp(input.readyAt, 'spooled retry readyAt')
+        const version = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
+            const jobs = transaction.objectStore('jobs')
+            const leases = transaction.objectStore('leases')
+            const attempts = transaction.objectStore('attempts')
+            const [jobValue, leaseValue, attemptValue] = await Promise.all([
+                requestResult(jobs.get(input.jobId)),
+                requestResult(leases.get(input.jobId)),
+                requestResult(attempts.get(`${input.jobId}:${input.attemptNumber}`)),
+            ])
+            if (jobValue === undefined || attemptValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Spooled queue job or attempt does not exist')
+            }
+            const stored = parseStoredJob(jobValue)
+            const lease = parseLease(leaseValue)
+            const attempt = parseGenerationAttempt(attemptValue)
+            if (stored.state !== 'running'
+                || stored.attemptCount !== input.attemptNumber
+                || attempt.outcome !== 'running'
+                || attempt.providerEvidence?.dispatchState !== 'result-spooled'
+                || lease === null
+                || lease.owner !== input.leaseOwner
+                || lease.token !== input.leaseToken
+                || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
+                throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Spooled result lease is no longer owned')
+            }
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            const batch = parseBatch(batchValue)
+            let next = updateJobState(stored, 'recovering', input.now)
+            next = updateJobState(next, 'queued', input.now)
+            next = {
+                ...next,
+                readyAt: input.readyAt,
+                lastDiagnosticEventId: input.lastDiagnosticEventId ?? stored.lastDiagnosticEventId,
+            }
+            await Promise.all([
+                requestResult(jobs.put(next)),
+                requestResult(leases.delete(stored.id)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
+            ])
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version || readback.state !== 'queued') {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Spooled retry readback mismatch')
+        }
+        return readback
+    }
+
+    /** Resumes a queued spool under a fresh lease while preserving attempt identity and budget. */
+    async resumeSpooledAttempt(input: {
+        jobId: string
+        attemptNumber: number
+        leaseOwner: string
+        leaseToken: string
+        now: string
+    }): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'spooled resume time')
+        const version = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
+            const jobs = transaction.objectStore('jobs')
+            const leases = transaction.objectStore('leases')
+            const attempts = transaction.objectStore('attempts')
+            const [jobValue, leaseValue, attemptValue] = await Promise.all([
+                requestResult(jobs.get(input.jobId)),
+                requestResult(leases.get(input.jobId)),
+                requestResult(attempts.get(`${input.jobId}:${input.attemptNumber}`)),
+            ])
+            if (jobValue === undefined || attemptValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Spooled queue job or attempt does not exist')
+            }
+            const stored = parseStoredJob(jobValue)
+            const lease = parseLease(leaseValue)
+            const attempt = parseGenerationAttempt(attemptValue)
+            if (stored.state !== 'leased'
+                || stored.attemptCount !== input.attemptNumber
+                || attempt.outcome !== 'running'
+                || attempt.providerEvidence?.dispatchState !== 'result-spooled'
+                || lease === null
+                || lease.owner !== input.leaseOwner
+                || lease.token !== input.leaseToken
+                || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
+                throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Spooled result lease is no longer owned')
+            }
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            const batch = parseBatch(batchValue)
+            const next = updateJobState(stored, 'running', input.now)
+            await Promise.all([
+                requestResult(jobs.put(next)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
+            ])
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version || readback.attemptCount !== input.attemptNumber) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Spooled resume readback mismatch')
+        }
+        return readback
+    }
+
+    /** Reconciles previous-process Provider evidence before generic lease recovery can erase it. */
+    async reconcileProviderAttemptAfterRestart(
+        input: ReconcileProviderAttemptAfterRestartInput,
+    ): Promise<GenerationJob> {
+        assertTimestamp(input.now, 'provider startup reconcile time')
+        const requiredBlockReason = input.nextEvidence.dispatchState === 'result-lost'
+            ? 'provider-result-lost'
+            : input.nextEvidence.providerOutcome === 'unknown'
+                ? 'provider-outcome-unknown'
+                : undefined
+        if ((input.disposition === 'blocked' && input.blockReason !== requiredBlockReason)
+            || (input.disposition === 'queued-spooled'
+                && (input.blockReason !== undefined || input.nextEvidence.dispatchState !== 'result-spooled'))
+            || (input.disposition === 'failed-known'
+                && (input.blockReason !== undefined || input.nextEvidence.providerOutcome !== 'known-failure'))) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Provider startup disposition is inconsistent')
+        }
+        const attemptId = `${input.jobId}:${input.attemptNumber}`
+        assertProviderEvidence(input.expectedEvidence, attemptId)
+        assertProviderEvidence(input.nextEvidence, attemptId)
+        const evidenceChanged = canonicalSerialize(input.expectedEvidence) !== canonicalSerialize(input.nextEvidence)
+        if (evidenceChanged) assertMonotonicProviderEvidence(input.expectedEvidence, input.nextEvidence)
+        const version = await this.runTransaction(['attempts', 'batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+            const attempts = transaction.objectStore('attempts')
+            const batches = transaction.objectStore('batches')
+            const jobs = transaction.objectStore('jobs')
+            const leases = transaction.objectStore('leases')
+            const [attemptValue, jobValue] = await Promise.all([
+                requestResult(attempts.get(attemptId)),
+                requestResult(jobs.get(input.jobId)),
+            ])
+            if (attemptValue === undefined || jobValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Provider recovery candidate does not exist')
+            }
+            const attempt = parseGenerationAttempt(attemptValue)
+            const job = parseStoredJob(jobValue)
+            if (job.state !== 'running' || job.attemptCount !== input.attemptNumber || attempt.outcome !== 'running'
+                || canonicalSerialize(attempt.providerEvidence) !== canonicalSerialize(input.expectedEvidence)) {
+                throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider recovery candidate changed')
+            }
+            const previousTime = attempt.providerTransitions.length === 0
+                ? attempt.startedAt
+                : attempt.providerTransitions[attempt.providerTransitions.length - 1].occurredAt
+            if (Date.parse(input.now) < Date.parse(previousTime)) {
+                throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Provider recovery time moved backwards')
+            }
+            const nextAttempt: StoredAttemptRecord = {
+                ...attempt,
+                providerEvidence: structuredClone(input.nextEvidence),
+                providerTransitions: evidenceChanged
+                    ? [...attempt.providerTransitions, {
+                        attemptId,
+                        jobId: job.id,
+                        attemptNumber: input.attemptNumber,
+                        occurredAt: input.now,
+                        from: structuredClone(input.expectedEvidence),
+                        to: structuredClone(input.nextEvidence),
+                        diagnosticEventId: input.diagnosticEventId ?? null,
+                    } satisfies ProviderAttemptTransition]
+                    : attempt.providerTransitions,
+                diagnosticEventId: input.diagnosticEventId ?? attempt.diagnosticEventId,
+                ...(input.disposition === 'blocked' || input.disposition === 'failed-known'
+                    ? {
+                        finishedAt: input.now,
+                        outcome: input.disposition === 'failed-known' ? 'failed' as const : 'interrupted' as const,
+                    }
+                    : {}),
+            }
+            const batchValue = await requestResult(batches.get(job.batchId))
+            if (batchValue === undefined) throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            const batch = parseBatch(batchValue)
+            let next = input.disposition === 'blocked'
+                ? updateJobState(job, 'blocked', input.now)
+                : input.disposition === 'failed-known'
+                    ? updateJobState(job, 'failed', input.now)
+                    : updateJobState(updateJobState(job, 'recovering', input.now), 'queued', input.now)
+            next = input.disposition === 'blocked'
+                ? { ...next, blockReason: input.blockReason ?? null, lastDiagnosticEventId: input.diagnosticEventId ?? job.lastDiagnosticEventId }
+                : { ...next, readyAt: input.now, lastDiagnosticEventId: input.diagnosticEventId ?? job.lastDiagnosticEventId }
+            await Promise.all([
+                requestResult(attempts.put(nextAttempt)),
+                requestResult(jobs.put(next)),
+                requestResult(leases.delete(job.id)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, job, next))),
+            ])
+            return next.version
+        })
+        const readback = await this.getJob(input.jobId)
+        if (readback === null || readback.version !== version) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Provider startup reconcile readback mismatch')
+        }
+        return readback
     }
 
     /** Appends one lease-owned Provider fact and can atomically fail closed without creating another store. */

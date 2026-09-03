@@ -18,6 +18,8 @@ export interface QueueRetryInput {
     now: string
     baseDelayMs?: number
     maxDelayMs?: number
+    /** Required proof for Provider 429 retries; other failures ignore it. */
+    retryAfterMs?: number
 }
 
 const NON_RETRYABLE_FAILURES = new Set<QueueFailureKind>([
@@ -37,6 +39,12 @@ export function evaluateQueueRetry(input: QueueRetryInput): QueueRetryDecision {
     if (NON_RETRYABLE_FAILURES.has(input.failureKind)) {
         return { decision: 'fail', reason: 'non-retryable' }
     }
+    if (input.failureKind === 'rate-limited'
+        && (!Number.isSafeInteger(input.retryAfterMs)
+            || (input.retryAfterMs as number) < 0
+            || !Number.isFinite(new Date(Date.parse(input.now) + (input.retryAfterMs as number)).getTime()))) {
+        return { decision: 'fail', reason: 'non-retryable' }
+    }
     if (input.attemptCount >= input.maxAttempts) {
         return { decision: 'fail', reason: 'max-attempts' }
     }
@@ -44,7 +52,9 @@ export function evaluateQueueRetry(input: QueueRetryInput): QueueRetryDecision {
     const baseDelayMs = input.baseDelayMs ?? 1_000
     const maxDelayMs = input.maxDelayMs ?? 30_000
     const exponent = Math.max(0, input.attemptCount - 1)
-    const delayMs = Math.min(maxDelayMs, baseDelayMs * (2 ** exponent))
+    const delayMs = input.failureKind === 'rate-limited'
+        ? Math.max(0, input.retryAfterMs as number)
+        : Math.min(maxDelayMs, baseDelayMs * (2 ** exponent))
     return {
         decision: 'retry',
         delayMs,

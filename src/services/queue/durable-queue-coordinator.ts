@@ -4,22 +4,37 @@ import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import type { QueueTokenSlot } from '@/application/queue/queue-token-provider'
 import {
     CURRENT_MAIN_QUEUE_POLICY,
+    type GenerationAttempt,
     type GenerationJob,
     type GenerationWorkflow,
     type QueueArtifactReference,
     type QueueBlockReason,
     type QueueFailureKind,
 } from '@/domain/queue/types'
+import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 
 export interface QueueExecutorContext {
     readonly tokenSlotId: string
     readonly token: string
     readonly signal: AbortSignal
+    readonly providerAttempt: GenerationAttempt
     canCommit(): boolean
     updateProgress(stage: string, current: number, total: number): Promise<void>
     bindOutput(transactionId: string, artifactReference: QueueArtifactReference): Promise<void>
     commitOutput(transactionId: string, artifactReference: QueueArtifactReference): Promise<void>
+    recordProviderTransition(
+        nextEvidence: ProviderAttemptEvidence,
+        options?: {
+            diagnosticEventId?: string | null
+            blockReason?: Extract<QueueBlockReason, 'provider-outcome-unknown' | 'provider-result-lost'>
+        },
+    ): Promise<GenerationAttempt>
+    requeueSpooledResult(options?: {
+        diagnosticEventId?: string | null
+        readyAt?: string
+        pauseReason?: 'local-io' | 'compatibility' | 'fatal'
+    }): Promise<void>
 }
 
 export interface DurableQueueJobExecutor {
@@ -149,6 +164,16 @@ function classifyBlockReason(error: unknown): QueueBlockReason | null {
     if (error.code === 'E_QUEUE_RESOURCE_MISSING') return 'missing-resource'
     if (error.code === 'E_QUEUE_RESOURCE_DIGEST_MISMATCH') return 'digest-mismatch'
     return null
+}
+
+function providerEvidenceForbidsGenericRetry(evidence: ProviderAttemptEvidence | null): boolean {
+    if (evidence === null) return false
+    return evidence.providerOutcome === 'unknown'
+        || evidence.dispatchState === 'possibly-dispatched'
+        || evidence.dispatchState === 'response-started'
+        || evidence.dispatchState === 'result-spooled'
+        || evidence.dispatchState === 'result-lost'
+        || (evidence.dispatchState === 'response-complete' && evidence.providerOutcome === 'succeeded')
 }
 
 export class DurableQueueCoordinator {
@@ -376,13 +401,33 @@ export class DurableQueueCoordinator {
         const token = leased.leaseToken
         if (token === null) return
         let terminalCommitted = false
-        const running = await this.repository.transitionJob({
-            jobId: leased.id,
-            to: 'running',
-            now: this.now(),
-            leaseOwner: owner,
-            leaseToken: token,
-        })
+        const attemptsBeforeStart = await this.repository.listAttempts(leased.id)
+        const resumableAttempt = attemptsBeforeStart.length === 0
+            ? undefined
+            : attemptsBeforeStart[attemptsBeforeStart.length - 1]
+        const running = resumableAttempt?.outcome === 'running'
+            && resumableAttempt.providerEvidence?.dispatchState === 'result-spooled'
+            ? await this.repository.resumeSpooledAttempt({
+                jobId: leased.id,
+                attemptNumber: resumableAttempt.attemptNumber,
+                now: this.now(),
+                leaseOwner: owner,
+                leaseToken: token,
+            })
+            : await this.repository.transitionJob({
+                jobId: leased.id,
+                to: 'running',
+                now: this.now(),
+                leaseOwner: owner,
+                leaseToken: token,
+            })
+        const runningAttempts = await this.repository.listAttempts(running.id)
+        const activeAttempt = runningAttempts.find(attempt => attempt.attemptNumber === running.attemptCount)
+        if (activeAttempt === undefined) {
+            throw new QueueExecutionError('fatal', 'Active queue attempt is missing')
+        }
+        let providerAttempt: GenerationAttempt = activeAttempt
+        let spooledRequeueAttempted = false
         const heartbeatMs = Math.max(1_000, Math.min(30_000, Math.floor(this.leaseTtlMs / 3)))
         const heartbeat = setInterval(() => {
             void this.repository.heartbeatLease({
@@ -398,6 +443,7 @@ export class DurableQueueCoordinator {
             tokenSlotId: slot.slotId,
             token: slot.token,
             signal: controller.signal,
+            providerAttempt,
             canCommit: () => !controller.signal.aborted && !terminalCommitted,
             updateProgress: async (stage, current, total) => {
                 await this.repository.updateProgress({
@@ -429,25 +475,97 @@ export class DurableQueueCoordinator {
                 })
                 terminalCommitted = true
             },
+            recordProviderTransition: async (nextEvidence, options = {}) => {
+                if (providerAttempt.providerEvidence === null) {
+                    throw new QueueExecutionError('fatal', 'Legacy queue attempt cannot record Provider evidence')
+                }
+                providerAttempt = await this.repository.recordProviderAttemptTransition({
+                    jobId: leased.id,
+                    attemptNumber: providerAttempt.attemptNumber,
+                    leaseOwner: owner,
+                    leaseToken: token,
+                    now: this.now(),
+                    expectedEvidence: providerAttempt.providerEvidence,
+                    nextEvidence,
+                    diagnosticEventId: options.diagnosticEventId,
+                    blockReason: options.blockReason,
+                })
+                return providerAttempt
+            },
+            requeueSpooledResult: async (options = {}) => {
+                spooledRequeueAttempted = true
+                const now = this.now()
+                if (options.pauseReason !== undefined) {
+                    await this.repository.setBatchControl({
+                        batchId: leased.batchId,
+                        state: 'paused',
+                        now,
+                        reason: options.pauseReason,
+                    })
+                }
+                await this.repository.requeueSpooledResult({
+                    jobId: leased.id,
+                    attemptNumber: providerAttempt.attemptNumber,
+                    leaseOwner: owner,
+                    leaseToken: token,
+                    now,
+                    readyAt: options.readyAt ?? now,
+                    lastDiagnosticEventId: options.diagnosticEventId,
+                })
+            },
         }
 
         try {
             await this.executor.execute(running, context)
             const current = await this.repository.getJob(leased.id)
-            if (current?.state === 'succeeded') return
+            if (current?.state === 'succeeded' || current?.state === 'blocked' || current?.state === 'queued') return
             if (controller.signal.aborted || current?.cancelRequestedAt !== null) {
                 if (current?.state === 'running') {
-                    await this.finishAbortedExecution(current, owner, token)
+                    await this.finishAbortedExecution(current, owner, token, providerAttempt)
                 }
                 return
             }
             throw new QueueExecutionError('fatal', 'Executor returned without an OutputWriter commit')
         } catch (error) {
             const current = await this.repository.getJob(leased.id)
-            if (current === null || isTerminalJobState(current.state)) return
+            if (current === null || isTerminalJobState(current.state) || current.state === 'blocked' || current.state === 'queued') return
+            if (current.snapshot.providerExecutionEnvelope !== undefined) {
+                try {
+                    const attempts = await this.repository.listAttempts(current.id)
+                    const latest = attempts.find(attempt => attempt.attemptNumber === current.attemptCount)
+                    if (latest === undefined) return
+                    providerAttempt = latest
+                } catch {
+                    // A journal read failure cannot safely authorize another Provider attempt.
+                    return
+                }
+                if (controller.signal.aborted || current.cancelRequestedAt !== null) {
+                    if (current.state === 'running') {
+                        await this.finishAbortedExecution(current, owner, token, providerAttempt)
+                    }
+                    return
+                }
+                if (providerAttempt.providerEvidence?.dispatchState === 'result-spooled') {
+                    if (spooledRequeueAttempted) return
+                    const diagnosticEventId = recordedDiagnosticEventId(error)
+                        ?? reportDiagnostic(error, {
+                            operation: `queue.execute.${current.workflow}`,
+                            stage: 'spooled-downstream',
+                        }).eventId
+                    const failure = classifyFailure(error)
+                    await context.requeueSpooledResult({
+                        diagnosticEventId,
+                        pauseReason: failure.kind === 'compatibility'
+                            ? 'compatibility'
+                            : failure.kind === 'local-io' ? 'local-io' : 'fatal',
+                    })
+                    return
+                }
+                if (providerEvidenceForbidsGenericRetry(providerAttempt.providerEvidence)) return
+            }
             if (controller.signal.aborted || current.cancelRequestedAt !== null) {
                 if (current.state === 'running') {
-                    await this.finishAbortedExecution(current, owner, token)
+                    await this.finishAbortedExecution(current, owner, token, providerAttempt)
                 }
                 return
             }
@@ -481,10 +599,27 @@ export class DurableQueueCoordinator {
         }
     }
 
-    private async finishAbortedExecution(job: GenerationJob, owner: string, token: string): Promise<void> {
+    private async finishAbortedExecution(
+        job: GenerationJob,
+        owner: string,
+        token: string,
+        attempt: GenerationAttempt,
+    ): Promise<void> {
         const mode = this.active.get(job.id)?.abortMode ?? 'cancel'
         if (mode === 'shutdown' && job.cancelRequestedAt === null) {
             const now = this.now()
+            if (attempt.providerEvidence?.dispatchState === 'result-spooled') {
+                await this.repository.requeueSpooledResult({
+                    jobId: job.id,
+                    attemptNumber: attempt.attemptNumber,
+                    leaseOwner: owner,
+                    leaseToken: token,
+                    now,
+                    readyAt: now,
+                })
+                return
+            }
+            if (providerEvidenceForbidsGenericRetry(attempt.providerEvidence)) return
             await this.repository.requeueAfterFailure({
                 jobId: job.id,
                 leaseOwner: owner,
@@ -539,17 +674,15 @@ export class DurableQueueCoordinator {
                 maxAttempts: job.maxAttempts,
                 failureKind: failure.kind,
                 now,
+                retryAfterMs: failure.options.retryAfterMs,
             })
             if (policy.decision === 'retry') {
-                const readyAt = failure.options.retryAfterMs === undefined
-                    ? policy.nextAttemptAt
-                    : new Date(Date.parse(now) + Math.max(0, failure.options.retryAfterMs)).toISOString()
                 await this.repository.requeueAfterFailure({
                     jobId: job.id,
                     leaseOwner: owner,
                     leaseToken: token,
                     now,
-                    readyAt,
+                    readyAt: policy.nextAttemptAt,
                     failureKind: failure.kind,
                     lastDiagnosticEventId: diagnostic,
                 })

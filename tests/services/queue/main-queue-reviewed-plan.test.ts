@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+    hashGenerationSemanticIntent,
     planGeneration,
     type PlanGenerationDependencies,
 } from '@/application/generation/plan-generation'
@@ -30,7 +31,12 @@ const runtime = vi.hoisted(() => ({
         records: [],
         resources: [],
     })),
-    encode: vi.fn((prepared: PreparedMainGeneration) => ({
+    encode: vi.fn((
+        prepared: PreparedMainGeneration,
+        _dehydrated?: unknown,
+        _costConsent?: unknown,
+        _providerExecution?: unknown,
+    ) => ({
         snapshot: { seed: prepared.params.seed },
         compositionPlanHash: null,
     })),
@@ -222,7 +228,18 @@ describe('reviewed Main plan Queue bridge', () => {
         expect(result.status).toBe('enqueued')
         expect(randomSeed).not.toHaveBeenCalled()
         expect(runtime.encode.mock.calls.map(([prepared]) => prepared.params.seed)).toEqual([10, 20])
-        expect(runtime.encode).toHaveBeenCalledWith(expect.anything(), expect.anything(), costConsent())
+        reviewed.jobs.forEach((job, ordinal) => {
+            expect(runtime.encode).toHaveBeenNthCalledWith(
+                ordinal + 1,
+                expect.anything(),
+                expect.anything(),
+                costConsent(),
+                {
+                    compatibilityProfileId: job.compatibility.compatibilityProfileId,
+                    semanticIntentHash: hashGenerationSemanticIntent(job.semantic),
+                },
+            )
+        })
         expect(runtime.createBatchAndEnqueue).toHaveBeenCalledWith(expect.objectContaining({
             batch: expect.objectContaining({
                 id: `main-batch-${reviewed.planId}`,

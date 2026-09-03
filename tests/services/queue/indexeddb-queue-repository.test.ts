@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEmptyGenerationBatchSummary } from '@/domain/queue/summary'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import {
     IndexedDBQueueRepository,
     QueueRepositoryError,
@@ -1024,6 +1025,157 @@ describe('normalized IndexedDB durable queue repository', () => {
             leaseToken: null,
             lastDiagnosticEventId: 'diagnostic:provider-timeout',
         })
+    })
+
+    it('rejects generic requeue once Provider dispatch evidence exists', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('provider-generic-retry-guard'))
+        await queue.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
+        await queue.enqueue(jobInput({ snapshot: providerSnapshot() }))
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:provider', now: NOW, ttlMs: 5_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:provider', leaseToken: lease?.leaseToken ?? '',
+        })
+        const prepared: ProviderAttemptEvidence = {
+            dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
+            responseDigest: null, spoolReceipt: null,
+        }
+        const possiblyDispatched: ProviderAttemptEvidence = {
+            ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+        }
+        await queue.recordProviderAttemptTransition({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:provider', leaseToken: lease?.leaseToken ?? '', now: LATER,
+            expectedEvidence: prepared, nextEvidence: possiblyDispatched,
+        })
+
+        await expect(queue.requeueAfterFailure({
+            jobId: 'job:1', leaseOwner: 'worker:provider', leaseToken: lease?.leaseToken ?? '',
+            now: '2026-07-14T04:00:03.000Z', readyAt: '2026-07-14T04:00:03.000Z',
+            failureKind: 'transient',
+        })).rejects.toMatchObject({
+            code: 'E_QUEUE_INVALID_TRANSITION',
+        })
+        expect(await queue.getJob('job:1')).toMatchObject({ state: 'running', attemptCount: 1 })
+        expect(await queue.listAttempts('job:1')).toEqual([
+            expect.objectContaining({ outcome: 'running', providerEvidence: possiblyDispatched }),
+        ])
+        expect(await queue.getJob('job:1')).toMatchObject({
+            leaseOwner: 'worker:provider', leaseToken: lease?.leaseToken,
+        })
+    })
+
+    it('requeues and resumes a spooled result without closing or incrementing its Provider attempt', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('provider-spooled-resume'))
+        await queue.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
+        await queue.enqueue(jobInput({ snapshot: providerSnapshot() }))
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:first', now: NOW, ttlMs: 10_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:first', leaseToken: lease?.leaseToken ?? '',
+        })
+        const prepared = {
+            dispatchState: 'prepared' as const, providerOutcome: 'running' as const,
+            billingRisk: 'none' as const, responseDigest: null, spoolReceipt: null,
+        }
+        const possibly = {
+            dispatchState: 'possibly-dispatched' as const, providerOutcome: 'running' as const,
+            billingRisk: 'possible' as const, responseDigest: null, spoolReceipt: null,
+        }
+        const started = { ...possibly, dispatchState: 'response-started' as const }
+        const digest = `sha256:${'f'.repeat(64)}` as const
+        const complete = {
+            dispatchState: 'response-complete' as const, providerOutcome: 'succeeded' as const,
+            billingRisk: 'confirmed' as const, responseDigest: digest, spoolReceipt: null,
+        }
+        const receipt = {
+            schemaVersion: 1 as const, spoolId: 'provider-spool-1', attemptId: 'job:1:1',
+            contentType: 'image/png', byteLength: 4, sha256: digest, committedAt: LATER,
+        }
+        const spooled = { ...complete, dispatchState: 'result-spooled' as const, spoolReceipt: receipt }
+        let expected: ProviderAttemptEvidence = prepared
+        for (const next of [possibly, started, complete, spooled]) {
+            await queue.recordProviderAttemptTransition({
+                jobId: 'job:1', attemptNumber: 1,
+                leaseOwner: 'worker:first', leaseToken: lease?.leaseToken ?? '', now: LATER,
+                expectedEvidence: expected, nextEvidence: next,
+            })
+            expected = next
+        }
+        await queue.requeueSpooledResult({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:first', leaseToken: lease?.leaseToken ?? '',
+            now: '2026-07-14T04:00:03.000Z', readyAt: '2026-07-14T04:00:03.000Z',
+        })
+        expect(await queue.listAttempts('job:1')).toEqual([
+            expect.objectContaining({ attemptNumber: 1, outcome: 'running', finishedAt: null, providerEvidence: spooled }),
+        ])
+        const resumedLease = await queue.acquireLease({
+            jobId: 'job:1', owner: 'worker:second', now: '2026-07-14T04:00:03.000Z', ttlMs: 10_000,
+        })
+        const resumed = await queue.resumeSpooledAttempt({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:second', leaseToken: resumedLease?.leaseToken ?? '',
+            now: '2026-07-14T04:00:04.000Z',
+        })
+        expect(resumed).toMatchObject({ state: 'running', attemptCount: 1 })
+        expect(await queue.listAttempts('job:1')).toHaveLength(1)
+    })
+
+    it('reconciles a committed spool after the previous process lease expired', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('provider-startup-reconcile'))
+        await queue.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
+        await queue.enqueue(jobInput({ snapshot: providerSnapshot() }))
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:old', now: NOW, ttlMs: 5_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:old', leaseToken: lease?.leaseToken ?? '',
+        })
+        const prepared: ProviderAttemptEvidence = {
+            dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
+            responseDigest: null, spoolReceipt: null,
+        }
+        const possibly: ProviderAttemptEvidence = {
+            ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+        }
+        const started: ProviderAttemptEvidence = { ...possibly, dispatchState: 'response-started' }
+        const digest = `sha256:${'c'.repeat(64)}` as const
+        const complete: ProviderAttemptEvidence = {
+            dispatchState: 'response-complete', providerOutcome: 'succeeded', billingRisk: 'confirmed',
+            responseDigest: null, spoolReceipt: null,
+        }
+        let expected = prepared
+        for (const next of [possibly, started, complete]) {
+            await queue.recordProviderAttemptTransition({
+                jobId: 'job:1', attemptNumber: 1,
+                leaseOwner: 'worker:old', leaseToken: lease?.leaseToken ?? '', now: LATER,
+                expectedEvidence: expected, nextEvidence: next,
+            })
+            expected = next
+        }
+        const receipt = {
+            schemaVersion: 1 as const, spoolId: 'provider-recovered', attemptId: 'job:1:1',
+            contentType: 'image/png', byteLength: 3, sha256: digest,
+            committedAt: '2026-07-14T04:00:03.000Z',
+        }
+        const reconciled = await queue.reconcileProviderAttemptAfterRestart({
+            jobId: 'job:1', attemptNumber: 1, now: '2026-07-14T04:00:10.000Z',
+            expectedEvidence: complete,
+            nextEvidence: {
+                ...complete, dispatchState: 'result-spooled', responseDigest: digest, spoolReceipt: receipt,
+            },
+            disposition: 'queued-spooled',
+        })
+        expect(reconciled).toMatchObject({ state: 'queued', attemptCount: 1, leaseOwner: null })
+        expect(await queue.listAttempts('job:1')).toEqual([
+            expect.objectContaining({
+                outcome: 'running', finishedAt: null,
+                providerEvidence: expect.objectContaining({ dispatchState: 'result-spooled', spoolReceipt: receipt }),
+            }),
+        ])
     })
 
     it('rejects Provider envelope extras and resource bindings that do not match the immutable snapshot', async () => {

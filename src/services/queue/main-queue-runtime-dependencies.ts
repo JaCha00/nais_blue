@@ -2,10 +2,12 @@ import type { MainQueuePresentationPort } from '@/application/generation/main-qu
 import type { MainBatchPlannerPort } from '@/application/generation/plan-main-batch'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import type { NaiProviderFaultInjector } from '@/services/nai/transport'
+import type { ProviderResultSpool } from '@/application/generation/provider-result-spool'
 
 export interface RuntimeMainQueueDependencies {
     readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
     readonly presentation: MainQueuePresentationPort
+    readonly providerResultSpool: ProviderResultSpool
     /** Phase 3 tests inject failures here; production composition leaves it absent. */
     readonly faultInjector?: NaiProviderFaultInjector
 }

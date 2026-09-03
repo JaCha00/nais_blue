@@ -85,6 +85,129 @@ describe('NaiTransport fetch adapters', () => {
         ])
     })
 
+    it('awaits durable observations before dispatch and reports response boundaries', async () => {
+        const observations: unknown[] = []
+        let releaseDispatch!: () => void
+        const dispatchGate = new Promise<void>(resolve => { releaseDispatch = resolve })
+        const fetchImpl = vi.fn<typeof fetch>(async () => new Response('limited', {
+            status: 429,
+            headers: { 'Retry-After': '7' },
+        }))
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+        const pending = transport.request(request({
+            timeoutMs: 1_000,
+            observer: async observation => {
+                observations.push(observation)
+                if (observation.stage === 'possibly-dispatched') await dispatchGate
+            },
+        }))
+
+        await vi.waitFor(() => expect(observations).toEqual([
+            { stage: 'before-request' },
+            { stage: 'possibly-dispatched' },
+        ]))
+        expect(fetchImpl).not.toHaveBeenCalled()
+        releaseDispatch()
+        const response = await pending
+        expect(observations).toEqual([
+            { stage: 'before-request' },
+            { stage: 'possibly-dispatched' },
+            { stage: 'response-started', status: 429, retryAfter: '7' },
+        ])
+        await response.text()
+        expect(observations).toEqual([
+            { stage: 'before-request' },
+            { stage: 'possibly-dispatched' },
+            { stage: 'response-started', status: 429, retryAfter: '7' },
+            { stage: 'response-complete', status: 429, retryAfter: '7' },
+        ])
+    })
+
+    it.each(['before-request', 'possibly-dispatched'] as const)(
+        'times out a never-settling %s observation before fetch',
+        async blockedStage => {
+            const fetchImpl = vi.fn<typeof fetch>()
+            const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+
+            await expect(transport.request(request({
+                timeoutMs: 10,
+                observer: observation => observation.stage === blockedStage
+                    ? new Promise<void>(() => undefined)
+                    : undefined,
+            }))).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+            expect(fetchImpl).not.toHaveBeenCalled()
+        },
+    )
+
+    it('cancels a never-settling dispatch observation before fetch', async () => {
+        const fetchImpl = vi.fn<typeof fetch>()
+        const controller = new AbortController()
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+        const pending = transport.request(request({
+            signal: controller.signal,
+            observer: observation => observation.stage === 'possibly-dispatched'
+                ? new Promise<void>(() => undefined)
+                : undefined,
+        }))
+
+        await Promise.resolve()
+        controller.abort()
+
+        await expect(pending).rejects.toBeInstanceOf(NaiTransportCancelledError)
+        expect(fetchImpl).not.toHaveBeenCalled()
+    })
+
+    it('times out a never-settling response-started observation', async () => {
+        const fetchImpl = vi.fn<typeof fetch>(async () => new Response('complete'))
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+
+        await expect(transport.request(request({
+            timeoutMs: 10,
+            observer: observation => observation.stage === 'response-started'
+                ? new Promise<void>(() => undefined)
+                : undefined,
+        }))).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+        expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+        ['no body', () => new Response(null, { status: 204 })],
+        ['stream EOF', () => new Response(new Uint8Array([1]), { status: 200 })],
+    ] as const)('times out a never-settling response-complete observation at %s', async (_label, responseFactory) => {
+        const transport = createFetchNaiTransport('browser-fetch', async () => responseFactory())
+        const pending = transport.request(request({
+            timeoutMs: 10,
+            observer: observation => observation.stage === 'response-complete'
+                ? new Promise<void>(() => undefined)
+                : undefined,
+        }))
+
+        if (_label === 'no body') {
+            await expect(pending).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+        } else {
+            const response = await pending
+            await expect(response.arrayBuffer()).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+        }
+    })
+
+    it('does not report response completion after a partial stream failure', async () => {
+        const observations: string[] = []
+        const transport = createFetchNaiTransport(
+            'browser-fetch',
+            async () => new Response(new Uint8Array([1]), { status: 200 }),
+        )
+        const response = await transport.request(request({
+            endpoint: 'stream',
+            observer: observation => { observations.push(observation.stage) },
+            faultInjector: point => {
+                if (point === 'after-first-stream-chunk') throw new Error('partial stream failure')
+            },
+        }))
+
+        await expect(response.arrayBuffer()).rejects.toBeInstanceOf(NaiTransportNetworkError)
+        expect(observations).toEqual(['before-request', 'possibly-dispatched', 'response-started'])
+    })
+
     it('can fail before dispatch without calling the provider', async () => {
         const fetchImpl = vi.fn<typeof fetch>()
         const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
@@ -217,6 +340,99 @@ class FakeChannel<T> {
 }
 
 describe('NaiTransport Android Rust adapter', () => {
+    it('times out a never-settling dispatch observation before native invoke', async () => {
+        const invoke = vi.fn<RustNaiTransportBindings['invoke']>()
+        const transport = createRustNaiTransport({
+            createChannel: onmessage => new FakeChannel(onmessage),
+            invoke,
+        })
+
+        await expect(transport.request(request({
+            timeoutMs: 10,
+            observer: observation => observation.stage === 'possibly-dispatched'
+                ? new Promise<void>(() => undefined)
+                : undefined,
+        }))).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+        expect(invoke).not.toHaveBeenCalled()
+    })
+
+    it('times out never-settling response observations from the native channel', async () => {
+        for (const blockedStage of ['response-started', 'response-complete'] as const) {
+            const invoke = vi.fn(async (command: string, args: Record<string, unknown>) => {
+                if (command !== 'nai_generate_request') return true as never
+                const event = args.onEvent as FakeChannel<NaiNativeTransportEvent>
+                event.emit({ type: 'response-headers', status: 200, contentType: 'application/zip' })
+                event.emit({ type: 'body-chunk', bytesBase64: 'AQ==' })
+                event.emit({ type: 'end' })
+                return undefined as never
+            })
+            const transport = createRustNaiTransport({
+                createChannel: onmessage => new FakeChannel(onmessage),
+                invoke,
+            })
+            const pending = transport.request(request({
+                timeoutMs: 10,
+                observer: observation => observation.stage === blockedStage
+                    ? new Promise<void>(() => undefined)
+                    : undefined,
+            }))
+
+            if (blockedStage === 'response-started') {
+                await expect(pending).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+            } else {
+                const response = await pending
+                await expect(response.arrayBuffer()).rejects.toBeInstanceOf(NaiTransportTimeoutError)
+            }
+            expect(invoke).toHaveBeenCalledWith('nai_generate_request', expect.any(Object))
+        }
+    })
+
+    it('awaits the durable dispatch and response-header gates', async () => {
+        const observations: string[] = []
+        let releaseDispatch!: () => void
+        let releaseHeaders!: () => void
+        const dispatchGate = new Promise<void>(resolve => { releaseDispatch = resolve })
+        const headerGate = new Promise<void>(resolve => { releaseHeaders = resolve })
+        const invoke = vi.fn(async (command: string, args: Record<string, unknown>) => {
+            if (command !== 'nai_generate_request') return false as never
+            const event = args.onEvent as FakeChannel<NaiNativeTransportEvent>
+            event.emit({ type: 'response-headers', status: 200, contentType: 'application/zip' })
+            event.emit({ type: 'body-chunk', bytesBase64: 'AQ==' })
+            event.emit({ type: 'end' })
+            return undefined as never
+        })
+        const transport = createRustNaiTransport({
+            createChannel: onmessage => new FakeChannel(onmessage),
+            invoke,
+        })
+        const pending = transport.request(request({
+            timeoutMs: 1_000,
+            observer: async observation => {
+                observations.push(observation.stage)
+                if (observation.stage === 'possibly-dispatched') await dispatchGate
+                if (observation.stage === 'response-started') {
+                    expect(observation.retryAfter).toBeNull()
+                    await headerGate
+                }
+            },
+        }))
+
+        await vi.waitFor(() => expect(observations).toEqual(['before-request', 'possibly-dispatched']))
+        expect(invoke).not.toHaveBeenCalled()
+        releaseDispatch()
+        await vi.waitFor(() => expect(observations).toContain('response-started'))
+        let settled = false
+        void pending.then(() => { settled = true })
+        await Promise.resolve()
+        expect(settled).toBe(false)
+        releaseHeaders()
+        const response = await pending
+        expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1]))
+        expect(observations).toEqual([
+            'before-request', 'possibly-dispatched', 'response-started', 'response-complete',
+        ])
+    })
+
     it('consumes JSON body chunks on the ordered mobile event channel before end', async () => {
         const bindings: RustNaiTransportBindings = {
             createChannel: onmessage => new FakeChannel(onmessage),

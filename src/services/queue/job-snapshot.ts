@@ -4,6 +4,7 @@ import type {
     GenerationSnapshotResource,
     SnapshotResumability,
 } from '@/domain/queue/types'
+import type { ProviderExecutionEnvelope } from '@/domain/queue/provider-result'
 
 export const GENERATION_JOB_SNAPSHOT_SCHEMA_VERSION = 1 as const
 
@@ -40,6 +41,8 @@ export interface CreateGenerationJobSnapshotInput {
     resources: readonly GenerationSnapshotResource[]
     resumability: SnapshotResumability
     nonResumableReason?: 'volatile-resource' | 'runtime-only-capability'
+    /** Present only for jobs routed through the Provider-safe executor. */
+    providerExecutionEnvelope?: ProviderExecutionEnvelope
 }
 
 function normalizedKey(key: string): string {
@@ -115,6 +118,9 @@ export function createGenerationJobSnapshot(input: CreateGenerationJobSnapshotIn
         outputPolicy: input.outputPolicy,
         resources: input.resources,
         resumability: input.resumability,
+        ...(input.providerExecutionEnvelope === undefined
+            ? {}
+            : { providerExecutionEnvelope: input.providerExecutionEnvelope }),
         ...(input.nonResumableReason === undefined
             ? {}
             : { nonResumableReason: input.nonResumableReason }),

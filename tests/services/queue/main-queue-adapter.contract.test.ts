@@ -9,7 +9,7 @@ describe('durable Main sequential-fragment execution contract', () => {
             'utf8',
         )
         const reserve = source.indexOf('reserveWildcardSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)')
-        const transport = source.indexOf('await executeNovelAIImageTransport')
+        const transport = source.indexOf('spooled = await dispatchAndSpool', reserve)
         const revisionGuard = source.indexOf('isSupportedNaiPayloadBuilderRevision(payload.payloadBuilderRevision)')
         const compatibilityGuard = source.indexOf('queryNaiGenerationCompatibility(')
 
@@ -28,7 +28,7 @@ describe('durable Main sequential-fragment execution contract', () => {
             resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'),
             'utf8',
         )
-        const response = source.indexOf('const bytes = decodeImageBytes(result.imageData)')
+        const response = source.indexOf('bytes = decodeImageBytes(result.imageData)')
         const seam = source.indexOf("faultInjector('after-spool-commit')")
         const outputWriter = source.indexOf('getRuntimeOutputWriter()')
 

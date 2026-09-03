@@ -23,6 +23,40 @@ function resumableSnapshot() {
 }
 
 describe('durable generation job snapshots', () => {
+    it('includes an optional Provider envelope without changing legacy snapshots', () => {
+        const legacy = resumableSnapshot()
+        const withEnvelope = createGenerationJobSnapshot({
+            prompt: legacy.prompt,
+            parameters: legacy.parameters,
+            outputPolicy: legacy.outputPolicy,
+            resources: legacy.resources,
+            resumability: legacy.resumability,
+            providerExecutionEnvelope: {
+                schemaVersion: 1,
+                provider: 'novelai',
+                compatibilityProfileId: 'nai:test',
+                payloadBuilderRevision: 'payload-v1',
+                modelCatalogRevision: 'catalog-v1',
+                action: 'img2img',
+                responseMode: 'standard',
+                semanticIntentHash: `sha256:${'a'.repeat(64)}`,
+                queueResourceBindings: [{
+                    resourceId: 'resource:source',
+                    role: 'source',
+                    digest: 'sha256:source',
+                }],
+            },
+        })
+
+        expect(legacy).not.toHaveProperty('providerExecutionEnvelope')
+        expect(withEnvelope.providerExecutionEnvelope).toMatchObject({
+            provider: 'novelai',
+            action: 'img2img',
+        })
+        expect(hashGenerationJobSnapshot(withEnvelope)).not.toBe(hashGenerationJobSnapshot(legacy))
+        expect(Object.isFrozen(withEnvelope.providerExecutionEnvelope)).toBe(true)
+    })
+
     it('hashes canonical immutable content independent of object key order', () => {
         const first = resumableSnapshot()
         const second = createGenerationJobSnapshot({

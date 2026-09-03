@@ -1,7 +1,8 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { GenerationJobSnapshot, QueueArtifactReference } from '@/domain/queue/types'
+import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import {
     DurableQueueCoordinator,
     QueueExecutionError,
@@ -10,6 +11,7 @@ import {
 import { OutputWriterError } from '@/services/output/output-writer'
 import {
     IndexedDBQueueRepository,
+    QueueRepositoryError,
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
 import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
@@ -91,6 +93,30 @@ function sequentialMainJobs(count: number): EnqueueGenerationJobInput[] {
         maxAttempts: 3,
         idempotencyKey: `job-key:${index}`,
     }))
+}
+
+function providerSnapshot(): GenerationJobSnapshot {
+    return {
+        ...snapshot(),
+        providerExecutionEnvelope: {
+            schemaVersion: 1,
+            provider: 'novelai',
+            compatibilityProfileId: 'profile',
+            payloadBuilderRevision: 'nai-blue-payload-v1',
+            modelCatalogRevision: 'nai-blue-model-catalog-v1',
+            action: 'generate',
+            responseMode: 'standard',
+            semanticIntentHash: `sha256:${'a'.repeat(64)}`,
+            queueResourceBindings: [],
+        },
+    }
+}
+
+function providerWorkflowJob(id = 'job:provider'): EnqueueGenerationJobInput {
+    return {
+        ...workflowJob({ id, batchId: 'batch:1', workflow: 'main' }),
+        snapshot: providerSnapshot(),
+    }
 }
 
 function workflowJob(input: {
@@ -447,6 +473,124 @@ describe('durable queue coordinator', () => {
             pauseReason: 'compatibility',
         })
         expect(await queue.getJob('job:0')).toMatchObject({ state: 'queued', attemptCount: 1 })
+    })
+
+    it('does not generic-retry after Provider evidence becomes uncertain', async () => {
+        const queue = repository('provider-unknown-generic-guard')
+        await enqueue(queue, [providerWorkflowJob()])
+        const genericRetry = vi.spyOn(queue, 'requeueAfterFailure')
+        const runtime = coordinator(queue, async context => {
+            const prepared = context.providerAttempt.providerEvidence
+            if (prepared === null) throw new Error('provider evidence fixture missing')
+            const possiblyDispatched: ProviderAttemptEvidence = {
+                ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+            }
+            await context.recordProviderTransition(possiblyDispatched)
+            await context.recordProviderTransition(
+                { ...possiblyDispatched, providerOutcome: 'unknown' },
+                { blockReason: 'provider-outcome-unknown' },
+            )
+            throw new QueueExecutionError('transient', 'late transport failure')
+        })
+
+        await runtime.drain()
+        expect(genericRetry).not.toHaveBeenCalled()
+        expect(await queue.getJob('job:provider')).toMatchObject({
+            state: 'blocked', blockReason: 'provider-outcome-unknown', leaseOwner: null,
+        })
+    })
+
+    it('does not generic-retry when the Provider-safe spool requeue write fails', async () => {
+        const queue = repository('provider-spool-requeue-write-failure')
+        await enqueue(queue, [providerWorkflowJob()])
+        const genericRetry = vi.spyOn(queue, 'requeueAfterFailure')
+        const spoolRequeue = vi.spyOn(queue, 'requeueSpooledResult').mockRejectedValue(
+            new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'spool requeue readback failed'),
+        )
+        let expectedEvidence: ProviderAttemptEvidence | null = null
+        const runtime = coordinator(queue, async context => {
+            const prepared = context.providerAttempt.providerEvidence
+            if (prepared === null) throw new Error('provider evidence fixture missing')
+            const possiblyDispatched: ProviderAttemptEvidence = {
+                ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+            }
+            const responseStarted: ProviderAttemptEvidence = {
+                ...possiblyDispatched, dispatchState: 'response-started',
+            }
+            const responseComplete: ProviderAttemptEvidence = {
+                ...responseStarted, dispatchState: 'response-complete',
+                providerOutcome: 'succeeded', billingRisk: 'confirmed',
+                responseDigest: `sha256:${'b'.repeat(64)}`,
+            }
+            const receipt = {
+                schemaVersion: 1 as const, spoolId: 'provider-requeue-failure', attemptId: context.providerAttempt.id,
+                contentType: 'image/png', byteLength: 3, sha256: responseComplete.responseDigest!,
+                committedAt: NOW,
+            }
+            const resultSpooled: ProviderAttemptEvidence = {
+                ...responseComplete, dispatchState: 'result-spooled', spoolReceipt: receipt,
+            }
+            expectedEvidence = resultSpooled
+            await context.recordProviderTransition(possiblyDispatched)
+            await context.recordProviderTransition(responseStarted)
+            await context.recordProviderTransition(responseComplete)
+            await context.recordProviderTransition(resultSpooled)
+            await context.requeueSpooledResult({ pauseReason: 'local-io' })
+        })
+
+        await runtime.drain()
+        expect(spoolRequeue).toHaveBeenCalledTimes(1)
+        expect(genericRetry).not.toHaveBeenCalled()
+        expect(await queue.getBatch('batch:1')).toMatchObject({
+            state: 'paused', pauseReason: 'local-io',
+        })
+        expect(await queue.getJob('job:provider')).toMatchObject({ state: 'running' })
+        expect(await queue.listAttempts('job:provider')).toEqual([
+            expect.objectContaining({ outcome: 'running', providerEvidence: expectedEvidence }),
+        ])
+    })
+
+    it('requeues an unhandled downstream failure from the existing spool without a new attempt', async () => {
+        const queue = repository('provider-spool-downstream-fallback')
+        await enqueue(queue, [providerWorkflowJob()])
+        const genericRetry = vi.spyOn(queue, 'requeueAfterFailure')
+        const runtime = coordinator(queue, async context => {
+            const prepared = context.providerAttempt.providerEvidence
+            if (prepared === null) throw new Error('provider evidence fixture missing')
+            const possiblyDispatched: ProviderAttemptEvidence = {
+                ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+            }
+            const responseStarted: ProviderAttemptEvidence = {
+                ...possiblyDispatched, dispatchState: 'response-started',
+            }
+            const responseComplete: ProviderAttemptEvidence = {
+                ...responseStarted, dispatchState: 'response-complete',
+                providerOutcome: 'succeeded', billingRisk: 'confirmed',
+                responseDigest: `sha256:${'b'.repeat(64)}`,
+            }
+            const resultSpooled: ProviderAttemptEvidence = {
+                ...responseComplete,
+                dispatchState: 'result-spooled',
+                spoolReceipt: {
+                    schemaVersion: 1, spoolId: 'provider-downstream', attemptId: context.providerAttempt.id,
+                    contentType: 'image/png', byteLength: 3, sha256: responseComplete.responseDigest!,
+                    committedAt: NOW,
+                },
+            }
+            await context.recordProviderTransition(possiblyDispatched)
+            await context.recordProviderTransition(responseStarted)
+            await context.recordProviderTransition(responseComplete)
+            await context.recordProviderTransition(resultSpooled)
+            throw new Error('output binding storage unavailable')
+        })
+
+        await runtime.drain()
+        expect(genericRetry).not.toHaveBeenCalled()
+        expect(await queue.getBatch('batch:1')).toMatchObject({ state: 'paused', pauseReason: 'fatal' })
+        expect(await queue.getJob('job:provider')).toMatchObject({ state: 'queued', attemptCount: 1 })
+        expect(await queue.listAttempts('job:provider')).toEqual([
+            expect.objectContaining({ outcome: 'running', attemptNumber: 1 }),
+        ])
     })
 
     it('persists 429 backoff and does not turn it into a global pause', async () => {
