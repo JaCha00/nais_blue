@@ -738,6 +738,37 @@ describe('OutputWriter fault containment', () => {
         expectNoTransactionArtifacts(adapter)
     })
 
+    it('leaves files and journal untouched when a strict retry owner no longer matches', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-strict-owner')
+        const commitWorkflow = vi.fn()
+
+        await expect(outputWriter.write(request({
+            sourceJobId: 'job:owner',
+            terminalWorkflowCommit: true,
+            commitWorkflow: () => {
+                adapter.fault = { operation: 'write-journal' }
+            },
+        }))).rejects.toBeInstanceOf(OutputWriterError)
+
+        await expect(outputWriter.retryFilesCommittedWorkflow(
+            'txn-strict-owner',
+            'job:other',
+            commitWorkflow,
+        )).resolves.toEqual({
+            transactionId: 'txn-strict-owner',
+            action: 'ineligible',
+            ineligibility: 'source-job-mismatch',
+        })
+        expect(commitWorkflow).not.toHaveBeenCalled()
+        expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
+        expect(await outputWriter.inspectPendingQueueTransactions()).toEqual([{
+            transactionId: 'txn-strict-owner',
+            sourceJobId: 'job:owner',
+            phase: 'files-committed',
+        }])
+    })
+
     it('treats an existing organizer artifact sidecar as a collision and rolls it back with the image on workflow failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         const existing = new Uint8Array([7, 7, 7])

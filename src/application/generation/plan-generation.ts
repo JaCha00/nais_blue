@@ -12,6 +12,8 @@ import type { WorkflowDraftRepositoryPort } from '@/application/workflow/workflo
 import type {
     ApprovalRequirement,
     CompatibilitySnapshot,
+    DetachedGenerationCapture,
+    GenerationConflictSource,
     GenerationExecutionPolicySnapshot,
     GenerationPlan,
     GenerationPlanView,
@@ -45,6 +47,20 @@ function digest(value: unknown): Sha256Digest {
     return `sha256:${hashCanonicalValue(value)}`
 }
 
+/**
+ * Hashes the JSON-safe detached payload without trusting its claimed hash.
+ * Prepared Main values are included, so replay cannot swap executable state
+ * while retaining only the same public semantic projection.
+ */
+export function hashDetachedGenerationCapture<TPrepared>(
+    capture: DetachedGenerationCapture<TPrepared> | Omit<DetachedGenerationCapture<TPrepared>, 'contentHash'>,
+): Sha256Digest {
+    const { contentHash: _claimedHash, ...content } = capture as DetachedGenerationCapture<TPrepared>
+    const serialized = JSON.stringify(content)
+    if (serialized === undefined) throw new TypeError('Detached generation capture must be JSON-safe.')
+    return digest(JSON.parse(serialized) as unknown)
+}
+
 /** Hashes one reviewed job's Provider meaning without output or execution policy. */
 export function hashGenerationSemanticIntent(
     semantic: PreparedGenerationJobDraft['semantic'],
@@ -60,13 +76,66 @@ function isSeed(value: number): boolean {
     return Number.isSafeInteger(value) && value >= 0 && value <= UINT32_MAX
 }
 
-function validateInput(input: PlanGenerationInput): readonly PlanIssue[] {
+function validIdentifier(value: unknown): value is string {
+    return typeof value === 'string' && value.length > 0 && value.length <= 200 && value.trim() === value
+}
+
+function isDigest(value: unknown): value is Sha256Digest {
+    return typeof value === 'string' && /^sha256:[a-f0-9]{64}$/.test(value)
+}
+
+function conflictSource<TPrepared>(source: PlanGenerationInput<TPrepared>['source']): GenerationConflictSource {
+    if (source.kind === 'workflow-draft') return structuredClone(source)
+    return Object.freeze({
+        kind: 'detached-generation-capture',
+        captureId: source.capture.captureId,
+        contentHash: source.capture.contentHash,
+    })
+}
+
+function validateInput<TPrepared>(input: PlanGenerationInput<TPrepared>): readonly PlanIssue[] {
     const issues: PlanIssue[] = []
-    if (input.source.kind !== 'workflow-draft'
-        || !input.source.draftId
-        || !Number.isSafeInteger(input.source.expectedRevision)
-        || input.source.expectedRevision < 0) {
-        issues.push(issue('invalid-source', 'source', 'A revisioned workflow draft is required.'))
+    if (input.source.kind === 'workflow-draft') {
+        if (!input.source.draftId
+            || !Number.isSafeInteger(input.source.expectedRevision)
+            || input.source.expectedRevision < 0) {
+            issues.push(issue('invalid-source', 'source', 'A revisioned workflow draft is required.'))
+        }
+    } else {
+        const capture = input.source.capture
+        if (capture.schemaVersion !== 1 || !validIdentifier(capture.captureId)) {
+            issues.push(issue('invalid-detached-capture', 'source.capture', 'A versioned detached capture identity is required.'))
+        }
+        if (!isDigest(capture.contentHash) || !isDigest(capture.credentialReadinessFingerprint)) {
+            issues.push(issue('invalid-detached-capture-digest', 'source.capture', 'Detached capture digests must be canonical SHA-256 values.'))
+        }
+        if (!Array.isArray(capture.sourceBindings)
+            || capture.sourceBindings.some(binding => (
+                binding.resourceType === 'main-generation-capture'
+                || !validIdentifier(binding.resourceId)
+                || !isDigest(binding.contentHash)
+                || (binding.revision !== null
+                    && (!Number.isSafeInteger(binding.revision) || binding.revision < 0))
+            ))) {
+            issues.push(issue('invalid-detached-source-bindings', 'source.capture.sourceBindings', 'Detached source bindings are invalid.'))
+        }
+        if (!Array.isArray(capture.materializedSeeds)
+            || !capture.materializedSeeds.every(isSeed)
+            || !Array.isArray(capture.jobs)) {
+            issues.push(issue('invalid-detached-capture-jobs', 'source.capture.jobs', 'Detached jobs and seeds must be materialized arrays.'))
+        }
+        if (input.seedPolicy.kind !== 'replay'
+            || input.seedPolicy.traceId !== capture.captureId) {
+            issues.push(issue('invalid-detached-seed-policy', 'seedPolicy', 'Detached captures must replay their captured seed trace.'))
+        }
+        try {
+            if (isDigest(capture.contentHash)
+                && hashDetachedGenerationCapture(capture) !== capture.contentHash) {
+                issues.push(issue('detached-capture-hash-mismatch', 'source.capture.contentHash', 'Detached capture content does not match its declared hash.'))
+            }
+        } catch {
+            issues.push(issue('invalid-detached-capture-content', 'source.capture', 'Detached capture content must be JSON-safe.'))
+        }
     }
     if (!Number.isSafeInteger(input.count)
         || input.count < 1
@@ -219,50 +288,77 @@ function createView<TPrepared>(plan: GenerationPlan<TPrepared>): GenerationPlanV
  * this use case read-only and independent of UI, platform, and provider code.
  */
 export async function planGeneration<TPrepared = unknown>(
-    input: PlanGenerationInput,
+    input: PlanGenerationInput<TPrepared>,
     dependencies: PlanGenerationDependencies<TPrepared>,
 ): Promise<PlanGenerationResult<TPrepared>> {
     const inputIssues = validateInput(input)
     if (inputIssues.length > 0) return immutable({ status: 'invalid', issues: inputIssues })
 
-    const draft = await dependencies.drafts.get(input.source.draftId)
-    if (draft === null || draft.revision !== input.source.expectedRevision) {
-        return immutable({
-            status: 'conflict',
-            source: structuredClone(input.source),
-            currentRevision: draft?.revision ?? null,
-            action: 'reload-workflow-draft',
-        })
-    }
-    const draftIssues = invalidDraftIssues(draft)
-    if (draftIssues.length > 0) return immutable({ status: 'invalid', issues: draftIssues })
-    const unsupported = unsupportedDraftIssue(draft)
-    if (unsupported !== null) {
-        return immutable({ status: 'unsupported', capability: unsupported.code, issues: [unsupported] })
-    }
-
-    const seeds = await materializeSeeds(input, dependencies)
-    if (seeds === null) {
-        return immutable({
-            status: 'invalid',
-            issues: [issue(
-                input.seedPolicy.kind === 'replay' ? 'replay-trace-unavailable' : 'random-source-unavailable',
-                'seedPolicy',
-                'The requested seed trace could not be materialized.',
-            )],
-        })
-    }
-
+    let seeds: readonly number[]
     let prepared: readonly PreparedGenerationJobDraft<TPrepared>[]
-    try {
-        prepared = await dependencies.planner.prepare({
-            draft: structuredClone(draft),
-            materializedSeeds: seeds,
-        })
-    } catch (error) {
-        const classified = dependencies.classifyPreparationError?.(error) ?? null
-        if (classified === null) throw error
-        return immutable({ status: 'invalid', issues: [classified] })
+    let sourceBindings: GenerationPlan<TPrepared>['sourceBindings']
+    let executionPolicy: GenerationExecutionPolicySnapshot
+    if (input.source.kind === 'workflow-draft') {
+        const draft = await dependencies.drafts.get(input.source.draftId)
+        if (draft === null || draft.revision !== input.source.expectedRevision) {
+            return immutable({
+                status: 'conflict',
+                source: conflictSource(input.source),
+                currentRevision: draft?.revision ?? null,
+                action: 'reload-workflow-draft',
+            })
+        }
+        const draftIssues = invalidDraftIssues(draft)
+        if (draftIssues.length > 0) return immutable({ status: 'invalid', issues: draftIssues })
+        const unsupported = unsupportedDraftIssue(draft)
+        if (unsupported !== null) {
+            return immutable({ status: 'unsupported', capability: unsupported.code, issues: [unsupported] })
+        }
+
+        const materialized = await materializeSeeds(input, dependencies)
+        if (materialized === null) {
+            return immutable({
+                status: 'invalid',
+                issues: [issue(
+                    input.seedPolicy.kind === 'replay' ? 'replay-trace-unavailable' : 'random-source-unavailable',
+                    'seedPolicy',
+                    'The requested seed trace could not be materialized.',
+                )],
+            })
+        }
+        seeds = materialized
+        try {
+            prepared = await dependencies.planner.prepare({
+                draft: structuredClone(draft),
+                materializedSeeds: seeds,
+            })
+        } catch (error) {
+            const classified = dependencies.classifyPreparationError?.(error) ?? null
+            if (classified === null) throw error
+            return immutable({ status: 'invalid', issues: [classified] })
+        }
+        sourceBindings = [{
+            resourceType: 'workflow-draft',
+            resourceId: draft.id,
+            revision: draft.revision,
+            contentHash: digest(draft),
+        }]
+        executionPolicy = {
+            ...dependencies.executionPolicy,
+            credentialDispatch: structuredClone(draft.payload.credentialPolicy),
+            metadataMode: draft.payload.output.metadataMode,
+        }
+    } else {
+        const capture = input.source.capture
+        seeds = Object.freeze([...capture.materializedSeeds])
+        prepared = structuredClone(capture.jobs)
+        sourceBindings = [{
+            resourceType: 'main-generation-capture',
+            resourceId: capture.captureId,
+            revision: null,
+            contentHash: capture.contentHash,
+        }, ...structuredClone(capture.sourceBindings)]
+        executionPolicy = structuredClone(capture.executionPolicy)
     }
     if (prepared.length !== input.count) {
         return immutable({
@@ -327,17 +423,6 @@ export async function planGeneration<TPrepared = unknown>(
         kind: 'budget', fieldPath: 'budget.maxAnlas', required: estimatedAnlas, allowed: input.budget.maxAnlas,
     })
 
-    const sourceBindings = [{
-        resourceType: 'workflow-draft' as const,
-        resourceId: draft.id,
-        revision: draft.revision,
-        contentHash: digest(draft),
-    }]
-    const executionPolicy: GenerationExecutionPolicySnapshot = {
-        ...dependencies.executionPolicy,
-        credentialDispatch: structuredClone(draft.payload.credentialPolicy),
-        metadataMode: draft.payload.output.metadataMode,
-    }
     const semanticPlanHash = digest({
         schemaVersion: 1,
         jobs: jobs.map(job => ({
@@ -395,10 +480,12 @@ export async function planGeneration<TPrepared = unknown>(
  */
 export async function replayGenerationPlan<TPrepared = unknown>(
     reviewed: GenerationPlan,
-    input: Omit<PlanGenerationInput, 'seedPolicy'>,
+    input: Omit<PlanGenerationInput<TPrepared>, 'seedPolicy'>,
     dependencies: PlanGenerationDependencies<TPrepared>,
 ): Promise<PlanGenerationResult<TPrepared>> {
-    const traceId = reviewed.materializedSeedTrace.traceId ?? `review:${digest(reviewed.materializedSeedTrace.seeds)}`
+    const traceId = input.source.kind === 'detached-generation-capture'
+        ? input.source.capture.captureId
+        : reviewed.materializedSeedTrace.traceId ?? `review:${digest(reviewed.materializedSeedTrace.seeds)}`
     const result = await planGeneration({
         ...input,
         seedPolicy: { kind: 'replay', traceId },
@@ -414,9 +501,13 @@ export async function replayGenerationPlan<TPrepared = unknown>(
     if (mismatch === null) return result
     return immutable({
         status: 'conflict',
-        source: structuredClone(input.source),
-        currentRevision: result.plan.sourceBindings[0]?.revision ?? null,
-        action: 'reload-workflow-draft',
+        source: conflictSource(input.source),
+        currentRevision: input.source.kind === 'workflow-draft'
+            ? result.plan.sourceBindings[0]?.revision ?? null
+            : null,
+        action: input.source.kind === 'workflow-draft'
+            ? 'reload-workflow-draft'
+            : 'recapture-generation',
         mismatch,
     })
 }

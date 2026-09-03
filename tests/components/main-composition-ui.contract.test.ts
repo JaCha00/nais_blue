@@ -37,7 +37,9 @@ describe('Main composition UI contract', () => {
         expect(command).toContain("executionAuthority === 'legacy'")
         expect(command).toContain("return 'low-quality-steps'")
         expect(command).toContain('await generation.generate()')
-        expect(command).toContain('enqueueCurrentMainBatch()')
+        expect(command).toContain('enqueuePreparedMainGeneration({')
+        expect(command).toContain('cancelGeneration({')
+        expect(command).not.toContain('enqueueCurrentMainBatch()')
         expect(mainMode).toContain("outcome !== 'low-quality-steps'")
     })
 

@@ -152,7 +152,8 @@ interface OutputRecoveryJournal {
 
 export interface OutputRecoveryResult {
     transactionId: string
-    action: 'rolled-back' | 'retried' | 'cleaned' | 'missing' | 'failed'
+    action: 'rolled-back' | 'retried' | 'cleaned' | 'missing' | 'ineligible' | 'failed'
+    ineligibility?: 'source-job-mismatch' | 'phase-not-files-committed'
     error?: string
 }
 
@@ -923,6 +924,41 @@ export class OutputWriter {
                 action: 'failed',
                 error: diagnostic.userSummary,
             }
+        }
+    }
+
+    /**
+     * Retries only the workflow half of one pre-bound Queue transaction. Unlike
+     * generic recovery, a changed phase or owner is left untouched for its
+     * current authority to reconcile.
+     */
+    async retryFilesCommittedWorkflow(
+        transactionId: string,
+        expectedSourceJobId: string,
+        commitWorkflow: (result: OutputWriteResult) => void | Promise<void>,
+    ): Promise<OutputRecoveryResult> {
+        try {
+            const bytes = await this.platform.readJournal(transactionId)
+            if (bytes === null) return { transactionId, action: 'missing' }
+            const journal = parseJournal(bytes)
+            if (journal.sourceJobId !== expectedSourceJobId) {
+                return { transactionId, action: 'ineligible', ineligibility: 'source-job-mismatch' }
+            }
+            if (journal.phase !== 'files-committed') {
+                return { transactionId, action: 'ineligible', ineligibility: 'phase-not-files-committed' }
+            }
+
+            await commitWorkflow(resultFromJournal(journal))
+            journal.phase = 'workflow-committed'
+            await this.persistJournal(journal)
+            await this.cleanupCompleted(journal)
+            return { transactionId, action: 'retried' }
+        } catch (error) {
+            const diagnostic = reportDiagnostic(error, {
+                operation: 'output.recovery',
+                stage: 'retry-files-committed-workflow',
+            })
+            return { transactionId, action: 'failed', error: diagnostic.userSummary }
         }
     }
 

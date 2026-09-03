@@ -10,7 +10,7 @@ import {
 } from '@/services/queue/indexeddb-queue-repository'
 import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
 import type { QueueArtifactRepository } from '@/services/queue/queue-artifact-lineage'
-import { recoverQueueLinkedOutputs } from '@/services/queue/queue-output-recovery'
+import { recoverQueueLinkedOutputs, retryQueueLinkedOutput } from '@/services/queue/queue-output-recovery'
 
 const NOW = '2026-07-14T09:00:00.000Z'
 const LATER = '2026-07-14T09:01:00.000Z'
@@ -62,7 +62,7 @@ function artifactRepository() {
             records.set(record.artifactId, record)
             return record
         },
-        removeOriginalIfUnmodified: async () => true,
+        removeOriginalIfUnmodified: async input => records.delete(input.artifactId),
     }
     return { value, records }
 }
@@ -91,21 +91,19 @@ describe('queue-linked OutputWriter recovery', () => {
             outputTransactionId: 'txn-bound', artifactReference: artifact,
         })
 
-        const recoverTransaction = vi.fn(async (
+        const retryFilesCommittedWorkflow = vi.fn(async (
             _transactionId: string,
-            options: Parameters<OutputWriter['recoverTransaction']>[1],
+            _expectedSourceJobId: string,
+            commitWorkflow: Parameters<OutputWriter['retryFilesCommittedWorkflow']>[2],
         ) => {
-            if (options?.canCommit?.()) {
-                await options.commitWorkflow?.(recoveredOutput())
-                return { transactionId: 'txn-bound', action: 'retried' as const }
-            }
-            return { transactionId: 'txn-bound', action: 'rolled-back' as const }
+            await commitWorkflow(recoveredOutput())
+            return { transactionId: 'txn-bound', action: 'retried' as const }
         })
         const writer = {
             inspectPendingQueueTransactions: async () => [{
                 transactionId: 'txn-bound', sourceJobId: 'job:1', phase: 'files-committed' as const,
             }],
-            recoverTransaction,
+            retryFilesCommittedWorkflow,
         } as unknown as OutputWriter
 
         const result = await recoverQueueLinkedOutputs(repository, writer, {
@@ -114,9 +112,11 @@ describe('queue-linked OutputWriter recovery', () => {
         })
 
         expect(result).toEqual([{ transactionId: 'txn-bound', action: 'retried' }])
-        expect(recoverTransaction).toHaveBeenCalledWith('txn-bound', expect.objectContaining({
-            mode: 'retry-workflow',
-        }))
+        expect(retryFilesCommittedWorkflow).toHaveBeenCalledWith(
+            'txn-bound',
+            'job:1',
+            expect.any(Function),
+        )
         expect(await repository.getJob('job:1')).toMatchObject({
             state: 'succeeded',
             outputTransactionId: 'txn-bound',
@@ -128,6 +128,58 @@ describe('queue-linked OutputWriter recovery', () => {
             sourceSceneId: null,
             contentChecksum: CHECKSUM,
             original: { file: { fileName: 'queue-output.png' }, size: 222 },
+        })
+    })
+
+    it('compensates only the artifact created by a targeted retry when Queue commit fails', async () => {
+        const repository = queue()
+        const artifacts = artifactRepository()
+        await repository.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch-key:1',
+            },
+            jobs: [job()],
+        })
+        const lease = await repository.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 1_000 })
+        await repository.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+        })
+        const artifact: QueueArtifactReference = {
+            kind: 'output-writer', artifactId: 'artifact:1', digest: 'sha256:artifact', mimeType: 'image/png',
+        }
+        await repository.bindOutputTransaction({
+            jobId: 'job:1', leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', now: NOW,
+            outputTransactionId: 'txn-bound', artifactReference: artifact,
+        })
+        vi.spyOn(repository, 'recoverFilesCommittedSuccess').mockRejectedValueOnce(new Error('CAS changed'))
+        const writer = {
+            retryFilesCommittedWorkflow: async (
+                _transactionId: string,
+                _expectedSourceJobId: string,
+                commitWorkflow: Parameters<OutputWriter['retryFilesCommittedWorkflow']>[2],
+            ) => {
+                try {
+                    await commitWorkflow(recoveredOutput())
+                    return { transactionId: 'txn-bound', action: 'retried' as const }
+                } catch {
+                    return { transactionId: 'txn-bound', action: 'failed' as const, error: 'Queue commit failed' }
+                }
+            },
+        } as unknown as OutputWriter
+
+        await expect(retryQueueLinkedOutput(repository, writer, {
+            jobId: 'job:1',
+            now: LATER,
+            artifactRepository: artifacts.value,
+        })).resolves.toEqual({ status: 'failed', message: 'Queue commit failed' })
+
+        expect(artifacts.records.has('artifact:1')).toBe(false)
+        expect(await repository.getJob('job:1')).toMatchObject({
+            state: 'running',
+            outputTransactionId: 'txn-bound',
+            artifactReference: artifact,
         })
     })
 })

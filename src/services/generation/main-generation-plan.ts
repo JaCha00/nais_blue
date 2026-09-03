@@ -13,7 +13,7 @@ export interface PreparedMainGeneration {
     readonly params: GenerationParams
     readonly finalPrompt: string
     readonly imageFormat: 'png' | 'webp'
-    readonly metadataMode: GenerationParams['metadataMode']
+    readonly metadataMode: NonNullable<GenerationParams['metadataMode']>
     readonly streaming: boolean
     readonly sourceEdit: boolean
     readonly sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
@@ -40,7 +40,7 @@ export interface PreparedMainGeneration {
 export interface PrepareMainGenerationOptions {
     readonly params: GenerationParams
     readonly fallbackImageFormat: 'png' | 'webp'
-    readonly fallbackMetadataMode: GenerationParams['metadataMode']
+    readonly fallbackMetadataMode: NonNullable<GenerationParams['metadataMode']>
     readonly streamingRequested: boolean
     readonly sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
     readonly output: {

@@ -60,12 +60,26 @@ describe('Guided batch production contract', () => {
     })
 
     it('requires detached planning, explicit cost consent, stable idempotency, and durable previews', async () => {
-        const component = await source('src/presentation/workflow/GuidedBatchImages.tsx')
+        const [component, single, command] = await Promise.all([
+            source('src/presentation/workflow/GuidedBatchImages.tsx'),
+            source('src/presentation/workflow/GuidedSingleImage.tsx'),
+            source('src/presentation/generation/workflow-draft-generation-command.ts'),
+        ])
         const results = await source('src/presentation/workflow/guided-batch-results.ts')
 
-        expect(component).toContain('createWorkflowDraftMainBatchPlanner(ready)')
-        expect(component).toContain("submissionPolicy: { kind: 'guided', costConsent: consent }")
-        expect(component).toContain('idempotencyScope: `guided:${ready.id}:revision:${ready.revision}`')
+        for (const guided of [component, single]) {
+            expect(guided).toContain('enqueueWorkflowDraftGenerationCommand({')
+            expect(guided).toContain('drafts: getWorkflowDraftRepository()')
+            expect(guided).toContain('fragmentRepository: useFragmentStore.getState().getLookupRepository()')
+            expect(guided).not.toContain('enqueuePlannedMainBatch')
+        }
+        expect(command).toContain('planWorkflowDraftGeneration(planInput, {')
+        expect(command).toContain('createAnlasCostConsentSnapshot({')
+        expect(command).toContain('return enqueueGeneration<PreparedMainGeneration>({')
+        expect(command).toContain("actor: { kind: 'user', id: 'guided-ui:user' }")
+        expect(command).toContain('idempotencyKey: `guided:${input.draft.id}:revision:${input.draft.revision}`')
+        expect(command).not.toContain('privatePayload')
+        expect(command).not.toContain('spool')
         expect(component).toContain('listGuidedBatchResultJobs(batchId, resultLimit)')
         expect(results).toContain('Math.min(250, requested - items.length)')
         expect(component).toContain('onLoadMore={() => setResultLimit(current => current + 48)}')

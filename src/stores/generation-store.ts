@@ -8,6 +8,7 @@ import { executeMainGenerationTransport } from '@/services/generation/main-trans
 import {
     createCharacterStoreResourceRepository,
     useCharacterStore,
+    type ReferenceImage,
 } from './character-store'
 import { useCharacterPromptStore } from './character-prompt-store'
 import {
@@ -20,7 +21,7 @@ import {
     type FragmentLookupRepository,
     type FragmentSequenceState,
 } from './fragment-store'
-import { createThumbnail } from '@/lib/image-utils'
+import { createThumbnail, loadEncodedVibe, loadReferenceImage } from '@/lib/image-utils'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
 import { useAssetModuleStore } from './asset-module-store'
@@ -81,7 +82,11 @@ interface Resolution {
 
 type MainGenerationRun =
     | { readonly kind: 'execute' }
-    | { readonly kind: 'prepare', readonly prepared: PreparedMainGeneration[] }
+    | {
+        readonly kind: 'prepare'
+        readonly prepared: PreparedMainGeneration[]
+        readonly materializedSeeds: readonly number[]
+    }
 
 // The symbol keeps the shared orchestration runner private to this store module.
 // Public callers use generate or prepareMainBatch, preventing Queue from
@@ -128,6 +133,19 @@ const removeComments = (text: string) => text
     .filter(line => !line.trimStart().startsWith('#'))
     .join('\n')
 
+async function captureReferenceImages(images: readonly ReferenceImage[]): Promise<ReferenceImage[]> {
+    return Promise.all(images.map(async image => {
+        const captured = structuredClone(image)
+        if (!captured.base64 && captured.filePath) {
+            captured.base64 = await loadReferenceImage(captured.filePath) ?? ''
+        }
+        if (!captured.encodedVibe && captured.encodedVibePath) {
+            captured.encodedVibe = await loadEncodedVibe(captured.encodedVibePath) ?? undefined
+        }
+        return captured
+    }))
+}
+
 function hasAssetModulePrompts(plan: AssetModulePlan | null): plan is AssetModulePlan {
     return Boolean(plan && Object.values(plan.promptGroups).some(prompt => prompt.trim().length > 0))
 }
@@ -147,9 +165,10 @@ async function resolveMainAssetModulePlan(
         recipeId?: string
         now?: Date
         wildcardProcessor?: (prompt: string) => string | Promise<string>
+        profile?: ReturnType<typeof useAssetModuleStore.getState>['profile']
     } = {},
 ): Promise<AssetModulePlan | null> {
-    const profile = useAssetModuleStore.getState().profile
+    const profile = options.profile ?? useAssetModuleStore.getState().profile
     if (!profile.recipes.some(recipe => recipe.enabled)) return null
 
     try {
@@ -780,7 +799,7 @@ interface GenerationState {
     }) => void
 
     generate: () => Promise<void>
-    prepareMainBatch: () => Promise<readonly PreparedMainGeneration[]>
+    prepareMainBatch: (materializedSeeds?: readonly number[]) => Promise<readonly PreparedMainGeneration[]>
     [runMainGenerationAction]: (run: MainGenerationRun) => Promise<void>
     cancelGeneration: () => void
     addToHistory: (item: HistoryItem) => void
@@ -985,13 +1004,30 @@ export const useGenerationStore = create<GenerationState>()(
 
             generate: () => get()[runMainGenerationAction]({ kind: 'execute' }),
 
-            prepareMainBatch: async () => {
+            prepareMainBatch: async (explicitSeeds) => {
+                const state = get()
+                const materializedSeeds = explicitSeeds === undefined
+                    ? Array.from({ length: state.batchCount }, (_, index) => {
+                        if (state.seed === 0) return Math.floor(Math.random() * 4294967295)
+                        if (index === 0 || state.seedLocked) return state.seed
+                        return Math.floor(Math.random() * 4294967295)
+                    })
+                    : [...explicitSeeds]
+                if (materializedSeeds.length !== state.batchCount
+                    || materializedSeeds.some(seed => !Number.isSafeInteger(seed) || seed < 0 || seed > 4294967295)) {
+                    throw new Error('Materialized Main seeds must match batch count and contain uint32 values')
+                }
                 const prepared: PreparedMainGeneration[] = []
-                await get()[runMainGenerationAction]({ kind: 'prepare', prepared })
+                await state[runMainGenerationAction]({ kind: 'prepare', prepared, materializedSeeds })
                 return Object.freeze([...prepared])
             },
 
             [runMainGenerationAction]: async (run) => {
+                // Load the circular preset module before taking the synchronous
+                // cross-store capture; no user event can interleave those reads.
+                const preparationPresetState = run.kind === 'prepare'
+                    ? (await import('./preset-store')).usePresetStore.getState()
+                    : null
                 const generationDraft = get()
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
@@ -1002,10 +1038,38 @@ export const useGenerationStore = create<GenerationState>()(
                     compositionMode: requestedCompositionMode,
                 } = generationDraft
                 const compositionMode = effectiveMainCompositionMode(requestedCompositionMode)
+                const preparationInputs = run.kind === 'prepare'
+                    ? (() => {
+                        const prompts = useCharacterPromptStore.getState()
+                        const references = useCharacterStore.getState()
+                        const presets = preparationPresetState
+                        if (presets === null) throw new Error('Main preset capture is unavailable')
+                        return {
+                            characterPrompts: {
+                                characters: structuredClone(prompts.characters),
+                                presets: structuredClone(prompts.presets),
+                                groups: structuredClone(prompts.groups),
+                                positionEnabled: prompts.positionEnabled,
+                            },
+                            characterImages: structuredClone(references.characterImages),
+                            vibeImages: structuredClone(references.vibeImages),
+                            assetProfile: structuredClone(useAssetModuleStore.getState().profile),
+                            paramsPresets: {
+                                presets: structuredClone(presets.presets),
+                                activePresetId: presets.activePresetId,
+                            },
+                        }
+                    })()
+                    : null
+                const batchSequencePlanner = run.kind === 'prepare'
+                    ? createMainBatchSequencePlanner()
+                    : null
 
                 // Main generation follows the same active-credential ordering as
                 // Tools and durable queues, so a valid slot 2 can operate alone.
-                const activeCredential = useAuthStore.getState().getActiveTokens()[0]
+                const activeCredential = run.kind === 'execute'
+                    ? useAuthStore.getState().getActiveTokens()[0]
+                    : undefined
                 const token = activeCredential?.token
 
                 if (!token && run.kind === 'execute') {
@@ -1019,8 +1083,8 @@ export const useGenerationStore = create<GenerationState>()(
                 }
 
                 // Check for cross-mode conflict
-                const activeGeneratingMode = get().generatingMode
-                if (activeGeneratingMode && activeGeneratingMode !== 'main') {
+                const activeGeneratingMode = generationDraft.generatingMode
+                if (run.kind === 'execute' && activeGeneratingMode && activeGeneratingMode !== 'main') {
                     toast({
                         title: i18n.t('common.error'),
                         description: activeGeneratingMode === 'scene'
@@ -1065,50 +1129,63 @@ export const useGenerationStore = create<GenerationState>()(
                 const effectiveBasePrompt = [generationFolder?.commonPrompt.trim(), basePrompt]
                     .filter(Boolean)
                     .join(', ')
-
-                // Create new AbortController and session ID
+                // Prepare owns no UI lifecycle. Execute keeps the existing session
+                // mutations and cancellation checks around the shared materializer.
                 const abortController = new AbortController()
                 const sessionId = Date.now()
                 
                 // MEMORY: Clear previous preview image before starting new generation
                 // This helps GC reclaim the previous base64 data (~3-5MB per image)
-                set({
-                    isGenerating: true,
-                    generatingMode: 'main',
-                    isCancelled: false,
-                    abortController,
-                    generationSessionId: sessionId,
-                    estimatedTime: lastGenerationTime ? lastGenerationTime * batchCount : null,
-                    previewImage: null, // Clear previous preview to free memory
-                    streamProgress: 0,  // Reset streaming progress
-                    ...unresolvedMainCompositionState(),
-                })
-                const batchSequencePlanner = run.kind === 'prepare'
-                    ? createMainBatchSequencePlanner()
-                    : null
-
+                if (run.kind === 'execute') {
+                    set({
+                        isGenerating: true,
+                        generatingMode: 'main',
+                        isCancelled: false,
+                        abortController,
+                        generationSessionId: sessionId,
+                        estimatedTime: lastGenerationTime ? lastGenerationTime * batchCount : null,
+                        previewImage: null, // Clear previous preview to free memory
+                        streamProgress: 0,  // Reset streaming progress
+                        ...unresolvedMainCompositionState(),
+                    })
+                }
                 try {
+                    // Store-backed inputs for durable preparation are captured once
+                    // before iteration. Direct execution retains its established
+                    // loading order and UI behavior.
+                    const preparationSnapshots = preparationInputs === null
+                        ? null
+                        : {
+                            ...preparationInputs,
+                            characterImages: (await captureReferenceImages(preparationInputs.characterImages))
+                                .filter(img => img.enabled !== false && img.base64),
+                            vibeImages: (await captureReferenceImages(preparationInputs.vibeImages))
+                                .filter(img => img.enabled !== false && img.base64),
+                        }
+                    const shouldContinue = (): boolean => run.kind === 'prepare'
+                        || (!get().isCancelled && get().generationSessionId === sessionId)
+
                     let completedBatchCount = 0
                     for (let i = 0; i < batchCount; i++) {
                         // Check if cancelled or session changed (race condition protection)
-                        if (get().isCancelled || get().generationSessionId !== sessionId) {
+                        if (!shouldContinue()) {
                             console.log('[Generate] Session invalidated, stopping batch loop')
                             break
                         }
 
-                        set({ currentBatch: i + 1 })
+                        if (run.kind === 'execute') set({ currentBatch: i + 1 })
 
                         const startTime = Date.now()
 
-                        // Get current seed for this generation
-                        // Use the current store seed, then immediately set next seed
-                        let currentSeed = get().seed
-                        if (currentSeed === 0) {
+                        let currentSeed = run.kind === 'prepare'
+                            ? run.materializedSeeds[i]
+                            : get().seed
+                        if (currentSeed === 0 && run.kind === 'execute') {
                             currentSeed = Math.floor(Math.random() * 4294967295)
                         }
 
                         // Immediately advance seed so UI shows next seed at generation start
-                        if (!get().seedLocked) {
+                        if (run.kind === 'execute' && !get().seedLocked) {
                             set({ seed: Math.floor(Math.random() * 4294967295) })
                         }
 
@@ -1117,10 +1194,11 @@ export const useGenerationStore = create<GenerationState>()(
                             sourceImage,
                             selectedResolution,
                         )
-                        if (get().isCancelled || get().generationSessionId !== sessionId) break
+                        if (!shouldContinue()) break
 
-                        const characterPromptState = useCharacterPromptStore.getState()
-                        const referenceStateBeforeLoad = useCharacterStore.getState()
+                        const characterPromptState = preparationSnapshots?.characterPrompts
+                            ?? useCharacterPromptStore.getState()
+                        const referenceStateBeforeLoad = preparationSnapshots ?? useCharacterStore.getState()
                         let resolvedPlan: ReadonlyCompositionPlan | null = null
                         let resolvedDirectRecipeId: string = MAIN_DIRECT_RECIPE_ID
                         let compositionOutput: MainOutputMaterialization | null = null
@@ -1135,9 +1213,10 @@ export const useGenerationStore = create<GenerationState>()(
                             })
 
                         if (compositionMode !== 'legacy') {
-                            const assetProfile = useAssetModuleStore.getState().profile
-                            const { usePresetStore } = await import('./preset-store')
-                            const paramsPresetState = usePresetStore.getState()
+                            const assetProfile = preparationSnapshots?.assetProfile
+                                ?? useAssetModuleStore.getState().profile
+                            const paramsPresetState = preparationSnapshots?.paramsPresets
+                                ?? (await import('./preset-store')).usePresetStore.getState()
                             const projection = buildMainCompositionProjection({
                                 generation: generationDraft,
                                 effectiveBasePrompt,
@@ -1163,7 +1242,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 projection.fragmentSourceTexts,
                                 batchSequencePlanner?.repository,
                             )
-                            if (get().isCancelled || get().generationSessionId !== sessionId) break
+                            if (!shouldContinue()) break
 
                             const composition = resolveMainComposition({
                                 snapshot: projection.snapshot,
@@ -1174,14 +1253,16 @@ export const useGenerationStore = create<GenerationState>()(
                             })
                             resolvedDirectRecipeId = composition.directRecipeId
                             const diagnostics = diagnosticsFromMainResolution(composition)
-                            set({
-                                compositionWarnings: diagnostics.warnings,
-                                compositionErrors: diagnostics.errors,
-                                lastResolvedPlan: diagnostics.plan,
-                            })
+                            if (run.kind === 'execute') {
+                                set({
+                                    compositionWarnings: diagnostics.warnings,
+                                    compositionErrors: diagnostics.errors,
+                                    lastResolvedPlan: diagnostics.plan,
+                                })
+                            }
 
                             if (!composition.result.success) {
-                                if (compositionMode === 'v2') {
+                                if (compositionMode === 'v2' && run.kind === 'execute') {
                                     toast({
                                         title: i18n.t('composition.invalidPlan', 'Composition plan is invalid'),
                                         description: composition.result.errors.map(issue => issue.code).join(', '),
@@ -1189,26 +1270,29 @@ export const useGenerationStore = create<GenerationState>()(
                                     })
                                     break
                                 }
-                                set({
-                                    compositionShadowDiff: {
-                                        matches: false,
-                                        v2Valid: false,
-                                        differences: [{
-                                            path: '$plan',
-                                            legacy: 'valid',
-                                            v2: composition.result.errors.map(issue => issue.code),
-                                            ...(composition.result.errors.some(issue => issue.code === 'E_MODULE_REF_MISSING')
-                                                ? { approvedRule: 'strict-broken-reference' as const }
-                                                : {}),
-                                        }],
-                                    },
-                                })
+                                if (run.kind === 'execute') {
+                                    set({
+                                        compositionShadowDiff: {
+                                            matches: false,
+                                            v2Valid: false,
+                                            differences: [{
+                                                path: '$plan',
+                                                legacy: 'valid',
+                                                v2: composition.result.errors.map(issue => issue.code),
+                                                ...(composition.result.errors.some(issue => issue.code === 'E_MODULE_REF_MISSING')
+                                                    ? { approvedRule: 'strict-broken-reference' as const }
+                                                    : {}),
+                                            }],
+                                        },
+                                    })
+                                }
                             } else {
                                 resolvedPlan = composition.result.plan
                                 compositionOutput = composition.output
                                 sequenceProposal = composition.result.sequenceCommitProposal
                                 const portableOutput = composition.output?.portableDirectory
-                                if (portableOutput?.kind === 'bookmark'
+                                if (run.kind === 'execute'
+                                    && portableOutput?.kind === 'bookmark'
                                     && portableOutput.bookmarkId === 'main-output:absolute-runtime'
                                     && runtimeCapabilities.absoluteOutputPath.supported
                                     && composition.output?.directory) {
@@ -1220,7 +1304,7 @@ export const useGenerationStore = create<GenerationState>()(
                                         displayPath: composition.output.directory,
                                     })
                                 }
-                                if (compositionMode === 'v2') {
+                                if (compositionMode === 'v2' && run.kind === 'execute') {
                                     const portableAssessment = assessPortableCompositionPlan(
                                         composition.result.plan,
                                         runtimeCapabilities,
@@ -1241,7 +1325,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     }
                                 }
                             }
-                            if (get().isCancelled || get().generationSessionId !== sessionId) break
+                            if (!shouldContinue()) break
                         }
 
                         let modulePlan: AssetModulePlan | null = null
@@ -1250,6 +1334,7 @@ export const useGenerationStore = create<GenerationState>()(
                         if (compositionMode !== 'v2') {
                             modulePlan = await resolveMainAssetModulePlan(currentSeed, {
                                 wildcardProcessor: legacyFragmentSession?.process,
+                                profile: preparationSnapshots?.assetProfile,
                             })
                             if (compositionMode === 'shadow'
                                 && resolvedPlan !== null
@@ -1258,6 +1343,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     recipeId: resolvedPlan.recipeId,
                                     now: new Date(startTime),
                                     wildcardProcessor: prompt => prompt,
+                                    profile: preparationSnapshots?.assetProfile,
                                 })
                             }
                         } else if (resolvedPlan?.recipeId !== resolvedDirectRecipeId) {
@@ -1265,9 +1351,10 @@ export const useGenerationStore = create<GenerationState>()(
                                 recipeId: resolvedPlan?.recipeId,
                                 now: new Date(startTime),
                                 wildcardProcessor: prompt => prompt,
+                                profile: preparationSnapshots?.assetProfile,
                             })
                         }
-                        if (get().isCancelled || get().generationSessionId !== sessionId) break
+                        if (!shouldContinue()) break
 
                         const modulePromptsActive = compositionMode !== 'v2'
                             && hasAssetModulePrompts(modulePlan)
@@ -1293,13 +1380,17 @@ export const useGenerationStore = create<GenerationState>()(
                                 legacyNegative = removeComments(negativePrompt)
                             }
                         }
-                        if (get().isCancelled || get().generationSessionId !== sessionId) break
+                        if (!shouldContinue()) break
 
-                        await useCharacterStore.getState().ensureImagesLoaded()
-                        if (get().isCancelled || get().generationSessionId !== sessionId) break
-                        const { characterImages: allCharImages, vibeImages: allVibeImages } = useCharacterStore.getState()
-                        const characterImages = allCharImages.filter(img => img.enabled !== false && img.base64)
-                        const vibeImages = allVibeImages.filter(img => img.enabled !== false && img.base64)
+                        if (run.kind === 'execute') {
+                            await useCharacterStore.getState().ensureImagesLoaded()
+                        }
+                        if (!shouldContinue()) break
+                        const loadedReferences = preparationSnapshots ?? useCharacterStore.getState()
+                        const characterImages = loadedReferences.characterImages
+                            .filter(img => img.enabled !== false && img.base64)
+                        const vibeImages = loadedReferences.vibeImages
+                            .filter(img => img.enabled !== false && img.base64)
 
                         if (compositionMode !== 'v2') {
                             const moduleCharacterPrompts = readModuleCharacterPrompts(modulePlan)
@@ -1347,8 +1438,8 @@ export const useGenerationStore = create<GenerationState>()(
                                 imageFormat: settings.imageFormat,
                                 metadataMode: modulePlan?.output.metadataMode ?? settings.metadataMode,
                                 assetModulePlan: modulePlan,
-                                qualityToggle: get().qualityToggle,
-                                ucPreset: get().ucPreset,
+                                qualityToggle: generationDraft.qualityToggle,
+                                ucPreset: generationDraft.ucPreset,
                                 transparentBackground,
                             })
                         }
@@ -1376,22 +1467,24 @@ export const useGenerationStore = create<GenerationState>()(
                                 && shadowParams !== null
                                 && resolvedPlan !== null
                                 && compositionOutput !== null) {
-                                set({
-                                    compositionShadowDiff: compareMainGenerationParams(
-                                        legacyParams,
-                                        shadowParams,
-                                        {
-                                            legacy: legacyShadowOutputSemantics({
-                                                modulePlan,
-                                                settings,
-                                                sourceImage,
-                                                mask,
-                                                directRecipeId: resolvedDirectRecipeId,
-                                            }),
-                                            v2: v2ShadowOutputSemantics(resolvedPlan, compositionOutput),
-                                        },
-                                    ),
-                                })
+                                if (run.kind === 'execute') {
+                                    set({
+                                        compositionShadowDiff: compareMainGenerationParams(
+                                            legacyParams,
+                                            shadowParams,
+                                            {
+                                                legacy: legacyShadowOutputSemantics({
+                                                    modulePlan,
+                                                    settings,
+                                                    sourceImage,
+                                                    mask,
+                                                    directRecipeId: resolvedDirectRecipeId,
+                                                }),
+                                                v2: v2ShadowOutputSemantics(resolvedPlan, compositionOutput),
+                                            },
+                                        ),
+                                    })
+                                }
                                 generationParams = {
                                     ...generationParams,
                                     compositionMode: 'shadow',
@@ -1407,7 +1500,7 @@ export const useGenerationStore = create<GenerationState>()(
                             generationParams = { ...generationParams, metadataMode: 'strip-and-sidecar' }
                         }
                         // Reset progress
-                        set({ streamProgress: 0 })
+                        if (run.kind === 'execute') set({ streamProgress: 0 })
 
                         const generationSequenceProposal = compositionMode === 'v2'
                             ? sequenceProposal
@@ -1758,6 +1851,7 @@ export const useGenerationStore = create<GenerationState>()(
                     }
 
                 } catch (error) {
+                    if (run.kind === 'prepare') throw error
                     if (get().isCancelled) {
                         return
                     }
@@ -1768,10 +1862,12 @@ export const useGenerationStore = create<GenerationState>()(
                         variant: 'destructive',
                     })
                 } finally {
-                    set({ isGenerating: false, generatingMode: null, currentBatch: 0, abortController: null })
-                    // Release character/vibe base64 from memory after generation (~30-60MB)
-                    // They will be reloaded from files on next generation
-                    useCharacterStore.getState().releaseImageData()
+                    if (run.kind === 'execute') {
+                        set({ isGenerating: false, generatingMode: null, currentBatch: 0, abortController: null })
+                        // Release character/vibe base64 from memory after generation (~30-60MB)
+                        // They will be reloaded from files on next generation
+                        useCharacterStore.getState().releaseImageData()
+                    }
                 }
             },
 

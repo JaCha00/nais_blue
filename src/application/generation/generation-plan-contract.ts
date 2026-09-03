@@ -5,6 +5,7 @@ export type Sha256Digest = `sha256:${string}`
 
 export interface VersionedBinding {
     readonly resourceType: 'workflow-draft'
+        | 'main-generation-capture'
         | 'composition-document'
         | 'scene-document'
         | 'generation-folder-document'
@@ -138,12 +139,40 @@ export interface GenerationPlanView {
     readonly budget: GenerationPlan['budget']
 }
 
-export interface PlanGenerationInput {
-    readonly source: {
+export interface DetachedGenerationCapture<TPrepared = unknown> {
+    readonly schemaVersion: 1
+    readonly captureId: string
+    /** Canonical digest of every other field in this detached capture. */
+    readonly contentHash: Sha256Digest
+    readonly sourceBindings: readonly VersionedBinding[]
+    readonly materializedSeeds: readonly number[]
+    readonly jobs: readonly PreparedGenerationJobDraft<TPrepared>[]
+    readonly executionPolicy: GenerationExecutionPolicySnapshot
+    /** Readiness only; credentials and credential material never enter a plan. */
+    readonly credentialReadinessFingerprint: Sha256Digest
+}
+
+export type PlanGenerationSource<TPrepared = unknown> =
+    | {
         readonly kind: 'workflow-draft'
         readonly draftId: string
         readonly expectedRevision: number
     }
+    | {
+        readonly kind: 'detached-generation-capture'
+        readonly capture: DetachedGenerationCapture<TPrepared>
+    }
+
+export type GenerationConflictSource =
+    | Extract<PlanGenerationSource, { readonly kind: 'workflow-draft' }>
+    | {
+        readonly kind: 'detached-generation-capture'
+        readonly captureId: string
+        readonly contentHash: Sha256Digest
+    }
+
+export interface PlanGenerationInput<TPrepared = unknown> {
+    readonly source: PlanGenerationSource<TPrepared>
     readonly count: number
     readonly seedPolicy: { readonly kind: 'random' }
         | { readonly kind: 'fixed'; readonly seed: number }
@@ -164,9 +193,10 @@ export type PlanGenerationResult<TPrepared = unknown> =
     | { readonly status: 'invalid'; readonly issues: readonly PlanIssue[] }
     | {
         readonly status: 'conflict'
-        readonly source: PlanGenerationInput['source']
+        /** A redacted source identity; detached prepared values never cross this boundary. */
+        readonly source: GenerationConflictSource
         readonly currentRevision: number | null
-        readonly action: 'reload-workflow-draft'
+        readonly action: 'reload-workflow-draft' | 'recapture-generation'
         readonly mismatch?: {
             readonly fieldPath: string
             readonly expectedDigest: Sha256Digest

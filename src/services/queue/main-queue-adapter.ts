@@ -30,6 +30,7 @@ import {
 } from '@/services/nai/compatibility'
 import {
     getRuntimeQueueRepository,
+    QueueRepositoryError,
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
@@ -54,24 +55,30 @@ export interface EnqueuePlannedMainBatchOptions {
     readonly idempotencyScope?: string
 }
 
+type ReviewedMainSubmissionPolicy = {
+    readonly kind: 'guided' | 'reviewed'
+    readonly costConsent: AnlasCostConsentSnapshot
+}
+
 export interface EnqueueReviewedMainPlanOptions {
     readonly reviewed: GenerationPlan<PreparedMainGeneration>
-    readonly input: Omit<PlanGenerationInput, 'seedPolicy'>
+    readonly input: Omit<PlanGenerationInput<PreparedMainGeneration>, 'seedPolicy'>
     readonly dependencies: PlanGenerationDependencies<PreparedMainGeneration>
-    readonly submissionPolicy: EnqueuePlannedMainBatchOptions['submissionPolicy']
+    readonly submissionPolicy: ReviewedMainSubmissionPolicy
     /** Defaults to the stable reviewed plan identity for retry-safe Queue writes. */
     readonly idempotencyScope?: string
 }
 
 export type EnqueueReviewedMainPlanResult =
     | { readonly status: 'enqueued'; readonly queue: CreateBatchAndEnqueueResult }
+    | { readonly status: 'conflict'; readonly issues: readonly PlanIssue[] }
     | Exclude<PlanGenerationResult<PreparedMainGeneration>, { readonly status: 'ready' }>
 
 interface EnqueueMainBatchOptions {
     readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
     readonly submissionPolicy:
         | { readonly kind: 'advanced' }
-        | EnqueuePlannedMainBatchOptions['submissionPolicy']
+        | ReviewedMainSubmissionPolicy
     readonly queuePolicy?: {
         readonly failurePolicy: QueueFailurePolicy
         readonly maxAttempts: number
@@ -189,9 +196,7 @@ export async function enqueueReviewedMainPlan(
         return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
     }
 
-    const consent = options.submissionPolicy?.kind === 'guided'
-        ? options.submissionPolicy.costConsent
-        : undefined
+    const consent = options.submissionPolicy.costConsent
     try {
         assertAnlasCostConsentAllows(consent, replayed.plan.estimatedAnlas)
     } catch {
@@ -228,21 +233,36 @@ export async function enqueueReviewedMainPlan(
         compatibilityProfileId: job.compatibility.compatibilityProfileId,
         semanticIntentHash: hashGenerationSemanticIntent(job.semantic),
     }))
-    const queue = await enqueueMainBatch({
-        planner: {
-            getRequestedCount: () => prepared.length,
-            prepareBatch: async () => prepared,
-        },
-        submissionPolicy: options.submissionPolicy,
-        queuePolicy: {
-            failurePolicy: executionPolicy.failurePolicy === 'stop'
-                ? 'stop-on-first-error'
-                : 'continue',
-            maxAttempts: executionPolicy.maxAttempts,
-        },
-        providerExecutionContexts,
-        idempotencyScope: options.idempotencyScope ?? replayed.plan.planId,
-    })
+    let queue: CreateBatchAndEnqueueResult | null
+    try {
+        queue = await enqueueMainBatch({
+            planner: {
+                getRequestedCount: () => prepared.length,
+                prepareBatch: async () => prepared,
+            },
+            submissionPolicy: options.submissionPolicy,
+            queuePolicy: {
+                failurePolicy: executionPolicy.failurePolicy === 'stop'
+                    ? 'stop-on-first-error'
+                    : 'continue',
+                maxAttempts: executionPolicy.maxAttempts,
+            },
+            providerExecutionContexts,
+            idempotencyScope: options.idempotencyScope ?? replayed.plan.planId,
+        })
+    } catch (error) {
+        if (error instanceof QueueRepositoryError
+            && error.code === 'E_QUEUE_IDEMPOTENCY_CONFLICT') {
+            const issue: PlanIssue = Object.freeze({
+                code: 'generation-idempotency-conflict',
+                severity: 'blocking',
+                fieldPath: 'idempotencyKey',
+                message: error.message,
+            })
+            return Object.freeze({ status: 'conflict', issues: Object.freeze([issue]) })
+        }
+        throw error
+    }
     if (queue !== null) return { status: 'enqueued', queue }
 
     return {
@@ -262,7 +282,7 @@ async function enqueueMainBatch(
     const dependencies = getRuntimeMainQueueDependencies()
     const operationId = dependencies.presentation.beginEnqueueOperation()
     const idempotencyScope = options.idempotencyScope ?? operationId
-    if (options.submissionPolicy?.kind !== 'advanced' && options.submissionPolicy?.kind !== 'guided') {
+    if (!['advanced', 'guided', 'reviewed'].includes(options.submissionPolicy?.kind)) {
         dependencies.presentation.completeEnqueueOperation(operationId)
         throw new TypeError('Main enqueue submission policy is required')
     }

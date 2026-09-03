@@ -21,6 +21,12 @@ import {
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 
 const runtime = vi.hoisted(() => ({
+    QueueRepositoryError: class QueueRepositoryError extends Error {
+        constructor(readonly code: string, message: string) {
+            super(message)
+            this.name = 'QueueRepositoryError'
+        }
+    },
     begin: vi.fn(() => 'operation:reviewed'),
     complete: vi.fn(),
     repository: vi.fn(),
@@ -55,6 +61,7 @@ vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
 
 vi.mock('@/services/queue/indexeddb-queue-repository', () => ({
     getRuntimeQueueRepository: runtime.repository,
+    QueueRepositoryError: runtime.QueueRepositoryError,
 }))
 
 vi.mock('@/services/queue/queue-resource-materializer', () => ({
@@ -71,6 +78,7 @@ vi.mock('@/services/nai/compatibility', () => ({
     queryNaiGenerationCompatibility: runtime.compatibility,
 }))
 
+import { QueueRepositoryError } from '@/services/queue/indexeddb-queue-repository'
 import { enqueueReviewedMainPlan } from '@/services/queue/main-queue-adapter'
 
 const source = { kind: 'workflow-draft', draftId: 'draft-reviewed', expectedRevision: 1 } as const
@@ -250,6 +258,58 @@ describe('reviewed Main plan Queue bridge', () => {
                 expect.objectContaining({ id: `main-job-${reviewed.planId}-1` }),
             ],
         }))
+    })
+
+    it('maps a Queue idempotency conflict to an application conflict failure', async () => {
+        const input: PlanGenerationInput = {
+            source,
+            count: 1,
+            seedPolicy: { kind: 'fixed', seed: 7 },
+            budget: { maxImages: 1, maxAnlas: 0 },
+        }
+        const reviewed = await reviewedPlan(input, dependencies())
+        runtime.createBatchAndEnqueue.mockRejectedValueOnce(new QueueRepositoryError(
+            'E_QUEUE_IDEMPOTENCY_CONFLICT',
+            'Batch idempotency key already exists with different content',
+        ))
+
+        const result = await enqueueReviewedMainPlan({
+            reviewed,
+            input: { source, count: 1, budget: input.budget },
+            dependencies: dependencies(),
+            submissionPolicy: { kind: 'guided', costConsent: costConsent() },
+        })
+
+        expect(result).toMatchObject({
+            status: 'conflict',
+            issues: [{
+                code: 'generation-idempotency-conflict',
+                severity: 'blocking',
+                fieldPath: 'idempotencyKey',
+            }],
+        })
+    })
+
+    it('propagates other Queue repository errors', async () => {
+        const input: PlanGenerationInput = {
+            source,
+            count: 1,
+            seedPolicy: { kind: 'fixed', seed: 7 },
+            budget: { maxImages: 1, maxAnlas: 0 },
+        }
+        const reviewed = await reviewedPlan(input, dependencies())
+        const repositoryError = new QueueRepositoryError(
+            'E_QUEUE_WRITE_VERIFY',
+            'Atomic enqueue readback mismatch',
+        )
+        runtime.createBatchAndEnqueue.mockRejectedValueOnce(repositoryError)
+
+        await expect(enqueueReviewedMainPlan({
+            reviewed,
+            input: { source, count: 1, budget: input.budget },
+            dependencies: dependencies(),
+            submissionPolicy: { kind: 'guided', costConsent: costConsent() },
+        })).rejects.toBe(repositoryError)
     })
 
     it('returns a replay mismatch before any Queue-side operation', async () => {

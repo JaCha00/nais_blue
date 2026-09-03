@@ -8,12 +8,9 @@ import type {
     PlanGenerationInput,
     PlanGenerationResult,
     PlanIssue,
-    PreparedGenerationJobDraft,
     PreparedJobPlannerPort,
-    Sha256Digest,
 } from '@/application/generation/generation-plan-contract'
 import type { WorkflowDraftRepositoryPort } from '@/application/workflow/workflow-draft-repository'
-import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
 import { CURRENT_MAIN_QUEUE_POLICY } from '@/domain/queue/types'
 import {
@@ -40,9 +37,9 @@ import {
     queryNaiGenerationCompatibility,
 } from '@/services/nai/compatibility'
 import type { GenerationParams } from '@/services/novelai-types'
-import { projectMainGenerationSemantic } from '@/services/generation/main-generation-semantic'
 import type { FragmentLookupRepository } from '@/stores/fragment-store'
 import { useFragmentStore } from '@/stores/fragment-store'
+import { projectPreparedMainGenerationJob } from '@/services/generation/main-prepared-job-projection'
 
 interface WorkflowDraftMainBatchPlannerOptions {
     readonly fragmentRepository?: FragmentLookupRepository
@@ -77,6 +74,25 @@ function requestedCount(draft: MainWorkflowDraft): number {
     if (draft.kind === 'single-image') return 1
     if (draft.payload.batchMode !== 'scenes') return draft.payload.count
     return draft.payload.scenes.reduce((sum, scene) => sum + scene.count, 0)
+}
+
+/** Captures the persisted draft identity, count, and deterministic seed route for review. */
+export function createWorkflowDraftGenerationInput(
+    draft: MainWorkflowDraft,
+    budget: PlanGenerationInput['budget'],
+): PlanGenerationInput<PreparedMainGeneration> {
+    return {
+        source: {
+            kind: 'workflow-draft',
+            draftId: draft.id,
+            expectedRevision: draft.revision,
+        },
+        count: requestedCount(draft),
+        seedPolicy: draft.kind === 'single-image'
+            ? { kind: 'fixed', seed: draft.payload.generation.seed }
+            : { kind: 'increment', firstSeed: draft.payload.generation.seed },
+        budget,
+    }
 }
 
 function batchPromptInputs(
@@ -310,52 +326,6 @@ export function createWorkflowDraftMainBatchPlanner(
     })
 }
 
-function digest(value: unknown): Sha256Digest {
-    return `sha256:${hashCanonicalValue(value)}`
-}
-
-/**
- * Keeps provider meaning reviewable while replacing resource bytes and cache
- * handles with ordered digests. The opaque PreparedMainGeneration retains the
- * executable values for a later, separately authorized enqueue.
- */
-function projectPreparedJob(prepared: PreparedMainGeneration): PreparedGenerationJobDraft<PreparedMainGeneration> {
-    const params = prepared.params
-    const pathHash = (value: string | null): Sha256Digest | null => value ? digest(value) : null
-    // Canonical plans promise fail-only collision handling. Keep legacy Guided
-    // planning unchanged while making the reviewed executable match that promise.
-    const canonicalPrepared = prepared.output.collisionPolicy === 'error'
-        ? prepared
-        : Object.freeze({
-            ...prepared,
-            output: Object.freeze({ ...prepared.output, collisionPolicy: 'error' as const }),
-        })
-    return Object.freeze({
-        semantic: projectMainGenerationSemantic(params, prepared.imageFormat),
-        preparationDigest: digest({ sequenceCommitProposal: prepared.sequenceCommitProposal }),
-        destination: {
-            generationFolderId: prepared.output.generationFolderId,
-            generationFolderPathHash: pathHash(prepared.output.generationFolderPath),
-            outputPolicyId: digest({
-                autoSave: prepared.output.autoSave,
-                directoryHash: digest(prepared.output.directory),
-                fallbackDirectoryHash: digest(prepared.output.capabilityFallbackDirectory),
-                useAbsolutePath: prepared.output.useAbsolutePath,
-                metadataMode: prepared.metadataMode,
-                rightsXmpEnabled: prepared.output.rightsXmpEnabled,
-                rightsOwner: prepared.output.rightsOwner,
-                rightsEffectiveDate: prepared.output.rightsEffectiveDate,
-            }),
-            expectedBaseName: prepared.output.fileName?.replace(/\.(?:png|webp)$/i, '')
-                || `NAI_Blue_${params.seed}`,
-            extension: prepared.imageFormat,
-            collisionPolicy: 'fail' as const,
-            deliveryRequired: prepared.output.autoSave,
-        },
-        prepared: canonicalPrepared,
-    })
-}
-
 /** Canonical Workflow Draft planning always receives its fragment authority explicitly. */
 export function createWorkflowDraftPreparedJobPlanner(
     fragmentRepository: FragmentLookupRepository,
@@ -367,7 +337,7 @@ export function createWorkflowDraftPreparedJobPlanner(
                 materializedSeeds,
                 allowPinnedCredential: true,
             })
-            return (await batchPlanner.prepareBatch()).map(projectPreparedJob)
+            return (await batchPlanner.prepareBatch()).map(projectPreparedMainGenerationJob)
         },
     }
     return Object.freeze(planner)
@@ -458,7 +428,7 @@ export function createWorkflowDraftGenerationPlanDependencies(
 
 /** Thin Guided wrapper; direct callers can invoke planGeneration with the same dependencies. */
 export function planWorkflowDraftGeneration(
-    input: PlanGenerationInput,
+    input: PlanGenerationInput<PreparedMainGeneration>,
     options: WorkflowDraftGenerationPlanOptions,
 ): Promise<PlanGenerationResult<PreparedMainGeneration>> {
     return planGeneration(input, createWorkflowDraftGenerationPlanDependencies(options))

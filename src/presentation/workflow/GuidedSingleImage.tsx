@@ -24,7 +24,6 @@ import {
 
 import { getWorkflowDraftRepository } from '@/adapters/workflow/indexeddb-workflow-draft-repository'
 import { NovelAiV5UsageLimit } from '@/components/credentials/NovelAiV5UsageLimit'
-import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationJob } from '@/domain/queue/types'
 import {
     SINGLE_IMAGE_NODE_IDS,
@@ -44,10 +43,10 @@ import { cn } from '@/lib/utils'
 import { saveNativeFileDialog } from '@/platform/native-file-dialog'
 import { writeNativeBinaryFile, writeNativeTextFile } from '@/platform/native-file-system'
 import {
-    createWorkflowDraftMainBatchPlanner,
     WorkflowDraftCharacterPromptValidationError,
     WorkflowDraftPromptModuleResolutionError,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
+import { enqueueWorkflowDraftGenerationCommand } from '@/presentation/generation/workflow-draft-generation-command'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
 import {
     DEFAULT_NAI_IMAGE_MODEL,
@@ -59,10 +58,10 @@ import {
 import { childOutputRef } from '@/services/output/platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
 import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
-import { enqueuePlannedMainBatch } from '@/services/queue/main-queue-adapter'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { usePresetStore, type PresetWorkingCopy } from '@/stores/preset-store'
+import { useFragmentStore } from '@/stores/fragment-store'
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { Button } from '@/components/ui/button'
 import {
@@ -1653,25 +1652,31 @@ export function GuidedSingleImage() {
         setSubmitting(true)
         setSubmitError(null)
         try {
-            const estimatedAt = new Date().toISOString()
-            const costConsent = createAnlasCostConsentSnapshot({
-                pricingBasis,
-                estimatedAnlas,
+            const result = await enqueueWorkflowDraftGenerationCommand({
+                draft,
+                maxImages: 1,
                 maxAnlas: estimatedAnlas,
-                estimatedAt,
+                pricingBasis,
                 approvedAt: new Date().toISOString(),
+                drafts: getWorkflowDraftRepository(),
+                fragmentRepository: useFragmentStore.getState().getLookupRepository(),
             })
-            const result = await enqueuePlannedMainBatch({
-                planner: createWorkflowDraftMainBatchPlanner(draft),
-                submissionPolicy: { kind: 'guided', costConsent },
-                idempotencyScope: `guided:${draft.id}:revision:${draft.revision}`,
-            })
-            if (result === null) throw new Error('The draft could not be planned')
-            setQueuedJobs(result.jobs)
+            if (result.status !== 'ready') {
+                const issueCodes = 'issues' in result ? result.issues.map(issue => issue.code) : []
+                if (issueCodes.includes('prompt-module-unavailable')) {
+                    throw new WorkflowDraftPromptModuleResolutionError()
+                }
+                if (issueCodes.includes('character-prompt-invalid')) {
+                    throw new WorkflowDraftCharacterPromptValidationError()
+                }
+                throw new Error('The draft could not be enqueued')
+            }
+            const queued = await getRuntimeQueueRepository().listJobs({ batchId: result.batchId, limit: 10 })
+            setQueuedJobs(queued.items)
             const queuedDraft = await commitMutation(() => ({
                 status: 'queued',
                 currentNodeId: 'review',
-                lastSnapshotId: result.batch.id,
+                lastSnapshotId: result.batchId,
             }))
             completionNavigatedRef.current = true
             navigate(`/guided-preview/work/${queuedDraft.id}/result`)

@@ -35,7 +35,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import type { GenerationBatch, GenerationBatchSummary, GenerationJob } from '@/domain/queue/types'
 import {
     BATCH_IMAGE_NODE_IDS,
@@ -66,16 +65,15 @@ import { childOutputRef } from '@/services/output/platform-adapter'
 import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
 import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
-import { enqueuePlannedMainBatch } from '@/services/queue/main-queue-adapter'
 import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { getFragmentCanonicalPath, useFragmentStore } from '@/stores/fragment-store'
 import { usePresetStore, type PresetWorkingCopy } from '@/stores/preset-store'
 import {
-    createWorkflowDraftMainBatchPlanner,
     WorkflowDraftCharacterPromptValidationError,
     WorkflowDraftPromptModuleResolutionError,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
+import { enqueueWorkflowDraftGenerationCommand } from '@/presentation/generation/workflow-draft-generation-command'
 import { listGuidedBatchResultJobs } from './guided-batch-results'
 import {
     GUIDED_GLOBAL_PROMPT_IMPORT_EVENT,
@@ -1632,22 +1630,27 @@ export function GuidedBatchImages() {
         try {
             if (editableTimerRef.current !== null) { clearTimeout(editableTimerRef.current); editableTimerRef.current = null }
             const ready = await saveEditable() ?? draft
-            const now = new Date().toISOString()
-            const consent = createAnlasCostConsentSnapshot({
-                pricingBasis,
-                estimatedAnlas,
+            const result = await enqueueWorkflowDraftGenerationCommand({
+                draft: ready,
+                maxImages: total,
                 maxAnlas: estimatedAnlas,
-                estimatedAt: now,
-                approvedAt: now,
+                pricingBasis,
+                approvedAt: new Date().toISOString(),
+                drafts: getWorkflowDraftRepository(),
+                fragmentRepository: useFragmentStore.getState().getLookupRepository(),
             })
-            const result = await enqueuePlannedMainBatch({
-                planner: createWorkflowDraftMainBatchPlanner(ready),
-                submissionPolicy: { kind: 'guided', costConsent: consent },
-                idempotencyScope: `guided:${ready.id}:revision:${ready.revision}`,
-            })
-            if (result === null) throw new Error('The batch could not be planned')
-            await commitMutation(() => ({ status: 'queued', currentNodeId: 'review', lastSnapshotId: result.batch.id }))
-            setSummary(result.batch.projectionSummary)
+            if (result.status !== 'ready') {
+                const issueCodes = 'issues' in result ? result.issues.map(issue => issue.code) : []
+                if (issueCodes.includes('prompt-module-unavailable')) {
+                    throw new WorkflowDraftPromptModuleResolutionError()
+                }
+                if (issueCodes.includes('character-prompt-invalid')) {
+                    throw new WorkflowDraftCharacterPromptValidationError()
+                }
+                throw new Error('The batch could not be enqueued')
+            }
+            await commitMutation(() => ({ status: 'queued', currentNodeId: 'review', lastSnapshotId: result.batchId }))
+            setSummary(await getRuntimeQueueRepository().getBatchSummary(result.batchId))
             setResultJobs([])
             navigate(`/guided-preview/batch/${draft.id}/result`)
         } catch (error) {

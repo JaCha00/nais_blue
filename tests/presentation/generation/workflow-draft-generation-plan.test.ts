@@ -4,10 +4,13 @@ import { planGeneration } from '@/application/generation/plan-generation'
 import type { PlanGenerationInput } from '@/application/generation/generation-plan-contract'
 import {
     createBatchImageDraft,
+    createSingleImageDraft,
     reviseBatchImageDraft,
+    reviseSingleImageDraft,
 } from '@/domain/workflow/single-image-draft'
 import {
     createWorkflowDraftGenerationPlanDependencies,
+    createWorkflowDraftGenerationInput,
     planWorkflowDraftGeneration,
     WORKFLOW_DRAFT_RETRY_POLICY_ID,
 } from '@/presentation/generation/workflow-draft-main-batch-planner'
@@ -66,6 +69,50 @@ const input: PlanGenerationInput = {
 }
 
 describe('Workflow Draft canonical generation adapter', () => {
+    it('maps single, batch, and scene drafts to canonical planning input', () => {
+        const singleCreated = createSingleImageDraft({ id: 'draft:single', now: NOW, seed: 42 })
+        const single = reviseSingleImageDraft(singleCreated, { updatedAt: '2026-09-03T00:00:01.000Z' })
+        const singleBudget = { maxImages: 1, maxAnlas: 20 }
+        expect(createWorkflowDraftGenerationInput(single, singleBudget)).toEqual({
+            source: { kind: 'workflow-draft', draftId: 'draft:single', expectedRevision: 1 },
+            count: 1,
+            seedPolicy: { kind: 'fixed', seed: 42 },
+            budget: singleBudget,
+        })
+
+        const batch = readyDraft()
+        const batchBudget = { maxImages: 3, maxAnlas: 100 }
+        expect(createWorkflowDraftGenerationInput(batch, batchBudget)).toEqual({
+            source: { kind: 'workflow-draft', draftId: batch.id, expectedRevision: batch.revision },
+            count: 3,
+            seedPolicy: { kind: 'increment', firstSeed: 1 },
+            budget: batchBudget,
+        })
+
+        const scenesCreated = createBatchImageDraft({
+            id: 'draft:scenes',
+            now: NOW,
+            seed: 100,
+            batchMode: 'scenes',
+        })
+        const scenes = reviseBatchImageDraft(scenesCreated, {
+            updatedAt: '2026-09-03T00:00:01.000Z',
+            payload: {
+                ...scenesCreated.payload,
+                scenes: [
+                    { id: 'scene:one', name: 'One', positive: 'one', negative: '', count: 2 },
+                    { id: 'scene:two', name: 'Two', positive: 'two', negative: '', count: 3 },
+                ],
+            },
+        })
+        expect(createWorkflowDraftGenerationInput(scenes, { maxImages: 5, maxAnlas: 200 })).toEqual({
+            source: { kind: 'workflow-draft', draftId: 'draft:scenes', expectedRevision: 1 },
+            count: 5,
+            seedPolicy: { kind: 'increment', firstSeed: 100 },
+            budget: { maxImages: 5, maxAnlas: 200 },
+        })
+    })
+
     it('keeps Guided and direct plans identical, explicit, redacted, and read-only', async () => {
         const draft = readyDraft()
         const commit = vi.fn()

@@ -1,10 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const runtime = vi.hoisted(() => ({
-    generation: { steps: 28, generate: vi.fn(async () => undefined) },
-    queue: { executionAuthority: 'durable' as 'durable' | 'legacy' },
-    enqueue: vi.fn(async () => ({ batch: { id: 'batch:main' } })),
-    drain: vi.fn(async () => undefined),
+    generation: { steps: 28, model: 'nai-diffusion-4-5-full', generate: vi.fn(async () => undefined) },
+    queue: {
+        executionAuthority: 'durable' as 'durable' | 'legacy',
+        setSelectedBatchId: vi.fn(),
+    },
+    auth: {
+        token: 'secret', token2: '', isVerified: true, isVerified2: false,
+        slot1Enabled: true, slot2Enabled: false, slot1CredentialRef: null, slot2CredentialRef: null,
+        tier: 'tablet', tier2: null, isCredentialStateInitialized: true,
+        getActiveTokens: vi.fn(() => [{ slot: 1, token: 'secret' }]),
+        requestTokenEntry: vi.fn(),
+    },
+    planner: {
+        getRequestedCount: vi.fn(() => 1),
+        prepareBatch: vi.fn(async () => [{ params: { seed: 7 } }]),
+    },
+    enqueue: vi.fn(async () => ({ status: 'ready' as const, batchId: 'batch:main', runId: 'batch:main', jobIds: ['job:1'] })),
+    cancelBatch: vi.fn(async (input: { batchId: string }) => ({
+        status: 'ready' as const, targetId: input.batchId,
+    })),
+    cancelWorkflow: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/stores/generation-store', () => ({
@@ -13,17 +30,36 @@ vi.mock('@/stores/generation-store', () => ({
 vi.mock('@/stores/queue-store', () => ({
     useQueueStore: { getState: () => runtime.queue },
 }))
-vi.mock('@/services/queue/main-queue-adapter', () => ({ enqueueCurrentMainBatch: runtime.enqueue }))
+vi.mock('@/stores/auth-store', () => ({
+    useAuthStore: { getState: () => runtime.auth },
+    selectActiveCredentialsAreOpus: () => false,
+}))
+vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
+    getRuntimeMainQueueDependencies: () => ({ planner: runtime.planner }),
+}))
+vi.mock('@/services/generation/main-application-generation-command', () => ({
+    enqueuePreparedMainGeneration: runtime.enqueue,
+}))
+vi.mock('@/services/queue/generation-command-adapter', () => ({
+    getRuntimeGenerationCommandAdapter: () => ({ cancelBatch: runtime.cancelBatch }),
+}))
 vi.mock('@/services/queue/runtime', () => ({
-    getRuntimeDurableQueueCoordinator: () => ({ drain: runtime.drain, cancelWorkflow: vi.fn() }),
+    getRuntimeDurableQueueCoordinator: () => ({ cancelWorkflow: runtime.cancelWorkflow }),
 }))
 
-import { startMainGenerationCommand } from '@/services/generation/generation-command'
+import {
+    cancelMainGenerationCommand,
+    startMainGenerationCommand,
+} from '@/services/generation/generation-command'
 
 describe('Main generation command quality boundary', () => {
     beforeEach(() => {
         runtime.generation.steps = 28
         runtime.queue.executionAuthority = 'durable'
+        runtime.auth.getActiveTokens.mockReturnValue([{ slot: 1, token: 'secret' }])
+        runtime.planner.getRequestedCount.mockReturnValue(1)
+        runtime.planner.prepareBatch.mockResolvedValue([{ params: { seed: 7 } }])
+        runtime.enqueue.mockResolvedValue({ status: 'ready', batchId: 'batch:main', runId: 'batch:main', jobIds: ['job:1'] })
         vi.clearAllMocks()
     })
 
@@ -38,12 +74,39 @@ describe('Main generation command quality boundary', () => {
     it('preserves durable and legacy execution after the quality check', async () => {
         await expect(startMainGenerationCommand()).resolves.toBe('started')
         expect(runtime.enqueue).toHaveBeenCalledOnce()
-        expect(runtime.drain).toHaveBeenCalledOnce()
+        expect(runtime.queue.setSelectedBatchId).toHaveBeenCalledWith('batch:main')
 
         vi.clearAllMocks()
         runtime.queue.executionAuthority = 'legacy'
         await expect(startMainGenerationCommand()).resolves.toBe('started')
         expect(runtime.generation.generate).toHaveBeenCalledOnce()
         expect(runtime.enqueue).not.toHaveBeenCalled()
+    })
+
+    it('returns after the durable enqueue without owning Queue drain', async () => {
+        let releaseEnqueue: (() => void) | undefined
+        runtime.enqueue.mockImplementationOnce(() => new Promise(resolve => {
+            releaseEnqueue = () => resolve({
+                status: 'ready', batchId: 'batch:main', runId: 'batch:main', jobIds: ['job:1'],
+            })
+        }))
+        const command = startMainGenerationCommand()
+
+        await vi.waitFor(() => expect(runtime.enqueue).toHaveBeenCalledOnce())
+        releaseEnqueue?.()
+
+        await expect(command).resolves.toBe('started')
+    })
+
+    it('cancels the exact durable batch returned by the application command', async () => {
+        await startMainGenerationCommand()
+
+        await cancelMainGenerationCommand()
+
+        expect(runtime.cancelBatch).toHaveBeenCalledWith({
+            batchId: 'batch:main',
+            actor: { kind: 'user', id: 'main-ui:user' },
+        })
+        expect(runtime.cancelWorkflow).not.toHaveBeenCalled()
     })
 })

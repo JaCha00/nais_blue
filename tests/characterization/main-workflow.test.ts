@@ -658,9 +658,13 @@ describe('Main workflow golden characterization', () => {
             basePrompt: 'durable capture prompt',
             negativePrompt: 'durable negative',
             compositionMode: 'v2',
+            seed: 7,
+            seedLocked: false,
             batchCount: 2,
         })
-        const captured = (await stores.useGenerationStore.getState().prepareMainBatch())
+        const stateBefore = JSON.parse(JSON.stringify(stores.useGenerationStore.getState()))
+        const referencesBefore = JSON.parse(JSON.stringify(stores.useCharacterStore.getState()))
+        const captured = (await stores.useGenerationStore.getState().prepareMainBatch([101, 202]))
             .map(value => structuredClone(value))
 
         expect(captured).toHaveLength(2)
@@ -669,8 +673,12 @@ describe('Main workflow golden characterization', () => {
             'durable capture prompt',
         ])
         expect(captured.every(value => value.params.prompt === value.finalPrompt)).toBe(true)
+        expect(captured.map(value => value.params.seed)).toEqual([101, 202])
+        expect(JSON.parse(JSON.stringify(stores.useGenerationStore.getState()))).toEqual(stateBefore)
+        expect(JSON.parse(JSON.stringify(stores.useCharacterStore.getState()))).toEqual(referencesBefore)
         expect(runtimeCapture.requests).toEqual([])
         expect(runtimeCapture.writes).toEqual([])
+        expect(runtimeCapture.toasts).toEqual([])
         expect(stores.useGenerationStore.getState()).toMatchObject({
             isGenerating: false,
             generatingMode: null,
@@ -734,6 +742,51 @@ describe('Main workflow golden characterization', () => {
             sequentialCounters: {},
             sequenceState: { schemaVersion: 1, revision: 0, counters: {} },
         })
+    })
+
+    it.each(['legacy', 'shadow', 'v2'] as const)(
+        'keeps %s preparation read-only with an explicit seed',
+        async compositionMode => {
+            stores.useAuthStore.setState({ token: '', isVerified: false, slot1Enabled: false })
+            stores.useGenerationStore.setState({
+                basePrompt: 'mode parity prompt',
+                compositionMode,
+                seed: 9,
+                seedLocked: false,
+                batchCount: 1,
+            })
+            const stateBefore = JSON.parse(JSON.stringify(stores.useGenerationStore.getState()))
+
+            const [captured] = await stores.useGenerationStore.getState().prepareMainBatch([303])
+
+            expect(captured.params.seed).toBe(303)
+            expect(captured.params.prompt).toContain('mode parity prompt')
+            expect(JSON.parse(JSON.stringify(stores.useGenerationStore.getState()))).toEqual(stateBefore)
+            expect(runtimeCapture.requests).toEqual([])
+            expect(runtimeCapture.writes).toEqual([])
+            expect(runtimeCapture.toasts).toEqual([])
+        },
+    )
+
+    it('materializes every zero seed even when the visible seed is locked', async () => {
+        vi.mocked(Math.random)
+            .mockReturnValueOnce(0.1)
+            .mockReturnValueOnce(0.2)
+        stores.useGenerationStore.setState({
+            basePrompt: 'zero seed capture',
+            compositionMode: 'legacy',
+            seed: 0,
+            seedLocked: true,
+            batchCount: 2,
+        })
+
+        const captured = await stores.useGenerationStore.getState().prepareMainBatch()
+
+        expect(captured.map(value => value.params.seed)).toEqual([
+            Math.floor(0.1 * 4294967295),
+            Math.floor(0.2 * 4294967295),
+        ])
+        expect(stores.useGenerationStore.getState().seed).toBe(0)
     })
 
     it('matches the production store, adapter, payload, output and metadata fixture', async () => {
@@ -900,7 +953,7 @@ describe('Main workflow golden characterization', () => {
             scenarios,
         }
         const source = await readFile('src/stores/generation-store.ts', 'utf8')
-        expect(source.match(/get\(\)\.isCancelled \|\| get\(\)\.generationSessionId !== sessionId/g)?.length)
+        expect(source.match(/shouldContinue\(\)/g)?.length)
             .toBeGreaterThanOrEqual(6)
         const fixture = await loadFixtureJson<MainFixture>('workflows/main/current-workflow.json')
         assertDeepEqual(actual, fixture, 'Main workflow behavior changed')

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+    hashDetachedGenerationCapture,
     hashGenerationSemanticIntent,
     planGeneration,
     replayGenerationPlan,
@@ -8,6 +9,7 @@ import {
 } from '@/application/generation/plan-generation'
 import type {
     CompatibilityStatus,
+    DetachedGenerationCapture,
     PlanGenerationInput,
     PreparedGenerationJobDraft,
 } from '@/application/generation/generation-plan-contract'
@@ -46,6 +48,64 @@ const baseInput: PlanGenerationInput = {
     count: 2,
     seedPolicy: { kind: 'fixed', seed: 42 },
     budget: { maxImages: 2, maxAnlas: 100 },
+}
+
+type TestPrepared = { sourceImage: string; privateAbsolutePath: string }
+
+function detachedInput(prompt = 'blue hair', captureId = 'main-capture-1'): PlanGenerationInput<TestPrepared> {
+    const content: Omit<DetachedGenerationCapture<TestPrepared>, 'contentHash'> = {
+        schemaVersion: 1,
+        captureId,
+        sourceBindings: [],
+        materializedSeeds: [42],
+        jobs: [{
+            semantic: {
+                prompt,
+                negativePrompt: 'lowres',
+                model: 'nai-diffusion-4-5-full',
+                width: 832,
+                height: 1_216,
+                steps: 28,
+                seed: 42,
+                generationParameters: { cfgScale: 5 },
+                resourceDigest: `sha256:${'a'.repeat(64)}`,
+            },
+            preparationDigest: `sha256:${'b'.repeat(64)}`,
+            destination: {
+                generationFolderId: null,
+                generationFolderPathHash: null,
+                outputPolicyId: `sha256:${'c'.repeat(64)}`,
+                expectedBaseName: 'NAI_Blue_42',
+                extension: 'png',
+                collisionPolicy: 'fail',
+                deliveryRequired: true,
+            },
+            prepared: {
+                sourceImage: 'data:image/png;base64,PRIVATE',
+                privateAbsolutePath: 'E:\\private\\image.png',
+            },
+        }],
+        executionPolicy: {
+            failurePolicy: 'continue',
+            retryPolicyId: 'safe-v1',
+            maxAttempts: 2,
+            maxConcurrency: 1,
+            credentialDispatch: { kind: 'auto' },
+            pricingBasis: 'paid',
+            metadataMode: 'embedded',
+        },
+        credentialReadinessFingerprint: `sha256:${'d'.repeat(64)}`,
+    }
+    const capture: DetachedGenerationCapture<TestPrepared> = {
+        ...content,
+        contentHash: hashDetachedGenerationCapture(content),
+    }
+    return {
+        source: { kind: 'detached-generation-capture', capture },
+        count: 1,
+        seedPolicy: { kind: 'replay', traceId: capture.captureId },
+        budget: { maxImages: 1, maxAnlas: 100 },
+    }
 }
 
 function dependencies(
@@ -262,6 +322,80 @@ describe('planGeneration', () => {
         expect(result.status).toBe('conflict')
         if (result.status === 'conflict') {
             expect(result.mismatch?.fieldPath).toBe('jobs[0].compatibility')
+        }
+    })
+
+    it('plans a detached capture without reading drafts, planners, or entropy', async () => {
+        const input = detachedInput()
+        const deps = {
+            ...dependencies(),
+            randomSeed: vi.fn(() => 999),
+            resolveReplayTrace: vi.fn(async () => [999]),
+        }
+
+        const result = await planGeneration(input, deps)
+
+        expect(result.status).toBe('ready')
+        expect(deps.drafts.get).not.toHaveBeenCalled()
+        expect(deps.planner.prepare).not.toHaveBeenCalled()
+        expect(deps.randomSeed).not.toHaveBeenCalled()
+        expect(deps.resolveReplayTrace).not.toHaveBeenCalled()
+        if (result.status === 'ready') {
+            expect(result.plan.sourceBindings[0]).toEqual({
+                resourceType: 'main-generation-capture',
+                resourceId: 'main-capture-1',
+                revision: null,
+                contentHash: input.source.kind === 'detached-generation-capture'
+                    ? input.source.capture.contentHash
+                    : null,
+            })
+            expect(result.plan.jobs[0].semantic.seed).toBe(42)
+            expect(Object.isFrozen(result.plan.jobs[0].prepared)).toBe(true)
+            expect(JSON.stringify(result.view)).not.toContain('PRIVATE')
+        }
+    })
+
+    it('rejects detached capture tampering before any external read', async () => {
+        const input = structuredClone(detachedInput())
+        if (input.source.kind !== 'detached-generation-capture') throw new Error('Expected detached capture')
+        input.source.capture.jobs[0].semantic.prompt = 'tampered after hashing'
+        const deps = dependencies()
+
+        const result = await planGeneration(input, deps)
+
+        expect(result.status).toBe('invalid')
+        if (result.status === 'invalid') {
+            expect(result.issues.map(value => value.code)).toContain('detached-capture-hash-mismatch')
+        }
+        expect(deps.drafts.get).not.toHaveBeenCalled()
+        expect(deps.planner.prepare).not.toHaveBeenCalled()
+    })
+
+    it('reports a redacted conflict when a valid detached capture changes on replay', async () => {
+        const input = detachedInput()
+        const deps = dependencies()
+        const planned = await planGeneration(input, deps)
+        expect(planned.status).toBe('ready')
+        if (planned.status !== 'ready') throw new Error('Expected ready detached plan')
+
+        const changed = detachedInput('changed after review', 'main-capture-2')
+        const replayed = await replayGenerationPlan(planned.plan, {
+            source: changed.source,
+            count: changed.count,
+            budget: changed.budget,
+        }, deps)
+
+        expect(replayed.status).toBe('conflict')
+        if (replayed.status === 'conflict') {
+            expect(replayed.action).toBe('recapture-generation')
+            expect(replayed.source).toEqual({
+                kind: 'detached-generation-capture',
+                captureId: 'main-capture-2',
+                contentHash: changed.source.kind === 'detached-generation-capture'
+                    ? changed.source.capture.contentHash
+                    : null,
+            })
+            expect(JSON.stringify(replayed)).not.toContain('PRIVATE')
         }
     })
 })
