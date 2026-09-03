@@ -4,8 +4,14 @@ const runtime = vi.hoisted(() => ({
     generation: { steps: 28, model: 'nai-diffusion-4-5-full', generate: vi.fn(async () => undefined) },
     queue: {
         executionAuthority: 'durable' as 'durable' | 'legacy',
-        setSelectedBatchId: vi.fn(),
+        selectedBatchId: null as string | null,
+        setSelectedBatchId: vi.fn((batchId: string | null) => { runtime.queue.selectedBatchId = batchId }),
     },
+    batchWorkflows: new Map<string, 'main' | 'scene' | 'style-lab'>(),
+    getBatch: vi.fn(async (batchId: string) => {
+        const workflow = runtime.batchWorkflows.get(batchId)
+        return workflow === undefined ? null : { id: batchId, workflow }
+    }),
     auth: {
         token: 'secret', token2: '', isVerified: true, isVerified2: false,
         slot1Enabled: true, slot2Enabled: false, slot1CredentialRef: null, slot2CredentialRef: null,
@@ -21,7 +27,6 @@ const runtime = vi.hoisted(() => ({
     cancelBatch: vi.fn(async (input: { batchId: string }) => ({
         status: 'ready' as const, targetId: input.batchId,
     })),
-    cancelWorkflow: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/stores/generation-store', () => ({
@@ -43,8 +48,8 @@ vi.mock('@/services/generation/main-application-generation-command', () => ({
 vi.mock('@/services/queue/generation-command-adapter', () => ({
     getRuntimeGenerationCommandAdapter: () => ({ cancelBatch: runtime.cancelBatch }),
 }))
-vi.mock('@/services/queue/runtime', () => ({
-    getRuntimeDurableQueueCoordinator: () => ({ cancelWorkflow: runtime.cancelWorkflow }),
+vi.mock('@/services/queue/indexeddb-queue-repository', () => ({
+    getRuntimeQueueRepository: () => ({ getBatch: runtime.getBatch }),
 }))
 
 import {
@@ -56,6 +61,9 @@ describe('Main generation command quality boundary', () => {
     beforeEach(() => {
         runtime.generation.steps = 28
         runtime.queue.executionAuthority = 'durable'
+        runtime.queue.selectedBatchId = null
+        runtime.batchWorkflows.clear()
+        runtime.batchWorkflows.set('batch:main', 'main')
         runtime.auth.getActiveTokens.mockReturnValue([{ slot: 1, token: 'secret' }])
         runtime.planner.getRequestedCount.mockReturnValue(1)
         runtime.planner.prepareBatch.mockResolvedValue([{ params: { seed: 7 } }])
@@ -107,6 +115,44 @@ describe('Main generation command quality boundary', () => {
             batchId: 'batch:main',
             actor: { kind: 'user', id: 'main-ui:user' },
         })
-        expect(runtime.cancelWorkflow).not.toHaveBeenCalled()
+    })
+
+    it('cancels the exact persisted Main batch after a process restart', async () => {
+        runtime.queue.selectedBatchId = 'batch:restored-main'
+        runtime.batchWorkflows.set('batch:restored-main', 'main')
+
+        await cancelMainGenerationCommand()
+
+        expect(runtime.cancelBatch).toHaveBeenCalledWith({
+            batchId: 'batch:restored-main',
+            actor: { kind: 'user', id: 'main-ui:user' },
+        })
+    })
+
+    it.each([
+        ['no selected batch', null, undefined],
+        ['a missing selected batch', 'batch:missing', undefined],
+        ['a selected Scene batch', 'batch:scene', 'scene' as const],
+    ])('fails closed without cancellation for %s', async (_label, batchId, workflow) => {
+        runtime.queue.selectedBatchId = batchId
+        if (batchId !== null && workflow !== undefined) runtime.batchWorkflows.set(batchId, workflow)
+
+        await expect(cancelMainGenerationCommand()).resolves.toBeUndefined()
+
+        expect(runtime.cancelBatch).not.toHaveBeenCalled()
+    })
+
+    it('cancels only the selected batch when two Main batches exist', async () => {
+        runtime.batchWorkflows.set('batch:main-one', 'main')
+        runtime.batchWorkflows.set('batch:main-two', 'main')
+        runtime.queue.selectedBatchId = 'batch:main-two'
+
+        await cancelMainGenerationCommand()
+
+        expect(runtime.cancelBatch).toHaveBeenCalledOnce()
+        expect(runtime.cancelBatch).toHaveBeenCalledWith({
+            batchId: 'batch:main-two',
+            actor: { kind: 'user', id: 'main-ui:user' },
+        })
     })
 })

@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { flushAllPendingWrites, indexedDBStorage } from '@/lib/indexed-db'
 import { useQueueStore } from '@/stores/queue-store'
 
 describe('durable queue UI operation identity', () => {
@@ -32,5 +33,19 @@ describe('durable queue UI operation identity', () => {
         useQueueStore.getState().setExecutionAuthority('legacy')
         expect(useQueueStore.getState().executionAuthority).toBe('legacy')
         expect(useQueueStore.getState().pendingEnqueueOperationIds).toEqual({ main: null, scene: null })
+    })
+
+    it('rehydrates the exact selected batch after a process restart', async () => {
+        useQueueStore.getState().setSelectedBatchId('batch:restored-main')
+        await flushAllPendingWrites()
+        const persisted = await indexedDBStorage.getItem('nai-blue-queue-ui')
+        expect(persisted).not.toBeNull()
+
+        useQueueStore.setState({ selectedBatchId: null })
+        await indexedDBStorage.setItem('nai-blue-queue-ui', persisted ?? '')
+        await flushAllPendingWrites()
+        await useQueueStore.persist.rehydrate()
+
+        expect(useQueueStore.getState().selectedBatchId).toBe('batch:restored-main')
     })
 })

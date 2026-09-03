@@ -4,17 +4,16 @@ import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import { resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { enqueuePreparedMainGeneration } from '@/services/generation/main-application-generation-command'
 import { getRuntimeGenerationCommandAdapter } from '@/services/queue/generation-command-adapter'
+import { getRuntimeQueueRepository } from '@/services/queue/indexeddb-queue-repository'
 import { getRuntimeMainQueueDependencies } from '@/services/queue/main-queue-runtime-dependencies'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useQueueStore } from '@/stores/queue-store'
-import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import { assessGenerationStepQuality } from '@/services/generation/generation-quality'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 
 export type MainGenerationStartOutcome = 'started' | 'low-quality-steps'
 
 let mainApplicationEnqueueInFlight: Promise<string> | null = null
-let latestMainBatchId: string | null = null
 
 function credentialReadinessFingerprint(auth: ReturnType<typeof useAuthStore.getState>): Sha256Digest {
     return `sha256:${hashCanonicalValue({
@@ -70,7 +69,6 @@ async function enqueueCurrentMainThroughApplication(): Promise<string> {
         throw new Error(message ?? 'The Main generation plan could not be enqueued.')
     }
     useQueueStore.getState().setSelectedBatchId(result.batchId)
-    latestMainBatchId = result.batchId
     return result.batchId
 }
 
@@ -100,14 +98,14 @@ export async function cancelMainGenerationCommand(): Promise<void> {
         useGenerationStore.getState().cancelGeneration()
         return
     }
-    if (latestMainBatchId === null) {
-        // Compatibility for a batch restored before this process observed its
-        // handle; new local submissions always use the application command.
-        await getRuntimeDurableQueueCoordinator().cancelWorkflow('main')
-        return
-    }
+    const selectedBatchId = useQueueStore.getState().selectedBatchId
+    if (selectedBatchId === null) return
+    // The persisted UI handle survives restart, while the durable batch record
+    // prevents Main controls from cancelling a Scene or Style Lab selection.
+    const selectedBatch = await getRuntimeQueueRepository().getBatch(selectedBatchId)
+    if (selectedBatch?.workflow !== 'main') return
     const result = await cancelGeneration({
-        batchId: latestMainBatchId,
+        batchId: selectedBatchId,
         actor: { kind: 'user', id: 'main-ui:user' },
     }, getRuntimeGenerationCommandAdapter())
     if (result.status !== 'ready') {
