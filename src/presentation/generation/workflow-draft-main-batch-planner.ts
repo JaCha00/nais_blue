@@ -1,4 +1,19 @@
 import type { MainBatchPlannerPort } from '@/application/generation/plan-main-batch'
+import {
+    planGeneration,
+    type PlanGenerationDependencies,
+} from '@/application/generation/plan-generation'
+import type {
+    CompatibilitySnapshot,
+    PlanGenerationInput,
+    PlanGenerationResult,
+    PlanIssue,
+    PreparedGenerationJobDraft,
+    PreparedJobPlannerPort,
+    Sha256Digest,
+} from '@/application/generation/generation-plan-contract'
+import type { WorkflowDraftRepositoryPort } from '@/application/workflow/workflow-draft-repository'
+import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
 import {
     isBatchImageDraftReady,
@@ -13,17 +28,24 @@ import type {
 } from '@/domain/composition/fragment-resolver'
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import { createWildcardResolutionSession } from '@/lib/fragment-processor'
+import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import {
     prepareMainGeneration,
     type PreparedMainGeneration,
 } from '@/services/generation/main-generation-plan'
 import { removeComments } from '@/services/nai/presets'
+import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiGenerationCompatibility,
+} from '@/services/nai/compatibility'
 import type { GenerationParams } from '@/services/novelai-types'
 import type { FragmentLookupRepository } from '@/stores/fragment-store'
 import { useFragmentStore } from '@/stores/fragment-store'
 
 interface WorkflowDraftMainBatchPlannerOptions {
     readonly fragmentRepository?: FragmentLookupRepository
+    readonly materializedSeeds?: readonly number[]
+    readonly allowPinnedCredential?: boolean
 }
 
 type MainWorkflowDraft = SingleImageDraft | BatchImageDraft
@@ -55,16 +77,23 @@ function requestedCount(draft: MainWorkflowDraft): number {
     return draft.payload.scenes.reduce((sum, scene) => sum + scene.count, 0)
 }
 
-function batchPromptInputs(draft: MainWorkflowDraft): readonly BatchPromptInput[] {
+function batchPromptInputs(
+    draft: MainWorkflowDraft,
+    materializedSeeds?: readonly number[],
+): readonly BatchPromptInput[] {
     const commonPrompt = draft.payload.output.folderCommonPrompt?.trim() ?? ''
     const withCommonPrompt = (prompt: string) => [commonPrompt, prompt].filter(Boolean).join(', ')
     if (draft.kind === 'single-image') {
-        return [{
+        const inputs = [{
             positive: withCommonPrompt(draft.payload.prompt.positive),
             negative: draft.payload.prompt.negative,
             seed: draft.payload.generation.seed,
             ordinal: 0,
         }]
+        if (materializedSeeds === undefined) return inputs
+        return materializedSeeds.length === 1
+            ? [{ ...inputs[0], seed: materializedSeeds[0] }]
+            : []
     }
     const inputs: BatchPromptInput[] = []
     const append = (positive: string, negative: string, count: number) => {
@@ -80,16 +109,25 @@ function batchPromptInputs(draft: MainWorkflowDraft): readonly BatchPromptInput[
     }
     if (draft.payload.batchMode !== 'scenes') {
         append(withCommonPrompt(draft.payload.prompt.positive), draft.payload.prompt.negative, draft.payload.count)
-        return inputs
+    } else {
+        for (const scene of draft.payload.scenes) {
+            append(
+                withCommonPrompt([draft.payload.prompt.positive, scene.positive].filter(Boolean).join(', ')),
+                [draft.payload.prompt.negative, scene.negative].filter(Boolean).join(', '),
+                scene.count,
+            )
+        }
     }
-    for (const scene of draft.payload.scenes) {
-        append(
-            withCommonPrompt([draft.payload.prompt.positive, scene.positive].filter(Boolean).join(', ')),
-            [draft.payload.prompt.negative, scene.negative].filter(Boolean).join(', '),
-            scene.count,
-        )
+    if (materializedSeeds === undefined) return inputs
+    if (materializedSeeds.length !== inputs.length) return []
+    return inputs.map((input, ordinal) => ({ ...input, seed: materializedSeeds[ordinal] }))
+}
+
+export class WorkflowDraftFragmentRevisionConflictError extends Error {
+    constructor() {
+        super('Prompt module sequence state changed during Guided batch planning')
+        this.name = 'WorkflowDraftFragmentRevisionConflictError'
     }
-    return inputs
 }
 
 /**
@@ -104,7 +142,7 @@ function createStagedFragmentRepository(live: FragmentLookupRepository): {
     let snapshot: FragmentSequenceSnapshot = structuredClone(live.getSequenceSnapshot())
     const assertSourceUnchanged = () => {
         if (live.getSequenceSnapshot().revision !== baseLiveRevision) {
-            throw new Error('Fragment store changed during Guided batch planning')
+            throw new WorkflowDraftFragmentRevisionConflictError()
         }
     }
     return {
@@ -151,7 +189,8 @@ export function createWorkflowDraftMainBatchPlanner(
                 || captured.payload.resolution === null
                 // Queue credential affinity is a separate scheduling contract;
                 // never silently run a pinned draft through today's auto slot.
-                || captured.payload.credentialPolicy.kind !== 'auto') {
+                || (!options.allowPinnedCredential
+                    && captured.payload.credentialPolicy.kind !== 'auto')) {
                 return []
             }
             const { generation, output, resolution } = captured.payload
@@ -159,7 +198,7 @@ export function createWorkflowDraftMainBatchPlanner(
                 ?? useFragmentStore.getState().getLookupRepository()
             const stagedFragments = createStagedFragmentRepository(liveRepository)
             const prepared: PreparedMainGeneration[] = []
-            for (const input of batchPromptInputs(captured)) {
+            for (const input of batchPromptInputs(captured, options.materializedSeeds)) {
                 const fragments = createWildcardResolutionSession({
                     seed: input.seed,
                     scope: `guided:${captured.id}:revision:${captured.revision}:item:${input.ordinal}`,
@@ -199,7 +238,7 @@ export function createWorkflowDraftMainBatchPlanner(
                 const sequenceCommitProposal = fragments.sequenceCommitProposal
                 if (!stagedFragments.stage(sequenceCommitProposal)) {
                     fragments.discard()
-                    throw new WorkflowDraftPromptModuleResolutionError()
+                    throw new WorkflowDraftFragmentRevisionConflictError()
                 }
                 const params: GenerationParams = buildLegacyMainGenerationParameters<never, SingleImageMetadataMode>({
                 prompt: positive,
@@ -267,4 +306,203 @@ export function createWorkflowDraftMainBatchPlanner(
             return Object.freeze(prepared)
         },
     })
+}
+
+function digest(value: unknown): Sha256Digest {
+    return `sha256:${hashCanonicalValue(value)}`
+}
+
+function resourceProjection(params: GenerationParams) {
+    return {
+        sourceImage: params.sourceImage ?? null,
+        mask: params.mask ?? null,
+        characterImages: params.charImages ?? [],
+        vibeImages: params.vibeImages ?? [],
+        preEncodedVibes: params.preEncodedVibes ?? [],
+    }
+}
+
+/**
+ * Keeps provider meaning reviewable while replacing resource bytes and cache
+ * handles with ordered digests. The opaque PreparedMainGeneration retains the
+ * executable values for a later, separately authorized enqueue.
+ */
+function projectPreparedJob(prepared: PreparedMainGeneration): PreparedGenerationJobDraft<PreparedMainGeneration> {
+    const params = prepared.params
+    const resources = resourceProjection(params)
+    const pathHash = (value: string | null): Sha256Digest | null => value ? digest(value) : null
+    return Object.freeze({
+        semantic: {
+            prompt: params.prompt,
+            negativePrompt: params.negative_prompt,
+            model: params.model,
+            width: params.width,
+            height: params.height,
+            steps: params.steps,
+            seed: params.seed,
+            generationParameters: {
+                cfgScale: params.cfg_scale,
+                cfgRescale: params.cfg_rescale,
+                sampler: params.sampler,
+                scheduler: params.scheduler,
+                smea: params.smea,
+                smeaDyn: params.smea_dyn,
+                variety: params.variety,
+                strength: params.strength ?? null,
+                noise: params.noise ?? null,
+                sourceImageDigest: pathHash(params.sourceImage ?? null),
+                maskDigest: pathHash(params.mask ?? null),
+                characterImageDigests: (params.charImages ?? []).map(digest),
+                characterStrength: params.charStrength ?? [],
+                characterFidelity: params.charFidelity ?? [],
+                characterReferenceType: params.charReferenceType ?? [],
+                vibeImageDigests: (params.vibeImages ?? []).map(digest),
+                preEncodedVibeDigests: (params.preEncodedVibes ?? []).map(value => value === null ? null : digest(value)),
+                vibeInformation: params.vibeInfo ?? [],
+                vibeStrength: params.vibeStrength ?? [],
+                characterPrompts: (params.characterPrompts ?? []).map(character => ({
+                    prompt: character.prompt,
+                    negative: character.negative,
+                    enabled: character.enabled,
+                    position: { ...character.position },
+                })),
+                characterPositionEnabled: params.characterPositionEnabled ?? false,
+                imageFormat: prepared.imageFormat,
+                upscaledEnhance: params.upscaledEnhance ?? false,
+                qualityToggle: params.qualityToggle ?? false,
+                ucPreset: params.ucPreset ?? 0,
+                transparentBackground: params.transparentBackground ?? false,
+            },
+            resourceDigest: digest(resources),
+        },
+        preparationDigest: digest({ sequenceCommitProposal: prepared.sequenceCommitProposal }),
+        destination: {
+            generationFolderId: prepared.output.generationFolderId,
+            generationFolderPathHash: pathHash(prepared.output.generationFolderPath),
+            outputPolicyId: digest({
+                autoSave: prepared.output.autoSave,
+                directoryHash: digest(prepared.output.directory),
+                fallbackDirectoryHash: digest(prepared.output.capabilityFallbackDirectory),
+                useAbsolutePath: prepared.output.useAbsolutePath,
+                metadataMode: prepared.metadataMode,
+                rightsXmpEnabled: prepared.output.rightsXmpEnabled,
+                rightsOwner: prepared.output.rightsOwner,
+                rightsEffectiveDate: prepared.output.rightsEffectiveDate,
+            }),
+            expectedBaseName: prepared.output.fileName?.replace(/\.(?:png|webp)$/i, '')
+                || `NAI_Blue_${params.seed}`,
+            extension: prepared.imageFormat,
+            collisionPolicy: 'fail' as const,
+            deliveryRequired: prepared.output.autoSave,
+        },
+        prepared,
+    })
+}
+
+/** Canonical Workflow Draft planning always receives its fragment authority explicitly. */
+export function createWorkflowDraftPreparedJobPlanner(
+    fragmentRepository: FragmentLookupRepository,
+): PreparedJobPlannerPort<PreparedMainGeneration> {
+    const planner: PreparedJobPlannerPort<PreparedMainGeneration> = {
+        prepare: async ({ draft, materializedSeeds }) => {
+            const batchPlanner = createWorkflowDraftMainBatchPlanner(draft, {
+                fragmentRepository,
+                materializedSeeds,
+                allowPinnedCredential: true,
+            })
+            return (await batchPlanner.prepareBatch()).map(projectPreparedJob)
+        },
+    }
+    return Object.freeze(planner)
+}
+
+export const WORKFLOW_DRAFT_RETRY_POLICY_ID = 'main-queue-retry-v1' as const
+
+function createRandomSeed(): number {
+    const values = new Uint32Array(1)
+    globalThis.crypto.getRandomValues(values)
+    return values[0]
+}
+
+export interface WorkflowDraftGenerationPlanOptions {
+    readonly drafts: Pick<WorkflowDraftRepositoryPort, 'get'>
+    readonly fragmentRepository: FragmentLookupRepository
+    readonly pricingBasis: 'paid' | 'all-active-opus'
+    readonly randomSeed?: () => number
+    readonly resolveReplayTrace?: (traceId: string) => Promise<readonly number[] | null>
+}
+
+/** Shared dependency builder used by Guided and protocol-neutral callers. */
+export function createWorkflowDraftGenerationPlanDependencies(
+    options: WorkflowDraftGenerationPlanOptions,
+): PlanGenerationDependencies<PreparedMainGeneration> {
+    const dependencies: PlanGenerationDependencies<PreparedMainGeneration> = {
+        drafts: options.drafts,
+        planner: createWorkflowDraftPreparedJobPlanner(options.fragmentRepository),
+        executionPolicy: {
+            failurePolicy: 'continue',
+            retryPolicyId: WORKFLOW_DRAFT_RETRY_POLICY_ID,
+            maxAttempts: 3,
+            maxConcurrency: 2,
+            pricingBasis: options.pricingBasis,
+        },
+        estimateAnlas: job => calculateAnlasCost({
+            model: job.semantic.model,
+            width: job.semantic.width,
+            height: job.semantic.height,
+            steps: job.semantic.steps,
+            imageCount: 1,
+            pricingBasis: options.pricingBasis,
+        }),
+        resolveCompatibility: job => {
+            const profile = queryNaiGenerationCompatibility(
+                job.prepared.params,
+                CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+                job.prepared.streaming,
+            )
+            return {
+                compatibilityProfileId: profile.compatibilityProfileId,
+                status: profile.status,
+            } satisfies CompatibilitySnapshot
+        },
+        classifyPreparationError: error => {
+            let classified: PlanIssue | null = null
+            if (error instanceof WorkflowDraftPromptModuleResolutionError) {
+                classified = {
+                    code: 'prompt-module-unavailable',
+                    severity: 'blocking',
+                    fieldPath: 'source.draft.payload.prompt',
+                    message: error.message,
+                }
+            } else if (error instanceof WorkflowDraftCharacterPromptValidationError) {
+                classified = {
+                    code: 'character-prompt-invalid',
+                    severity: 'blocking',
+                    fieldPath: 'source.draft.payload.characterPrompts',
+                    message: error.message,
+                }
+            } else if (error instanceof WorkflowDraftFragmentRevisionConflictError) {
+                classified = {
+                    code: 'fragment-sequence-conflict',
+                    severity: 'blocking',
+                    fieldPath: 'source.fragmentSequence',
+                    message: error.message,
+                }
+            }
+            return classified === null ? null : Object.freeze(classified)
+        },
+        randomSeed: options.randomSeed ?? createRandomSeed,
+        ...(options.resolveReplayTrace === undefined
+            ? {}
+            : { resolveReplayTrace: options.resolveReplayTrace }),
+    }
+    return Object.freeze(dependencies)
+}
+
+/** Thin Guided wrapper; direct callers can invoke planGeneration with the same dependencies. */
+export function planWorkflowDraftGeneration(
+    input: PlanGenerationInput,
+    options: WorkflowDraftGenerationPlanOptions,
+): Promise<PlanGenerationResult<PreparedMainGeneration>> {
+    return planGeneration(input, createWorkflowDraftGenerationPlanDependencies(options))
 }
