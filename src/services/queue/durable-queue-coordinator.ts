@@ -510,7 +510,9 @@ export class DurableQueueCoordinator {
     ): Promise<void> {
         const now = this.now()
         const diagnostic = failure.options.diagnosticEventId
-        if (failure.kind === 'authentication' || failure.kind === 'local-io') {
+        if (failure.kind === 'authentication'
+            || failure.kind === 'local-io'
+            || failure.kind === 'compatibility') {
             await this.repository.requeueAfterFailure({
                 jobId: job.id,
                 leaseOwner: owner,
@@ -524,7 +526,7 @@ export class DurableQueueCoordinator {
                 batchId: job.batchId,
                 state: 'paused',
                 now,
-                reason: failure.kind === 'authentication' ? 'authentication' : 'local-io',
+                reason: failure.kind,
             })
             return
         }

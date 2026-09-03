@@ -433,6 +433,22 @@ describe('durable queue coordinator', () => {
         expect((await queue.getBatchSummary('batch:1')).states.queued).toBe(2)
     })
 
+    it('pauses an unsupported compatibility profile before retrying the same job', async () => {
+        const queue = repository('compatibility')
+        await enqueue(queue, jobs(1))
+        const runtime = coordinator(queue, async () => {
+            throw new QueueExecutionError('compatibility', 'unsupported payload builder revision')
+        })
+
+        await runtime.drain()
+
+        expect(await queue.getBatch('batch:1')).toMatchObject({
+            state: 'paused',
+            pauseReason: 'compatibility',
+        })
+        expect(await queue.getJob('job:0')).toMatchObject({ state: 'queued', attemptCount: 1 })
+    })
+
     it('persists 429 backoff and does not turn it into a global pause', async () => {
         const queue = repository('rate-limit')
         await enqueue(queue, jobs(1))

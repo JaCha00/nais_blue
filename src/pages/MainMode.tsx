@@ -208,6 +208,7 @@ export default function MainMode() {
         useAbsolutePath: state.useAbsolutePath,
         imageFormat: state.imageFormat,
         metadataMode: state.metadataMode,
+        useStreaming: state.useStreaming,
         generationFolders: state.generationFolders,
         activeGenerationFolderId: state.activeGenerationFolderId,
     })))
@@ -322,7 +323,7 @@ export default function MainMode() {
                 now: new Date().toISOString(),
                 seed: seed || 1,
                 fragment,
-            }, { batchCount, pricingBasis })
+            }, { batchCount, pricingBasis, streaming: settings.useStreaming })
             if (current) setPreflight(next)
         }
 
@@ -366,6 +367,7 @@ export default function MainMode() {
         settings.imageFormat,
         settings.metadataMode,
         settings.savePath,
+        settings.useStreaming,
         settings.useAbsolutePath,
         smea,
         smeaDyn,
@@ -378,8 +380,34 @@ export default function MainMode() {
     ])
 
     const resolvedPlan = preflight?.diagnostics.plan ?? null
-    const resolvedWarnings = preflight?.diagnostics.warnings ?? []
-    const resolvedErrors = preflight?.diagnostics.errors ?? []
+    const compatibilityIssue: ReadonlyCompositionIssue | null = preflight === null
+        ? null
+        : preflight.providerCompatibility.status === 'synthetic-only'
+            ? {
+                code: 'W_NAI_COMPATIBILITY_SYNTHETIC_ONLY',
+                severity: 'warning',
+                messageKey: 'composition.issue.payloadParityUnverifiedModel',
+                fieldPath: ['providerCompatibility'],
+                blocking: false,
+            }
+            : preflight.providerCompatibility.status === 'known-divergence'
+                || preflight.providerCompatibility.status === 'unsupported'
+                ? {
+                    code: 'E_NAI_COMPATIBILITY_UNSUPPORTED',
+                    severity: 'error',
+                    messageKey: 'composition.issue.payloadParityUnverifiedModel',
+                    fieldPath: ['providerCompatibility'],
+                    blocking: true,
+                }
+                : null
+    const resolvedWarnings: readonly ReadonlyCompositionIssue[] = [
+        ...(preflight?.diagnostics.warnings ?? []),
+        ...(compatibilityIssue?.severity === 'warning' ? [compatibilityIssue] : []),
+    ]
+    const resolvedErrors: readonly ReadonlyCompositionIssue[] = [
+        ...(preflight?.diagnostics.errors ?? []),
+        ...(compatibilityIssue?.severity === 'error' ? [compatibilityIssue] : []),
+    ]
 
     const portableResolvedIssues = useMemo(() => resolvedPlan === null
         ? []

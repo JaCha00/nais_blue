@@ -55,6 +55,22 @@ describe('NovelAI image transport', () => {
         expect(provider.generateImageStream).not.toHaveBeenCalled()
     })
 
+    it('forwards the optional Phase 3 fault seam without changing ordinary calls', async () => {
+        const signal = new AbortController().signal
+        const faultInjector = vi.fn()
+
+        await executeNovelAIImageTransport({
+            token: 'credential',
+            params,
+            imageFormat: 'png',
+            streaming: false,
+            signal,
+            faultInjector,
+        })
+
+        expect(provider.generateImage).toHaveBeenCalledWith('credential', params, signal, faultInjector)
+    })
+
     it('normalizes streaming previews without changing progress or result', async () => {
         provider.generateImageStream.mockImplementation(async (
             _token: string,

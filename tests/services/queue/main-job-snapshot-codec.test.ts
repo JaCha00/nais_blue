@@ -10,6 +10,10 @@ import {
     decodeMainJobSnapshot,
     encodeMainJobSnapshot,
 } from '@/services/queue/main-job-snapshot-codec'
+import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+} from '@/services/nai/compatibility'
 
 function params(overrides: Partial<GenerationParams> = {}): GenerationParams {
     return {
@@ -69,6 +73,7 @@ describe('Main Job Snapshot codec', () => {
             schemaVersion: 1,
             prompt: { positive: 'encoded prompt', negative: 'encoded negative' },
             parameters: {
+                payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
                 queueExecution: { streaming: true, sourceEdit: false },
                 mainWorkflow: {
                     finalPrompt: 'encoded prompt',
@@ -112,6 +117,7 @@ describe('Main Job Snapshot codec', () => {
         }), dehydrated, costConsent).snapshot
 
         expect(decodeMainJobSnapshot(snapshot)).toMatchObject({
+            payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
             queueExecution: { streaming: true, sourceEdit: false },
             mainWorkflow: {
                 imageFormat: 'webp',
@@ -130,6 +136,27 @@ describe('Main Job Snapshot codec', () => {
         } catch (error) {
             expect(error).toMatchObject({ kind: 'fatal' })
         }
+    })
+
+    it('migrates snapshots without a builder revision to the explicit legacy revision', () => {
+        const snapshot = JSON.parse(JSON.stringify(
+            encodeMainJobSnapshot(prepared(), dehydrated).snapshot,
+        )) as GenerationJobSnapshot
+        const parameters = snapshot.parameters as Record<string, unknown>
+        delete parameters.payloadBuilderRevision
+
+        expect(decodeMainJobSnapshot(snapshot).payloadBuilderRevision)
+            .toBe(LEGACY_NAI_PAYLOAD_BUILDER_REVISION)
+    })
+
+    it('preserves an unknown well-formed revision for the executor compatibility pause', () => {
+        const snapshot = JSON.parse(JSON.stringify(
+            encodeMainJobSnapshot(prepared(), dehydrated).snapshot,
+        )) as GenerationJobSnapshot
+        const parameters = snapshot.parameters as Record<string, unknown>
+        parameters.payloadBuilderRevision = 'future-wire-v99'
+
+        expect(decodeMainJobSnapshot(snapshot).payloadBuilderRevision).toBe('future-wire-v99')
     })
 
     it('round-trips the captured generation folder and R2 target without consulting live settings', () => {

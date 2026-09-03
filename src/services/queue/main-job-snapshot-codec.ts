@@ -8,6 +8,10 @@ import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+} from '@/services/nai/compatibility'
+import {
     DEFAULT_RIGHTS_OWNER,
     isRightsEffectiveDate,
     isRightsOwner,
@@ -49,6 +53,7 @@ export interface MainQueueWorkflowSnapshot {
 }
 
 export interface MainQueueSnapshotParameters extends DehydratedGenerationParameters {
+    readonly payloadBuilderRevision: string
     readonly queueExecution: { readonly streaming: boolean; readonly sourceEdit: boolean }
     readonly mainWorkflow: MainQueueWorkflowSnapshot
 }
@@ -86,6 +91,7 @@ export function encodeMainJobSnapshot(
     ) ?? `NAI_Blue_${prepared.params.seed}.${prepared.imageFormat}`
     const parameters: MainQueueSnapshotParameters = {
         ...dehydrated.parameters,
+        payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
         queueExecution: {
             streaming: prepared.streaming,
             sourceEdit: prepared.sourceEdit,
@@ -151,6 +157,9 @@ export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueu
         || !Array.isArray(candidate.resourceBindings)
         || !isRecord(candidate.resourceArrayLengths)
         || !isRecord(candidate.queueExecution)
+        || (candidate.payloadBuilderRevision !== undefined
+            && (typeof candidate.payloadBuilderRevision !== 'string'
+                || !/^[A-Za-z0-9._-]{1,128}$/.test(candidate.payloadBuilderRevision)))
         || typeof candidate.queueExecution.streaming !== 'boolean'
         || typeof candidate.queueExecution.sourceEdit !== 'boolean'
         || !isRecord(candidate.mainWorkflow)
@@ -196,5 +205,9 @@ export function decodeMainJobSnapshot(snapshot: GenerationJobSnapshot): MainQueu
         )) {
         return invalidSnapshot()
     }
-    return candidate as unknown as MainQueueSnapshotParameters
+    return {
+        ...candidate,
+        payloadBuilderRevision: candidate.payloadBuilderRevision
+            ?? LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+    } as unknown as MainQueueSnapshotParameters
 }

@@ -16,6 +16,13 @@ import {
     type MainCompositionMode,
     resolveMainRecipeSelection,
 } from '@/lib/composition/main-adapter'
+import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiCompatibility,
+    type NaiCompatibilityFeature,
+    type NaiCompatibilityProfile,
+    type NaiGenerationAction,
+} from '@/services/nai/compatibility'
 
 export interface MainCompositionGenerationDraft {
     readonly basePrompt: string
@@ -208,6 +215,8 @@ export interface MainGenerationPreflight {
     readonly resolution: MainCompositionResolution
     readonly diagnostics: MainCompositionDiagnostics
     readonly estimatedCost: number | null
+    /** Synthetic evidence is intentionally returned as a plan warning, never a pass. */
+    readonly providerCompatibility: NaiCompatibilityProfile
 }
 
 /** Legacy and shadow retain their executable fallback; only v2 owns preflight blocking. */
@@ -231,7 +240,11 @@ export function mainPreflightBlocksGeneration(
 /** Resolves the current draft without mutating stores or consuming fragment sequences. */
 export function preflightMainGeneration(
     input: BuildMainCompositionInput,
-    options: { readonly batchCount: number, readonly pricingBasis: AnlasPricingBasis },
+    options: {
+        readonly batchCount: number
+        readonly pricingBasis: AnlasPricingBasis
+        readonly streaming?: boolean
+    },
 ): MainGenerationPreflight {
     const resolution = resolveMainComposition({
         ...input,
@@ -239,6 +252,34 @@ export function preflightMainGeneration(
     })
     const diagnostics = diagnosticsFromMainResolution(resolution)
     const params = diagnostics.plan?.params
+    const sourceMode = params?.sourceMode ?? input.snapshot.params.sourceMode
+    const action: NaiGenerationAction = sourceMode === 'inpaint'
+        ? 'infill'
+        : sourceMode === 'image-to-image'
+            ? 'img2img'
+            : 'generate'
+    const features: NaiCompatibilityFeature[] = []
+    if (options.streaming === true && action === 'generate') features.push('streaming')
+    if ((diagnostics.plan?.characters.length ?? input.snapshot.characters.length) > 0) {
+        features.push('character-prompts')
+    }
+    const hasCharacterReference = diagnostics.plan
+        ? diagnostics.plan.resources.some(resource => resource.role === 'character-reference')
+        : input.snapshot.references.some(reference => reference.kind === 'character')
+    const hasVibeReference = diagnostics.plan
+        ? diagnostics.plan.resources.some(resource => resource.role === 'vibe-reference')
+        : input.snapshot.references.some(reference => reference.kind === 'vibe')
+    if (hasCharacterReference) features.push('precise-reference')
+    if (hasVibeReference) features.push('vibe-transfer')
+    if ((params?.transparentBackground ?? input.snapshot.params.transparentBackground) === true) {
+        features.push('transparent-background')
+    }
+    const providerCompatibility = queryNaiCompatibility({
+        model: params?.model ?? input.snapshot.params.model,
+        action,
+        features,
+        payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    })
     const estimatedCost = params === undefined
         ? null
         : calculateAnlasCost({
@@ -250,5 +291,5 @@ export function preflightMainGeneration(
             pricingBasis: options.pricingBasis,
         }) * options.batchCount
 
-    return Object.freeze({ resolution, diagnostics, estimatedCost })
+    return Object.freeze({ resolution, diagnostics, estimatedCost, providerCompatibility })
 }

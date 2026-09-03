@@ -16,6 +16,8 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SceneQueueSelectionDialog } from '@/components/queue/SceneQueueSelectionDialog'
+import type { GenerationFulfillmentProjection } from '@/application/generation/generation-fulfillment'
+import { getRuntimeGenerationRun } from '@/adapters/generation/indexeddb-generation-run-reader'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -110,6 +112,7 @@ export default function QueueCenter() {
     const viewportRef = useRef<HTMLDivElement>(null)
     const refreshId = useRef(0)
     const windowRequestId = useRef(0)
+    const fulfillmentRequestId = useRef(0)
     const pendingFocusIndex = useRef<number | null>(null)
     const selectedBatchIdRef = useRef<string | null>(selectedBatchId)
     selectedBatchIdRef.current = selectedBatchId
@@ -123,6 +126,9 @@ export default function QueueCenter() {
     const [busy, setBusy] = useState(false)
     const [conversionOpen, setConversionOpen] = useState(false)
     const [sceneSelectionOpen, setSceneSelectionOpen] = useState(false)
+    const [fulfillment, setFulfillment] = useState<GenerationFulfillmentProjection | null>(null)
+    const [fulfillmentLoading, setFulfillmentLoading] = useState(false)
+    const [fulfillmentError, setFulfillmentError] = useState(false)
 
     const selectedBatch = batches.find(batch => batch.id === selectedBatchId) ?? null
     const summary = projectionMeta?.batchId === selectedBatchId ? projectionMeta.summary : null
@@ -177,6 +183,39 @@ export default function QueueCenter() {
             document.removeEventListener('visibilitychange', refreshWhenVisible)
         }
     }, [refresh])
+
+    useEffect(() => {
+        fulfillmentRequestId.current += 1
+        setFulfillment(null)
+        setFulfillmentLoading(false)
+        setFulfillmentError(false)
+    }, [selectedBatchId])
+
+    // This joins several durable authorities, so Queue polling never calls it;
+    // opening or refreshing the compact detail is the explicit query boundary.
+    const loadFulfillment = useCallback(async () => {
+        if (selectedBatchId === null) return
+        const requestId = ++fulfillmentRequestId.current
+        setFulfillmentLoading(true)
+        setFulfillmentError(false)
+        try {
+            const projection = await getRuntimeGenerationRun(selectedBatchId)
+            if (requestId !== fulfillmentRequestId.current
+                || selectedBatchIdRef.current !== selectedBatchId) return
+            setFulfillment(projection)
+            setFulfillmentError(projection === null)
+        } catch (error) {
+            if (requestId !== fulfillmentRequestId.current) return
+            setFulfillmentError(true)
+            reportDiagnostic(error, {
+                operation: 'queue-center.fulfillment',
+                stage: 'read',
+                category: 'persistence',
+            })
+        } finally {
+            if (requestId === fulfillmentRequestId.current) setFulfillmentLoading(false)
+        }
+    }, [selectedBatchId])
 
     useEffect(() => {
         const viewport = viewportRef.current
@@ -406,6 +445,26 @@ export default function QueueCenter() {
         if (seconds < 3_600) return t('queue.eta.minutes', '{{count}} min', { count: Math.ceil(seconds / 60) })
         return t('queue.eta.hours', '{{count}} hr', { count: Math.ceil(seconds / 3_600) })
     }
+    const fulfillmentStateLabel = (state: string): string => {
+        const labels: Record<string, string> = {
+            'not-required': t('queue.fulfillment.state.notRequired', 'Not required'),
+            'not-evaluated': t('queue.fulfillment.state.notEvaluated', 'Not evaluated'),
+            pending: t('queue.fulfillment.state.pending', 'Pending'),
+            succeeded: t('queue.fulfillment.state.succeeded', 'Succeeded'),
+            failed: t('queue.fulfillment.state.failed', 'Failed'),
+            uncertain: t('queue.fulfillment.state.uncertain', 'Uncertain'),
+            unavailable: t('queue.fulfillment.state.unavailable', 'Unavailable'),
+            'needs-review': t('queue.fulfillment.state.needsReview', 'Needs review'),
+            accepted: t('queue.fulfillment.state.accepted', 'Accepted'),
+            rejected: t('queue.fulfillment.state.rejected', 'Rejected'),
+            planned: t('queue.fulfillment.state.planned', 'Planned'),
+            running: t('queue.fulfillment.state.running', 'Running'),
+            partial: t('queue.fulfillment.state.partial', 'Partial'),
+            'needs-attention': t('queue.fulfillment.state.needsAttention', 'Needs attention'),
+            delivered: t('queue.fulfillment.state.delivered', 'Delivered'),
+        }
+        return labels[state] ?? t('queue.status.unknown', 'Status unavailable')
+    }
 
     return (
         <main
@@ -590,6 +649,61 @@ export default function QueueCenter() {
                     </Button>
                 )}
             </section>
+
+            {selectedBatchId !== null && (
+                <details
+                    className="shrink-0 border-b border-border bg-muted/10"
+                    data-testid="queue-fulfillment-summary"
+                    onToggle={event => {
+                        if (event.currentTarget.open
+                            && fulfillment?.runId !== selectedBatchId
+                            && !fulfillmentLoading) void loadFulfillment()
+                    }}
+                >
+                    <summary className="cursor-pointer px-3 py-3 text-sm font-medium sm:px-5">
+                        {t('queue.fulfillment.title', 'Fulfillment stages')}
+                        {fulfillment !== null && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                                {fulfillmentStateLabel(fulfillment.overall)}
+                            </span>
+                        )}
+                    </summary>
+                    <div className="px-3 pb-3 sm:px-5">
+                        {fulfillmentLoading ? (
+                            <p className="text-xs text-muted-foreground">{t('common.loading', 'Loading...')}</p>
+                        ) : fulfillmentError || fulfillment === null ? (
+                            <p className="text-xs text-muted-foreground">
+                                {t('queue.fulfillment.unavailable', 'Fulfillment evidence is unavailable.')}
+                            </p>
+                        ) : (
+                            <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                                {([
+                                    ['interpretation', t('queue.fulfillment.interpretation', 'Interpretation'), fulfillment.interpretation.state],
+                                    ['provider', t('queue.fulfillment.provider', 'Provider'), fulfillment.provider.state],
+                                    ['storage', t('queue.fulfillment.storage', 'Storage'), fulfillment.storage.state],
+                                    ['release', t('queue.fulfillment.release', 'Release'), fulfillment.release.state],
+                                    ['acceptance', t('queue.fulfillment.acceptance', 'Acceptance'), fulfillment.acceptance.state],
+                                ] as const).map(([key, label, state]) => (
+                                    <div key={key} className="rounded-control border border-border bg-card px-2 py-2">
+                                        <dt className="text-muted-foreground">{label}</dt>
+                                        <dd className="mt-1 font-medium">{fulfillmentStateLabel(state)}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        )}
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            className="mt-2 min-h-11 px-2"
+                            disabled={fulfillmentLoading}
+                            onClick={() => void loadFulfillment()}
+                        >
+                            <RotateCcw className="mr-2 h-4 w-4" />
+                            {t('queue.fulfillment.refresh', 'Refresh stages')}
+                        </Button>
+                    </div>
+                </details>
+            )}
 
             <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2 sm:px-5">
                 <Activity className="h-4 w-4 text-muted-foreground" />

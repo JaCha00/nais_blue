@@ -10,12 +10,31 @@ describe('durable Main sequential-fragment execution contract', () => {
         )
         const reserve = source.indexOf('reserveWildcardSequenceProposal(payload.mainWorkflow.sequenceCommitProposal)')
         const transport = source.indexOf('await executeNovelAIImageTransport')
+        const revisionGuard = source.indexOf('isSupportedNaiPayloadBuilderRevision(payload.payloadBuilderRevision)')
+        const compatibilityGuard = source.indexOf('queryNaiGenerationCompatibility(')
 
         expect(reserve).toBeGreaterThan(-1)
+        expect(revisionGuard).toBeGreaterThan(-1)
+        expect(compatibilityGuard).toBeGreaterThan(revisionGuard)
+        expect(reserve).toBeGreaterThan(compatibilityGuard)
         expect(transport).toBeGreaterThan(reserve)
         expect(source).toContain("new QueueExecutionError('fatal', 'Fragment sequence snapshot is stale before Main transport')")
         expect(source).toContain('sequenceLease.commit()')
         expect(source).not.toContain("new QueueExecutionError('transient', 'Fragment sequence changed before Main commit')")
+    })
+
+    it('places the deterministic response/spool fault seam before OutputWriter commit', async () => {
+        const source = await readFile(
+            resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'),
+            'utf8',
+        )
+        const response = source.indexOf('const bytes = decodeImageBytes(result.imageData)')
+        const seam = source.indexOf("faultInjector('after-spool-commit')")
+        const outputWriter = source.indexOf('getRuntimeOutputWriter()')
+
+        expect(response).toBeGreaterThan(-1)
+        expect(seam).toBeGreaterThan(response)
+        expect(outputWriter).toBeGreaterThan(seam)
     })
 
     it('exposes only staged proposals and rejects an incomplete planned batch', async () => {

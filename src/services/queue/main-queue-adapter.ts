@@ -10,10 +10,15 @@ import type { QueueResourceRecord } from '@/domain/queue/types'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiGenerationCompatibility,
+} from '@/services/nai/compatibility'
+import {
     getRuntimeQueueRepository,
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
 } from './indexeddb-queue-repository'
+import { QueueExecutionError } from './durable-queue-coordinator'
 import { encodeMainJobSnapshot } from './main-job-snapshot-codec'
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
 import {
@@ -105,6 +110,19 @@ async function enqueueMainBatch(
         const plan = await planMainBatch({
             planner: options.planner,
             preflight: prepared => {
+                const incompatible = prepared
+                    .map(item => queryNaiGenerationCompatibility(
+                        item.params,
+                        CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+                        item.streaming,
+                    ))
+                    .find(result => result.status === 'known-divergence' || result.status === 'unsupported')
+                if (incompatible !== undefined) {
+                    throw new QueueExecutionError(
+                        'compatibility',
+                        `NovelAI compatibility profile cannot execute: ${incompatible.compatibilityProfileId}`,
+                    )
+                }
                 if (options.submissionPolicy.kind === 'advanced') return
                 const consent = options.submissionPolicy.costConsent
                 if (consent === undefined || consent === null) {

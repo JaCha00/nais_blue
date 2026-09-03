@@ -175,5 +175,9 @@ describe('Main generation preflight', () => {
             format: 'webp',
             autoSave: true,
         })
+        expect(result.providerCompatibility).toMatchObject({
+            status: 'synthetic-only',
+            warnings: ['W_NAI_COMPATIBILITY_SYNTHETIC_ONLY'],
+        })
     })
 })

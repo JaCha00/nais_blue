@@ -338,6 +338,7 @@ function parseBatch(value: unknown): GenerationBatch {
         && value.pauseReason !== 'user'
         && value.pauseReason !== 'authentication'
         && value.pauseReason !== 'local-io'
+        && value.pauseReason !== 'compatibility'
         && value.pauseReason !== 'fatal'
         && value.pauseReason !== 'first-error') {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch pause reason is invalid')

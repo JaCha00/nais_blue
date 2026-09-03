@@ -20,6 +20,7 @@ import {
     NaiTransportTimeoutError,
     getNaiAuxiliaryFetch,
     getRuntimeNaiTransport,
+    type NaiProviderFaultInjector,
     type NaiTransportStage,
 } from '@/services/nai/transport'
 import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/error-registry'
@@ -193,6 +194,7 @@ export async function generateImage(
     token: string,
     params: GenerationParams,
     signal?: AbortSignal,
+    faultInjector?: NaiProviderFaultInjector,
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
@@ -209,6 +211,7 @@ export async function generateImage(
             signal,
             timeoutMs: NAI_STANDARD_TIMEOUT_MS,
             onStage: observeTransportStage(operation),
+            faultInjector,
         })
 
         if (!response.ok) {
@@ -251,6 +254,7 @@ export async function generateImageStream(
     params: GenerationParams,
     onProgress?: (progress: number, partialImage?: string) => void,
     signal?: AbortSignal,
+    faultInjector?: NaiProviderFaultInjector,
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
@@ -267,6 +271,7 @@ export async function generateImageStream(
             signal,
             timeoutMs: NAI_STREAM_TIMEOUT_MS,
             onStage: observeTransportStage(operation),
+            faultInjector,
         })
 
         if (!response.ok) {

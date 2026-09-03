@@ -1733,6 +1733,33 @@
     "cancelJob": "ジョブをキャンセル",
     "skipJob": "ジョブをスキップ",
     "viewDetails": "詳細を見る",
+    "fulfillment": {
+        "title": "結果の履行段階",
+        "unavailable": "履行の根拠を確認できません。",
+        "refresh": "段階を更新",
+        "interpretation": "解釈",
+        "provider": "プロバイダー",
+        "storage": "保存",
+        "release": "配布",
+        "acceptance": "検収",
+        "state": {
+            "notRequired": "不要",
+            "notEvaluated": "未評価",
+            "pending": "保留中",
+            "succeeded": "完了",
+            "failed": "失敗",
+            "uncertain": "要確認",
+            "unavailable": "根拠なし",
+            "needsReview": "レビューが必要",
+            "accepted": "承認済み",
+            "rejected": "却下済み",
+            "planned": "計画済み",
+            "running": "実行中",
+            "partial": "一部完了",
+            "needsAttention": "要確認",
+            "delivered": "提供済み"
+        }
+    },
     "workflow": {
         "main": "メイン画像",
         "scene": "Scene画像",

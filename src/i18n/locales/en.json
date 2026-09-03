@@ -1734,6 +1734,33 @@
     "cancelJob": "Cancel job",
     "skipJob": "Skip job",
     "viewDetails": "View details",
+    "fulfillment": {
+        "title": "Fulfillment stages",
+        "unavailable": "Fulfillment evidence is unavailable.",
+        "refresh": "Refresh stages",
+        "interpretation": "Interpretation",
+        "provider": "Provider",
+        "storage": "Storage",
+        "release": "Release",
+        "acceptance": "Acceptance",
+        "state": {
+            "notRequired": "Not required",
+            "notEvaluated": "Not evaluated",
+            "pending": "Pending",
+            "succeeded": "Succeeded",
+            "failed": "Failed",
+            "uncertain": "Uncertain",
+            "unavailable": "Unavailable",
+            "needsReview": "Needs review",
+            "accepted": "Accepted",
+            "rejected": "Rejected",
+            "planned": "Planned",
+            "running": "Running",
+            "partial": "Partial",
+            "needsAttention": "Needs attention",
+            "delivered": "Delivered"
+        }
+    },
     "workflow": {
         "main": "Main image",
         "scene": "Scene image",

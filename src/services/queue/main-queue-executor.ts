@@ -3,6 +3,10 @@ import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
 import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
+import {
+    isSupportedNaiPayloadBuilderRevision,
+    queryNaiGenerationCompatibility,
+} from '@/services/nai/compatibility'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 import {
@@ -43,10 +47,27 @@ function decodeImageBytes(imageData: string): Uint8Array {
  * the adapter so retries replay the persisted request without reading UI state.
  */
 export async function executeMainQueueJob(job: GenerationJob, context: QueueExecutorContext): Promise<void> {
-    const { presentation } = getRuntimeMainQueueDependencies()
+    const { presentation, faultInjector } = getRuntimeMainQueueDependencies()
     const payload = decodeMainJobSnapshot(job.snapshot)
+    if (!isSupportedNaiPayloadBuilderRevision(payload.payloadBuilderRevision)) {
+        throw new QueueExecutionError(
+            'compatibility',
+            `Unsupported Main payload builder revision: ${payload.payloadBuilderRevision}`,
+        )
+    }
     const params = await hydrateGenerationParams(payload, job.snapshot.resources, getRuntimeQueueResourceMaterializer())
     params.sourceJobId = job.id
+    const compatibility = queryNaiGenerationCompatibility(
+        params,
+        payload.payloadBuilderRevision,
+        payload.queueExecution.streaming && !payload.queueExecution.sourceEdit,
+    )
+    if (compatibility.status === 'known-divergence' || compatibility.status === 'unsupported') {
+        throw new QueueExecutionError(
+            'compatibility',
+            `NovelAI compatibility profile cannot execute: ${compatibility.compatibilityProfileId}`,
+        )
+    }
     // Reserve before transport so a stale immutable snapshot fails without a
     // provider call. Planned Main jobs run in ordinal order and commit their
     // distinct CAS proposals one at a time through this lease.
@@ -75,6 +96,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                     params.steps,
                 )
             },
+            faultInjector,
         })
         await progressReporter.flush()
         if (!result.success || !result.imageData) {
@@ -90,6 +112,10 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         const encodedImage = result.imageData.replace(/^data:image\/[^;]+;base64,/, '')
         const imageDataUrl = `data:image/${payload.mainWorkflow.imageFormat};base64,${encodedImage}`
         const digest = await hashQueueResourceBytes(bytes)
+        // Phase 3 inserts the durable provider spool at this exact hand-off.
+        // Until then the optional test seam characterizes failures after full
+        // response bytes exist and before OutputWriter starts any local commit.
+        if (faultInjector !== undefined) await faultInjector('after-spool-commit')
         const transactionId = `queue-${sha256Utf8(job.id).slice(0, 48)}`
         const artifactReference: QueueArtifactReference = {
             kind: 'output-writer',

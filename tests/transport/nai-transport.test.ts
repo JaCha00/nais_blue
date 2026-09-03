@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
     NaiTransportCancelledError,
+    NaiTransportNetworkError,
     NaiTransportTimeoutError,
     createFetchNaiTransport,
     createRustNaiTransport,
@@ -59,6 +60,62 @@ describe('NaiTransport fetch adapters', () => {
         expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]))
         expect(stages.filter(stage => stage === 'body-first-byte')).toHaveLength(1)
         expect(stages.filter(stage => stage === 'stream-heartbeat')).toHaveLength(2)
+    })
+
+    it('exposes deterministic provider fault points in transport order', async () => {
+        const points: string[] = []
+        const fetchImpl = vi.fn<typeof fetch>(async () => {
+            points.push('fetch-dispatch')
+            return new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+        })
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+
+        const response = await transport.request(request({
+            endpoint: 'stream',
+            faultInjector: point => { points.push(point) },
+        }))
+        await response.arrayBuffer()
+
+        expect(points).toEqual([
+            'before-request',
+            'fetch-dispatch',
+            'after-dispatch',
+            'after-first-stream-chunk',
+            'after-response-received',
+        ])
+    })
+
+    it('can fail before dispatch without calling the provider', async () => {
+        const fetchImpl = vi.fn<typeof fetch>()
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+
+        await expect(transport.request(request({
+            faultInjector: point => {
+                if (point === 'before-request') throw new Error('injected before request')
+            },
+        }))).rejects.toThrow('injected before request')
+        expect(fetchImpl).not.toHaveBeenCalled()
+    })
+
+    it('can fail after dispatch and during response consumption', async () => {
+        const fetchImpl = vi.fn<typeof fetch>(async () => new Response(new Uint8Array([1]), { status: 200 }))
+        const transport = createFetchNaiTransport('browser-fetch', fetchImpl)
+
+        await expect(transport.request(request({
+            faultInjector: point => {
+                if (point === 'after-dispatch') throw new Error('injected after dispatch')
+            },
+        }))).rejects.toBeInstanceOf(NaiTransportNetworkError)
+
+        for (const failurePoint of ['after-first-stream-chunk', 'after-response-received'] as const) {
+            const response = await transport.request(request({
+                endpoint: 'stream',
+                faultInjector: point => {
+                    if (point === failurePoint) throw new Error(`injected ${point}`)
+                },
+            }))
+            await expect(response.arrayBuffer()).rejects.toBeInstanceOf(NaiTransportNetworkError)
+        }
     })
 
     it('rejects an already-cancelled request before fetch is called', async () => {

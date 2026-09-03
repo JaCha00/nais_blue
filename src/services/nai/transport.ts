@@ -13,6 +13,17 @@ export type NaiTransportStage =
     | 'body-first-byte'
     | 'stream-heartbeat'
 
+export type NaiProviderFaultPoint =
+    | 'before-request'
+    | 'after-dispatch'
+    | 'after-first-stream-chunk'
+    | 'after-response-received'
+    | 'after-spool-commit'
+
+export type NaiProviderFaultInjector = (
+    point: NaiProviderFaultPoint,
+) => void | Promise<void>
+
 export interface NaiTransportRequest {
     endpoint: NaiGenerationEndpoint
     token: string
@@ -20,6 +31,8 @@ export interface NaiTransportRequest {
     timeoutMs: number
     signal?: AbortSignal
     onStage?: (stage: NaiTransportStage) => void
+    /** Optional deterministic test seam; production requests leave it absent. */
+    faultInjector?: NaiProviderFaultInjector
 }
 
 export interface NaiTransport {
@@ -158,7 +171,9 @@ function requestHeaders(request: NaiTransportRequest): Record<string, string> {
 function observeResponse(
     response: Response,
     lifetime: RequestLifetime,
+    endpoint: NaiGenerationEndpoint,
     onStage: NaiTransportRequest['onStage'],
+    faultInjector: NaiTransportRequest['faultInjector'],
 ): Response {
     if (!response.body) {
         lifetime.finish()
@@ -188,6 +203,9 @@ function observeResponse(
             try {
                 const { done, value } = await lifetime.race(reader.read())
                 if (done) {
+                    if (faultInjector !== undefined) {
+                        await faultInjector('after-response-received')
+                    }
                     release()
                     controller.close()
                     return
@@ -195,6 +213,9 @@ function observeResponse(
                 if (!firstByteSeen) {
                     firstByteSeen = true
                     onStage?.('body-first-byte')
+                    if (endpoint === 'stream' && faultInjector !== undefined) {
+                        await faultInjector('after-first-stream-chunk')
+                    }
                 }
                 onStage?.('stream-heartbeat')
                 controller.enqueue(value)
@@ -231,6 +252,10 @@ export function createFetchNaiTransport(
             validateTimeout(request.timeoutMs)
             if (request.signal?.aborted) throw new NaiTransportCancelledError()
 
+            if (request.faultInjector !== undefined) {
+                await request.faultInjector('before-request')
+                if (request.signal?.aborted) throw new NaiTransportCancelledError()
+            }
             const lifetime = new RequestLifetime(request.signal, request.timeoutMs)
             try {
                 request.onStage?.('dns-connect')
@@ -241,9 +266,14 @@ export function createFetchNaiTransport(
                     signal: lifetime.signal,
                 })
                 request.onStage?.('request-sent')
-                const response = await lifetime.race(pending)
+                const observedPending = lifetime.race(pending)
+                void observedPending.catch(() => undefined)
+                if (request.faultInjector !== undefined) {
+                    await request.faultInjector('after-dispatch')
+                }
+                const response = await observedPending
                 request.onStage?.('response-headers')
-                return observeResponse(response, lifetime, request.onStage)
+                return observeResponse(response, lifetime, request.endpoint, request.onStage, request.faultInjector)
             } catch (error) {
                 const normalized = lifetime.normalize(error)
                 lifetime.finish()
@@ -302,6 +332,10 @@ export function createRustNaiTransport(
             validateTimeout(request.timeoutMs)
             if (request.signal?.aborted) throw new NaiTransportCancelledError()
 
+            if (request.faultInjector !== undefined) {
+                await request.faultInjector('before-request')
+                if (request.signal?.aborted) throw new NaiTransportCancelledError()
+            }
             const lifetime = new RequestLifetime(request.signal, request.timeoutMs)
             const requestId = nativeRequestId()
             let responseResolved = false
@@ -391,8 +425,13 @@ export function createRustNaiTransport(
             })
 
             try {
-                const response = await lifetime.race(responsePromise)
-                return observeResponse(response, lifetime, request.onStage)
+                const observedResponse = lifetime.race(responsePromise)
+                void observedResponse.catch(() => undefined)
+                if (request.faultInjector !== undefined) {
+                    await request.faultInjector('after-dispatch')
+                }
+                const response = await observedResponse
+                return observeResponse(response, lifetime, request.endpoint, request.onStage, request.faultInjector)
             } catch (error) {
                 const normalized = lifetime.normalize(error)
                 lifetime.finish()

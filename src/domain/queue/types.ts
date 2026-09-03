@@ -29,7 +29,7 @@ export type SnapshotResumability = 'resumable' | 'non-resumable'
 export type QueueBlockReason = 'missing-resource' | 'digest-mismatch' | 'non-resumable-resource'
 export type QueueFailurePolicy = 'continue' | 'pause-on-fatal' | 'stop-on-first-error'
 export type GenerationBatchState = 'active' | 'paused' | 'stopped'
-export type QueuePauseReason = 'user' | 'authentication' | 'local-io' | 'fatal' | 'first-error'
+export type QueuePauseReason = 'user' | 'authentication' | 'local-io' | 'compatibility' | 'fatal' | 'first-error'
 export type QueueBatchOrigin = 'fresh' | 'legacy-conversion' | 'retry'
 export type QueueFailureKind =
     | 'transient'
@@ -38,6 +38,7 @@ export type QueueFailureKind =
     | 'authentication'
     | 'decode'
     | 'local-io'
+    | 'compatibility'
     | 'fatal'
 
 export interface GenerationSnapshotPrompt {
