@@ -51,7 +51,7 @@ export interface NaiCompatibilityProfile {
 const SYNTHETIC_FIXTURE = Object.freeze({
     path: 'tests/fixtures/payload/supported-online-matrix.json',
     provenance: 'synthetic-only',
-    sha256: 'sha256:80cbe71162d5f24a036afe0bdb51e9942880f13b6cdd2efe9c5b42f75299ac04',
+    sha256: 'sha256:eb263442cae34dd96c011af6830b7c9a0bd9b2dc974c08bf6cea2b86ae6710dd',
 } as const)
 
 /**

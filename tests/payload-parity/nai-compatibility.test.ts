@@ -17,8 +17,10 @@ describe('NovelAI compatibility registry', () => {
         CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
     ])('binds %s to the real synthetic fixture hash without claiming a pass', async payloadBuilderRevision => {
         const entry = NAI_COMPATIBILITY_REGISTRY[payloadBuilderRevision]
-        const bytes = await readFile(resolve(process.cwd(), entry.path))
-        const sha256 = `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+        const fixture = await readFile(resolve(process.cwd(), entry.path), 'utf8')
+        // JSON fixture identity must survive Git's Windows CRLF checkout conversion.
+        const normalizedFixture = fixture.replace(/\r\n/g, '\n')
+        const sha256 = `sha256:${createHash('sha256').update(normalizedFixture).digest('hex')}`
         const result = queryNaiCompatibility({
             model: 'nai-diffusion-4-5-full',
             action: 'generate',
