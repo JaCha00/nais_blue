@@ -36,6 +36,7 @@ Dependency Cruiser가 현재 Production source를 다음과 같이 해석했습�
 - Architecture violations: 0
 - 임시 `.dependency-cruiser-known-violations.json`: 제거
 - TypeScript 7.0 compiler API 비호환 경고: 제거. 설치된 SWC fallback으로 소스를 분석하고 `.dependency-cruiser-webpack.cjs`가 `@/` 별칭을 해석하므로 프로젝트 TypeScript를 내리지 않습니다.
+- 로컬 기본 Node가 지원 범위 밖이어도 `scripts/run-dependency-cruiser.mjs`가 PATH의 프로젝트 계약 Node `^24.11.0`으로만 Dependency Cruiser를 재실행합니다. 지원 검사는 우회하지 않습니다.
 
 ## Bundle 기준선
 
