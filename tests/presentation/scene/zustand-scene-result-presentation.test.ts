@@ -70,7 +70,7 @@ vi.mock('@/stores/character-store', () => ({
 vi.mock('@/stores/artifact-lifecycle-store', () => ({
     publishGeneratedArtifact: runtime.publishGeneratedArtifact,
 }))
-vi.mock('@/components/ui/use-toast', () => ({ toast: runtime.toast }))
+vi.mock('@/lib/toast', () => ({ toast: runtime.toast }))
 vi.mock('@/i18n', () => ({ default: { t: runtime.translate } }))
 
 import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'

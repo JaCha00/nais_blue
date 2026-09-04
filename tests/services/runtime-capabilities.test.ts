@@ -90,7 +90,7 @@ describe('RuntimeCapabilities', () => {
 
     it('never leaves the legacy Android output fallback silent', async () => {
         const [generation, sceneOutput, scenePresentation, styleLab] = await Promise.all([
-            'src/stores/generation-store.ts',
+            'src/services/generation/generation-runtime-store.ts',
             'src/lib/scene-generation/save-scene-result.ts',
             'src/presentation/scene/zustand-scene-result-presentation.ts',
             'src/services/style-lab-generation.ts',

@@ -7,7 +7,7 @@ const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
 describe('Artifact lifecycle routing', () => {
     it('uses a typed transient store instead of the legacy window event', async () => {
         const publishers = await Promise.all([
-            'src/stores/generation-store.ts',
+            'src/services/generation/generation-runtime-store.ts',
             'src/presentation/scene/zustand-scene-result-presentation.ts',
             'src/services/style-lab-generation.ts',
             'src/presentation/queue/zustand-main-queue-presentation.ts',

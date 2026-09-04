@@ -44,7 +44,7 @@ vi.mock('@/lib/indexed-db', () => ({
     },
 }))
 
-vi.mock('@/components/ui/use-toast', () => ({
+vi.mock('@/lib/toast', () => ({
     toast: () => undefined,
 }))
 

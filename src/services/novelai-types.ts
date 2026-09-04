@@ -1,5 +1,5 @@
 import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
-import type { MetadataMode } from '@/lib/generation-metadata'
+import type { MetadataMode } from '@/domain/composition/types'
 import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
 import type { PortablePathRef, RandomTraceEntry } from '@/domain/composition/types'
 import type { NaiBlueOutputPolicySummary } from '@/lib/nai-blue-metadata'

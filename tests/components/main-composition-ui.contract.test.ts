@@ -194,7 +194,7 @@ describe('Main composition UI contract', () => {
     it('shows only contextual Main commands and uses a valid cost basis', async () => {
         const [mainMode, generationStore] = await Promise.all([
             source('src/pages/MainMode.tsx'),
-            source('src/stores/generation-store.ts'),
+            source('src/services/generation/generation-runtime-store.ts'),
         ])
         const commandStart = mainMode.indexOf('const commandBar =')
         const commandEnd = mainMode.indexOf('const mobileDock =', commandStart)
@@ -237,7 +237,7 @@ describe('Main composition UI contract', () => {
     })
 
     it('treats Main rollout mode as release authority instead of a persisted UI preference', async () => {
-        const store = await source('src/stores/generation-store.ts')
+        const store = await source('src/services/generation/generation-runtime-store.ts')
         const partializeStart = store.indexOf('partialize:')
         const hydrateStart = store.indexOf('onRehydrateStorage:', partializeStart)
         const partialize = store.slice(partializeStart, hydrateStart)

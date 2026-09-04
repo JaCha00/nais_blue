@@ -41,7 +41,7 @@ describe('durable Main sequential-fragment execution contract', () => {
         const [adapter, executor, generationStore, plannerAdapter, useCase] = await Promise.all([
             readFile(resolve(process.cwd(), 'src/services/queue/main-queue-adapter.ts'), 'utf8'),
             readFile(resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'), 'utf8'),
-            readFile(resolve(process.cwd(), 'src/stores/generation-store.ts'), 'utf8'),
+            readFile(resolve(process.cwd(), 'src/services/generation/generation-runtime-store.ts'), 'utf8'),
             readFile(resolve(
                 process.cwd(),
                 'src/presentation/generation/zustand-main-batch-planner.ts',

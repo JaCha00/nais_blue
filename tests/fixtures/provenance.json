@@ -171,7 +171,7 @@
     },
     {
       "path": "workflows/main/default-direct-prompt.json",
-      "source": "Derived from the current direct-prompt path in src/stores/generation-store.ts.",
+      "source": "Derived from the current direct-prompt path in src/services/generation/generation-runtime-store.ts.",
       "model": "nai-diffusion-4-5-full",
       "captureDate": "2026-07-11",
       "captureKind": "synthetic-derived",
@@ -207,7 +207,7 @@
     },
     {
       "path": "workflows/scene/character-rotation-sequence.json",
-      "source": "Synthetic fixed-sequence characterization derived from src/stores/character-rotation-store.ts and the runtime projection in src/lib/character-rotation-runtime.ts.",
+      "source": "Synthetic fixed-sequence characterization derived from src/services/character-rotation/rotation-runtime-store.ts and the runtime projection in src/lib/character-rotation-runtime.ts.",
       "model": "workflow-agnostic",
       "captureDate": "2026-07-12",
       "captureKind": "synthetic-derived",

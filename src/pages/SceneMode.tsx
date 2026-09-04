@@ -87,6 +87,7 @@ import {
     type SceneCompositionMode,
     getScenePresetPathSegments,
 } from '@/stores/scene-store'
+import { useSettingsStore } from '@/stores/settings-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { toast } from '@/components/ui/use-toast'
@@ -1573,7 +1574,11 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
 
     const handleSaveName = () => {
         if (editName.trim() && activePresetId) {
-            renameScene(activePresetId, scene.id, editName.trim())
+            const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
+            void renameScene(activePresetId, scene.id, editName.trim(), {
+                sceneSavePath,
+                useAbsoluteScenePath,
+            })
         }
         setIsEditing(false)
     }

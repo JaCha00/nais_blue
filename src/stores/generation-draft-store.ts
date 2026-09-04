@@ -1,4 +1,4 @@
-import { useGenerationStore } from './generation-store'
+import { useGenerationStore } from '@/services/generation/generation-runtime-store'
 
 type GenerationStoreState = ReturnType<typeof useGenerationStore.getState>
 

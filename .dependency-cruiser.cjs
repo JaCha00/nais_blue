@@ -126,8 +126,11 @@ module.exports = {
         exclude: {
             path: '^(?:legacy|dist|src-tauri)/',
         },
-        tsConfig: {
-            fileName: 'tsconfig.json',
+        // TypeScript 7.0 does not expose the compiler API dependency-cruiser
+        // needs yet. Its normal parser uses the already-installed SWC fallback,
+        // while this alias config replaces the tsconfig-only resolution step.
+        webpackConfig: {
+            fileName: '.dependency-cruiser-webpack.cjs',
         },
         enhancedResolveOptions: {
             extensions: ['.js', '.jsx', '.ts', '.tsx', '.d.ts', '.json'],

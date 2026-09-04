@@ -28,7 +28,14 @@ Dependency Cruiser가 현재 Production source를 다음과 같이 해석했습�
 | 순환 의존 | 2 |
 | Service의 UI component 의존 | 1 |
 
-전체 폴더 그래프는 [import-graph.dot](./import-graph.dot), CI에서 무시하는 기존 부채의 정확한 edge는 저장소 루트의 `.dependency-cruiser-known-violations.json`이 기준입니다. TypeScript 7은 현재 Dependency Cruiser의 TSC 파서 지원 범위 밖이므로, `@swc/core` 파서를 사용하는 실용적 우회안을 채택했습니다.
+전체 폴더 그래프는 [import-graph.dot](./import-graph.dot)이며, 당시 기존 부채의 정확한 edge는 임시 known-violation 기준선에 고정했습니다.
+
+### 2026-09-04 완료 상태
+
+- Production graph: 563 modules, 2,978 dependencies
+- Architecture violations: 0
+- 임시 `.dependency-cruiser-known-violations.json`: 제거
+- TypeScript 7.0 compiler API 비호환 경고: 제거. 설치된 SWC fallback으로 소스를 분석하고 `.dependency-cruiser-webpack.cjs`가 `@/` 별칭을 해석하므로 프로젝트 TypeScript를 내리지 않습니다.
 
 ## Bundle 기준선
 

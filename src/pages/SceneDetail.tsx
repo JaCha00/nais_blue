@@ -355,7 +355,11 @@ export default function SceneDetail() {
 
     const handleSaveName = () => {
         if (editName.trim()) {
-            renameScene(activePresetId, scene.id, editName.trim())
+            const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
+            void renameScene(activePresetId, scene.id, editName.trim(), {
+                sceneSavePath,
+                useAbsoluteScenePath,
+            })
         }
         setIsEditingName(false)
     }

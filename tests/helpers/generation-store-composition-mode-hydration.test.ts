@@ -17,7 +17,7 @@ vi.mock('@/i18n', () => ({
     default: { t: (key: string) => key },
 }))
 
-vi.mock('@/components/ui/use-toast', () => ({
+vi.mock('@/lib/toast', () => ({
     toast: () => undefined,
 }))
 

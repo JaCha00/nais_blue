@@ -11,7 +11,7 @@ import { useCharacterStore } from '@/stores/character-store'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { StyleCombination, useStyleLabStore } from '@/stores/style-lab-store'
-import { toast } from '@/components/ui/use-toast'
+import { toast } from '@/lib/toast'
 import i18n from '@/i18n'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import {

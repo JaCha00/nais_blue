@@ -21,8 +21,8 @@ Composition Root -> 모든 구체 구현
 
 1. 신규 Application 포트는 `src/application/**`에 둡니다.
 2. Store와 서비스의 연결은 `src/composition-root/**`에서만 조립합니다.
-3. 기존 경계 위반은 `.dependency-cruiser-known-violations.json`에 고정하고, 새 위반만 CI에서 실패시킵니다.
-4. 기준선 파일은 부채가 해소될 때 항목을 삭제하며, 새 위반을 숨기기 위해 전체 재생성하지 않습니다.
+3. 전환 중인 기존 경계 위반만 임시 기준선에 고정하고, 새 위반은 CI에서 실패시킵니다.
+4. 기준선 항목은 부채가 해소될 때 삭제하며, 새 위반을 숨기기 위해 전체 재생성하지 않습니다.
 5. Presentation의 Tauri 직접 import는 `.dependency-cruiser-presentation-tauri-baseline.json`의 파일·패키지 쌍으로 동결합니다. 신규 UI 파일은 platform adapter 없이 Tauri를 import할 수 없고, 기존 항목을 이전하면 같은 변경에서 baseline을 줄입니다.
 
 첫 적용으로 Queue Runtime은 `QueueTokenProvider` 포트만 의존하고, Composition Root가 Auth store의 활성 토큰을 실행 슬롯으로 투영합니다. 토큰은 여전히 Job·로그·진단에 저장되지 않습니다.
@@ -32,7 +32,8 @@ Composition Root -> 모든 구체 구현
 - Queue 서비스의 Zustand 직접 import가 제거됩니다.
 - 런타임 의존성을 테스트 대역으로 교체할 수 있습니다.
 - 현재 부채를 즉시 대규모 이동하지 않아 기능 회귀 위험을 제한합니다.
-- 기존 위반 42건은 후속 리팩터링 대상이며, 기준선 유지 비용이 발생합니다.
+- 최초 위반 42건은 후속 리팩터링 대상으로 기록했습니다.
+- 2026-09-04에 남은 26건을 제거하고 일반 Architecture 검사에서 위반 0건을 확인해 임시 known-violation 기준선을 폐기했습니다.
 
 ## 검증
 

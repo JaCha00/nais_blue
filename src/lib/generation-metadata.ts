@@ -1,7 +1,7 @@
 import type { AssetModulePlan } from '@/lib/asset-modules/resolver'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { DeepReadonly } from '@/domain/composition/provenance'
-import type { RandomTraceEntry } from '@/domain/composition/types'
+import type { MetadataMode, RandomTraceEntry } from '@/domain/composition/types'
 import type {
     NaiBlueCharacterMetadata,
     NaiBlueOutputPolicySummary,
@@ -18,7 +18,7 @@ export {
     toSidecarPath,
 } from '@/services/output/filename-policy'
 
-export type MetadataMode = 'embedded' | 'sidecar-only' | 'strip-and-sidecar' | 'strip-only'
+export type { MetadataMode } from '@/domain/composition/types'
 
 export const DEFAULT_METADATA_MODE: MetadataMode = 'embedded'
 

@@ -51,7 +51,7 @@ describe('native NovelAI credential contract', () => {
 
     it('routes missing-token callers to the same direct token entry and keeps relaunch flushes', async () => {
         const [mainGeneration, sceneGeneration, styleLab, history, persistence, relaunchLifecycle] = await Promise.all([
-            source('src/stores/generation-store.ts'),
+            source('src/services/generation/generation-runtime-store.ts'),
             source('src/hooks/useSceneGeneration.ts'),
             source('src/services/style-lab-generation.ts'),
             source('src/components/layout/HistoryPanel.tsx'),

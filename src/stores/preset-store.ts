@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { useGenerationStore } from './generation-store'
+import {
+    configureMainParamsPresetReader,
+    useGenerationStore,
+} from '@/services/generation/generation-runtime-store'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { DEFAULT_NAI_IMAGE_MODEL } from '@/services/nai/model-catalog'
 import {
@@ -399,6 +402,13 @@ export const usePresetStore = create<PresetState>()(
         }
     )
 )
+
+// The generation runtime reads one immutable-at-use preset snapshot through
+// this composition seam; neither module imports the other in both directions.
+configureMainParamsPresetReader(() => {
+    const { presets, activePresetId } = usePresetStore.getState()
+    return { presets, activePresetId }
+})
 
 let stopPresetSync: (() => void) | null = null
 

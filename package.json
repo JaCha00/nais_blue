@@ -55,7 +55,7 @@
     "release:android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1",
     "release:android:github": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-android.ps1 -Publish",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "test:architecture": "depcruise --config .dependency-cruiser.cjs --ignore-known .dependency-cruiser-known-violations.json src",
+    "test:architecture": "depcruise --config .dependency-cruiser.cjs src",
     "test:dependencies": "knip --production --dependencies",
     "report:architecture": "depcruise --config .dependency-cruiser.cjs --output-type archi --collapse \"^src/[^/]+\" --output-to docs/architecture/import-graph.dot src"
   },

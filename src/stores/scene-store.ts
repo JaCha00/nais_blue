@@ -6,7 +6,6 @@ import {
     renameNativePath as rename,
 } from '@/platform/native-file-system'
 import { joinNativePath } from '@/platform/native-path'
-import { useSettingsStore } from './settings-store'
 import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
 import type { CompositionPlanHash } from '@/domain/composition/canonical-serialize'
 import type { CompositionEngineIssue } from '@/domain/composition/engine'
@@ -141,6 +140,11 @@ export interface SceneQueueClaim {
     filenameTemplate?: string
 }
 
+export interface SceneRenameStorageContext {
+    sceneSavePath: string
+    useAbsoluteScenePath: boolean
+}
+
 /** Old Scene cards remain readable while all new edits use the modular prompt shape. */
 export function resolveScenePrompts(scene: Pick<SceneCard, 'scenePrompt' | 'prompts'>): ScenePromptConfig {
     return {
@@ -256,7 +260,12 @@ interface SceneState {
     addScene: (presetId: string, name?: string) => string
     deleteScene: (presetId: string, sceneId: string) => void
     duplicateScene: (presetId: string, sceneId: string) => void
-    renameScene: (presetId: string, sceneId: string, name: string) => Promise<void>
+    renameScene: (
+        presetId: string,
+        sceneId: string,
+        name: string,
+        storage: SceneRenameStorageContext,
+    ) => Promise<void>
     updateScenePrompt: (presetId: string, sceneId: string, prompt: string) => void
     updateScenePrompts: (presetId: string, sceneId: string, prompts: Partial<ScenePromptConfig>) => void
     updateSceneCharacterCaptions: (presetId: string, sceneId: string, captions: readonly SceneCharacterCaption[], positionEnabled?: boolean) => void
@@ -765,7 +774,7 @@ export const useSceneStore = create<SceneState>()(
                 }))
             },
 
-            renameScene: async (presetId, sceneId, name) => {
+            renameScene: async (presetId, sceneId, name, storage) => {
                 const state = get()
                 const preset = state.presets.find(p => p.id === presetId)
                 const scene = preset?.scenes.find(s => s.id === sceneId)
@@ -783,7 +792,7 @@ export const useSceneStore = create<SceneState>()(
                 // subfolders are left untouched to avoid cross-character
                 // collisions until a dedicated migration pass owns that scan.
                 try {
-                    const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
+                    const { sceneSavePath, useAbsoluteScenePath } = storage
                     let oldFolderPath: string
                     let newFolderPath: string
                     

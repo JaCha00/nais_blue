@@ -50,7 +50,7 @@ vi.mock('@/lib/indexed-db', () => ({
     },
 }))
 
-vi.mock('@/components/ui/use-toast', () => ({
+vi.mock('@/lib/toast', () => ({
     toast: (value: Record<string, unknown>) => {
         runtimeCapture.toasts.push(value)
     },
@@ -952,7 +952,7 @@ describe('Main workflow golden characterization', () => {
             ],
             scenarios,
         }
-        const source = await readFile('src/stores/generation-store.ts', 'utf8')
+        const source = await readFile('src/services/generation/generation-runtime-store.ts', 'utf8')
         expect(source.match(/shouldContinue\(\)/g)?.length)
             .toBeGreaterThanOrEqual(6)
         const fixture = await loadFixtureJson<MainFixture>('workflows/main/current-workflow.json')

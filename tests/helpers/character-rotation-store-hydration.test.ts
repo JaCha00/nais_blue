@@ -41,13 +41,13 @@ vi.mock('@/stores/auth-store', () => ({
     }),
 }))
 
-vi.mock('@/stores/generation-store', () => ({
+vi.mock('@/services/generation/generation-runtime-store', () => ({
     useGenerationStore: {
         getState: () => ({ generatingMode: null }),
     },
 }))
 
-vi.mock('@/components/ui/use-toast', () => ({ toast: () => undefined }))
+vi.mock('@/lib/toast', () => ({ toast: () => undefined }))
 
 describe('character rotation old-store hydration', () => {
     it('normalizes a pre-versioned runtime snapshot without restarting work or losing resume state', async () => {

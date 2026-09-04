@@ -19,16 +19,16 @@ import {
     projectCharacterPromptsToV2,
     type CharacterTemplateGroupSnapshot,
     type CharacterTemplatePresetSnapshot,
-} from '@/lib/composition/character-prompt-adapter'
+} from './legacy/character-prompt-adapter'
 import {
     migrateCharacterPromptPersistedState,
-} from '@/lib/composition/character-prompt-migration'
+} from './legacy/character-prompt-migration'
 import {
     projectLegacyParamsPresets,
-} from '@/lib/composition/params-preset-adapter'
+} from './legacy/params-preset-adapter'
 import {
     migrateGenerationPresetPersistedState,
-} from '@/lib/composition/preset-store-migration'
+} from './legacy/preset-store-migration'
 import { DeterministicMigrationIdAllocator } from './deterministic-id'
 import {
     emptyMigrationEntityCounts,

@@ -32,7 +32,7 @@
 
 - `README*.md`, `LICENSE`, `DESIGN.md`, `RELEASING.md`: 저장소 진입점과 제품·릴리스 계약
 - `package*.json`, `tsconfig*.json`, `vite.config.ts`, `vitest.config.ts`, `eslint.config.js`, `tailwind.config.js`: 각 도구의 표준 탐색 위치
-- `android-release-policy.json`, `.dependency-cruiser*`: 테스트와 CI가 경로를 직접 검증하는 정책·기준선
+- `android-release-policy.json`, `.dependency-cruiser*`: 테스트와 CI가 직접 읽는 정책·설정 및 명시적 UI 전환 기준선
 
 ## 생성물과 로컬 상태
 

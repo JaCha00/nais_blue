@@ -28,7 +28,7 @@ import {
     STYLE_LAB_STORE_VERSION,
     migrateStyleLabPersistedState,
     type StyleLabRandomState,
-} from './style-lab-store-migration'
+} from '@/lib/style-lab/store-migration'
 
 export type StyleLabLeague = StyleLabArenaLeague
 
