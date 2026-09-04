@@ -28,6 +28,7 @@ import {
     queryNaiGenerationCompatibility,
 } from '@/services/nai/compatibility'
 import { enqueueReviewedMainPlan } from '@/services/queue/main-queue-adapter'
+import type { OutputReservationFolderBinding } from '@/domain/queue/types'
 
 export type MainApplicationGenerationCommandResult =
     | EnqueueGenerationResult<PreparedMainGeneration>
@@ -40,6 +41,7 @@ export interface EnqueuePreparedMainGenerationInput {
     readonly pricingBasis: AnlasPricingBasis
     readonly approvedAt: string
     readonly credentialReadinessFingerprint: Sha256Digest
+    readonly folderBinding: OutputReservationFolderBinding
 }
 
 function issue(code: string, fieldPath: string, message: string): PlanIssue {
@@ -133,6 +135,7 @@ export async function enqueuePreparedMainGeneration(
         captureId: input.captureId,
         prepared: input.prepared,
         materializedSeeds: input.prepared.map(job => job.params.seed),
+        sourceBindings: [input.folderBinding],
         executionPolicy: {
             failurePolicy: 'continue',
             retryPolicyId: CURRENT_MAIN_QUEUE_POLICY.retryPolicyId,

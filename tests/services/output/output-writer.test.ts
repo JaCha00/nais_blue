@@ -234,6 +234,83 @@ describe('OutputWriter fault containment', () => {
         })
     })
 
+    it('preflights an exact destination with a reversible write probe', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'preflight-1')
+
+        const result = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+            probeWrite: true,
+        })
+
+        expect(result).toMatchObject({
+            fileName: 'result.png',
+            availableSpaceCheck: 'unavailable',
+            foregroundSingleWriterOnly: true,
+            crossProcessReservation: false,
+        })
+        expect(result.directoryIdentity).toMatch(/^sha256:[a-f0-9]{64}$/)
+        expect(adapter.paths()).toEqual([])
+        expect(adapter.calls.some(call => call.operation === 'write-file'
+            && call.to?.includes('.nai-blue-preflight-'))).toBe(true)
+        expect(adapter.calls.some(call => call.operation === 'read-file'
+            && call.from?.includes('.nai-blue-preflight-'))).toBe(true)
+    })
+
+    it('writes the reserved exact filename without suffixing', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-reserved')
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })
+        const outputReservation = {
+            reservationId: 'reservation:1',
+            directoryIdentity: preflight.directoryIdentity,
+            relativePath: 'result.png',
+        } as const
+
+        const outcome = await outputWriter.write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation,
+        }))
+
+        expect(outcome).toMatchObject({ status: 'committed', result: { fileName: 'result.png' } })
+        expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
+        expect(adapter.file('output/result-2.png')).toBeUndefined()
+    })
+
+    it('rejects a reserved write when the resolved directory identity changed', async () => {
+        const adapter = new InMemoryOutputAdapter()
+
+        await expect(writer(adapter, 'txn-mismatch').write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:1',
+                directoryIdentity: `sha256:${'f'.repeat(64)}`,
+                relativePath: 'result.png',
+            },
+        }))).rejects.toMatchObject({
+            name: 'OutputWriterError',
+            phase: 'resolve-destination',
+        })
+        expectNoOutput(adapter)
+    })
+
+    it('preflight rejects a derived diagnostic sidecar collision', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        adapter.seed('output/result.nai-blue.diagnostic.json', SIDECAR_BYTES)
+
+        await expect(writer(adapter, 'preflight-collision').preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })).rejects.toMatchObject({
+            name: 'OutputWriterError',
+            phase: 'resolve-destination',
+        })
+    })
+
     it('reserves distinct names for concurrent unique writes', async () => {
         const adapter = new InMemoryOutputAdapter()
         let transactionOrdinal = 0
@@ -622,6 +699,26 @@ describe('OutputWriter fault containment', () => {
 
         expect(bytesEqual(adapter.file('output/result.png'), external)).toBe(true)
         expect(adapter.paths()).toEqual(['output/result.png'])
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('treats a legacy pending journal as an occupied exact destination', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-legacy-journal')
+
+        await outputWriter.write(request({
+            sourceJobId: 'job:legacy',
+            commitWorkflow: async () => {
+                await expect(outputWriter.preflightExactDestination({
+                    destination: request().destination,
+                    fileName: 'result.png',
+                })).rejects.toMatchObject({
+                    name: 'OutputWriterError',
+                    phase: 'resolve-destination',
+                })
+            },
+        }))
+
         expectNoTransactionArtifacts(adapter)
     })
 

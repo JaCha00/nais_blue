@@ -1,4 +1,10 @@
-import type { OutputRecoveryResult, OutputWriter } from '@/services/output/output-writer'
+import type {
+    ExactOutputReservationIdentity,
+    OutputRecoveryResult,
+    OutputWriteResult,
+    OutputWriter,
+} from '@/services/output/output-writer'
+import type { GenerationJob } from '@/domain/queue/types'
 import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 import {
@@ -12,13 +18,56 @@ export type TargetedQueueOutputRetryResult =
     | { readonly status: 'missing-job' }
     | { readonly status: 'unbound-job' }
     | { readonly status: 'missing-journal' }
-    | { readonly status: 'ineligible'; readonly reason: 'source-job-mismatch' | 'phase-not-files-committed' }
+    | { readonly status: 'ineligible'; readonly reason: OutputRecoveryResult['ineligibility'] }
     | { readonly status: 'failed'; readonly message: string }
 
 type QueueOutputRecoveryRepository = Pick<
     IndexedDBQueueRepository,
-    'initialize' | 'getJob' | 'recoverFilesCommittedSuccess'
+    'initialize' | 'getJob' | 'getOutputReservation' | 'recoverFilesCommittedSuccess'
 >
+
+/** Queue snapshot, reservation row, and journal must name one exact owner and destination. */
+async function verifyRecoveryReservation(
+    repository: QueueOutputRecoveryRepository,
+    job: GenerationJob,
+    journal?: { inspected: true; reservation?: ExactOutputReservationIdentity },
+): Promise<ExactOutputReservationIdentity | undefined> {
+    const snapshot = job.snapshot.outputReservation
+    if (snapshot === undefined) {
+        if (journal?.reservation !== undefined) throw new Error('Output journal has no Queue reservation owner')
+        return undefined
+    }
+    const reservation = await repository.getOutputReservation(snapshot.reservationId)
+    const expectedState = job.state === 'succeeded' ? 'committed' : 'writing'
+    if (reservation === null
+        || reservation.batchId !== job.batchId
+        || reservation.jobId !== job.id
+        || reservation.reservationId !== snapshot.reservationId
+        || reservation.folderBinding.resourceType !== snapshot.folderBinding.resourceType
+        || reservation.folderBinding.resourceId !== snapshot.folderBinding.resourceId
+        || reservation.folderBinding.revision !== snapshot.folderBinding.revision
+        || reservation.folderBinding.contentHash !== snapshot.folderBinding.contentHash
+        || reservation.directoryIdentity !== snapshot.directoryIdentity
+        || reservation.relativePath !== snapshot.relativePath
+        || reservation.collisionPolicy !== snapshot.collisionPolicy
+        || reservation.expectedExistingDigest !== snapshot.expectedExistingDigest
+        || reservation.state !== expectedState) {
+        throw new Error('Queue output reservation owner, destination, or state changed')
+    }
+    const expected = {
+        reservationId: snapshot.reservationId,
+        directoryIdentity: snapshot.directoryIdentity,
+        relativePath: snapshot.relativePath,
+    } satisfies ExactOutputReservationIdentity
+    if (journal?.inspected === true
+        && (journal.reservation === undefined
+            || journal.reservation.reservationId !== expected.reservationId
+            || journal.reservation.directoryIdentity !== expected.directoryIdentity
+            || journal.reservation.relativePath !== expected.relativePath)) {
+        throw new Error('Output journal reservation does not match Queue authority')
+    }
+    return expected
+}
 
 /** Retries one explicitly bound Queue journal without scanning or draining other work. */
 export async function retryQueueLinkedOutput(
@@ -33,39 +82,44 @@ export async function retryQueueLinkedOutput(
 
     const outputTransactionId = job.outputTransactionId
     const artifactReference = job.artifactReference
-    const recovery = await writer.retryFilesCommittedWorkflow(
-        outputTransactionId,
-        job.id,
-        async output => {
-            const registration = await registerQueueArtifact(
-                job,
+    let reservation: ExactOutputReservationIdentity | undefined
+    try {
+        reservation = await verifyRecoveryReservation(repository, job)
+    } catch (error) {
+        return { status: 'failed', message: error instanceof Error ? error.message : 'Output reservation validation failed' }
+    }
+    const commitWorkflow = async (output: OutputWriteResult) => {
+        const registration = await registerQueueArtifact(
+            job,
+            artifactReference,
+            output,
+            options.artifactRepository,
+        )
+        try {
+            await repository.recoverFilesCommittedSuccess({
+                jobId: job.id,
+                now: options.now,
+                outputTransactionId,
                 artifactReference,
-                output,
-                options.artifactRepository,
-            )
-            try {
-                await repository.recoverFilesCommittedSuccess({
-                    jobId: job.id,
-                    now: options.now,
-                    outputTransactionId,
-                    artifactReference,
-                })
-            } catch (error) {
-                await rollbackQueueArtifactRegistration(registration, options.artifactRepository)
-                throw error
-            }
-            publishGeneratedArtifact({
-                path: output.path,
-                ...(registration === null
-                    ? {}
-                    : {
-                        artifactId: registration.record.artifactId,
-                        sourceJobId: job.id,
-                        ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
-                    }),
             })
-        },
-    )
+        } catch (error) {
+            await rollbackQueueArtifactRegistration(registration, options.artifactRepository)
+            throw error
+        }
+        publishGeneratedArtifact({
+            path: output.path,
+            ...(registration === null
+                ? {}
+                : {
+                    artifactId: registration.record.artifactId,
+                    sourceJobId: job.id,
+                    ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
+                }),
+        })
+    }
+    const recovery = reservation === undefined
+        ? await writer.retryFilesCommittedWorkflow(outputTransactionId, job.id, commitWorkflow)
+        : await writer.retryFilesCommittedWorkflow(outputTransactionId, job.id, commitWorkflow, reservation)
     if (recovery.action === 'retried') return { status: 'ready' }
     if (recovery.action === 'missing') return { status: 'missing-journal' }
     if (recovery.action === 'ineligible') {
@@ -101,10 +155,21 @@ export async function recoverQueueLinkedOutputs(
                 || job.state === 'succeeded')
         if (link.phase === 'files-committed' && mayCommit) {
             const artifactReference = job.artifactReference
-            results.push(await writer.retryFilesCommittedWorkflow(
-                link.transactionId,
-                job.id,
-                async output => {
+            let reservation: ExactOutputReservationIdentity | undefined
+            try {
+                reservation = await verifyRecoveryReservation(repository, job, {
+                    inspected: true,
+                    ...(link.outputReservation === undefined ? {} : { reservation: link.outputReservation }),
+                })
+            } catch (error) {
+                results.push({
+                    transactionId: link.transactionId,
+                    action: 'failed',
+                    error: error instanceof Error ? error.message : 'Output reservation validation failed',
+                })
+                continue
+            }
+            const commitWorkflow = async (output: OutputWriteResult) => {
                     // A files-committed journal may survive a process restart. Register
                     // the same immutable artifact before terminalizing the Job so recovery
                     // cannot create an artifact-less Queue success.
@@ -135,8 +200,10 @@ export async function recoverQueueLinkedOutputs(
                                 ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
                             }),
                     })
-                },
-            ))
+            }
+            results.push(reservation === undefined
+                ? await writer.retryFilesCommittedWorkflow(link.transactionId, job.id, commitWorkflow)
+                : await writer.retryFilesCommittedWorkflow(link.transactionId, job.id, commitWorkflow, reservation))
             continue
         }
         results.push(await writer.recoverTransaction(link.transactionId, { mode: 'rollback' }))

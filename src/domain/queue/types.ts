@@ -42,6 +42,8 @@ export interface OutputReservationFolderBinding {
 export interface OutputReservationSnapshot {
     readonly reservationId: string
     readonly folderBinding: OutputReservationFolderBinding
+    /** Secret-free identity of the resolved physical output directory. */
+    readonly directoryIdentity: `sha256:${string}`
     readonly relativePath: string
     readonly collisionPolicy: 'fail' | 'suffix'
     /** Phase 6 is create-only; local overwrite has no approved digest contract. */

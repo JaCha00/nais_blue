@@ -21,8 +21,23 @@ const runtime = vi.hoisted(() => ({
     },
     planner: {
         getRequestedCount: vi.fn(() => 1),
-        prepareBatch: vi.fn(async () => [{ params: { seed: 7 } }]),
+        prepareBatch: vi.fn(async () => [runtime.prepared]),
     },
+    prepared: {
+        params: { seed: 7 },
+        imageFormat: 'png' as const,
+        output: {
+            directory: 'output', useAbsolutePath: false,
+            capabilityFallbackDirectory: 'output', collisionPolicy: 'unique' as const,
+        },
+    },
+    preflight: vi.fn(async (input: { fileName: string }) => ({
+        fileName: input.fileName,
+        directoryIdentity: `sha256:${'e'.repeat(64)}` as const,
+        availableSpaceCheck: 'unavailable' as const,
+        foregroundSingleWriterOnly: true as const,
+        crossProcessReservation: false as const,
+    })),
     enqueue: vi.fn(async () => ({ status: 'ready' as const, batchId: 'batch:main', runId: 'batch:main', jobIds: ['job:1'] })),
     cancelBatch: vi.fn(async (input: { batchId: string }) => ({
         status: 'ready' as const, targetId: input.batchId,
@@ -39,8 +54,20 @@ vi.mock('@/stores/auth-store', () => ({
     useAuthStore: { getState: () => runtime.auth },
     selectActiveCredentialsAreOpus: () => false,
 }))
+vi.mock('@/stores/settings-store', () => ({
+    useSettingsStore: { getState: () => ({ generationFolderDocument: {} }) },
+}))
+vi.mock('@/application/folder/generation-folder-binding', () => ({
+    createGenerationFolderDocumentBinding: () => ({
+        resourceType: 'generation-folder-document', resourceId: 'local', revision: 1,
+        contentHash: `sha256:${'f'.repeat(64)}`,
+    }),
+}))
 vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
-    getRuntimeMainQueueDependencies: () => ({ planner: runtime.planner }),
+    getRuntimeMainQueueDependencies: () => ({
+        planner: runtime.planner,
+        outputReservations: { preflight: runtime.preflight },
+    }),
 }))
 vi.mock('@/services/generation/main-application-generation-command', () => ({
     enqueuePreparedMainGeneration: runtime.enqueue,
@@ -66,7 +93,7 @@ describe('Main generation command quality boundary', () => {
         runtime.batchWorkflows.set('batch:main', 'main')
         runtime.auth.getActiveTokens.mockReturnValue([{ slot: 1, token: 'secret' }])
         runtime.planner.getRequestedCount.mockReturnValue(1)
-        runtime.planner.prepareBatch.mockResolvedValue([{ params: { seed: 7 } }])
+        runtime.planner.prepareBatch.mockResolvedValue([runtime.prepared])
         runtime.enqueue.mockResolvedValue({ status: 'ready', batchId: 'batch:main', runId: 'batch:main', jobIds: ['job:1'] })
         vi.clearAllMocks()
     })
@@ -82,6 +109,15 @@ describe('Main generation command quality boundary', () => {
     it('preserves durable and legacy execution after the quality check', async () => {
         await expect(startMainGenerationCommand()).resolves.toBe('started')
         expect(runtime.enqueue).toHaveBeenCalledOnce()
+        expect(runtime.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+            prepared: [expect.objectContaining({
+                output: expect.objectContaining({
+                    fileName: 'NAI_Blue_7.png',
+                    collisionPolicy: 'error',
+                    reservationCollisionPolicy: 'suffix',
+                }),
+            })],
+        }))
         expect(runtime.queue.setSelectedBatchId).toHaveBeenCalledWith('batch:main')
 
         vi.clearAllMocks()

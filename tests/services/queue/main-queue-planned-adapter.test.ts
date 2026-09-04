@@ -14,9 +14,15 @@ const runtime = vi.hoisted(() => ({
         resources: [],
     })),
     encode: vi.fn(() => ({
-        snapshot: { schemaVersion: 1, prompt: {}, parameters: {}, outputPolicy: {}, resources: [] },
+        snapshot: {
+            schemaVersion: 1,
+            prompt: { positive: '', negative: '' },
+            parameters: {}, outputPolicy: {}, resources: [], resumability: 'resumable',
+        },
         compositionPlanHash: null,
     })),
+    currentFolderBinding: vi.fn(),
+    preflight: vi.fn(),
 }))
 
 vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
@@ -25,6 +31,10 @@ vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
         presentation: {
             beginEnqueueOperation: runtime.begin,
             completeEnqueueOperation: runtime.complete,
+        },
+        outputReservations: {
+            getCurrentFolderBinding: runtime.currentFolderBinding,
+            preflight: runtime.preflight,
         },
     }),
 }))
@@ -50,8 +60,21 @@ const prepared = {
         width: 832,
         height: 1_216,
         steps: 28,
+        seed: 7,
+    },
+    imageFormat: 'png',
+    output: {
+        directory: 'output', useAbsolutePath: false, capabilityFallbackDirectory: 'output',
+        fileName: 'planned.png', collisionPolicy: 'error',
     },
 } as PreparedMainGeneration
+
+const folderBinding = {
+    resourceType: 'generation-folder-document' as const,
+    resourceId: 'local',
+    revision: 3,
+    contentHash: `sha256:${'a'.repeat(64)}` as const,
+}
 
 function planner(): MainBatchPlannerPort<PreparedMainGeneration> {
     return {
@@ -74,6 +97,14 @@ describe('planned Main queue adapter', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         runtime.createBatchAndEnqueue.mockResolvedValue({ batch: {}, jobs: [] })
+        runtime.currentFolderBinding.mockReturnValue(folderBinding)
+        runtime.preflight.mockResolvedValue({
+            fileName: 'planned.png',
+            directoryIdentity: `sha256:${'b'.repeat(64)}`,
+            availableSpaceCheck: 'unavailable',
+            foregroundSingleWriterOnly: true,
+            crossProcessReservation: false,
+        })
     })
 
     it('reuses the Main codec/materializer and assigns stable Guided identities', async () => {
@@ -110,6 +141,52 @@ describe('planned Main queue adapter', () => {
         })).rejects.toThrow('planner failed')
         expect(runtime.createBatchAndEnqueue).not.toHaveBeenCalled()
         expect(runtime.complete).toHaveBeenCalledWith('operation:1')
+    })
+
+    it('preflights and atomically binds the exact output reservation', async () => {
+        await enqueuePlannedMainBatch({
+            planner: planner(),
+            submissionPolicy: { kind: 'guided', costConsent: freeCostConsent() },
+            idempotencyScope: 'guided:reserved',
+            folderBinding,
+        })
+
+        expect(runtime.preflight).toHaveBeenCalledWith(expect.objectContaining({
+            fileName: 'planned.png',
+            collisionPolicy: 'fail',
+            probeWrite: true,
+        }))
+        expect(runtime.createBatchAndEnqueue).toHaveBeenCalledWith(expect.objectContaining({
+            jobs: [expect.objectContaining({
+                snapshot: expect.objectContaining({
+                    outputReservation: expect.objectContaining({
+                        relativePath: 'planned.png',
+                        directoryIdentity: `sha256:${'b'.repeat(64)}`,
+                    }),
+                }),
+            })],
+            reservations: [expect.objectContaining({
+                state: 'storage-pending',
+                relativePath: 'planned.png',
+                folderBinding,
+            })],
+        }))
+    })
+
+    it('rejects a Folder change that lands after materialization but before atomic enqueue', async () => {
+        runtime.currentFolderBinding
+            .mockReturnValueOnce(folderBinding)
+            .mockReturnValueOnce({ ...folderBinding, revision: folderBinding.revision + 1 })
+
+        await expect(enqueuePlannedMainBatch({
+            planner: planner(),
+            submissionPolicy: { kind: 'guided', costConsent: freeCostConsent() },
+            idempotencyScope: 'guided:stale-folder',
+            folderBinding,
+        })).rejects.toThrow('Generation folder changed before Queue reservation')
+
+        expect(runtime.preflight).toHaveBeenCalledOnce()
+        expect(runtime.createBatchAndEnqueue).not.toHaveBeenCalled()
     })
 
     it('persists a verified Guided max-Anlas consent with the immutable snapshot', async () => {

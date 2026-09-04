@@ -7,7 +7,11 @@ import {
 } from '@/lib/scene-output-path'
 import { type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
-import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
+import {
+    getRuntimeOutputWriter,
+    type ExactOutputReservationIdentity,
+    type OutputWriteResult,
+} from '@/services/output/output-writer'
 import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
 import type { ArtifactRecord, OrganizerSourceImageFormat } from '@/domain/organizer/types'
 import type { RemoveOriginalIfUnmodifiedInput } from '@/services/organizer/artifact-repository'
@@ -38,6 +42,7 @@ export interface SaveSceneResultOptions {
     beforeFinalize?: () => boolean
     outputTransactionId?: string
     sourceJobId?: string
+    outputReservation?: ExactOutputReservationIdentity
     commitDurable?: (result: OutputWriteResult) => void | Promise<void>
     /** Queue owners register the same immutable artifact before committing the Job. */
     registerArtifact?: (result: OutputWriteResult) => Promise<SceneOutputArtifactLineage | null>
@@ -66,6 +71,8 @@ export interface SaveSceneResultOptions {
         sceneSubfoldersEnabled?: boolean
         /** Scene-wide or FIFO job-specific filename template captured before execution. */
         filenameTemplate?: string
+        /** Exact planned filename for durable Queue jobs. */
+        fileName?: string
     }
 }
 
@@ -257,36 +264,47 @@ export async function saveSceneResult(
         ?? outputDefaults.presetPathSegments
     const sceneName = options.outputContext?.sceneName ?? scene.name
     const fileExt = params.imageFormat === 'webp' ? 'webp' : 'png'
-    const outputTime = new Date()
-    const fallbackFileName = `NAI_Blue_SCENE_${outputTime.getTime()}_${crypto.randomUUID()}`
-    const explicitFilenameTemplate = options.outputContext?.filenameTemplate?.trim()
-    const requestedFilenameTemplate = explicitFilenameTemplate
-        || params.outputPolicySummary?.filenameTemplateId
-    const policyFileName = requestedFilenameTemplate
-        ? renderFilenameTemplate({
-            template: requestedFilenameTemplate,
-            context: {
-                seed: params.seed,
-                scene: { id: scene.id, name: scene.name },
-                preset: { id: ctx.activePresetId, name: presetName },
-            },
-            now: outputTime,
-            fallback: fallbackFileName,
-        })
-        : null
-    const fileName = ensureImageFileExtension(
-        explicitFilenameTemplate
-            ? policyFileName
-            : params.assetModulePlan?.output.fileName ?? policyFileName ?? fallbackFileName,
-        fileExt,
-    ) ?? `${fallbackFileName}.${fileExt}`
+    const exactFileName = options.outputContext?.fileName?.trim()
+    const explicitFilenameTemplate = exactFileName ? undefined : options.outputContext?.filenameTemplate?.trim()
+    let fileName: string
+    if (exactFileName) {
+        fileName = ensureImageFileExtension(exactFileName, fileExt) ?? exactFileName
+        if (fileName !== exactFileName
+            || (options.outputReservation !== undefined
+                && options.outputReservation.relativePath !== fileName)) {
+            throw new Error('Scene exact output filename does not match its reservation')
+        }
+    } else {
+        const outputTime = new Date()
+        const fallbackFileName = `NAI_Blue_SCENE_${outputTime.getTime()}_${crypto.randomUUID()}`
+        const requestedFilenameTemplate = explicitFilenameTemplate
+            || params.outputPolicySummary?.filenameTemplateId
+        const policyFileName = requestedFilenameTemplate
+            ? renderFilenameTemplate({
+                template: requestedFilenameTemplate,
+                context: {
+                    seed: params.seed,
+                    scene: { id: scene.id, name: scene.name },
+                    preset: { id: ctx.activePresetId, name: presetName },
+                },
+                now: outputTime,
+                fallback: fallbackFileName,
+            })
+            : null
+        fileName = ensureImageFileExtension(
+            explicitFilenameTemplate
+                ? policyFileName
+                : params.assetModulePlan?.output.fileName ?? policyFileName ?? fallbackFileName,
+            fileExt,
+        ) ?? `${fallbackFileName}.${fileExt}`
+    }
     const rawDataUrl = toDataUrl(imageData, mimeType)
     const effectiveMetadataMode = params.metadataMode ?? metadataMode
     const metadataParams: GenerationParams = {
         ...params,
         sentPayloadSummary: options.sentPayloadSummary,
         ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
-        ...((params.outputPolicySummary !== undefined || explicitFilenameTemplate)
+        ...((params.outputPolicySummary !== undefined || explicitFilenameTemplate || exactFileName)
             ? {
                 outputPolicySummary: {
                     ...params.outputPolicySummary,
@@ -295,7 +313,7 @@ export async function saveSceneResult(
                     ...(explicitFilenameTemplate === undefined
                         ? {}
                         : { filenameTemplateId: explicitFilenameTemplate }),
-                    collisionPolicy: 'unique',
+                    collisionPolicy: exactFileName ? 'error' : 'unique',
                 },
             }
             : {}),
@@ -334,6 +352,7 @@ export async function saveSceneResult(
                 ? {}
                 : { transactionId: options.outputTransactionId }),
             ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
+            ...(options.outputReservation === undefined ? {} : { outputReservation: options.outputReservation }),
             terminalWorkflowCommit: options.sourceJobId !== undefined,
             includeFinalImageFacts: options.registerArtifact !== undefined || options.afterSave !== undefined,
             destination: {
@@ -344,9 +363,7 @@ export async function saveSceneResult(
                 workflowDefaultDirectory: 'NAI_Blue_Scene',
                 fileName,
                 extension: fileExt,
-                // Every Scene generation is a distinct gallery item. Never let
-                // a repeated template erase an earlier image or alias thumbnails.
-                collisionPolicy: 'unique',
+                collisionPolicy: options.outputReservation === undefined ? 'unique' : 'error',
             },
             imageBytes: binaryData,
             imageDataUrl: dataUrl,

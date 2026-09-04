@@ -11,6 +11,7 @@ import { NovelAIHttpError } from '@/services/novelai-types'
 const mocks = vi.hoisted(() => ({
     transport: vi.fn(),
     write: vi.fn(),
+    preflight: vi.fn(),
     commit: vi.fn(),
     verify: vi.fn(),
     read: vi.fn(),
@@ -35,7 +36,16 @@ vi.mock('@/services/diagnostics/error-registry', () => ({
     reportDiagnostic: () => ({ eventId: 'diagnostic:test' }),
 }))
 vi.mock('@/services/output/output-writer', () => ({
-    getRuntimeOutputWriter: () => ({ write: mocks.write }),
+    OutputWriterError: class OutputWriterError extends Error {
+        constructor(readonly phase: string, message: string) {
+            super(message)
+            this.name = 'OutputWriterError'
+        }
+    },
+    getRuntimeOutputWriter: () => ({
+        write: mocks.write,
+        preflightExactDestination: mocks.preflight,
+    }),
 }))
 vi.mock('@/services/r2/generated-release', () => ({
     discardGeneratedProviderOriginal: vi.fn(), releaseGeneratedOutputToR2: vi.fn(),
@@ -49,12 +59,26 @@ vi.mock('@/services/queue/queue-resource-materializer', () => ({
     hydrateGenerationParams: vi.fn(async () => providerParams),
 }))
 vi.mock('@/services/queue/main-job-snapshot-codec', () => ({
-    decodeMainJobSnapshot: () => ({
+    decodeMainJobSnapshot: (snapshot: GenerationJob['snapshot']) => ({
         payloadBuilderRevision: 'nai-blue-payload-v1',
         queueExecution: { streaming: false, sourceEdit: false },
         mainWorkflow: {
             imageFormat: 'png', metadataMode: 'embed', finalPrompt: 'prompt',
             sequenceCommitProposal: { changes: [] },
+            ...(snapshot.outputReservation === undefined
+                ? {}
+                : {
+                    costConsent: {
+                        schemaVersion: 1,
+                        unit: 'anlas',
+                        estimatorVersion: 'nai-blue-anlas-v3',
+                        pricingBasis: 'all-active-opus',
+                        estimatedAnlas: 0,
+                        maxAnlas: 0,
+                        estimatedAt: '2026-09-03T00:00:00.000Z',
+                        approvedAt: '2026-09-03T00:00:00.000Z',
+                    },
+                }),
             output: {
                 directory: 'output', useAbsolutePath: false, capabilityFallbackDirectory: 'output',
                 fileName: 'image', collisionPolicy: 'unique', rightsXmpEnabled: false,
@@ -79,10 +103,25 @@ vi.mock('@/services/queue/main-queue-runtime-dependencies', () => {
         commitHistory: vi.fn(), rollbackHistory: vi.fn(), publishArtifact: vi.fn(),
         updateEncodedVibes: vi.fn(), refreshAnlas: vi.fn(),
     }
-    return { getRuntimeMainQueueDependencies: () => ({ presentation, providerResultSpool }) }
+    return {
+        getRuntimeMainQueueDependencies: () => ({
+            presentation,
+            providerResultSpool,
+            outputReservations: {
+                getCurrentFolderBinding: () => ({
+                    resourceType: 'generation-folder-document',
+                    resourceId: 'generation-folder-document',
+                    revision: 7,
+                    contentHash: `sha256:${'b'.repeat(64)}`,
+                }),
+                preflight: mocks.preflight,
+            },
+        }),
+    }
 })
 
 import { executeMainQueueJob } from '@/services/queue/main-queue-executor'
+import { OutputWriterError } from '@/services/output/output-writer'
 
 const prepared: ProviderAttemptEvidence = {
     dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
@@ -110,14 +149,41 @@ const providerEnvelope: ProviderExecutionEnvelope = {
     queueResourceBindings: [],
 }
 
-function job(options: { envelope?: Partial<typeof providerEnvelope> } = {}): GenerationJob {
+function job(options: {
+    envelope?: Partial<typeof providerEnvelope>
+    withReservation?: boolean
+} = {}): GenerationJob {
+    const folderBinding = {
+        resourceType: 'generation-folder-document' as const,
+        resourceId: 'generation-folder-document',
+        revision: 7,
+        contentHash: `sha256:${'b'.repeat(64)}` as const,
+    }
     return {
-        id: 'job:1', attemptCount: 1, workflow: 'main', sceneId: null,
-        snapshot: { providerExecutionEnvelope: { ...providerEnvelope, ...options.envelope }, resources: [] },
+        id: 'job:1', batchId: 'batch:1', attemptCount: 1, workflow: 'main', sceneId: null,
+        snapshot: {
+            providerExecutionEnvelope: { ...providerEnvelope, ...options.envelope },
+            resources: [],
+            ...(options.withReservation === true
+                ? {
+                    outputReservation: {
+                        reservationId: 'reservation:job:1',
+                        folderBinding,
+                        directoryIdentity: `sha256:${'c'.repeat(64)}` as const,
+                        relativePath: 'image.png',
+                        collisionPolicy: 'fail' as const,
+                        expectedExistingDigest: null,
+                    },
+                }
+                : {}),
+        },
     } as unknown as GenerationJob
 }
 
-function context(initial: ProviderAttemptEvidence, options: { executionEnvelopeHash?: string } = {}): {
+function context(initial: ProviderAttemptEvidence, options: {
+    executionEnvelopeHash?: string
+    activeCredentialsAreOpus?: boolean
+} = {}): {
     value: QueueExecutorContext
     transitions: Array<{ evidence: ProviderAttemptEvidence; blockReason?: string }>
 } {
@@ -132,8 +198,26 @@ function context(initial: ProviderAttemptEvidence, options: { executionEnvelopeH
         transitions,
         value: {
             tokenSlotId: 'slot-1', token: 'token', signal: new AbortController().signal,
+            activeCredentialsAreOpus: options.activeCredentialsAreOpus ?? true,
             get providerAttempt() { return attempt }, canCommit: () => true, updateProgress: vi.fn(), bindOutput: vi.fn(),
             commitOutput: vi.fn(), requeueSpooledResult: vi.fn(),
+            getOutputReservation: vi.fn(async () => ({
+                reservationId: 'reservation:job:1',
+                batchId: 'batch:1',
+                jobId: 'job:1',
+                folderBinding: {
+                    resourceType: 'generation-folder-document',
+                    resourceId: 'generation-folder-document',
+                    revision: 7,
+                    contentHash: `sha256:${'b'.repeat(64)}`,
+                },
+                directoryIdentity: `sha256:${'c'.repeat(64)}`,
+                relativePath: 'image.png',
+                collisionPolicy: 'fail',
+                expectedExistingDigest: null,
+                state: 'storage-pending',
+            })),
+            transitionOutputReservation: vi.fn(async () => undefined),
             recordProviderTransition: vi.fn(async (evidence, options) => {
                 transitions.push({ evidence, blockReason: options?.blockReason })
                 attempt = { ...attempt, providerEvidence: evidence }
@@ -149,6 +233,13 @@ describe('Main Queue Provider result safety', () => {
         mocks.verify.mockResolvedValue(receipt)
         mocks.read.mockResolvedValue(new Uint8Array([1, 2, 3]))
         mocks.commit.mockResolvedValue(receipt)
+        mocks.preflight.mockResolvedValue({
+            fileName: 'image.png',
+            directoryIdentity: `sha256:${'c'.repeat(64)}`,
+            availableSpaceCheck: 'unavailable',
+            foregroundSingleWriterOnly: true,
+            crossProcessReservation: false,
+        })
         mocks.hash.mockResolvedValue(`sha256:${'a'.repeat(64)}`)
         mocks.write.mockImplementation(async request => {
             await request.commitWorkflow({ path: 'output/image.png' })
@@ -383,6 +474,29 @@ describe('Main Queue Provider result safety', () => {
         expect(mocks.write).toHaveBeenCalledTimes(0)
     })
 
+    it('does not call Provider when the exact reservation preflight fails', async () => {
+        const current = context(prepared)
+        mocks.preflight.mockRejectedValueOnce(new Error('directory probe failed'))
+
+        await expect(executeMainQueueJob(job({ withReservation: true }), current.value)).rejects.toMatchObject({
+            name: 'QueueExecutionError', kind: 'local-io',
+        } satisfies Partial<QueueExecutionError>)
+        expect(mocks.transport).toHaveBeenCalledTimes(0)
+        expect(mocks.commit).toHaveBeenCalledTimes(0)
+        expect(mocks.write).toHaveBeenCalledTimes(0)
+    })
+
+    it('does not call Provider when credential pricing no longer matches consent', async () => {
+        const current = context(prepared, { activeCredentialsAreOpus: false })
+
+        await expect(executeMainQueueJob(job({ withReservation: true }), current.value)).rejects.toMatchObject({
+            name: 'QueueExecutionError', kind: 'fatal',
+        } satisfies Partial<QueueExecutionError>)
+        expect(mocks.preflight).toHaveBeenCalledTimes(0)
+        expect(mocks.transport).toHaveBeenCalledTimes(0)
+        expect(mocks.write).toHaveBeenCalledTimes(0)
+    })
+
     it('requeues and pauses an already-spooled result when its execution envelope no longer matches', async () => {
         const current = context({
             dispatchState: 'result-spooled', providerOutcome: 'succeeded', billingRisk: 'confirmed',
@@ -422,5 +536,50 @@ describe('Main Queue Provider result safety', () => {
         expect(mocks.transport).toHaveBeenCalledTimes(1)
         expect(mocks.read).toHaveBeenCalledTimes(2)
         expect(mocks.write).toHaveBeenCalledTimes(2)
+    })
+
+    it('marks only an exact late destination collision as conflict', async () => {
+        const current = context(prepared)
+        mocks.transport.mockImplementation(async request => {
+            await request.executionHooks.observer({ stage: 'possibly-dispatched' })
+            await request.executionHooks.observer({ stage: 'response-started', status: 200, retryAfter: null })
+            await request.executionHooks.observer({ stage: 'response-complete', status: 200, retryAfter: null })
+            return { success: true, imageData: 'data:image/png;base64,AQID' }
+        })
+        mocks.write.mockRejectedValueOnce(new OutputWriterError(
+            'atomic-commit',
+            'Output destination changed before commit: output/image.png',
+        ))
+
+        await expect(executeMainQueueJob(job({ withReservation: true }), current.value)).rejects.toMatchObject({
+            name: 'QueueExecutionError', kind: 'fatal',
+        } satisfies Partial<QueueExecutionError>)
+        expect(current.value.transitionOutputReservation).toHaveBeenLastCalledWith(expect.objectContaining({
+            state: 'conflict',
+        }))
+        expect(current.value.requeueSpooledResult).not.toHaveBeenCalled()
+    })
+
+    it('keeps a non-collision atomic write failure retryable from the spool', async () => {
+        const current = context(prepared)
+        mocks.transport.mockImplementation(async request => {
+            await request.executionHooks.observer({ stage: 'possibly-dispatched' })
+            await request.executionHooks.observer({ stage: 'response-started', status: 200, retryAfter: null })
+            await request.executionHooks.observer({ stage: 'response-complete', status: 200, retryAfter: null })
+            return { success: true, imageData: 'data:image/png;base64,AQID' }
+        })
+        mocks.write.mockRejectedValueOnce(new OutputWriterError(
+            'atomic-commit',
+            'Output transaction failed during atomic-commit',
+        ))
+
+        await expect(executeMainQueueJob(job({ withReservation: true }), current.value))
+            .rejects.toThrow('Output transaction failed during atomic-commit')
+        expect(current.value.requeueSpooledResult).toHaveBeenCalledWith({
+            diagnosticEventId: 'diagnostic:test', pauseReason: 'local-io',
+        })
+        expect(current.value.transitionOutputReservation).not.toHaveBeenCalledWith(expect.objectContaining({
+            state: 'conflict',
+        }))
     })
 })

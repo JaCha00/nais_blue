@@ -24,12 +24,18 @@ describe('durable Main sequential-fragment execution contract', () => {
     })
 
     it('places the deterministic response/spool fault seam before OutputWriter commit', async () => {
-        const source = await readFile(
+        const [source, safeDispatch] = await Promise.all([
+            readFile(
             resolve(process.cwd(), 'src/services/queue/main-queue-executor.ts'),
             'utf8',
-        )
-        const response = source.indexOf('bytes = decodeImageBytes(result.imageData)')
-        const seam = source.indexOf("faultInjector('after-spool-commit')")
+            ),
+            readFile(
+                resolve(process.cwd(), 'src/services/queue/provider-safe-image-dispatch.ts'),
+                'utf8',
+            ),
+        ])
+        const response = safeDispatch.indexOf('bytes = Uint8Array.from(binary')
+        const seam = safeDispatch.indexOf("faultInjector('after-spool-commit')")
         const outputWriter = source.indexOf('getRuntimeOutputWriter()')
 
         expect(response).toBeGreaterThan(-1)

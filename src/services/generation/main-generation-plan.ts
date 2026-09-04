@@ -25,6 +25,8 @@ export interface PreparedMainGeneration {
         readonly portableDirectory?: GenerationParams['portableOutputDirectory']
         readonly fileName?: string
         readonly collisionPolicy: 'unique' | 'overwrite' | 'error'
+        /** Plan-time allocation policy retained after exact-name materialization. */
+        readonly reservationCollisionPolicy?: 'fail' | 'suffix'
         readonly generationFolderId: string | null
         readonly generationFolderPath: string | null
         readonly autoR2UploadProfileId: string | null

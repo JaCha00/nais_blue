@@ -14,7 +14,7 @@ type GenerationCommandAdapter = CancelGenerationPort & RetryGenerationStoragePor
 interface GenerationCommandAdapterDependencies {
     readonly repository: Pick<
         IndexedDBQueueRepository,
-        'initialize' | 'getBatch' | 'getJob' | 'recoverFilesCommittedSuccess'
+        'initialize' | 'getBatch' | 'getJob' | 'getOutputReservation' | 'recoverFilesCommittedSuccess'
     >
     readonly writer: OutputWriter
     readonly coordinator: { cancelBatch(batchId: string): Promise<void> }

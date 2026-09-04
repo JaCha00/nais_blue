@@ -5,7 +5,10 @@ import { createZustandStyleLabQueuePresentation } from '@/presentation/queue/zus
 import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
 import { configureRuntimeQueueDependencies } from '@/services/queue/runtime'
 import { DesktopProviderResultSpool } from '@/adapters/generation/desktop-provider-result-spool'
-import { useAuthStore } from '@/stores/auth-store'
+import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
+import { useSettingsStore } from '@/stores/settings-store'
+import { createGenerationFolderDocumentBinding } from '@/application/folder/generation-folder-binding'
+import { getRuntimeOutputWriter } from '@/services/output/output-writer'
 
 /**
  * The core composition root depends on the credential store and Queue runtime,
@@ -13,10 +16,15 @@ import { useAuthStore } from '@/stores/auth-store'
  * before React mounts so every command observes the same dependency graph.
  */
 const queueTokenProvider: QueueTokenProvider = {
-    getActiveTokenSlots: () => useAuthStore.getState().getActiveTokens().map(entry => ({
-        slotId: `slot-${entry.slot}`,
-        token: entry.token,
-    })),
+    getActiveTokenSlots: () => {
+        const auth = useAuthStore.getState()
+        const activeCredentialsAreOpus = selectActiveCredentialsAreOpus(auth)
+        return auth.getActiveTokens().map(entry => ({
+            slotId: `slot-${entry.slot}`,
+            token: entry.token,
+            activeCredentialsAreOpus,
+        }))
+    },
 }
 
 let initialized = false
@@ -29,6 +37,13 @@ export function initializeCoreRuntime(): void {
             providerResultSpool: new DesktopProviderResultSpool(),
             planner: createZustandMainBatchPlanner(),
             presentation: createZustandMainQueuePresentation(),
+            outputReservations: {
+                getCurrentFolderBinding: () => {
+                    const document = useSettingsStore.getState().generationFolderDocument
+                    return document === null ? null : createGenerationFolderDocumentBinding(document)
+                },
+                preflight: request => getRuntimeOutputWriter().preflightExactDestination(request),
+            },
         },
         sceneQueue: {
             presentation: createZustandSceneResultPresentation(),

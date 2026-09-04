@@ -6,14 +6,15 @@ const runtime = vi.hoisted(() => ({
     write: vi.fn(async (request: {
         commitWorkflow: (result: unknown) => Promise<void>
         rollbackWorkflow?: (result: unknown, cause: unknown) => Promise<void>
-        destination: { portableDirectory?: unknown }
+        destination: { portableDirectory?: unknown; fileName?: string; collisionPolicy?: string }
     }) => {
         runtime.order.push('output')
+        const fileName = request.destination.fileName ?? 'result.png'
         const result = {
             transactionId: 'txn-a',
-            fileName: 'result.png',
-            path: 'NAI_Blue_Scene/result.png',
-            file: { kind: 'path', path: 'result.png' },
+            fileName,
+            path: `NAI_Blue_Scene/${fileName}`,
+            file: { kind: 'path', path: fileName },
             directory: { baseDir: 'Picture', path: 'NAI_Blue_Scene' },
             finalImage: {
                 contentChecksum: `sha256:${'a'.repeat(64)}`,
@@ -90,6 +91,63 @@ describe('saveSceneResult authority ordering', () => {
         )
         expect(saved).toBe(true)
         expect(runtime.order).toEqual(['output', 'artifact', 'durable', 'scene-link', 'presentation'])
+    })
+
+    it('passes the reserved exact filename and identity to OutputWriter and Artifact registration', async () => {
+        const presentation = {
+            readOutputDefaults: () => ({
+                useAbsoluteScenePath: false,
+                metadataMode: 'sidecar-only' as const,
+                presetName: 'Preset',
+                presetPathSegments: ['Preset'],
+                fallbackPromptParts: { base: '', additional: '', detail: '', negative: '', inpainting: '' },
+            }),
+            commitResult: vi.fn(),
+            rollbackResult: vi.fn(),
+            reportCapabilityFallback: vi.fn(),
+            updateEncodedVibes: vi.fn(),
+        }
+        const reservation = {
+            reservationId: 'output-reservation:job-exact',
+            directoryIdentity: `sha256:${'b'.repeat(64)}` as const,
+            relativePath: 'opening.webp',
+        }
+        let artifactFileName: string | undefined
+        await expect(saveSceneResult(
+            { id: 'scene-a', name: 'Scene' },
+            { activePresetId: 'preset-a', sceneSavePath: 'NAI_Blue_Scene' },
+            'prompt',
+            { seed: 1, imageFormat: 'webp' } as never,
+            'AA==',
+            'image/webp',
+            undefined,
+            {
+                presentation,
+                sourceJobId: 'job-exact',
+                outputReservation: reservation,
+                outputContext: {
+                    useAbsoluteScenePath: false,
+                    metadataMode: 'sidecar-only',
+                    presetName: 'Preset',
+                    sceneName: 'Scene',
+                    directory: 'NAI_Blue_Scene',
+                    fileName: 'opening.webp',
+                },
+                registerArtifact: async output => {
+                    artifactFileName = output.fileName
+                    return { artifactId: 'artifact-exact', sourceJobId: 'job-exact', sourceSceneId: 'scene-a' }
+                },
+            },
+        )).resolves.toBe(true)
+
+        expect(runtime.write).toHaveBeenLastCalledWith(expect.objectContaining({
+            outputReservation: reservation,
+            destination: expect.objectContaining({
+                fileName: 'opening.webp',
+                collisionPolicy: 'error',
+            }),
+        }))
+        expect(artifactFileName).toBe('opening.webp')
     })
 
     it('never creates a Scene link when the durable Queue commit fails', async () => {

@@ -26,6 +26,13 @@ vi.mock('@/services/nai/compatibility', () => ({
 
 import { enqueuePreparedMainGeneration } from '@/services/generation/main-application-generation-command'
 
+const FOLDER_BINDING = {
+    resourceType: 'generation-folder-document' as const,
+    resourceId: 'local',
+    revision: 3,
+    contentHash: `sha256:${'f'.repeat(64)}` as const,
+}
+
 function prepared(overrides: Partial<PreparedMainGeneration['output']> = {}): PreparedMainGeneration {
     return {
         params: {
@@ -83,6 +90,7 @@ describe('Main application generation command', () => {
             pricingBasis: 'paid',
             approvedAt: '2026-09-03T00:00:00.000Z',
             credentialReadinessFingerprint: `sha256:${'d'.repeat(64)}`,
+            folderBinding: FOLDER_BINDING,
         })
 
         expect(result).toEqual({
@@ -99,6 +107,7 @@ describe('Main application generation command', () => {
                 captureId: 'main-capture:test',
                 materializedSeeds: [17],
                 credentialReadinessFingerprint: `sha256:${'d'.repeat(64)}`,
+                sourceBindings: [FOLDER_BINDING],
             },
         })
         expect(request.submissionPolicy).toMatchObject({
@@ -119,6 +128,7 @@ describe('Main application generation command', () => {
             pricingBasis: 'paid',
             approvedAt: '2026-09-03T00:00:00.000Z',
             credentialReadinessFingerprint: `sha256:${'d'.repeat(64)}`,
+            folderBinding: FOLDER_BINDING,
         })
 
         expect(result.status).toBe('unsupported')

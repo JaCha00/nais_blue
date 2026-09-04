@@ -10,6 +10,7 @@ import {
     type QueueArtifactReference,
     type QueueBlockReason,
     type QueueFailureKind,
+    type OutputReservation,
 } from '@/domain/queue/types'
 import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
@@ -17,12 +18,21 @@ import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 export interface QueueExecutorContext {
     readonly tokenSlotId: string
     readonly token: string
+    /** Present on current runtime leases; absent only in legacy test/provider adapters. */
+    readonly activeCredentialsAreOpus?: boolean
     readonly signal: AbortSignal
     readonly providerAttempt: GenerationAttempt
     canCommit(): boolean
     updateProgress(stage: string, current: number, total: number): Promise<void>
     bindOutput(transactionId: string, artifactReference: QueueArtifactReference): Promise<void>
     commitOutput(transactionId: string, artifactReference: QueueArtifactReference): Promise<void>
+    getOutputReservation?(reservationId: string): Promise<OutputReservation | null>
+    transitionOutputReservation?(input: {
+        reservationId: string
+        owner: Pick<OutputReservation, 'batchId' | 'jobId' | 'directoryIdentity' | 'relativePath'>
+        expectedState: OutputReservation['state']
+        state: OutputReservation['state']
+    }): Promise<OutputReservation>
     recordProviderTransition(
         nextEvidence: ProviderAttemptEvidence,
         options?: {
@@ -442,6 +452,9 @@ export class DurableQueueCoordinator {
         const context: QueueExecutorContext = {
             tokenSlotId: slot.slotId,
             token: slot.token,
+            ...(slot.activeCredentialsAreOpus === undefined
+                ? {}
+                : { activeCredentialsAreOpus: slot.activeCredentialsAreOpus }),
             signal: controller.signal,
             providerAttempt,
             canCommit: () => !controller.signal.aborted && !terminalCommitted,
@@ -475,6 +488,8 @@ export class DurableQueueCoordinator {
                 })
                 terminalCommitted = true
             },
+            getOutputReservation: reservationId => this.repository.getOutputReservation(reservationId),
+            transitionOutputReservation: input => this.repository.transitionOutputReservation(input),
             recordProviderTransition: async (nextEvidence, options = {}) => {
                 if (providerAttempt.providerEvidence === null) {
                     throw new QueueExecutionError('fatal', 'Legacy queue attempt cannot record Provider evidence')

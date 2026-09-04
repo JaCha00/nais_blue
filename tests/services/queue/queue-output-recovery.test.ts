@@ -2,13 +2,13 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createArtifactRecord, type ArtifactRecord } from '@/domain/organizer/types'
-import type { QueueArtifactReference } from '@/domain/queue/types'
+import type { OutputReservation, QueueArtifactReference } from '@/domain/queue/types'
 import type { OutputWriteResult, OutputWriter } from '@/services/output/output-writer'
 import {
     IndexedDBQueueRepository,
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
-import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
+import { bindOutputReservationSnapshot, createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
 import type { QueueArtifactRepository } from '@/services/queue/queue-artifact-lineage'
 import { recoverQueueLinkedOutputs, retryQueueLinkedOutput } from '@/services/queue/queue-output-recovery'
 
@@ -34,6 +34,29 @@ function job(): EnqueueGenerationJobInput {
             prompt: { positive: 'fixed', negative: '' },
             parameters: {}, outputPolicy: {}, resources: [], resumability: 'resumable',
         }),
+    }
+}
+
+function reservation(): OutputReservation {
+    return {
+        reservationId: 'reservation:1', batchId: 'batch:1', jobId: 'job:1',
+        folderBinding: {
+            resourceType: 'generation-folder-document', resourceId: 'folder:1', revision: 1,
+            contentHash: `sha256:${'b'.repeat(64)}`,
+        },
+        directoryIdentity: `sha256:${'c'.repeat(64)}`,
+        relativePath: 'queue-output.png', collisionPolicy: 'fail',
+        expectedExistingDigest: null, state: 'storage-pending',
+    }
+}
+
+function reservedJob(): EnqueueGenerationJobInput {
+    const value = reservation()
+    const base = job()
+    const { batchId: _batchId, jobId: _jobId, state: _state, ...snapshotReservation } = value
+    return {
+        ...base,
+        snapshot: bindOutputReservationSnapshot(base.snapshot, snapshotReservation),
     }
 }
 
@@ -181,5 +204,53 @@ describe('queue-linked OutputWriter recovery', () => {
             outputTransactionId: 'txn-bound',
             artifactReference: artifact,
         })
+    })
+
+    it('leaves a files-committed journal untouched when its reservation is not the Queue authority', async () => {
+        const repository = queue()
+        await repository.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch-key:1',
+            },
+            jobs: [reservedJob()],
+            reservations: [reservation()],
+        })
+        const lease = await repository.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 1_000 })
+        await repository.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+        })
+        await repository.transitionOutputReservation({
+            reservationId: 'reservation:1', owner: reservation(),
+            expectedState: 'storage-pending', state: 'writing',
+        })
+        const artifact: QueueArtifactReference = {
+            kind: 'output-writer', artifactId: 'artifact:1', digest: 'sha256:artifact', mimeType: 'image/png',
+        }
+        await repository.bindOutputTransaction({
+            jobId: 'job:1', leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', now: NOW,
+            outputTransactionId: 'txn-bound', artifactReference: artifact,
+        })
+        const retryFilesCommittedWorkflow = vi.fn()
+        const writer = {
+            inspectPendingQueueTransactions: async () => [{
+                transactionId: 'txn-bound', sourceJobId: 'job:1', phase: 'files-committed' as const,
+                outputReservation: {
+                    reservationId: 'reservation:other',
+                    directoryIdentity: reservation().directoryIdentity,
+                    relativePath: reservation().relativePath,
+                },
+            }],
+            retryFilesCommittedWorkflow,
+        } as unknown as OutputWriter
+
+        await expect(recoverQueueLinkedOutputs(repository, writer, { now: LATER })).resolves.toEqual([{
+            transactionId: 'txn-bound', action: 'failed',
+            error: 'Output journal reservation does not match Queue authority',
+        }])
+        expect(retryFilesCommittedWorkflow).not.toHaveBeenCalled()
+        expect(await repository.getJob('job:1')).toMatchObject({ state: 'running' })
+        expect(await repository.getOutputReservation('reservation:1')).toMatchObject({ state: 'writing' })
     })
 })

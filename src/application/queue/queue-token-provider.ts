@@ -6,6 +6,8 @@
 export interface QueueTokenSlot {
     readonly slotId: string
     readonly token: string
+    /** Cost authority for the whole active rotation set at lease time. */
+    readonly activeCredentialsAreOpus?: boolean
 }
 
 export interface QueueTokenProvider {

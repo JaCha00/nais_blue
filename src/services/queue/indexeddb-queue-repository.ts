@@ -52,7 +52,7 @@ import {
 
 // Physical database names stay stable so generation jobs survive the rename.
 export const QUEUE_DATABASE_NAME = 'nai-blue-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 7
+export const QUEUE_DATABASE_VERSION = 8
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'output-reservations', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
@@ -783,6 +783,10 @@ function parseOutputReservationSnapshot(value: unknown): OutputReservationSnapsh
     if (value.expectedExistingDigest !== null) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation existing digest is invalid')
     }
+    if (typeof value.directoryIdentity !== 'string'
+        || !/^sha256:[0-9a-f]{64}$/.test(value.directoryIdentity)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation directory identity is invalid')
+    }
     const relativePath = typeof value.relativePath === 'string' ? value.relativePath : ''
     normalizeReservationRelativePath(relativePath)
     return {
@@ -793,6 +797,7 @@ function parseOutputReservationSnapshot(value: unknown): OutputReservationSnapsh
             revision: binding.revision as number,
             contentHash: binding.contentHash as `sha256:${string}`,
         },
+        directoryIdentity: value.directoryIdentity as `sha256:${string}`,
         relativePath,
         collisionPolicy: value.collisionPolicy,
         expectedExistingDigest: null,
@@ -820,6 +825,7 @@ function storedReservation(value: OutputReservation): StoredOutputReservation {
     assertIdentifier(value.jobId, 'reservation job id')
     const snapshot = parseOutputReservationSnapshot(value)
     const normalizedPath = normalizeReservationRelativePath(snapshot.relativePath)
+    const activePath = `${snapshot.directoryIdentity}/${normalizedPath}`
     if (value.state !== 'storage-pending'
         && value.state !== 'writing'
         && value.state !== 'committed'
@@ -833,7 +839,7 @@ function storedReservation(value: OutputReservation): StoredOutputReservation {
         jobId: value.jobId,
         state: value.state,
         normalizedPath,
-        ...(value.state === 'abandoned' ? {} : { activePath: normalizedPath }),
+        ...(value.state === 'abandoned' ? {} : { activePath }),
     }
 }
 
@@ -857,6 +863,7 @@ function hasSameReservationIdentity(left: OutputReservation, right: OutputReserv
         && left.batchId === right.batchId
         && left.jobId === right.jobId
         && canonicalSerialize(left.folderBinding) === canonicalSerialize(right.folderBinding)
+        && left.directoryIdentity === right.directoryIdentity
         && left.relativePath === right.relativePath
         && left.collisionPolicy === right.collisionPolicy
         && left.expectedExistingDigest === right.expectedExistingDigest
@@ -1334,6 +1341,83 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
         }
         cursorRequest.onerror = () => transaction.abort()
     }
+    if (oldVersion === 7) {
+        const reservations = transaction.objectStore('output-reservations')
+        const reservationCursor = reservations.openCursor()
+        reservationCursor.onsuccess = () => {
+            const cursor = reservationCursor.result
+            if (cursor === null) return
+            try {
+                if (!isRecord(cursor.value)
+                    || typeof cursor.value.reservationId !== 'string'
+                    || typeof cursor.value.relativePath !== 'string') {
+                    throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'V7 output reservation is invalid')
+                }
+                const normalizedPath = normalizeReservationRelativePath(cursor.value.relativePath)
+                const directoryIdentity = legacyReservationDirectoryIdentity(
+                    cursor.value.reservationId,
+                    cursor.value.relativePath,
+                )
+                cursor.update({
+                    ...cursor.value,
+                    directoryIdentity,
+                    normalizedPath,
+                    ...(cursor.value.state === 'abandoned'
+                        ? { activePath: undefined }
+                        : { activePath: `${directoryIdentity}/${normalizedPath}` }),
+                })
+                cursor.continue()
+            } catch {
+                transaction.abort()
+            }
+        }
+        reservationCursor.onerror = () => transaction.abort()
+
+        const jobs = transaction.objectStore('jobs')
+        const jobCursor = jobs.openCursor()
+        jobCursor.onsuccess = () => {
+            const cursor = jobCursor.result
+            if (cursor === null) return
+            try {
+                if (!isRecord(cursor.value) || !isRecord(cursor.value.snapshot)) {
+                    throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'V7 queue job is invalid')
+                }
+                const outputReservation = cursor.value.snapshot.outputReservation
+                if (isRecord(outputReservation)
+                    && typeof outputReservation.reservationId === 'string'
+                    && typeof outputReservation.relativePath === 'string'
+                    && outputReservation.directoryIdentity === undefined) {
+                    const snapshot = {
+                        ...cursor.value.snapshot,
+                        outputReservation: {
+                            ...outputReservation,
+                            directoryIdentity: legacyReservationDirectoryIdentity(
+                                outputReservation.reservationId,
+                                outputReservation.relativePath,
+                            ),
+                        },
+                    } as unknown as GenerationJobSnapshot
+                    cursor.update({
+                        ...cursor.value,
+                        snapshot,
+                        snapshotHash: hashGenerationJobSnapshot(snapshot),
+                    })
+                }
+                cursor.continue()
+            } catch {
+                transaction.abort()
+            }
+        }
+        jobCursor.onerror = () => transaction.abort()
+    }
+}
+
+/** V7 lacked a local directory authority; this stable placeholder preserves data but cannot pass real preflight. */
+function legacyReservationDirectoryIdentity(
+    reservationId: string,
+    relativePath: string,
+): `sha256:${string}` {
+    return `sha256:${hashCanonicalValue({ legacyOutputReservation: { reservationId, relativePath } })}`
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -1693,6 +1777,7 @@ export class IndexedDBQueueRepository {
             if (canonicalSerialize(snapshotReservation) !== canonicalSerialize({
                 reservationId: reservation.reservationId,
                 folderBinding: reservation.folderBinding,
+                directoryIdentity: reservation.directoryIdentity,
                 relativePath: reservation.relativePath,
                 collisionPolicy: reservation.collisionPolicy,
                 expectedExistingDigest: reservation.expectedExistingDigest,
@@ -1878,10 +1963,17 @@ export class IndexedDBQueueRepository {
         return value === undefined ? null : structuredClone(parseOutputReservation(value))
     }
 
-    async getOutputReservationByPath(relativePath: string): Promise<OutputReservation | null> {
+    async getOutputReservationByPath(
+        directoryIdentity: OutputReservationSnapshot['directoryIdentity'],
+        relativePath: string,
+    ): Promise<OutputReservation | null> {
+        if (!/^sha256:[0-9a-f]{64}$/.test(directoryIdentity)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation directory identity is invalid')
+        }
         const normalizedPath = normalizeReservationRelativePath(relativePath)
+        const activePath = `${directoryIdentity}/${normalizedPath}`
         const value = await this.runTransaction(['output-reservations'], 'readonly', transaction => (
-            requestResult(transaction.objectStore('output-reservations').index('by-normalized-path').get(normalizedPath))
+            requestResult(transaction.objectStore('output-reservations').index('by-normalized-path').get(activePath))
         ))
         return value === undefined ? null : structuredClone(parseOutputReservation(value))
     }
@@ -1896,6 +1988,7 @@ export class IndexedDBQueueRepository {
 
     async transitionOutputReservation(input: {
         reservationId: string
+        owner: Pick<OutputReservation, 'batchId' | 'jobId' | 'directoryIdentity' | 'relativePath'>
         expectedState: OutputReservation['state']
         state: OutputReservation['state']
     }): Promise<OutputReservation> {
@@ -1917,6 +2010,16 @@ export class IndexedDBQueueRepository {
                     throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
                 }
                 const current = parseOutputReservation(value)
+                if (current.batchId !== input.owner.batchId
+                    || current.jobId !== input.owner.jobId
+                    || current.directoryIdentity !== input.owner.directoryIdentity
+                    || normalizeReservationRelativePath(current.relativePath)
+                        !== normalizeReservationRelativePath(input.owner.relativePath)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Output reservation owner or destination changed',
+                    )
+                }
                 if (current.state === input.state) return current
                 if (current.state !== input.expectedState || !allowed[current.state].includes(input.state)) {
                     throw new QueueRepositoryError(
@@ -2157,11 +2260,15 @@ export class IndexedDBQueueRepository {
 
     async transitionJob(input: TransitionGenerationJobInput): Promise<GenerationJob> {
         assertTimestamp(input.now, 'transition time')
-        const result = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const result = await this.runTransaction(
+            ['batches', 'jobs', 'leases', 'attempts', 'output-reservations'],
+            'readwrite',
+            async transaction => {
             const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const attempts = transaction.objectStore('attempts')
+            const outputReservations = transaction.objectStore('output-reservations')
             const storedValue = await requestResult(jobs.get(input.jobId))
             if (storedValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(storedValue)
@@ -2189,6 +2296,17 @@ export class IndexedDBQueueRepository {
                         'E_QUEUE_IDEMPOTENCY_CONFLICT',
                         'Terminal artifact does not match the committed job',
                     )
+                }
+                if (stored.state === 'succeeded' && stored.snapshot.outputReservation !== undefined) {
+                    const value = await requestResult(
+                        outputReservations.get(stored.snapshot.outputReservation.reservationId),
+                    )
+                    if (value === undefined || parseOutputReservation(value).state !== 'committed') {
+                        throw new QueueRepositoryError(
+                            'E_QUEUE_WRITE_VERIFY',
+                            'Succeeded queue job does not own a committed output reservation',
+                        )
+                    }
                 }
                 return { stored, lease, idempotent: true }
             }
@@ -2232,6 +2350,71 @@ export class IndexedDBQueueRepository {
                     || lease.token !== input.leaseToken
                     || Date.parse(lease.expiresAt) < Date.parse(input.now)) {
                     throw new QueueRepositoryError('E_QUEUE_LEASE_LOST', 'Queue lease is no longer owned')
+                }
+            }
+
+            let committedReservation: OutputReservation | null = null
+            if (input.to === 'succeeded' && stored.snapshot.outputReservation !== undefined) {
+                const snapshotReservation = stored.snapshot.outputReservation
+                const reservationValue = await requestResult(outputReservations.get(snapshotReservation.reservationId))
+                if (reservationValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
+                }
+                const reservation = parseOutputReservation(reservationValue)
+                if (reservation.batchId !== stored.batchId
+                    || reservation.jobId !== stored.id
+                    || canonicalSerialize(snapshotReservation) !== canonicalSerialize({
+                        reservationId: reservation.reservationId,
+                        folderBinding: reservation.folderBinding,
+                        directoryIdentity: reservation.directoryIdentity,
+                        relativePath: reservation.relativePath,
+                        collisionPolicy: reservation.collisionPolicy,
+                        expectedExistingDigest: reservation.expectedExistingDigest,
+                    })) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Output reservation does not match the succeeded job',
+                    )
+                }
+                if (reservation.state !== 'writing') {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_INVALID_TRANSITION',
+                        `Output reservation cannot commit from ${reservation.state}`,
+                    )
+                }
+                committedReservation = { ...reservation, state: 'committed' }
+            }
+            let abandonedReservation: OutputReservation | null = null
+            if (input.to === 'cancelled' && stored.snapshot.outputReservation !== undefined) {
+                const snapshotReservation = stored.snapshot.outputReservation
+                const reservationValue = await requestResult(outputReservations.get(snapshotReservation.reservationId))
+                if (reservationValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
+                }
+                const reservation = parseOutputReservation(reservationValue)
+                if (reservation.batchId !== stored.batchId
+                    || reservation.jobId !== stored.id
+                    || canonicalSerialize(snapshotReservation) !== canonicalSerialize({
+                        reservationId: reservation.reservationId,
+                        folderBinding: reservation.folderBinding,
+                        directoryIdentity: reservation.directoryIdentity,
+                        relativePath: reservation.relativePath,
+                        collisionPolicy: reservation.collisionPolicy,
+                        expectedExistingDigest: reservation.expectedExistingDigest,
+                    })) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Output reservation does not match the cancelled job',
+                    )
+                }
+                if (reservation.state === 'committed') {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_INVALID_TRANSITION',
+                        'A committed output reservation cannot be cancelled',
+                    )
+                }
+                if (reservation.state !== 'abandoned') {
+                    abandonedReservation = { ...reservation, state: 'abandoned' }
                 }
             }
 
@@ -2308,6 +2491,12 @@ export class IndexedDBQueueRepository {
                 blockReason: input.to === 'blocked' ? input.blockReason ?? 'missing-resource' : null,
             }
             await requestResult(jobs.put(next))
+            if (committedReservation !== null) {
+                await requestResult(outputReservations.put(storedReservation(committedReservation)))
+            }
+            if (abandonedReservation !== null) {
+                await requestResult(outputReservations.put(storedReservation(abandonedReservation)))
+            }
             if (input.to !== 'running' && lease !== null) await requestResult(leases.delete(stored.id))
             await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return { stored: next, lease: input.to === 'running' ? lease : null, idempotent: false }
@@ -2316,6 +2505,18 @@ export class IndexedDBQueueRepository {
         const readback = await this.getJob(input.jobId)
         if (readback === null || readback.version !== result.stored.version || readback.state !== input.to) {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Queue transition readback mismatch')
+        }
+        if (input.to === 'succeeded' && readback.snapshot.outputReservation !== undefined) {
+            const reservation = await this.getOutputReservation(readback.snapshot.outputReservation.reservationId)
+            if (reservation?.state !== 'committed') {
+                throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Output reservation commit readback mismatch')
+            }
+        }
+        if (input.to === 'cancelled' && readback.snapshot.outputReservation !== undefined) {
+            const reservation = await this.getOutputReservation(readback.snapshot.outputReservation.reservationId)
+            if (reservation?.state !== 'abandoned') {
+                throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Cancelled reservation readback mismatch')
+            }
         }
         return readback
     }
@@ -2457,9 +2658,13 @@ export class IndexedDBQueueRepository {
         artifactReference: QueueArtifactReference
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'output recovery time')
-        const version = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const version = await this.runTransaction(
+            ['batches', 'jobs', 'leases', 'attempts', 'output-reservations'],
+            'readwrite',
+            async transaction => {
             const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
+            const outputReservations = transaction.objectStore('output-reservations')
             const value = await requestResult(jobs.get(input.jobId))
             if (value === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(value)
@@ -2470,6 +2675,17 @@ export class IndexedDBQueueRepository {
                         'E_QUEUE_IDEMPOTENCY_CONFLICT',
                         'Recovered output linkage differs from terminal queue state',
                     )
+                }
+                if (stored.snapshot.outputReservation !== undefined) {
+                    const reservationValue = await requestResult(
+                        outputReservations.get(stored.snapshot.outputReservation.reservationId),
+                    )
+                    if (reservationValue === undefined || parseOutputReservation(reservationValue).state !== 'committed') {
+                        throw new QueueRepositoryError(
+                            'E_QUEUE_WRITE_VERIFY',
+                            'Recovered queue job does not own a committed output reservation',
+                        )
+                    }
                 }
                 return stored.version
             }
@@ -2490,6 +2706,37 @@ export class IndexedDBQueueRepository {
                     'E_QUEUE_IDEMPOTENCY_CONFLICT',
                     'Files-committed journal is not pre-bound to this queue job',
                 )
+            }
+            let committedReservation: OutputReservation | null = null
+            if (stored.snapshot.outputReservation !== undefined) {
+                const snapshotReservation = stored.snapshot.outputReservation
+                const reservationValue = await requestResult(outputReservations.get(snapshotReservation.reservationId))
+                if (reservationValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
+                }
+                const reservation = parseOutputReservation(reservationValue)
+                if (reservation.batchId !== stored.batchId
+                    || reservation.jobId !== stored.id
+                    || canonicalSerialize(snapshotReservation) !== canonicalSerialize({
+                        reservationId: reservation.reservationId,
+                        folderBinding: reservation.folderBinding,
+                        directoryIdentity: reservation.directoryIdentity,
+                        relativePath: reservation.relativePath,
+                        collisionPolicy: reservation.collisionPolicy,
+                        expectedExistingDigest: reservation.expectedExistingDigest,
+                    })) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Recovered output reservation does not match the queue job',
+                    )
+                }
+                if (reservation.state !== 'writing' && reservation.state !== 'committed') {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_INVALID_TRANSITION',
+                        `Recovered output reservation cannot commit from ${reservation.state}`,
+                    )
+                }
+                if (reservation.state === 'writing') committedReservation = { ...reservation, state: 'committed' }
             }
             let next = updateJobState(stored, 'succeeded', input.now)
             next = {
@@ -2512,12 +2759,21 @@ export class IndexedDBQueueRepository {
                 requestResult(jobs.put(next)),
                 requestResult(transaction.objectStore('leases').delete(stored.id)),
                 requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
+                ...(committedReservation === null
+                    ? []
+                    : [requestResult(outputReservations.put(storedReservation(committedReservation)))]),
             ])
             return next.version
         })
         const readback = await this.getJob(input.jobId)
         if (readback === null || readback.version !== version || readback.state !== 'succeeded') {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Output recovery readback mismatch')
+        }
+        if (readback.snapshot.outputReservation !== undefined) {
+            const reservation = await this.getOutputReservation(readback.snapshot.outputReservation.reservationId)
+            if (reservation?.state !== 'committed') {
+                throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Recovered reservation readback mismatch')
+            }
         }
         return readback
     }
@@ -2540,10 +2796,14 @@ export class IndexedDBQueueRepository {
         reason?: 'user' | 'batch' | 'shutdown'
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'cancel request time')
-        const result = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+        const result = await this.runTransaction(
+            ['batches', 'jobs', 'leases', 'output-reservations'],
+            'readwrite',
+            async transaction => {
             const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
+            const outputReservations = transaction.objectStore('output-reservations')
             const value = await requestResult(jobs.get(input.jobId))
             if (value === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(value)
@@ -2572,14 +2832,56 @@ export class IndexedDBQueueRepository {
                 cancelRequestedAt: input.now,
                 cancelReason: reason,
             }
+            let abandonedReservation: OutputReservation | null = null
+            if (stored.snapshot.outputReservation !== undefined) {
+                const snapshotReservation = stored.snapshot.outputReservation
+                const reservationValue = await requestResult(outputReservations.get(snapshotReservation.reservationId))
+                if (reservationValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
+                }
+                const reservation = parseOutputReservation(reservationValue)
+                if (reservation.batchId !== stored.batchId
+                    || reservation.jobId !== stored.id
+                    || canonicalSerialize(snapshotReservation) !== canonicalSerialize({
+                        reservationId: reservation.reservationId,
+                        folderBinding: reservation.folderBinding,
+                        directoryIdentity: reservation.directoryIdentity,
+                        relativePath: reservation.relativePath,
+                        collisionPolicy: reservation.collisionPolicy,
+                        expectedExistingDigest: reservation.expectedExistingDigest,
+                    })) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                        'Output reservation does not match the cancelled job',
+                    )
+                }
+                if (reservation.state === 'committed') {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_INVALID_TRANSITION',
+                        'A committed output reservation cannot be cancelled',
+                    )
+                }
+                if (reservation.state !== 'abandoned') {
+                    abandonedReservation = { ...reservation, state: 'abandoned' }
+                }
+            }
             if (stored.state === 'leased') await requestResult(leases.delete(stored.id))
             await requestResult(jobs.put(next))
+            if (abandonedReservation !== null) {
+                await requestResult(outputReservations.put(storedReservation(abandonedReservation)))
+            }
             await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return next
         })
         const readback = await this.getJob(input.jobId)
         if (readback === null || readback.version !== result.version) {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Cancel request readback mismatch')
+        }
+        if (readback.state === 'cancelled' && readback.snapshot.outputReservation !== undefined) {
+            const reservation = await this.getOutputReservation(readback.snapshot.outputReservation.reservationId)
+            if (reservation?.state !== 'abandoned') {
+                throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Cancelled reservation readback mismatch')
+            }
         }
         return readback
     }
@@ -2717,6 +3019,12 @@ export class IndexedDBQueueRepository {
                 throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'There are no failed jobs to retry')
             }
             return { batch: existing, jobs: [], reservations: [] }
+        }
+        if (sourceJobs.some(source => source.snapshot.outputReservation !== undefined)) {
+            throw new QueueRepositoryError(
+                'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                'Reserved failed jobs require a newly planned output reservation before retry',
+            )
         }
         const jobs = sourceJobs.map((source, index): EnqueueGenerationJobInput => {
             const retryDigest = hashCanonicalValue({ targetBatchId: input.targetBatch.id, sourceJobId: source.id })

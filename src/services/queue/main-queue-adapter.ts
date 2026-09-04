@@ -19,9 +19,12 @@ import {
 } from '@/domain/queue/anlas-cost-consent'
 import {
     CURRENT_MAIN_QUEUE_POLICY,
+    type OutputReservation,
+    type OutputReservationFolderBinding,
     type QueueFailurePolicy,
     type QueueResourceRecord,
 } from '@/domain/queue/types'
+import { canonicalSerialize } from '@/domain/composition/canonical-serialize'
 import { calculateAnlasCost } from '@/lib/anlas-calculator'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import {
@@ -39,6 +42,8 @@ import {
     encodeMainJobSnapshot,
     type MainProviderExecutionReviewContext,
 } from './main-job-snapshot-codec'
+import { bindOutputReservationSnapshot } from './job-snapshot'
+import { ensureImageFileExtension } from '@/services/output/filename-policy'
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
 import {
     dehydrateGenerationParams,
@@ -53,6 +58,7 @@ export interface EnqueuePlannedMainBatchOptions {
     readonly submissionPolicy: { readonly kind: 'guided'; readonly costConsent: AnlasCostConsentSnapshot }
     /** Stable draft/revision scope makes a retried Guided submit idempotent. */
     readonly idempotencyScope?: string
+    readonly folderBinding?: OutputReservationFolderBinding
 }
 
 type ReviewedMainSubmissionPolicy = {
@@ -85,6 +91,7 @@ interface EnqueueMainBatchOptions {
     }
     readonly providerExecutionContexts?: readonly MainProviderExecutionReviewContext[]
     readonly idempotencyScope?: string
+    readonly folderBinding?: OutputReservationFolderBinding
 }
 
 function estimatePreparedBatchAnlas(
@@ -160,6 +167,33 @@ export async function enqueueReviewedMainPlan(
     }
 
     const executionPolicy = replayed.plan.executionPolicy
+    const folderBindings = replayed.plan.sourceBindings.filter(
+        (binding): binding is OutputReservationFolderBinding => (
+            binding.resourceType === 'generation-folder-document' && binding.revision !== null
+        ),
+    )
+    if (folderBindings.length > 1) {
+        const issue: PlanIssue = Object.freeze({
+            code: 'invalid-generation-folder-binding',
+            severity: 'blocking',
+            fieldPath: 'sourceBindings',
+            message: 'The reviewed plan contains more than one generation-folder authority.',
+        })
+        return Object.freeze({ status: 'invalid', issues: Object.freeze([issue]) })
+    }
+    const folderBinding = folderBindings[0]
+    if (folderBinding !== undefined) {
+        const current = getRuntimeMainQueueDependencies().outputReservations.getCurrentFolderBinding()
+        if (current === null || canonicalSerialize(current) !== canonicalSerialize(folderBinding)) {
+            const issue: PlanIssue = Object.freeze({
+                code: 'stale-generation-folder-binding',
+                severity: 'blocking',
+                fieldPath: 'sourceBindings',
+                message: 'The generation folder changed after review. Recapture the batch.',
+            })
+            return Object.freeze({ status: 'conflict', issues: Object.freeze([issue]) })
+        }
+    }
     const unsupportedPolicyIssues: PlanIssue[] = []
     if (executionPolicy.retryPolicyId !== CURRENT_MAIN_QUEUE_POLICY.retryPolicyId) {
         unsupportedPolicyIssues.push(Object.freeze({
@@ -249,6 +283,7 @@ export async function enqueueReviewedMainPlan(
             },
             providerExecutionContexts,
             idempotencyScope: options.idempotencyScope ?? replayed.plan.planId,
+            ...(folderBinding === undefined ? {} : { folderBinding }),
         })
     } catch (error) {
         if (error instanceof QueueRepositoryError
@@ -299,6 +334,13 @@ async function enqueueMainBatch(
         const plan = await planMainBatch({
             planner: options.planner,
             preflight: prepared => {
+                if (options.folderBinding !== undefined) {
+                    const current = dependencies.outputReservations.getCurrentFolderBinding()
+                    if (current === null
+                        || canonicalSerialize(current) !== canonicalSerialize(options.folderBinding)) {
+                        throw new QueueExecutionError('fatal', 'Generation folder changed before Queue reservation')
+                    }
+                }
                 if (options.providerExecutionContexts !== undefined
                     && options.providerExecutionContexts.length !== prepared.length) {
                     throw new QueueExecutionError(
@@ -332,9 +374,10 @@ async function enqueueMainBatch(
                 const dehydrated = await dehydrateGenerationParams(prepared.params, materializer, resourceCache)
                 for (const record of dehydrated.records) resources.set(record.id, record)
                 const providerExecution = options.providerExecutionContexts?.[ordinal]
-                return providerExecution === undefined
+                const encoded = providerExecution === undefined
                     ? encodeMainJobSnapshot(prepared, dehydrated, costConsent)
                     : encodeMainJobSnapshot(prepared, dehydrated, costConsent, providerExecution)
+                return { encoded, prepared }
             },
         })
         // The durable repository requires the exact requested count before its
@@ -343,19 +386,82 @@ async function enqueueMainBatch(
 
         const batchId = `main-batch-${idempotencyScope}`
         const createdAt = new Date().toISOString()
-        const jobs: EnqueueGenerationJobInput[] = plan.items.map((item, ordinal) => ({
-            id: `main-job-${idempotencyScope}-${ordinal}`,
-            batchId,
-            workflow: 'main',
-            sceneId: null,
-            createdAt,
-            priority: 0,
-            ordinal,
-            snapshot: item.snapshot,
-            compositionPlanHash: item.compositionPlanHash,
-            maxAttempts: options.queuePolicy?.maxAttempts ?? 3,
-            idempotencyKey: `main-enqueue-${idempotencyScope}-${ordinal}`,
-        }))
+        const jobs: EnqueueGenerationJobInput[] = []
+        const reservations: OutputReservation[] = []
+        const batchDestinations = new Set<string>()
+        for (const [ordinal, item] of plan.items.entries()) {
+            const jobId = `main-job-${idempotencyScope}-${ordinal}`
+            let snapshot = item.encoded.snapshot
+            if (options.folderBinding !== undefined) {
+                const fileName = ensureImageFileExtension(
+                    item.prepared.output.fileName,
+                    item.prepared.imageFormat,
+                )
+                if (fileName === null || item.prepared.output.collisionPolicy !== 'error') {
+                    throw new QueueExecutionError('fatal', 'Reviewed Main output is not an exact fail-only destination')
+                }
+                const preflight = await dependencies.outputReservations.preflight({
+                    destination: {
+                        ...(item.prepared.output.portableDirectory === undefined
+                            ? {}
+                            : { portableDirectory: item.prepared.output.portableDirectory }),
+                        directory: item.prepared.output.directory,
+                        useAbsolutePath: item.prepared.output.useAbsolutePath,
+                        capabilityFallbackDirectory: item.prepared.output.capabilityFallbackDirectory,
+                        workflowDefaultDirectory: 'NAI_Blue_Output',
+                        extension: item.prepared.imageFormat,
+                        fileName,
+                        collisionPolicy: 'error',
+                    },
+                    fileName,
+                    collisionPolicy: 'fail',
+                    probeWrite: true,
+                })
+                const destinationKey = `${preflight.directoryIdentity}/${fileName.normalize('NFC').toLowerCase()}`
+                if (batchDestinations.has(destinationKey)) {
+                    throw new QueueExecutionError('fatal', `Main batch output is duplicated: ${fileName}`)
+                }
+                batchDestinations.add(destinationKey)
+                const reservationId = `output-reservation:${jobId}`
+                const reservation: OutputReservation = {
+                    reservationId,
+                    batchId,
+                    jobId,
+                    folderBinding: options.folderBinding,
+                    directoryIdentity: preflight.directoryIdentity,
+                    relativePath: fileName,
+                    collisionPolicy: item.prepared.output.reservationCollisionPolicy ?? 'fail',
+                    expectedExistingDigest: null,
+                    state: 'storage-pending',
+                }
+                const { batchId: _batchId, jobId: _jobId, state: _state, ...reservationSnapshot } = reservation
+                snapshot = bindOutputReservationSnapshot(snapshot, reservationSnapshot)
+                reservations.push(reservation)
+            }
+            jobs.push({
+                id: jobId,
+                batchId,
+                workflow: 'main',
+                sceneId: null,
+                createdAt,
+                priority: 0,
+                ordinal,
+                snapshot,
+                compositionPlanHash: item.encoded.compositionPlanHash,
+                maxAttempts: options.queuePolicy?.maxAttempts ?? 3,
+                idempotencyKey: `main-enqueue-${idempotencyScope}-${ordinal}`,
+            })
+        }
+        // Materialization and filesystem probes may take long enough for the
+        // Folder document to change. Recheck at the atomic repository boundary
+        // so no reservation can be committed against a stale destination.
+        if (options.folderBinding !== undefined) {
+            const current = dependencies.outputReservations.getCurrentFolderBinding()
+            if (current === null
+                || canonicalSerialize(current) !== canonicalSerialize(options.folderBinding)) {
+                throw new QueueExecutionError('fatal', 'Generation folder changed before Queue reservation')
+            }
+        }
         return await getRuntimeQueueRepository().createBatchAndEnqueue({
             batch: {
                 id: batchId,
@@ -367,6 +473,7 @@ async function enqueueMainBatch(
             },
             jobs,
             resources: [...resources.values()],
+            ...(reservations.length === 0 ? {} : { reservations }),
         })
     } finally {
         dependencies.presentation.completeEnqueueOperation(operationId)

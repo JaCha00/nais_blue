@@ -4,6 +4,7 @@ import type { JsonValue } from '@/domain/composition/types'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import type { GenerationParams } from '@/services/novelai-types'
 import { QueueExecutionError } from '@/services/queue/durable-queue-coordinator'
+import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import {
     decodeSceneJobSnapshot,
     encodeSceneJobSnapshot,
@@ -54,6 +55,32 @@ function input(overrides: Partial<EncodeSceneJobSnapshotInput> = {}): EncodeScen
             canonicalization: 'composition-canonical-json-v1',
             digest: 'scene-plan-digest',
         },
+        sceneBinding: {
+            resourceType: 'scene-document',
+            resourceId: 'preset-a:scene-a',
+            revision: 1,
+            contentHash: `sha256:${'a'.repeat(64)}`,
+        },
+        batch: {
+            request: {
+                actor: { kind: 'user', id: 'scene-queue' },
+                preset: { id: 'preset-a', expectedRevision: 1 },
+                items: [{ sceneId: 'scene-a', count: 1 }],
+                seedPolicy: { kind: 'random' },
+                execution: { failurePolicy: 'continue' },
+                budget: { maxImages: 1, maxAnlas: 0 },
+            },
+            count: 1,
+            estimatedAnlas: 0,
+            planHash: `sha256:${'b'.repeat(64)}`,
+        },
+        costConsent: createAnlasCostConsentSnapshot({
+            pricingBasis: 'all-active-opus',
+            estimatedAnlas: 0,
+            maxAnlas: 0,
+            estimatedAt: '2026-09-04T00:00:00.000Z',
+            approvedAt: '2026-09-04T00:00:00.000Z',
+        }),
         ...overrides,
     }
 }
@@ -93,6 +120,15 @@ describe('Scene Job Snapshot codec', () => {
             resumability: 'resumable',
         })
         expect(Object.isFrozen(encoded.snapshot)).toBe(true)
+        expect(encoded.snapshot.providerExecutionEnvelope).toMatchObject({
+            schemaVersion: 1,
+            provider: 'novelai',
+            payloadBuilderRevision: expect.any(String),
+            modelCatalogRevision: expect.any(String),
+            compatibilityProfileId: expect.any(String),
+            semanticIntentHash: expect.stringMatching(/^sha256:/),
+            responseMode: 'streaming',
+        })
     })
 
     it('round-trips source-edit execution flags and rejects malformed payloads as fatal', () => {
@@ -146,5 +182,30 @@ describe('Scene Job Snapshot codec', () => {
             sceneSubfoldersEnabled: false,
             filenameTemplate: 'opening_{seed}_{timestamp}',
         })
+    })
+
+    it('rejects a Scene batch whose public request shape is malformed', () => {
+        const snapshot = encodeSceneJobSnapshot(input(), dehydrated).snapshot
+        const parameters = snapshot.parameters as unknown as Record<string, unknown>
+        const sceneWorkflow = parameters.sceneWorkflow as Record<string, unknown>
+        const batch = sceneWorkflow.batch as Record<string, unknown>
+        const malformed = {
+            ...snapshot,
+            parameters: {
+                ...parameters,
+                sceneWorkflow: {
+                    ...sceneWorkflow,
+                    batch: {
+                        ...batch,
+                        request: {
+                            ...(batch.request as Record<string, unknown>),
+                            budget: { maxImages: 'one', maxAnlas: 0 },
+                        },
+                    },
+                },
+            },
+        } as unknown as GenerationJobSnapshot
+
+        expect(() => decodeSceneJobSnapshot(malformed)).toThrowError(QueueExecutionError)
     })
 })

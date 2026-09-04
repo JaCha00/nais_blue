@@ -3,11 +3,22 @@ import type { MainBatchPlannerPort } from '@/application/generation/plan-main-ba
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
 import type { NaiProviderFaultInjector } from '@/services/nai/transport'
 import type { ProviderResultSpool } from '@/application/generation/provider-result-spool'
+import type { OutputReservationFolderBinding } from '@/domain/queue/types'
+import type {
+    ExactOutputPreflightRequest,
+    ExactOutputPreflightResult,
+} from '@/services/output/output-writer'
+
+export interface OutputReservationPlanningPort {
+    getCurrentFolderBinding(): OutputReservationFolderBinding | null
+    preflight(request: ExactOutputPreflightRequest): Promise<ExactOutputPreflightResult>
+}
 
 export interface RuntimeMainQueueDependencies {
     readonly planner: MainBatchPlannerPort<PreparedMainGeneration>
     readonly presentation: MainQueuePresentationPort
     readonly providerResultSpool: ProviderResultSpool
+    readonly outputReservations: OutputReservationPlanningPort
     /** Phase 3 tests inject failures here; production composition leaves it absent. */
     readonly faultInjector?: NaiProviderFaultInjector
 }

@@ -1,12 +1,9 @@
-import { canonicalSerialize, hashCanonicalValue, sha256Utf8 } from '@/domain/composition/canonical-serialize'
+import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types'
-import type { ProviderAttemptEvidence, ProviderSha256, SpoolReceipt } from '@/domain/queue/provider-result'
-import { ProviderResultSpoolError, type ProviderResultSpool } from '@/application/generation/provider-result-spool'
+import { ProviderResultSpoolError } from '@/application/generation/provider-result-spool'
 import { reserveWildcardSequenceProposal } from '@/lib/fragment-processor'
 import { createThumbnail } from '@/lib/image-utils'
 import { executeNovelAIImageTransport } from '@/services/generation/novelai-image-transport'
-import type { NaiProviderObservation } from '@/services/nai/transport'
-import { NovelAIHttpError, type GenerationParams } from '@/services/novelai-types'
 import {
     CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
     isSupportedNaiPayloadBuilderRevision,
@@ -14,9 +11,11 @@ import {
 } from '@/services/nai/compatibility'
 import { CURRENT_NAI_MODEL_CATALOG_REVISION } from '@/services/nai/model-catalog'
 import { hashGenerationSemanticIntent } from '@/application/generation/plan-generation'
+import { assertAnlasCostConsentAllows } from '@/domain/queue/anlas-cost-consent'
+import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { projectMainGenerationSemantic } from '@/services/generation/main-generation-semantic'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
-import { getRuntimeOutputWriter } from '@/services/output/output-writer'
+import { getRuntimeOutputWriter, OutputWriterError } from '@/services/output/output-writer'
 import {
     discardGeneratedProviderOriginal,
     releaseGeneratedOutputToR2,
@@ -41,6 +40,17 @@ import {
     isRightsEffectiveDate,
     isRightsOwner,
 } from '@/domain/workflow/bluehair-rights-policy'
+import {
+    assertProviderEnvelopeMatchesExecution,
+    dispatchAndSpool,
+    providerResourceBindings,
+    writeSpooled,
+    type SpooledProviderResult,
+} from './provider-safe-image-dispatch'
+import {
+    markReservedQueueOutputConflict,
+    preflightReservedQueueOutput,
+} from './output-reservation-preflight'
 
 function decodeImageBytes(imageData: string): Uint8Array {
     const encoded = imageData.replace(/^data:image\/[^;]+;base64,/, '')
@@ -54,225 +64,12 @@ function encodeImageBytes(bytes: Uint8Array): string {
     return btoa(binary)
 }
 
-interface SpooledProviderResult {
-    readonly receipt: SpoolReceipt
-    readonly sentPayloadSummary?: string
-    readonly encodedVibes?: string[]
-}
-
-/** Accepts only exact Provider delay evidence that can safely authorize a 429 retry. */
-function retryAfterMilliseconds(value: string | null, now: number): number | undefined {
-    if (value === null) return undefined
-    if (/^(?:0|[1-9][0-9]*)$/.test(value)) {
-        const seconds = Number(value)
-        const milliseconds = seconds * 1_000
-        const target = now + milliseconds
-        return Number.isSafeInteger(seconds)
-            && Number.isSafeInteger(milliseconds)
-            && Number.isFinite(new Date(target).getTime())
-            ? milliseconds
-            : undefined
-    }
-    if (!/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), [0-9]{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$/.test(value)) {
-        return undefined
-    }
-    const date = Date.parse(value)
-    return Number.isFinite(date)
-        && new Date(date).toUTCString() === value
-        && date > now
-        && Number.isSafeInteger(date - now)
-        ? date - now
-        : undefined
-}
-
-/**
- * Persists each Provider boundary before transport advances, then retries only
- * the received bytes into the private spool; ambiguous or lost results block.
- */
-async function dispatchAndSpool(
-    context: QueueExecutorContext,
-    params: GenerationParams,
-    imageFormat: NonNullable<GenerationParams['imageFormat']>,
-    streaming: boolean,
-    spool: ProviderResultSpool,
-    faultInjector: ReturnType<typeof getRuntimeMainQueueDependencies>['faultInjector'],
-    onProgress: (progress: number, previewImage?: string) => void,
-): Promise<SpooledProviderResult> {
-    let evidence = context.providerAttempt.providerEvidence
-    if (evidence === null) throw new QueueExecutionError('fatal', 'Provider-safe execution requires attempt evidence')
-    const advance = async (next: ProviderAttemptEvidence): Promise<void> => {
-        evidence = (await context.recordProviderTransition(next)).providerEvidence
-        if (evidence === null) throw new QueueExecutionError('fatal', 'Provider evidence disappeared during execution')
-    }
-    const observe = async (observation: NaiProviderObservation): Promise<void> => {
-        if (observation.stage === 'possibly-dispatched' && evidence?.dispatchState === 'prepared') {
-            await advance({ ...evidence, dispatchState: 'possibly-dispatched', billingRisk: 'possible' })
-        } else if (observation.stage === 'response-started'
-            && evidence?.dispatchState === 'possibly-dispatched') {
-            await advance({ ...evidence, dispatchState: 'response-started' })
-        } else if (observation.stage === 'response-complete'
-            && evidence?.dispatchState === 'response-started') {
-            const succeeded = observation.status >= 200 && observation.status < 300
-            await advance({
-                ...evidence,
-                dispatchState: 'response-complete',
-                providerOutcome: succeeded ? 'succeeded' : 'known-failure',
-                billingRisk: succeeded ? 'confirmed' : 'possible',
-            })
-        }
-    }
-
-    let result
-    try {
-        result = await executeNovelAIImageTransport({
-            token: context.token,
-            params,
-            imageFormat,
-            streaming,
-            signal: context.signal,
-            onProgress,
-            faultInjector,
-            executionHooks: { observer: observe, errorMode: 'throw' },
-        })
-    } catch (error) {
-        if (error instanceof NovelAIHttpError && evidence.dispatchState === 'response-complete') {
-            if (error.status === 401) throw new QueueExecutionError('authentication', 'Provider authentication failed')
-            const retryAfterMs = error.status === 429
-                ? retryAfterMilliseconds(error.retryAfter, Date.now())
-                : undefined
-            if (error.status === 429 && retryAfterMs !== undefined) {
-                throw new QueueExecutionError('rate-limited', 'Provider rate limit reached', { retryAfterMs })
-            }
-            throw new QueueExecutionError('fatal', `Provider HTTP ${error.status} is not automatically retryable`)
-        }
-        if (evidence.dispatchState === 'response-complete' && evidence.providerOutcome === 'succeeded') {
-            await context.recordProviderTransition(
-                { ...evidence, dispatchState: 'result-lost' },
-                { blockReason: 'provider-result-lost' },
-            )
-            throw error
-        }
-        if (evidence.dispatchState === 'prepared') {
-            await advance({ ...evidence, dispatchState: 'connect-failed-before-dispatch', providerOutcome: 'known-failure' })
-            throw new QueueExecutionError('transient', 'Provider connection failed before dispatch')
-        }
-        if (evidence.dispatchState === 'possibly-dispatched' || evidence.dispatchState === 'response-started') {
-            await context.recordProviderTransition(
-                { ...evidence, providerOutcome: 'unknown' },
-                { blockReason: 'provider-outcome-unknown' },
-            )
-        }
-        throw error
-    }
-    if (!result.success || !result.imageData) {
-        if (evidence.dispatchState === 'response-complete' && evidence.providerOutcome === 'succeeded') {
-            await context.recordProviderTransition(
-                { ...evidence, dispatchState: 'result-lost' },
-                { blockReason: 'provider-result-lost' },
-            )
-        }
-        throw new QueueExecutionError('decode', 'Main generation returned no decodable image')
-    }
-    let bytes: Uint8Array
-    let digest: string
-    try {
-        bytes = decodeImageBytes(result.imageData)
-        digest = await hashQueueResourceBytes(bytes)
-    } catch (error) {
-        if (evidence.dispatchState === 'response-complete' && evidence.providerOutcome === 'succeeded') {
-            await context.recordProviderTransition(
-                { ...evidence, dispatchState: 'result-lost' },
-                { blockReason: 'provider-result-lost' },
-            )
-        }
-        throw error
-    }
-    if (evidence.dispatchState !== 'response-complete' || evidence.providerOutcome !== 'succeeded') {
-        throw new QueueExecutionError('fatal', 'Provider response completed without durable EOF evidence')
-    }
-    const attemptId = context.providerAttempt.id
-    const commitInput = {
-        spoolId: `provider-${sha256Utf8(attemptId).slice(0, 48)}`,
-        attemptId,
-        contentType: `image/${imageFormat}`,
-        bytes,
-        committedAt: new Date().toISOString(),
-    }
-    let receipt: SpoolReceipt | null = null
-    let failures = 0
-    let injected = false
-    while (receipt === null) {
-        try {
-            receipt = await spool.commit(commitInput)
-            if (!injected && faultInjector !== undefined) {
-                injected = true
-                await faultInjector('after-spool-commit')
-            }
-        } catch (error) {
-            failures += 1
-            receipt = null
-            if (failures >= 3 || context.signal.aborted) {
-                await context.recordProviderTransition(
-                    { ...evidence, dispatchState: 'result-lost' },
-                    { blockReason: 'provider-result-lost' },
-                )
-                throw error
-            }
-            await new Promise(resolve => setTimeout(resolve, failures * 25))
-        }
-    }
-    await advance({
-        ...evidence,
-        dispatchState: 'result-spooled',
-        responseDigest: digest as ProviderSha256,
-        spoolReceipt: receipt,
-    })
-    return { receipt, sentPayloadSummary: result.sentPayloadSummary, encodedVibes: result.encodedVibes }
-}
-
-/** Revalidates both the durable receipt and the bytes immediately before OutputWriter. */
-async function writeSpooled(spool: ProviderResultSpool, receipt: SpoolReceipt): Promise<Uint8Array> {
-    const verified = await spool.verify(receipt.spoolId)
-    if (verified.attemptId !== receipt.attemptId || verified.sha256 !== receipt.sha256) {
-        throw new ProviderResultSpoolError('conflict', 'Provider spool receipt changed before storage')
-    }
-    const bytes = await spool.read(receipt.spoolId)
-    if (await hashQueueResourceBytes(bytes) !== receipt.sha256) {
-        throw new ProviderResultSpoolError('checksum-mismatch', 'Provider spool bytes changed after receipt verification')
-    }
-    return bytes
-}
-
-/** Rebuilds current Provider meaning and fails before dispatch when review-time facts drift. */
-function assertProviderEnvelopeMatchesExecution(
-    job: GenerationJob,
-    context: QueueExecutorContext,
-    payload: ReturnType<typeof decodeMainJobSnapshot>,
-    params: GenerationParams,
-    compatibility: ReturnType<typeof queryNaiGenerationCompatibility>,
-    streaming: boolean,
-): void {
-    const envelope = job.snapshot.providerExecutionEnvelope
-    if (envelope === undefined) return
-    const providerRoles = new Set(['source', 'mask', 'vibe-reference', 'character-reference'])
-    const bindings = job.snapshot.resources
-        .filter(resource => providerRoles.has(resource.role))
-        .map(resource => ({ resourceId: resource.resourceId, role: resource.role, digest: resource.digest }))
-    const semanticIntentHash = hashGenerationSemanticIntent(
-        projectMainGenerationSemantic(params, payload.mainWorkflow.imageFormat),
-    )
-    const envelopeHash = `sha256:${hashCanonicalValue(envelope)}`
-    if (payload.payloadBuilderRevision !== CURRENT_NAI_PAYLOAD_BUILDER_REVISION
-        || envelope.payloadBuilderRevision !== payload.payloadBuilderRevision
-        || envelope.modelCatalogRevision !== CURRENT_NAI_MODEL_CATALOG_REVISION
-        || envelope.compatibilityProfileId !== compatibility.compatibilityProfileId
-        || envelope.action !== compatibility.action
-        || envelope.responseMode !== (streaming ? 'streaming' : 'standard')
-        || envelope.semanticIntentHash !== semanticIntentHash
-        || context.providerAttempt.executionEnvelopeHash !== envelopeHash
-        || canonicalSerialize(envelope.queueResourceBindings) !== canonicalSerialize(bindings)) {
-        throw new QueueExecutionError('compatibility', 'Reviewed Provider execution envelope no longer matches execution')
-    }
+function isReservedOutputCollision(error: unknown): error is OutputWriterError {
+    return error instanceof OutputWriterError
+        && (error.message.includes('already exists')
+            || error.message.includes('already being written')
+            || error.message.includes('changed before commit')
+            || error.message.includes('reservation does not match'))
 }
 
 /**
@@ -305,7 +102,21 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         )
     }
     try {
-        assertProviderEnvelopeMatchesExecution(job, context, payload, params, compatibility, streaming)
+        assertProviderEnvelopeMatchesExecution(
+            job.snapshot.providerExecutionEnvelope,
+            context,
+            {
+                payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+                modelCatalogRevision: CURRENT_NAI_MODEL_CATALOG_REVISION,
+                compatibilityProfileId: compatibility.compatibilityProfileId,
+                action: compatibility.action,
+                responseMode: streaming ? 'streaming' : 'standard',
+                semanticIntentHash: hashGenerationSemanticIntent(
+                    projectMainGenerationSemantic(params, payload.mainWorkflow.imageFormat),
+                ),
+                queueResourceBindings: providerResourceBindings(job.snapshot.resources),
+            },
+        )
     } catch (error) {
         if (context.providerAttempt.providerEvidence?.dispatchState === 'result-spooled') {
             const diagnosticEventId = reportDiagnostic(error, {
@@ -315,6 +126,43 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         }
         throw error
     }
+    if (job.snapshot.outputReservation !== undefined) {
+        try {
+            if (context.activeCredentialsAreOpus === undefined) {
+                throw new Error('Queue credential pricing authority is unavailable')
+            }
+            const pricingBasis = resolveAnlasPricingBasis({
+                model: params.model,
+                activeCredentialsAreOpus: context.activeCredentialsAreOpus,
+            })
+            const costConsent = payload.mainWorkflow.costConsent
+            if (costConsent?.pricingBasis !== pricingBasis) {
+                throw new Error('Queue credential pricing changed after approval')
+            }
+            assertAnlasCostConsentAllows(costConsent, calculateAnlasCost({
+                model: params.model,
+                width: params.width,
+                height: params.height,
+                steps: params.steps,
+                imageCount: 1,
+                pricingBasis,
+            }))
+        } catch {
+            throw new QueueExecutionError('fatal', 'Anlas cost consent is no longer valid before Provider dispatch')
+        }
+    }
+    const outputReservation = await preflightReservedQueueOutput(job, context, {
+        ...(payload.mainWorkflow.output.portableDirectory === undefined
+            ? {}
+            : { portableDirectory: payload.mainWorkflow.output.portableDirectory }),
+        directory: payload.mainWorkflow.output.directory,
+        useAbsolutePath: payload.mainWorkflow.output.useAbsolutePath,
+        capabilityFallbackDirectory: payload.mainWorkflow.output.capabilityFallbackDirectory,
+        workflowDefaultDirectory: 'NAI_Blue_Output',
+        fileName: payload.mainWorkflow.output.fileName,
+        extension: payload.mainWorkflow.imageFormat,
+        collisionPolicy: payload.mainWorkflow.output.collisionPolicy,
+    })
     // Reserve before transport so a stale immutable snapshot fails without a
     // provider call. Planned Main jobs run in ordinal order and commit their
     // distinct CAS proposals one at a time through this lease.
@@ -433,6 +281,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         const output = await getRuntimeOutputWriter().write({
             transactionId,
             sourceJobId: job.id,
+            ...(outputReservation === null ? {} : { outputReservation }),
             includeFinalImageFacts: true,
             destination: {
                 ...(payload.mainWorkflow.output.portableDirectory === undefined
@@ -519,6 +368,10 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                     await context.requeueSpooledResult({ diagnosticEventId, pauseReason: 'fatal' })
                 }
                 throw new QueueExecutionError('fatal', 'Fragment sequence changed before Main commit')
+            }
+            if (outputReservation !== null && isReservedOutputCollision(error)) {
+                await markReservedQueueOutputConflict(job, context)
+                throw new QueueExecutionError('fatal', 'Reserved Main output collided before commit')
             }
             if (job.snapshot.providerExecutionEnvelope !== undefined && context.canCommit()) {
                 const diagnosticEventId = reportDiagnostic(error, {

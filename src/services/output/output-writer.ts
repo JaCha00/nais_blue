@@ -4,11 +4,13 @@ import type { PortablePathRef, PortablePathRoot } from '@/domain/composition/typ
 import { getPortableStorageRoot } from '@/platform/storage'
 import {
     ensureImageFileExtension,
+    planExactOutputFileName,
     resolveCollisionFileName,
     toArtifactSidecarPath,
     toDiagnosticSidecarPath,
     toSidecarFileName,
     type OutputCollisionPolicy,
+    type PlannedOutputCollisionPolicy,
 } from './filename-policy'
 import {
     childOutputRef,
@@ -22,6 +24,7 @@ import { createRuntimeOutputPlatformAdapter } from './tauri-output-adapter'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import { sha256Bytes } from '@/lib/binary-digest'
 import { eradicateImageMetadata } from '@/lib/image-metadata-purge'
+import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 
 export type OutputWriterPhase =
     | 'resolve-destination'
@@ -49,6 +52,31 @@ export interface OutputWriterDestination extends OutputDestinationRequest {
     fileName?: string | null
     extension: 'png' | 'webp'
     collisionPolicy?: OutputCollisionPolicy
+}
+
+export interface ExactOutputReservationIdentity {
+    readonly reservationId: string
+    readonly directoryIdentity: `sha256:${string}`
+    readonly relativePath: string
+}
+
+export interface ExactOutputPreflightRequest {
+    readonly destination: OutputWriterDestination
+    readonly fileName: string
+    readonly reservation?: ExactOutputReservationIdentity
+    readonly collisionPolicy?: PlannedOutputCollisionPolicy
+    /** Already planned siblings in the same batch; never persisted as path authority. */
+    readonly additionalOccupiedFileNames?: readonly string[]
+    /** Execution uses a reversible write/read/remove probe before Provider dispatch. */
+    readonly probeWrite?: boolean
+}
+
+export interface ExactOutputPreflightResult {
+    readonly fileName: string
+    readonly directoryIdentity: `sha256:${string}`
+    readonly availableSpaceCheck: 'unavailable'
+    readonly foregroundSingleWriterOnly: true
+    readonly crossProcessReservation: false
 }
 
 /**
@@ -90,6 +118,8 @@ export interface OutputWriterRequest {
     transactionId?: string
     /** Stable queue linkage only; never contains prompt or credential material. */
     sourceJobId?: string
+    /** Queue-owned exact destination. Legacy direct writes leave this absent. */
+    outputReservation?: ExactOutputReservationIdentity
     destination: OutputWriterDestination
     imageBytes: Uint8Array
     imageDataUrl: string
@@ -138,6 +168,7 @@ interface OutputRecoveryJournal {
     version: 1
     transactionId: string
     sourceJobId?: string
+    outputReservation?: ExactOutputReservationIdentity
     createdAt: string
     updatedAt: string
     phase: RecoveryJournalPhase
@@ -153,7 +184,7 @@ interface OutputRecoveryJournal {
 export interface OutputRecoveryResult {
     transactionId: string
     action: 'rolled-back' | 'retried' | 'cleaned' | 'missing' | 'ineligible' | 'failed'
-    ineligibility?: 'source-job-mismatch' | 'phase-not-files-committed'
+    ineligibility?: 'source-job-mismatch' | 'phase-not-files-committed' | 'reservation-mismatch'
     error?: string
 }
 
@@ -161,6 +192,7 @@ export interface PendingQueueOutputTransaction {
     transactionId: string
     sourceJobId: string
     phase: RecoveryJournalPhase
+    outputReservation?: ExactOutputReservationIdentity
 }
 
 export interface RetryRecoveryOptions {
@@ -304,6 +336,17 @@ function portableDirectoryForFinalImage(
     }
 }
 
+/** Hashes adapter-owned path authority so Queue can compare destinations without persisting local paths. */
+export function directoryIdentityForResolvedOutputDirectory(
+    directory: ResolvedOutputDirectory,
+): `sha256:${string}` {
+    const normalizedPath = directory.path.normalize('NFC').replace(/\\/g, '/').toLowerCase()
+    return `sha256:${hashCanonicalValue({
+        baseDir: directory.baseDir ?? null,
+        path: normalizedPath,
+    })}`
+}
+
 function parseFinalImageFacts(value: unknown): OutputFinalImageFacts {
     if (!isRecord(value)
         || typeof value.contentChecksum !== 'string'
@@ -350,6 +393,19 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         || !isRecord(value.directory)) {
         throw new Error('Invalid output recovery journal')
     }
+    const outputReservation = value.outputReservation
+    if (outputReservation !== undefined
+        && (!isRecord(outputReservation)
+            || typeof outputReservation.reservationId !== 'string'
+            || outputReservation.reservationId.length === 0
+            || outputReservation.reservationId.length > 256
+            || typeof outputReservation.directoryIdentity !== 'string'
+            || !/^sha256:[a-f0-9]{64}$/.test(outputReservation.directoryIdentity)
+            || typeof outputReservation.relativePath !== 'string'
+            || outputReservation.relativePath.length === 0
+            || outputReservation.relativePath.length > 1_024)) {
+        throw new Error('Invalid output recovery reservation identity')
+    }
     const allowedPhases: RecoveryJournalPhase[] = [
         'staged', 'image-written', 'metadata-written', 'thumbnail-staged',
         'commit-pending', 'files-committed', 'workflow-committed', 'rollback-required',
@@ -390,6 +446,9 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         version: 1,
         transactionId: value.transactionId,
         ...(typeof value.sourceJobId === 'string' ? { sourceJobId: value.sourceJobId } : {}),
+        ...(outputReservation === undefined
+            ? {}
+            : { outputReservation: outputReservation as unknown as ExactOutputReservationIdentity }),
         createdAt: value.createdAt,
         updatedAt: value.updatedAt,
         phase: value.phase as RecoveryJournalPhase,
@@ -512,6 +571,103 @@ export class OutputWriter {
         return { status: 'cancelled' }
     }
 
+    /**
+     * Resolves the adapter-owned directory without persisting its path, checks
+     * every derived final name, and optionally proves write access with a
+     * reversible probe. The adapter has no trustworthy free-space API, so that
+     * capability is reported explicitly instead of guessed.
+     */
+    async preflightExactDestination(request: ExactOutputPreflightRequest): Promise<ExactOutputPreflightResult> {
+        const directory = await this.platform.resolveDirectory(request.destination)
+        await this.platform.ensureDirectory(directory)
+        const requestedFileName = ensureImageFileExtension(request.fileName, request.destination.extension)
+        if (requestedFileName === null || requestedFileName !== request.fileName) {
+            throw new OutputWriterError('resolve-destination', 'Reserved output filename is not canonical')
+        }
+        const directoryIdentity = directoryIdentityForResolvedOutputDirectory(directory)
+        if (request.reservation !== undefined && request.collisionPolicy === 'suffix') {
+            throw new OutputWriterError('resolve-destination', 'A durable reservation cannot be re-suffixed')
+        }
+        if (request.reservation !== undefined && request.reservation.directoryIdentity !== directoryIdentity) {
+            throw new OutputWriterError('resolve-destination', 'Reserved output destination no longer matches')
+        }
+
+        const privateOriginalDirectory = childOutputRef(directory, PRIVATE_ORIGINAL_DIRECTORY)
+        const journalIds = await this.platform.listJournalIds()
+        const journals = (await Promise.all(journalIds.map(async journalId => {
+            const bytes = await this.platform.readJournal(journalId)
+            return bytes === null ? null : parseJournal(bytes)
+        }))).filter((journal): journal is OutputRecoveryJournal => journal !== null)
+        const candidateExists = async (candidate: string): Promise<boolean> => {
+            if (request.additionalOccupiedFileNames?.some(name => (
+                name.normalize('NFC').toLowerCase() === candidate.normalize('NFC').toLowerCase()
+            ))) return true
+            const finals = [
+                childOutputRef(directory, candidate),
+                childOutputRef(directory, toSidecarFileName(candidate)),
+                childOutputRef(directory, toDiagnosticSidecarPath(candidate)),
+                childOutputRef(directory, toArtifactSidecarPath(candidate)),
+                childOutputRef(privateOriginalDirectory, candidate),
+            ]
+            for (const final of finals) {
+                if (await this.platform.exists(final)) return true
+            }
+            const normalizedCandidate = candidate.normalize('NFC').toLowerCase()
+            return journals.some(journal => (
+                directoryIdentityForResolvedOutputDirectory(journal.directory) === directoryIdentity
+                && journal.fileName.normalize('NFC').toLowerCase() === normalizedCandidate
+            ))
+        }
+        let fileName: string
+        try {
+            fileName = await planExactOutputFileName({
+                requestedFileName,
+                extension: request.destination.extension,
+                collisionPolicy: request.collisionPolicy ?? 'fail',
+                exists: candidateExists,
+            })
+        } catch (error) {
+            throw new OutputWriterError('resolve-destination', 'Output destination is already occupied', { cause: error })
+        }
+        if (request.reservation !== undefined && request.reservation.relativePath !== fileName) {
+            throw new OutputWriterError('resolve-destination', 'Reserved output destination no longer matches')
+        }
+
+        if (request.probeWrite === true) {
+            const probeId = this.createTransactionId().replace(/[^A-Za-z0-9-]/g, '').slice(0, 128)
+            const probe = childOutputRef(directory, `.nai-blue-preflight-${probeId || 'probe'}.tmp`)
+            const probeBytes = new Uint8Array([0x4e, 0x41, 0x49, 0x36])
+            try {
+                if (await this.platform.exists(probe)) {
+                    throw new Error('Output preflight probe is already present')
+                }
+                await this.platform.writeFile(probe, probeBytes)
+                const readback = await this.platform.readFile(probe)
+                if (readback.byteLength !== probeBytes.byteLength
+                    || readback.some((byte, index) => byte !== probeBytes[index])) {
+                    throw new Error('Output preflight probe readback mismatch')
+                }
+            } catch (error) {
+                throw new OutputWriterError('resolve-destination', 'Output directory write probe failed', { cause: error })
+            } finally {
+                try {
+                    if (await this.platform.exists(probe)) await this.platform.remove(probe)
+                } catch {
+                    // A preflight file has no durable transaction; preserve the
+                    // primary error and let the next probe detect the residue.
+                }
+            }
+        }
+
+        return {
+            fileName,
+            directoryIdentity,
+            availableSpaceCheck: 'unavailable',
+            foregroundSingleWriterOnly: true,
+            crossProcessReservation: false,
+        }
+    }
+
     async write(request: OutputWriterRequest): Promise<OutputWriterOutcome> {
         if (!request.canCommit()) return { status: 'cancelled' }
 
@@ -547,6 +703,13 @@ export class OutputWriter {
                 request.destination.extension,
             ) ?? fallback
             const collisionPolicy = request.destination.collisionPolicy ?? 'unique'
+            const directoryIdentity = directoryIdentityForResolvedOutputDirectory(directory)
+            if (request.outputReservation !== undefined
+                && (collisionPolicy !== 'error'
+                    || request.outputReservation.directoryIdentity !== directoryIdentity
+                    || request.outputReservation.relativePath !== requestedFileName)) {
+                throw new OutputWriterError('resolve-destination', 'Output reservation does not match the write request')
+            }
             const candidateExists = async (candidate: string): Promise<boolean> => {
                 const reservationKey = `${directory.baseDir ?? 'absolute'}:${childOutputRef(directory, candidate).path}`
                 if (this.outputNameReservations.has(reservationKey)) return true
@@ -578,12 +741,20 @@ export class OutputWriter {
             }
             let fileName = ''
             while (releaseOutputName === null) {
-                const candidate = await resolveCollisionFileName(requestedFileName, collisionPolicy, candidateExists)
+                const candidate = request.outputReservation === undefined
+                    ? await resolveCollisionFileName(requestedFileName, collisionPolicy, candidateExists)
+                    : requestedFileName
                 const reservationKey = `${directory.baseDir ?? 'absolute'}:${childOutputRef(directory, candidate).path}`
                 const activeReservation = this.outputNameReservations.get(reservationKey)
                 if (activeReservation !== undefined) {
+                    if (request.outputReservation !== undefined) {
+                        throw new OutputWriterError('resolve-destination', 'Reserved output is already being written')
+                    }
                     if (collisionPolicy !== 'unique') await activeReservation
                     continue
+                }
+                if (request.outputReservation !== undefined && await candidateExists(candidate)) {
+                    throw new OutputWriterError('resolve-destination', `Output already exists: ${candidate}`)
                 }
 
                 let releaseReservation = (): void => undefined
@@ -696,6 +867,9 @@ export class OutputWriter {
                 version: 1,
                 transactionId,
                 ...(request.sourceJobId === undefined ? {} : { sourceJobId: request.sourceJobId }),
+                ...(request.outputReservation === undefined
+                    ? {}
+                    : { outputReservation: request.outputReservation }),
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 phase: 'staged',
@@ -949,6 +1123,7 @@ export class OutputWriter {
         transactionId: string,
         expectedSourceJobId: string,
         commitWorkflow: (result: OutputWriteResult) => void | Promise<void>,
+        expectedReservation?: ExactOutputReservationIdentity,
     ): Promise<OutputRecoveryResult> {
         try {
             const bytes = await this.platform.readJournal(transactionId)
@@ -956,6 +1131,13 @@ export class OutputWriter {
             const journal = parseJournal(bytes)
             if (journal.sourceJobId !== expectedSourceJobId) {
                 return { transactionId, action: 'ineligible', ineligibility: 'source-job-mismatch' }
+            }
+            if ((expectedReservation === undefined) !== (journal.outputReservation === undefined)
+                || (expectedReservation !== undefined
+                    && (journal.outputReservation?.reservationId !== expectedReservation.reservationId
+                        || journal.outputReservation.directoryIdentity !== expectedReservation.directoryIdentity
+                        || journal.outputReservation.relativePath !== expectedReservation.relativePath))) {
+                return { transactionId, action: 'ineligible', ineligibility: 'reservation-mismatch' }
             }
             if (journal.phase !== 'files-committed') {
                 return { transactionId, action: 'ineligible', ineligibility: 'phase-not-files-committed' }
@@ -997,6 +1179,9 @@ export class OutputWriter {
                         transactionId: journal.transactionId,
                         sourceJobId: journal.sourceJobId,
                         phase: journal.phase,
+                        ...(journal.outputReservation === undefined
+                            ? {}
+                            : { outputReservation: journal.outputReservation }),
                     })
                 }
             } catch {

@@ -3,18 +3,36 @@ import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragme
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { JsonValue } from '@/domain/composition/types'
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import type { ProviderExecutionEnvelope, ProviderSha256 } from '@/domain/queue/provider-result'
+import {
+    isAnlasCostConsentSnapshot,
+    type AnlasCostConsentSnapshot,
+} from '@/domain/queue/anlas-cost-consent'
 import { isR2BucketName, isResolvedR2Prefix } from '@/domain/r2/types'
 import type {
     SaveSceneResultContext,
     SaveSceneResultOptions,
 } from '@/lib/scene-generation/save-scene-result'
 import type { GenerationParams } from '@/services/novelai-types'
+import { hashGenerationSemanticIntent } from '@/application/generation/plan-generation'
+import { projectMainGenerationSemantic } from '@/services/generation/main-generation-semantic'
+import {
+    CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+    LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+    queryNaiGenerationCompatibility,
+} from '@/services/nai/compatibility'
+import { CURRENT_NAI_MODEL_CATALOG_REVISION } from '@/services/nai/model-catalog'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import { createGenerationJobSnapshot } from './job-snapshot'
 import type {
     DehydratedGenerationParameters,
     DehydratedGenerationResult,
 } from './queue-resource-materializer'
+import type {
+    SceneBatchRequest,
+    SceneGenerationBinding,
+} from '@/application/scene/plan-scene-batch'
+import { isSceneBatchRequest } from '@/application/scene/plan-scene-batch'
 
 export interface SceneQueueWorkflowSnapshot {
     readonly scene: { readonly id: string; readonly name: string }
@@ -23,9 +41,21 @@ export interface SceneQueueWorkflowSnapshot {
     readonly saveContext: SaveSceneResultContext
     readonly outputContext: NonNullable<SaveSceneResultOptions['outputContext']>
     readonly sequenceCommitProposal: FragmentSequenceCommitProposal | null
+    /** Absent only on pre-Phase-6 Scene snapshots. */
+    readonly sceneBinding?: SceneGenerationBinding
+    /** Absent only on pre-Phase-6 Scene snapshots. */
+    readonly batch?: {
+        readonly request: SceneBatchRequest
+        readonly count: number
+        readonly estimatedAnlas: number
+        readonly planHash: `sha256:${string}`
+    }
+    /** Absent only on pre-cost-consent Scene snapshots. */
+    readonly costConsent?: AnlasCostConsentSnapshot
 }
 
 export interface SceneQueueSnapshotParameters extends DehydratedGenerationParameters {
+    readonly payloadBuilderRevision: string
     readonly queueExecution: { readonly streaming: boolean; readonly sourceEdit: boolean }
     readonly sceneWorkflow: SceneQueueWorkflowSnapshot
 }
@@ -40,6 +70,9 @@ export interface EncodeSceneJobSnapshotInput {
     readonly streaming: boolean
     readonly sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
     readonly planHash: CompositionPlanHash | null
+    readonly sceneBinding: SceneGenerationBinding
+    readonly batch: NonNullable<SceneQueueWorkflowSnapshot['batch']>
+    readonly costConsent: NonNullable<SceneQueueWorkflowSnapshot['costConsent']>
 }
 
 export interface EncodedSceneJobSnapshot {
@@ -69,11 +102,50 @@ export function encodeSceneJobSnapshot(
     input: EncodeSceneJobSnapshotInput,
     dehydrated: Pick<DehydratedGenerationResult, 'parameters' | 'resources'>,
 ): EncodedSceneJobSnapshot {
+    const imageFormat: 'png' | 'webp' = input.params.imageFormat === 'webp'
+        || input.mimeType === 'image/webp'
+        ? 'webp'
+        : 'png'
+    const sourceEdit = Boolean(input.params.sourceImage || input.params.mask)
+    const streaming = input.streaming && !sourceEdit
+    const compatibility = queryNaiGenerationCompatibility(
+        input.params,
+        CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+        streaming,
+    )
+    if (compatibility.status === 'known-divergence' || compatibility.status === 'unsupported') {
+        throw new QueueExecutionError(
+            'compatibility',
+            `NovelAI compatibility profile cannot execute: ${compatibility.compatibilityProfileId}`,
+        )
+    }
+    const providerRoles = new Set(['source', 'mask', 'vibe-reference', 'character-reference'])
+    const queueResourceBindings = dehydrated.resources
+        .filter(resource => providerRoles.has(resource.role))
+        .map(resource => ({
+            resourceId: resource.resourceId,
+            role: resource.role as ProviderExecutionEnvelope['queueResourceBindings'][number]['role'],
+            digest: resource.digest as ProviderSha256,
+        }))
+    const providerExecutionEnvelope: ProviderExecutionEnvelope = {
+        schemaVersion: 1,
+        provider: 'novelai',
+        compatibilityProfileId: compatibility.compatibilityProfileId,
+        payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
+        modelCatalogRevision: CURRENT_NAI_MODEL_CATALOG_REVISION,
+        action: compatibility.action,
+        responseMode: streaming ? 'streaming' : 'standard',
+        semanticIntentHash: hashGenerationSemanticIntent(
+            projectMainGenerationSemantic(input.params, imageFormat),
+        ),
+        queueResourceBindings,
+    }
     const parameters: SceneQueueSnapshotParameters = {
         ...dehydrated.parameters,
+        payloadBuilderRevision: CURRENT_NAI_PAYLOAD_BUILDER_REVISION,
         queueExecution: {
             streaming: input.streaming,
-            sourceEdit: Boolean(input.params.sourceImage || input.params.mask),
+            sourceEdit,
         },
         sceneWorkflow: {
             scene: input.scene,
@@ -82,6 +154,9 @@ export function encodeSceneJobSnapshot(
             saveContext: input.saveContext,
             outputContext: input.outputContext,
             sequenceCommitProposal: input.sequenceCommitProposal as FragmentSequenceCommitProposal | null,
+            sceneBinding: input.sceneBinding,
+            batch: input.batch,
+            costConsent: input.costConsent,
         },
     }
     return {
@@ -99,6 +174,7 @@ export function encodeSceneJobSnapshot(
             }),
             resources: dehydrated.resources,
             resumability: 'resumable',
+            providerExecutionEnvelope,
         }),
         compositionPlanHash: input.planHash === null ? null : `sha256:${input.planHash.digest}`,
     }
@@ -116,6 +192,9 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
         || !Array.isArray(candidate.resourceBindings)
         || !isRecord(candidate.resourceArrayLengths)
         || !isRecord(candidate.queueExecution)
+        || (candidate.payloadBuilderRevision !== undefined
+            && (typeof candidate.payloadBuilderRevision !== 'string'
+                || !/^[A-Za-z0-9._-]{1,128}$/.test(candidate.payloadBuilderRevision)))
         || typeof candidate.queueExecution.streaming !== 'boolean'
         || typeof candidate.queueExecution.sourceEdit !== 'boolean'
         || !isRecord(candidate.sceneWorkflow)
@@ -124,6 +203,29 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
         || typeof candidate.sceneWorkflow.scene.name !== 'string'
         || typeof candidate.sceneWorkflow.finalPrompt !== 'string'
         || typeof candidate.sceneWorkflow.mimeType !== 'string'
+        || (candidate.sceneWorkflow.sceneBinding !== undefined
+            && (!isRecord(candidate.sceneWorkflow.sceneBinding)
+                || candidate.sceneWorkflow.sceneBinding.resourceType !== 'scene-document'
+                || typeof candidate.sceneWorkflow.sceneBinding.resourceId !== 'string'
+                || !Number.isSafeInteger(candidate.sceneWorkflow.sceneBinding.revision)
+                || (candidate.sceneWorkflow.sceneBinding.revision as number) < 0
+                || typeof candidate.sceneWorkflow.sceneBinding.contentHash !== 'string'
+                || !/^sha256:[a-f0-9]{64}$/.test(candidate.sceneWorkflow.sceneBinding.contentHash)))
+        || (candidate.sceneWorkflow.batch !== undefined
+            && (candidate.sceneWorkflow.sceneBinding === undefined
+                || candidate.sceneWorkflow.costConsent === undefined
+                || !isRecord(candidate.sceneWorkflow.batch)
+                || !isSceneBatchRequest(candidate.sceneWorkflow.batch.request)
+                || typeof candidate.sceneWorkflow.batch.count !== 'number'
+                || !Number.isSafeInteger(candidate.sceneWorkflow.batch.count)
+                || candidate.sceneWorkflow.batch.count < 1
+                || typeof candidate.sceneWorkflow.batch.estimatedAnlas !== 'number'
+                || !Number.isSafeInteger(candidate.sceneWorkflow.batch.estimatedAnlas)
+                || candidate.sceneWorkflow.batch.estimatedAnlas < 0
+                || typeof candidate.sceneWorkflow.batch.planHash !== 'string'
+                || !/^sha256:[a-f0-9]{64}$/.test(candidate.sceneWorkflow.batch.planHash)))
+        || (candidate.sceneWorkflow.costConsent !== undefined
+            && !isAnlasCostConsentSnapshot(candidate.sceneWorkflow.costConsent))
         || !isRecord(candidate.sceneWorkflow.saveContext)
         || typeof candidate.sceneWorkflow.saveContext.activePresetId !== 'string'
         || typeof candidate.sceneWorkflow.saveContext.sceneSavePath !== 'string'
@@ -158,5 +260,16 @@ export function decodeSceneJobSnapshot(snapshot: GenerationJobSnapshot): SceneQu
                 || /[\r\n]/.test(candidate.sceneWorkflow.outputContext.filenameTemplate)))) {
         return invalidSnapshot()
     }
-    return candidate as unknown as SceneQueueSnapshotParameters
+    if (candidate.sceneWorkflow.outputContext.fileName !== undefined
+        && (typeof candidate.sceneWorkflow.outputContext.fileName !== 'string'
+            || candidate.sceneWorkflow.outputContext.fileName.length === 0
+            || candidate.sceneWorkflow.outputContext.fileName.length > 255
+            || /[\\/\r\n]/.test(candidate.sceneWorkflow.outputContext.fileName))) {
+        return invalidSnapshot()
+    }
+    return {
+        ...candidate,
+        payloadBuilderRevision: candidate.payloadBuilderRevision
+            ?? LEGACY_NAI_PAYLOAD_BUILDER_REVISION,
+    } as unknown as SceneQueueSnapshotParameters
 }
