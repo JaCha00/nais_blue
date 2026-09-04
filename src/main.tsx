@@ -9,6 +9,9 @@ import { runStartupGate } from './lib/startup-mode'
 import { scheduleAfterVisiblePaint } from './lib/after-visible-paint'
 import { reportDiagnostic, reportPersistenceFault } from './services/diagnostics/error-registry'
 import type { DiagnosticEvent } from './domain/diagnostics/types'
+import type { SceneRepositoryPort } from './application/scene/scene-repository'
+import type { SceneMigrationStartupResult } from './lib/scene-migration-startup'
+import type { IndexedDbSceneMigrationPersistence } from './adapters/scene/indexeddb-scene-migration'
 
 // 자동 백업 상수
 const AUTO_BACKUP_KEY = 'nai-blue-auto-backup'
@@ -16,6 +19,7 @@ const AUTO_BACKUP_INTERVAL = 24 * 60 * 60 * 1000 // 24시간
 const MAX_AUTO_BACKUPS = 3
 let appRoot: ReactDOM.Root | null = null
 let startupInProgress = false
+let sceneAuthorityV2Active = false
 
 function getAppRoot(): ReactDOM.Root {
     appRoot ??= ReactDOM.createRoot(document.getElementById('root')!)
@@ -31,6 +35,7 @@ async function rehydrateCompositionConnectedStores(): Promise<void> {
         { usePresetStore, startPresetSync },
         { useAssetModuleStore },
         { useCharacterStore },
+        { useSettingsStore, initializeGenerationFolderAuthority },
     ] = await Promise.all([
         import('./stores/generation-store'),
         import('./stores/scene-store'),
@@ -39,6 +44,7 @@ async function rehydrateCompositionConnectedStores(): Promise<void> {
         import('./stores/preset-store'),
         import('./stores/asset-module-store'),
         import('./stores/character-store'),
+        import('./stores/settings-store'),
     ])
     await Promise.all([
         useGenerationStore.persist.rehydrate(),
@@ -48,7 +54,11 @@ async function rehydrateCompositionConnectedStores(): Promise<void> {
         usePresetStore.persist.rehydrate(),
         useAssetModuleStore.persist.rehydrate(),
         useCharacterStore.persist.rehydrate(),
+        useSettingsStore.persist.rehydrate(),
     ])
+    // Folder V2 projection must be ready before any rendered command can read
+    // output paths or attempt a CAS mutation.
+    await initializeGenerationFolderAuthority()
     // Preset draft tracking starts only after both stores are hydrated. It marks
     // unsaved edits without writing them into the selected preset.
     startPresetSync()
@@ -251,6 +261,87 @@ async function renderRescueMode(diagnostic: DiagnosticEvent): Promise<void> {
     )
 }
 
+async function reconcileSceneArtifactsAfterStartup(): Promise<void> {
+    if (!sceneAuthorityV2Active) return
+    try {
+        const [
+            { reconcileSceneArtifactLinks },
+            { getRuntimeSceneRepository },
+            { getRuntimeArtifactRepository },
+            { applySceneDocumentProjection },
+            { sceneImagePresentationKey, useSceneStore },
+            { createRuntimeOutputPlatformAdapter },
+            { childOutputRef },
+        ] = await Promise.all([
+            import('./application/scene/link-scene-artifact'),
+            import('./lib/scene-migration-startup'),
+            import('./services/organizer/runtime'),
+            import('./lib/scene-authority-runtime'),
+            import('./stores/scene-store'),
+            import('./services/output/tauri-output-adapter'),
+            import('./services/output/platform-adapter'),
+        ])
+        const artifacts = getRuntimeArtifactRepository()
+        const reconciled = await reconcileSceneArtifactLinks(
+            getRuntimeSceneRepository(),
+            artifacts,
+            {
+                shouldLink: input => useSceneStore.getState().legacyImagePresentation[
+                    sceneImagePresentationKey(input.presetId, input.sceneId, input.artifactId)
+                ]?.deleted !== true,
+            },
+        )
+        const outputPlatform = createRuntimeOutputPlatformAdapter()
+        for (const result of reconciled) {
+            if (!('document' in result)) continue
+            applySceneDocumentProjection(result.document)
+            for (const scene of result.document.scenes) {
+                for (const reference of scene.artifactRefs) {
+                    const state = useSceneStore.getState()
+                    const presentation = state.legacyImagePresentation[
+                        sceneImagePresentationKey(result.document.presetId, scene.id, reference.artifactId)
+                    ]
+                    const projected = state.presets.find(preset => preset.id === result.document.presetId)
+                        ?.scenes.find(candidate => candidate.id === scene.id)
+                        ?.images.some(image => image.id === reference.artifactId)
+                    if (presentation?.deleted || projected) continue
+                    try {
+                        const record = await artifacts.get(reference.artifactId)
+                        if (record === null) continue
+                        const directory = await outputPlatform.resolveDirectory({
+                            portableDirectory: record.original.file.directory,
+                            workflowDefaultDirectory: 'NAI_Blue_Output',
+                        })
+                        const original = childOutputRef(directory, record.original.file.fileName)
+                        if (!await outputPlatform.exists(original)) continue
+                        useSceneStore.getState().addImageToScene(
+                            result.document.presetId,
+                            scene.id,
+                            original.displayPath,
+                            reference.artifactId,
+                            reference.favorite,
+                        )
+                    } catch {
+                        // Missing portable grants remain recoverable on a later startup.
+                    }
+                }
+            }
+        }
+        const pending = reconciled.filter(result => result.status === 'PENDING_CONFLICT')
+        if (pending.length > 0) {
+            console.warn(`[Startup] ${pending.length} Scene artifact links remain pending`)
+        }
+    } catch (err) {
+        reportDiagnostic(err, {
+            operation: 'startup.scene-artifact-reconcile',
+            stage: 'link',
+            category: 'persistence',
+            severity: 'error',
+            recoverable: true,
+        })
+    }
+}
+
 async function runPostRenderStartupTasks(): Promise<void> {
     const [
         { startAssetProfileDiskSync },
@@ -265,7 +356,7 @@ async function runPostRenderStartupTasks(): Promise<void> {
         import('./services/queue/queue-startup'),
         import('./services/agent/agent-workspace-runtime'),
     ])
-    void initializeQueueAfterRestart().then(recovery => {
+    void initializeQueueAfterRestart().then(async recovery => {
         const results = [...recovery.linkedOutputs, ...recovery.orphanOutputs]
         const failures = results.filter(result => result.action === 'failed')
         if (results.length > 0) {
@@ -274,9 +365,14 @@ async function runPostRenderStartupTasks(): Promise<void> {
         for (const failure of failures) {
             console.warn(`[Startup] Output recovery is still pending for ${failure.transactionId}:`, failure.error)
         }
+        // Queue recovery may materialize ArtifactRecords after the independent
+        // pass below, so replay once more after it succeeds.
+        await reconcileSceneArtifactsAfterStartup()
     }).catch(err => {
         reportDiagnostic(err, { operation: 'startup.output-recovery', stage: 'scan', category: 'local_io' })
     })
+    // Direct Scene link recovery must not depend on Queue startup health.
+    void reconcileSceneArtifactsAfterStartup()
     // Agent Workspace depends on the desktop Asset Profile disk projection. Starting
     // it after the initial profile load prevents a stale startup snapshot while both
     // watchers continue to refresh their independent compatibility/read boundaries.
@@ -336,6 +432,10 @@ function schedulePostRenderStartupTasks() {
 }
 
 async function runStartupMigrations(): Promise<void> {
+    sceneAuthorityV2Active = false
+    let sceneMigration: SceneMigrationStartupResult | null = null
+    let sceneRepository: SceneRepositoryPort | null = null
+    let sceneMigrationPersistence: IndexedDbSceneMigrationPersistence | null = null
     // CRITICAL: Migration must complete BEFORE React renders
     // Otherwise Zustand stores will hydrate from empty IndexedDB
     // Import any current NAI Blue localStorage entries into IndexedDB.
@@ -396,8 +496,74 @@ async function runStartupMigrations(): Promise<void> {
     }
 
     try {
+        setSplashStage('Migrating Scene authority')
+        const [
+            { IndexedDbSceneMigrationPersistence },
+            { getRuntimeSceneRepository, runSceneMigrationStartup },
+        ] = await Promise.all([
+            import('./adapters/scene/indexeddb-scene-migration'),
+            import('./lib/scene-migration-startup'),
+        ])
+        sceneRepository = getRuntimeSceneRepository()
+        sceneMigrationPersistence = new IndexedDbSceneMigrationPersistence()
+        sceneMigration = await runSceneMigrationStartup({
+            repository: sceneRepository,
+            legacyPreimage: sceneMigrationPersistence,
+            marker: sceneMigrationPersistence,
+        })
+        if (sceneMigration.status === 'V1_FALLBACK') {
+            reportDiagnostic(new Error(`Scene authority retained V1: ${sceneMigration.reason}`), {
+                operation: 'startup.scene-authority',
+                stage: 'migrate',
+                category: 'persistence',
+                code: 'E_SCENE_AUTHORITY_FALLBACK',
+                severity: 'error',
+                recoverable: true,
+            })
+        } else {
+            console.log(`[Startup] Scene authority V2 active (${sceneMigration.documents.length} documents)`)
+        }
+    } catch (err) {
+        reportDiagnostic(err, {
+            operation: 'startup.scene-authority',
+            stage: 'migrate',
+            category: 'persistence',
+            severity: 'error',
+            recoverable: true,
+        })
+    }
+
+    try {
+        setSplashStage('Migrating folder authority')
+        const { runGenerationFolderMigrationStartup } = await import('./lib/generation-folder-migration-startup')
+        const folderMigration = await runGenerationFolderMigrationStartup()
+        if (folderMigration.status === 'V1_FALLBACK') {
+            reportDiagnostic(new Error(`Generation folder authority retained V1: ${folderMigration.reason}`), {
+                operation: 'startup.generation-folder-authority',
+                stage: 'migrate',
+                category: 'persistence',
+                code: 'E_GENERATION_FOLDER_AUTHORITY_FALLBACK',
+                severity: 'error',
+                recoverable: true,
+            })
+        } else {
+            console.log(`[Startup] Generation folder authority V2 active at revision ${folderMigration.document.revision}`)
+        }
+    } catch (err) {
+        reportDiagnostic(err, {
+            operation: 'startup.generation-folder-authority',
+            stage: 'migrate',
+            category: 'persistence',
+            severity: 'error',
+            recoverable: true,
+        })
+    }
+
+    let storesHydrated = false
+    try {
         setSplashStage('Hydrating migrated stores')
         await rehydrateCompositionConnectedStores()
+        storesHydrated = true
     } catch (err) {
         reportDiagnostic(err, { operation: 'startup.store-hydration', stage: 'hydrate', category: 'persistence', severity: 'error', recoverable: true })
         try {
@@ -406,6 +572,81 @@ async function runStartupMigrations(): Promise<void> {
         } catch (authorityError) {
             setRuntimeCompositionAuthority('legacy')
             reportDiagnostic(authorityError, { operation: 'startup.store-hydration', stage: 'rollback-authority', category: 'persistence', severity: 'error', recoverable: true })
+        }
+    }
+
+    if (storesHydrated && sceneRepository !== null) {
+        try {
+            const {
+                activateSceneAuthorityRuntime,
+                applyLegacySceneProjection,
+            } = await import('./lib/scene-authority-runtime')
+            if (sceneMigration?.status === 'V2_ACTIVE') {
+                const [
+                    { getRuntimeArtifactRepository },
+                    { createRuntimeOutputPlatformAdapter },
+                    { childOutputRef },
+                    { hydrateDurableSceneOutputDirectories },
+                ] = await Promise.all([
+                    import('./services/organizer/runtime'),
+                    import('./services/output/tauri-output-adapter'),
+                    import('./services/output/platform-adapter'),
+                    import('./lib/scene-output-portable-locator'),
+                ])
+                const artifacts = getRuntimeArtifactRepository()
+                const outputPlatform = createRuntimeOutputPlatformAdapter()
+                // Artifact bookmarks are creation-time bindings. Hydrate their local
+                // opaque tokens independently of mutable Settings/Folder authority.
+                await hydrateDurableSceneOutputDirectories()
+                await activateSceneAuthorityRuntime(sceneRepository, {
+                    documents: sceneMigration.documents,
+                    artifactPresentation: {
+                        get: artifactId => artifacts.get(artifactId),
+                        resolveOriginalPath: async record => {
+                            const directory = await outputPlatform.resolveDirectory({
+                                portableDirectory: record.original.file.directory,
+                                workflowDefaultDirectory: 'NAI_Blue_Output',
+                            })
+                            const original = childOutputRef(directory, record.original.file.fileName)
+                            return await outputPlatform.exists(original) ? original.displayPath : null
+                        },
+                    },
+                })
+                sceneAuthorityV2Active = true
+            } else {
+                const legacy = await sceneMigrationPersistence?.readPreservedProjection()
+                    ?? await sceneRepository.readLegacyProjection()
+                if (legacy !== null) applyLegacySceneProjection(legacy)
+            }
+        } catch (err) {
+            sceneAuthorityV2Active = false
+            try {
+                const legacy = await sceneMigrationPersistence?.readPreservedProjection()
+                    ?? await sceneRepository.readLegacyProjection()
+                if (legacy !== null) {
+                    if (sceneMigrationPersistence !== null) {
+                        const { rollbackSceneAuthority } = await import('./lib/scene-migration-startup')
+                        await rollbackSceneAuthority(sceneMigrationPersistence)
+                    }
+                    const { applyLegacySceneProjection } = await import('./lib/scene-authority-runtime')
+                    applyLegacySceneProjection(legacy)
+                }
+            } catch (rollbackError) {
+                reportDiagnostic(rollbackError, {
+                    operation: 'startup.scene-authority',
+                    stage: 'rollback-authority',
+                    category: 'persistence',
+                    severity: 'error',
+                    recoverable: true,
+                })
+            }
+            reportDiagnostic(err, {
+                operation: 'startup.scene-authority',
+                stage: 'activate',
+                category: 'persistence',
+                severity: 'error',
+                recoverable: true,
+            })
         }
     }
 }

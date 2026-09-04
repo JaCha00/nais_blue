@@ -6,11 +6,21 @@ import {
     DEFAULT_GENERATION_FOLDER_ID,
     createDefaultGenerationFolder,
     generationFolderDescendantIds,
+    isGenerationFolderDocument,
     isGenerationFolderName,
     normalizeGenerationFolderV1Projection,
     type GenerationFolder,
+    type GenerationFolderDocument,
+    type GenerationFolderV1Projection,
 } from '@/domain/generation-folders'
-import { isR2BucketName, normalizeR2Prefix } from '@/domain/r2/types'
+import { planGenerationFolderChanges, type GenerationFolderPatch as GenerationFolderV2Patch } from '@/application/folder/plan-folder-changes'
+import {
+    GenerationFolderAuthorityRuntime,
+    generationFolderRootProjection,
+    projectGenerationFolderDocument,
+    type ProjectedGenerationFolder,
+} from '@/lib/generation-folder-authority-runtime'
+import { normalizeR2Prefix } from '@/domain/r2/types'
 
 export interface CustomResolution {
     id: string
@@ -75,7 +85,9 @@ export interface SettingsState {
     remoteImageProcessingConsentVersion: number
 
     // Output folders shared by Guided, Main, and Scene workflows.
-    generationFolders: GenerationFolder[]
+    /** Compatibility projection only; GenerationFolderDocument is durable authority. */
+    generationFolders: ProjectedGenerationFolder[]
+    generationFolderDocument: GenerationFolderDocument | null
     activeGenerationFolderId: string
 
     // Actions
@@ -102,9 +114,10 @@ export interface SettingsState {
     setRemoteImageProcessingConsentVersion: (version: number) => void
     addGenerationFolder: (input: AddGenerationFolderInput) => string
     updateGenerationFolder: (id: string, patch: GenerationFolderPatch) => void
+    saveGenerationFolder: (id: string, parentId: string | null, patch: GenerationFolderPatch) => void
     moveGenerationFolders: (ids: string[], parentId: string | null) => void
     deleteGenerationFolders: (ids: string[]) => void
-    copyGenerationFolderPrompt: (sourceId: string, targetIds: string[]) => void
+    copyGenerationFolderPrompt: (sourceId: string, targetIds: string[], prompt?: string) => void
     setActiveGenerationFolder: (id: string) => void
 }
 
@@ -112,33 +125,92 @@ function createGenerationFolderId(): string {
     return `generation-folder-${crypto.randomUUID()}`
 }
 
-function normalizeGenerationFolderPatch(folder: GenerationFolder, patch: GenerationFolderPatch): GenerationFolder {
-    const name = patch.name?.trim() ?? folder.name
-    if (!isGenerationFolderName(name)) throw new TypeError('Generation folder name is invalid')
-    const commonPrompt = patch.commonPrompt ?? folder.commonPrompt
+let folderAuthority: GenerationFolderAuthorityRuntime | null = null
+
+function folderDefaults(state: SettingsState) {
+    return { directory: state.savePath, useAbsolutePath: state.useAbsolutePath }
+}
+
+function projectAuthorityDocument(document: GenerationFolderDocument): void {
+    useSettingsStore.setState(state => {
+        const root = generationFolderRootProjection(document)
+        return {
+            generationFolderDocument: document,
+            generationFolders: projectGenerationFolderDocument(document, state.generationFolders),
+            ...root,
+            activeGenerationFolderId: document.folders.some(folder => folder.id === state.activeGenerationFolderId)
+                ? state.activeGenerationFolderId
+                : DEFAULT_GENERATION_FOLDER_ID,
+        }
+    })
+}
+
+/** Applies a repository-committed document to the UI compatibility projection. */
+export function applyGenerationFolderDocumentProjection(document: GenerationFolderDocument): void {
+    projectAuthorityDocument(document)
+}
+
+function projectLegacyFolderAuthority(projection: GenerationFolderV1Projection): void {
+    useSettingsStore.setState({
+        generationFolderDocument: null,
+        generationFolders: projection.generationFolders.map(folder => structuredClone(folder)),
+        savePath: projection.savePath,
+        useAbsolutePath: projection.useAbsolutePath,
+        activeGenerationFolderId: projection.activeGenerationFolderId,
+    })
+}
+
+function commitAuthorityDocument(document: GenerationFolderDocument): void {
+    if (folderAuthority === null) throw new Error('Generation folder authority is not ready')
+    projectAuthorityDocument(document)
+    void folderAuthority.commit(document).catch(() => undefined)
+}
+
+function planAuthorityPatches(state: SettingsState, patches: readonly GenerationFolderV2Patch[]): GenerationFolderDocument {
+    if (state.generationFolderDocument === null) throw new Error('Generation folder authority is not ready')
+    const planned = planGenerationFolderChanges(state.generationFolderDocument, patches, folderDefaults(state))
+    if (planned.status !== 'PLANNED') throw new TypeError(planned.reason)
+    return planned.document
+}
+
+function v2Patch(
+    state: SettingsState,
+    id: string,
+    parentId: string | null,
+    patch: GenerationFolderPatch,
+): GenerationFolderV2Patch {
+    const current = state.generationFolderDocument?.folders.find(folder => folder.id === id)
+    if (current === undefined) throw new TypeError('Generation folder does not exist')
+    const displayName = patch.name?.trim() ?? current.displayName
+    if (!isGenerationFolderName(displayName)) throw new TypeError('Generation folder name is invalid')
+    const commonPrompt = patch.commonPrompt ?? current.commonPrompt
     if (commonPrompt.length > 20_000) throw new TypeError('Generation folder prompt is too long')
-    const bucket = patch.r2?.bucket === undefined ? folder.r2.bucket : patch.r2.bucket?.trim() || null
-    if (bucket !== null && !isR2BucketName(bucket)) throw new TypeError('R2 bucket name is invalid')
-    const prefix = patch.r2?.prefix === undefined ? folder.r2.prefix : normalizeR2Prefix(patch.r2.prefix)
-    const rootDirectory = folder.parentId === null
-        ? patch.rootDirectory === undefined
-            ? folder.rootDirectory
-            : patch.rootDirectory?.trim() || null
-        : null
+    const bucketInput = patch.r2?.bucket === undefined ? undefined : patch.r2.bucket?.trim() ?? ''
+    const bucket = bucketInput === (current.r2BucketPolicy.mode === 'set' ? current.r2BucketPolicy.value : '')
+        ? undefined
+        : bucketInput
+    const prefixInput = patch.r2?.prefix === undefined ? undefined : normalizeR2Prefix(patch.r2.prefix)
+    const prefix = prefixInput === (current.r2PrefixPolicy.mode === 'set' ? current.r2PrefixPolicy.value : null)
+        ? undefined
+        : prefixInput
     return {
-        ...folder,
-        name,
-        rootDirectory,
-        useAbsolutePath: folder.parentId === null
-            ? patch.useAbsolutePath ?? folder.useAbsolutePath
-            : false,
+        folderId: id,
+        displayName,
+        parentId,
+        rootDirectory: parentId === null
+            ? patch.rootDirectory === undefined
+                ? current.rootDirectory ?? current.pathSegment
+                : patch.rootDirectory?.trim() || current.pathSegment
+            : null,
+        useAbsolutePath: parentId === null && (patch.useAbsolutePath ?? current.useAbsolutePath),
         commonPrompt,
-        r2: {
-            autoUpload: patch.r2?.autoUpload ?? folder.r2.autoUpload,
-            bucket,
-            prefix,
-        },
-        updatedAt: new Date().toISOString(),
+        ...(patch.r2?.autoUpload === undefined ? {} : { autoUpload: patch.r2.autoUpload }),
+        ...(bucket === undefined ? {} : {
+            r2BucketPolicy: bucket === '' ? { mode: 'inherit' as const } : { mode: 'set' as const, value: bucket },
+        }),
+        ...(prefix === undefined ? {} : {
+            r2PrefixPolicy: prefix === null ? { mode: 'inherit' as const } : { mode: 'set' as const, value: prefix },
+        }),
     }
 }
 
@@ -154,14 +226,31 @@ export function normalizePersistedSettingsState(persistedState: unknown): Partia
         ? persistedState as Partial<SettingsState>
         : {}
     const folderProjection = normalizeGenerationFolderV1Projection(persistedState)
+    const activeGenerationFolderId = !Array.isArray((persisted as Record<string, unknown>).generationFolders)
+        && typeof persisted.activeGenerationFolderId === 'string'
+        ? persisted.activeGenerationFolderId
+        : folderProjection.activeGenerationFolderId
 
     return {
         ...persisted,
         ...folderProjection,
+        activeGenerationFolderId,
         sceneSubfoldersEnabled: typeof persisted.sceneSubfoldersEnabled === 'boolean'
             ? persisted.sceneSubfoldersEnabled
             : true,
     }
+}
+
+/** Keeps legacy presentation settings without writing Folder authority back to V1. */
+export function partializePersistedSettingsState(state: SettingsState): Partial<SettingsState> {
+    const {
+        generationFolders: _generationFolders,
+        generationFolderDocument: _generationFolderDocument,
+        savePath: _savePath,
+        useAbsolutePath: _useAbsolutePath,
+        ...persisted
+    } = state
+    return persisted
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -193,18 +282,17 @@ export const useSettingsStore = create<SettingsState>()(
             productGuidanceVersion: 0,
             remoteImageProcessingConsentVersion: 0,
             generationFolders: [createDefaultGenerationFolder()],
+            generationFolderDocument: null,
             activeGenerationFolderId: DEFAULT_GENERATION_FOLDER_ID,
 
-            setSavePath: (savePath, useAbsolute) => set(state => ({
-                savePath,
-                useAbsolutePath: useAbsolute ?? false,
-                generationFolders: state.generationFolders.map(folder => folder.id === DEFAULT_GENERATION_FOLDER_ID
-                    ? normalizeGenerationFolderPatch(folder, {
-                        rootDirectory: savePath,
-                        useAbsolutePath: useAbsolute ?? false,
-                    })
-                    : folder),
-            })),
+            setSavePath: (savePath, useAbsolute) => {
+                const state = useSettingsStore.getState()
+                commitAuthorityDocument(planAuthorityPatches(state, [{
+                    folderId: DEFAULT_GENERATION_FOLDER_ID,
+                    rootDirectory: savePath,
+                    useAbsolutePath: useAbsolute ?? false,
+                }]))
+            },
             setSceneSavePath: (sceneSavePath, useAbsolute) => set({
                 sceneSavePath,
                 useAbsoluteScenePath: useAbsolute ?? false
@@ -252,92 +340,99 @@ export const useSettingsStore = create<SettingsState>()(
                 const name = input.name.trim()
                 if (!isGenerationFolderName(name)) throw new TypeError('Generation folder name is invalid')
                 const state = useSettingsStore.getState()
+                const document = state.generationFolderDocument
+                if (document === null) throw new Error('Generation folder authority is not ready')
                 const parentId = input.parentId ?? null
-                if (parentId !== null && !state.generationFolders.some(folder => folder.id === parentId)) {
+                if (parentId !== null && !document.folders.some(folder => folder.id === parentId)) {
                     throw new TypeError('Generation folder parent does not exist')
                 }
-                const now = new Date().toISOString()
                 const id = createGenerationFolderId()
-                const folder: GenerationFolder = {
-                    schemaVersion: 1,
+                const next: GenerationFolderDocument = {
+                    ...document,
+                    revision: document.revision + 1,
+                    folders: [...document.folders, {
                     id,
-                    name,
+                    displayName: name,
+                    pathSegment: name,
                     parentId,
                     rootDirectory: parentId === null
                         ? input.rootDirectory?.trim() || name
                         : null,
                     useAbsolutePath: parentId === null && input.useAbsolutePath === true,
                     commonPrompt: '',
-                    r2: { autoUpload: false, bucket: null, prefix: null },
-                    createdAt: now,
-                    updatedAt: now,
+                    autoUpload: false,
+                    r2ProfilePolicy: { mode: 'inherit' },
+                    r2BucketPolicy: { mode: 'inherit' },
+                    r2PrefixPolicy: { mode: 'inherit' },
+                    }],
                 }
-                set(current => ({
-                    generationFolders: [...current.generationFolders, folder],
-                    activeGenerationFolderId: id,
-                }))
+                if (!isGenerationFolderDocument(next)) throw new TypeError('Generation folder conflicts with an existing path')
+                commitAuthorityDocument(next)
+                set({ activeGenerationFolderId: id })
                 return id
             },
-            updateGenerationFolder: (id, patch) => set(state => {
-                const generationFolders = state.generationFolders.map(folder => folder.id === id
-                    ? normalizeGenerationFolderPatch(folder, patch)
-                    : folder)
-                const updated = generationFolders.find(folder => folder.id === id)
-                return {
-                    generationFolders,
-                    ...(id === DEFAULT_GENERATION_FOLDER_ID && updated
-                        ? {
-                            savePath: updated.rootDirectory ?? state.savePath,
-                            useAbsolutePath: updated.useAbsolutePath,
-                        }
-                        : {}),
-                }
-            }),
-            moveGenerationFolders: (ids, parentId) => set(state => {
+            updateGenerationFolder: (id, patch) => {
+                const state = useSettingsStore.getState()
+                const current = state.generationFolderDocument?.folders.find(folder => folder.id === id)
+                if (current === undefined) throw new TypeError('Generation folder does not exist')
+                commitAuthorityDocument(planAuthorityPatches(state, [v2Patch(state, id, current.parentId, patch)]))
+            },
+            saveGenerationFolder: (id, parentId, patch) => {
+                const state = useSettingsStore.getState()
+                commitAuthorityDocument(planAuthorityPatches(state, [v2Patch(state, id, parentId, patch)]))
+            },
+            moveGenerationFolders: (ids, parentId) => {
+                const state = useSettingsStore.getState()
                 const selected = new Set(ids.filter(id => id !== DEFAULT_GENERATION_FOLDER_ID))
-                if (selected.size === 0) return state
-                if (parentId !== null && !state.generationFolders.some(folder => folder.id === parentId)) return state
+                if (selected.size === 0) return
+                if (parentId !== null && !state.generationFolders.some(folder => folder.id === parentId)) return
                 const blockedTargets = new Set(selected)
                 for (const id of selected) {
                     generationFolderDescendantIds(state.generationFolders, id).forEach(child => blockedTargets.add(child))
                 }
-                if (parentId !== null && blockedTargets.has(parentId)) return state
-                return {
-                    generationFolders: state.generationFolders.map(folder => selected.has(folder.id)
-                        ? {
-                            ...folder,
-                            parentId,
-                            rootDirectory: parentId === null ? folder.rootDirectory ?? folder.name : null,
-                            useAbsolutePath: parentId === null && folder.useAbsolutePath,
-                            updatedAt: new Date().toISOString(),
-                        }
-                        : folder),
-                }
-            }),
-            deleteGenerationFolders: ids => set(state => {
+                if (parentId !== null && blockedTargets.has(parentId)) return
+                commitAuthorityDocument(planAuthorityPatches(state, [...selected].map(id => {
+                    const current = state.generationFolderDocument?.folders.find(folder => folder.id === id)
+                    if (current === undefined) throw new TypeError('Generation folder does not exist')
+                    return {
+                        folderId: id,
+                        parentId,
+                        rootDirectory: parentId === null ? current.rootDirectory ?? current.pathSegment : null,
+                        useAbsolutePath: parentId === null && current.useAbsolutePath,
+                    }
+                })))
+            },
+            deleteGenerationFolders: ids => {
+                const state = useSettingsStore.getState()
+                const document = state.generationFolderDocument
+                if (document === null) throw new Error('Generation folder authority is not ready')
                 const deleted = new Set(ids.filter(id => id !== DEFAULT_GENERATION_FOLDER_ID))
                 for (const id of [...deleted]) {
                     generationFolderDescendantIds(state.generationFolders, id).forEach(child => deleted.add(child))
                 }
-                if (deleted.size === 0) return state
-                return {
-                    generationFolders: state.generationFolders.filter(folder => !deleted.has(folder.id)),
-                    activeGenerationFolderId: deleted.has(state.activeGenerationFolderId)
-                        ? DEFAULT_GENERATION_FOLDER_ID
-                        : state.activeGenerationFolderId,
+                if (deleted.size === 0) return
+                const next = {
+                    ...document,
+                    revision: document.revision + 1,
+                    folders: document.folders.filter(folder => !deleted.has(folder.id)),
                 }
-            }),
-            copyGenerationFolderPrompt: (sourceId, targetIds) => set(state => {
-                const prompt = state.generationFolders.find(folder => folder.id === sourceId)?.commonPrompt
-                if (prompt === undefined) return state
+                if (!isGenerationFolderDocument(next)) throw new TypeError('Generation folder deletion is invalid')
+                commitAuthorityDocument(next)
+                if (deleted.has(state.activeGenerationFolderId)) set({ activeGenerationFolderId: DEFAULT_GENERATION_FOLDER_ID })
+            },
+            copyGenerationFolderPrompt: (sourceId, targetIds, replacementPrompt) => {
+                const state = useSettingsStore.getState()
+                const prompt = replacementPrompt
+                    ?? state.generationFolderDocument?.folders.find(folder => folder.id === sourceId)?.commonPrompt
+                if (prompt === undefined) return
+                if (prompt.length > 20_000) throw new TypeError('Generation folder prompt is too long')
                 const targets = new Set(targetIds.filter(id => id !== sourceId))
-                const now = new Date().toISOString()
-                return {
-                    generationFolders: state.generationFolders.map(folder => targets.has(folder.id)
-                        ? { ...folder, commonPrompt: prompt, updatedAt: now }
-                        : folder),
-                }
-            }),
+                if (targets.size === 0) return
+                commitAuthorityDocument(planAuthorityPatches(state, [
+                    { folderId: sourceId, commonPrompt: prompt },
+                    ...[...targets].map(folderId => ({ folderId, commonPrompt: prompt })),
+                ]))
+            },
             setActiveGenerationFolder: id => set(state => state.generationFolders.some(folder => folder.id === id)
                 ? { activeGenerationFolderId: id }
                 : state),
@@ -346,6 +441,7 @@ export const useSettingsStore = create<SettingsState>()(
             name: 'nai-blue-settings',
             storage: createJSONStorage(() => indexedDBStorage),
             version: SETTINGS_PERSIST_VERSION,
+            partialize: partializePersistedSettingsState,
             migrate: persistedState => normalizePersistedSettingsState(persistedState) as SettingsState,
             merge: (persistedState, currentState) => ({
                 ...currentState,
@@ -356,8 +452,22 @@ export const useSettingsStore = create<SettingsState>()(
                     console.error('[SettingsStore] Hydration failed:', error)
                     return
                 }
-                if (state) console.log('[SettingsStore] Hydrated successfully')
+                if (state) {
+                    console.log('[SettingsStore] Hydrated successfully')
+                }
             },
         }
     )
 )
+
+export async function initializeGenerationFolderAuthority(): Promise<GenerationFolderDocument | null> {
+    if (folderAuthority === null) {
+        const { IndexedDbGenerationFolderRepository } = await import('@/adapters/folder/indexeddb-generation-folder-repository')
+        folderAuthority = new GenerationFolderAuthorityRuntime(
+            new IndexedDbGenerationFolderRepository(),
+            projectAuthorityDocument,
+            projectLegacyFolderAuthority,
+        )
+    }
+    return folderAuthority.initialize()
+}

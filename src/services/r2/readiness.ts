@@ -9,13 +9,15 @@ export type DefaultR2Readiness =
     | { readonly status: 'unavailable'; readonly reason: 'runtime' | 'profile' | 'credential'; readonly profile: R2ProfileV2 | null }
     | { readonly status: 'ready'; readonly profile: R2ProfileV2 }
 
-export async function getDefaultR2Readiness(): Promise<Exclude<DefaultR2Readiness, { status: 'loading' }>> {
+export async function getDefaultR2Readiness(
+    profileId = DEFAULT_R2_PROFILE_ID,
+): Promise<Exclude<DefaultR2Readiness, { status: 'loading' }>> {
     if (!runtimeCapabilities.r2ForegroundUpload.supported || typeof indexedDB === 'undefined') {
         return { status: 'unavailable', reason: 'runtime', profile: null }
     }
     let profile: R2ProfileV2 | null
     try {
-        profile = await getRuntimeR2UploadRepository().getProfile(DEFAULT_R2_PROFILE_ID)
+        profile = await getRuntimeR2UploadRepository().getProfile(profileId)
     } catch {
         return { status: 'unavailable', reason: 'profile', profile: null }
     }

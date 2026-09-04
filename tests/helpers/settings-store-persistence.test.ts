@@ -5,7 +5,7 @@ import {
     createDefaultGenerationFolder,
     type GenerationFolder,
 } from '@/domain/generation-folders'
-import { normalizePersistedSettingsState } from '@/stores/settings-store'
+import { normalizePersistedSettingsState, partializePersistedSettingsState, useSettingsStore } from '@/stores/settings-store'
 
 const childFolder: GenerationFolder = {
     schemaVersion: 1,
@@ -21,6 +21,23 @@ const childFolder: GenerationFolder = {
 }
 
 describe('settings persistence migration', () => {
+    it('does not write V2 authority or legacy root authority back into nai-blue-settings', () => {
+        const persisted = partializePersistedSettingsState(useSettingsStore.getState())
+
+        expect(persisted).not.toHaveProperty('generationFolders')
+        expect(persisted).not.toHaveProperty('generationFolderDocument')
+        expect(persisted).not.toHaveProperty('savePath')
+        expect(persisted).not.toHaveProperty('useAbsolutePath')
+        expect(persisted).toHaveProperty('activeGenerationFolderId')
+        expect(persisted).toHaveProperty('sceneSavePath')
+    })
+
+    it('keeps a V2 presentation selection until the authority projection validates it', () => {
+        const migrated = normalizePersistedSettingsState({ activeGenerationFolderId: childFolder.id })
+
+        expect(migrated.activeGenerationFolderId).toBe(childFolder.id)
+    })
+
     it('rebuilds the default generation folder from a legacy custom drive', () => {
         const migrated = normalizePersistedSettingsState({
             savePath: 'E:\\NAI\\Images',

@@ -22,6 +22,13 @@ const DB_TIMEOUT_MS = 10000 // 10초 타임아웃
 
 export const STRUCTURED_PROMPT_MODULE_STORE_KEY = 'nai-blue-structured-prompt-modules' as const
 export const SCENE_DOCUMENT_STORE_KEY = 'nai-blue-scene-documents' as const
+export const FOLDER_DOCUMENT_STORE_KEY = 'nai-blue-generation-folder-documents' as const
+export const SCENE_AUTHORITY_MARKER_STORE_KEY = 'nai-blue-scene-authority' as const
+export const SCENE_PRESENTATION_STORE_KEY = 'nai-blue-scene-presentation' as const
+/** Device-local opaque path tokens are deliberately excluded from backup/export keys. */
+export const SCENE_OUTPUT_PORTABLE_TOKEN_STORE_KEY = 'nai-blue-scene-output-portable-tokens' as const
+export const FOLDER_V1_PREIMAGE_STORE_KEY = 'nai-blue-generation-folder-v1-preimage' as const
+export const FOLDER_AUTHORITY_MARKER_STORE_KEY = 'nai-blue-generation-folder-authority' as const
 
 // Central backup registry used by full exports, size diagnostics, and the
 // store snapshot layer so new persisted stores are added in one place.
@@ -34,6 +41,11 @@ export const BACKUP_STORE_KEYS = [
     'nai-blue-auth',
     'nai-blue-scenes',
     SCENE_DOCUMENT_STORE_KEY,
+    SCENE_AUTHORITY_MARKER_STORE_KEY,
+    SCENE_PRESENTATION_STORE_KEY,
+    FOLDER_DOCUMENT_STORE_KEY,
+    FOLDER_V1_PREIMAGE_STORE_KEY,
+    FOLDER_AUTHORITY_MARKER_STORE_KEY,
     'nai-blue-character-rotation',
     'nai-blue-shortcuts',
     'nai-blue-theme',
@@ -82,6 +94,12 @@ export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
     'nai-blue-auth-v3-migration-complete',
     'nai-blue-scenes',
     SCENE_DOCUMENT_STORE_KEY,
+    SCENE_AUTHORITY_MARKER_STORE_KEY,
+    SCENE_PRESENTATION_STORE_KEY,
+    SCENE_OUTPUT_PORTABLE_TOKEN_STORE_KEY,
+    FOLDER_DOCUMENT_STORE_KEY,
+    FOLDER_V1_PREIMAGE_STORE_KEY,
+    FOLDER_AUTHORITY_MARKER_STORE_KEY,
     'nai-blue-composition-repository',
     'nai-blue-composition-migration-backup',
     'nai-blue-backup-restore-journal',

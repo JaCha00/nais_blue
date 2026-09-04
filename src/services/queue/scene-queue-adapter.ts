@@ -2,7 +2,7 @@ import type {
     QueueBatchOrigin,
     QueueResourceRecord,
 } from '@/domain/queue/types'
-import { resolveGenerationFolder } from '@/domain/generation-folders'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
 import type { SaveSceneResultContext } from '@/lib/scene-generation/save-scene-result'
@@ -119,15 +119,15 @@ async function enqueueSceneQueueTargetsOnce(
     const operationId = useQueueStore.getState().beginEnqueueOperation('scene')
 
     const settings = useSettingsStore.getState()
-    const needsR2 = selected.some(({ scene }) => {
-        const folder = resolveGenerationFolder(settings.generationFolders, scene.generationFolderId, {
-            directory: settings.sceneSavePath,
-            useAbsolutePath: settings.useAbsoluteScenePath,
-        })
-        return folder?.r2.autoUpload === true
-    })
-    const r2Readiness = needsR2 ? await getDefaultR2Readiness() : null
-    const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
+    const r2ReadinessByProfile = new Map<string, ReturnType<typeof getDefaultR2Readiness>>()
+    const readR2Profile = (profileId: string) => {
+        let pending = r2ReadinessByProfile.get(profileId)
+        if (pending === undefined) {
+            pending = getDefaultR2Readiness(profileId)
+            r2ReadinessByProfile.set(profileId, pending)
+        }
+        return pending
+    }
     const rotation = useRotationStore.getState()
     const rotationCharacterId = rotation.active && rotation.snapshot
         ? rotation.characterIds[rotation.currentIndex]
@@ -139,12 +139,28 @@ async function enqueueSceneQueueTargetsOnce(
 
     try {
         for (const { target, preset, scene } of selected) {
-            const resolvedFolder = resolveGenerationFolder(
+            const preliminaryFolder = resolveGenerationFolderAuthority(
+                settings.generationFolderDocument,
                 settings.generationFolders,
                 scene.generationFolderId,
                 {
                     directory: settings.sceneSavePath,
                     useAbsolutePath: settings.useAbsoluteScenePath,
+                },
+            )
+            const requestedProfileId = preliminaryFolder?.r2.profileId ?? DEFAULT_R2_PROFILE_ID
+            const r2Readiness = preliminaryFolder?.r2.autoUpload
+                ? await readR2Profile(requestedProfileId)
+                : null
+            const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
+            const resolvedFolder = resolveGenerationFolderAuthority(
+                settings.generationFolderDocument,
+                settings.generationFolders,
+                scene.generationFolderId,
+                {
+                    directory: settings.sceneSavePath,
+                    useAbsolutePath: settings.useAbsoluteScenePath,
+                    r2ProfileId: baseR2Profile?.id,
                     r2Bucket: baseR2Profile?.bucket,
                     r2Prefix: baseR2Profile?.prefix,
                 },
@@ -185,7 +201,7 @@ async function enqueueSceneQueueTargetsOnce(
                             ? 'NAI_Blue_Scene'
                             : generationFolder.directory,
                         autoR2UploadProfileId: generationFolder.r2.autoUpload
-                            ? DEFAULT_R2_PROFILE_ID
+                            ? generationFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID
                             : null,
                         r2Bucket: generationFolder.r2.bucket,
                         r2Prefix: generationFolder.r2.prefix,

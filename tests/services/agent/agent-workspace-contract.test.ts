@@ -81,6 +81,31 @@ describe('agent workspace contract', () => {
 
     it('creates a credential-free, detached workspace snapshot', () => {
         const preset = createDefaultPreset()
+        const sceneDocument = {
+            schemaVersion: 1 as const,
+            presetId: 'scene-preset-1',
+            revision: 7,
+            scenes: [],
+            updatedAt: '2026-07-26T00:00:00.000Z',
+        }
+        const folderDocument = {
+            schemaVersion: 2 as const,
+            workspaceId: 'local',
+            revision: 9,
+            folders: [{
+                id: 'generation-folder-default',
+                displayName: 'Default',
+                pathSegment: 'Default',
+                parentId: null,
+                rootDirectory: 'NAI_Blue_Output',
+                useAbsolutePath: false,
+                commonPrompt: '',
+                autoUpload: false,
+                r2ProfilePolicy: { mode: 'inherit' as const },
+                r2BucketPolicy: { mode: 'inherit' as const },
+                r2PrefixPolicy: { mode: 'inherit' as const },
+            }],
+        }
         const snapshot = createAgentWorkspaceSnapshot({
             revision: 3,
             generatedAt: '2026-07-26T00:00:00.000Z',
@@ -94,16 +119,45 @@ describe('agent workspace contract', () => {
                 library: { path: 'NAI_Blue_Library', useAbsolutePath: false },
             },
             assetProfile: createDefaultAssetProfile('2026-07-26T00:00:00.000Z'),
+            sceneDocuments: [sceneDocument],
+            generationFolderDocument: folderDocument,
         })
 
         preset.basePrompt = 'mutated after snapshot'
         expect(snapshot.editable.presets[0]?.basePrompt).toBe('')
+        expect(snapshot.editable.sceneDocuments[0]).toMatchObject({ presetId: 'scene-preset-1', revision: 7 })
+        expect(snapshot.editable.sceneDocuments[0]).not.toBe(sceneDocument)
+        expect(snapshot.editable.generationFolderDocument).toMatchObject({ workspaceId: 'local', revision: 9 })
+        expect(snapshot.editable.generationFolderDocument).not.toBe(folderDocument)
         expect(snapshot.privacy).toMatchObject({
             credentialsIncluded: false,
             imageBytesIncluded: false,
             historyIncluded: false,
         })
         expect(JSON.stringify(snapshot)).not.toMatch(/api.?token|authorization|image.?bytes\s*:/i)
+
+        expect(() => createAgentWorkspaceSnapshot({
+            revision: 4,
+            activePresetId: preset.id,
+            presets: [preset],
+            directories: snapshot.editable.directories,
+            assetProfile: createDefaultAssetProfile(),
+            sceneDocuments: [{
+                ...sceneDocument,
+                scenes: [{
+                    id: 'scene-unsafe',
+                    name: 'Unsafe',
+                    scenePrompt: '',
+                    artifactRefs: [],
+                    createdAt: 0,
+                    compositionRef: {
+                        recipeId: 'scene:direct',
+                        extensions: { apiToken: 'must-not-enter-workspace' },
+                    },
+                }],
+            }],
+            generationFolderDocument: folderDocument,
+        })).toThrow(/not allowed/i)
     })
 
     it('omits normalized optional fields that JSON serialization cannot represent', () => {
@@ -138,6 +192,72 @@ describe('agent workspace contract', () => {
             action: {
                 type: 'paths.patch',
                 patch: { credentials: { path: 'unsafe', useAbsolutePath: false } },
+            },
+        })).toThrow(/not supported/i)
+    })
+
+    it('requires stable resource IDs and expected revisions for Scene and Folder patches', () => {
+        const sceneRequest = parseAgentEditRequest({
+            schemaVersion: 1,
+            requestId: 'scene-edit-1',
+            baseRevision: 5,
+            status: 'ready',
+            action: {
+                type: 'scene.patch',
+                presetId: 'preset-1',
+                expectedRevision: 3,
+                scenePatches: [{
+                    sceneId: 'scene-1',
+                    patches: [{ op: 'set-parameter', field: 'steps', value: 32 }],
+                }],
+            },
+        })
+        expect(sceneRequest?.action).toMatchObject({
+            type: 'scene.patch',
+            presetId: 'preset-1',
+            expectedRevision: 3,
+        })
+
+        const folderRequest = parseAgentEditRequest({
+            schemaVersion: 1,
+            requestId: 'folder-edit-1',
+            baseRevision: 5,
+            status: 'ready',
+            action: {
+                type: 'folder.patch',
+                workspaceId: 'local',
+                expectedRevision: 4,
+                patches: [{ folderId: 'folder-1', displayName: 'Renamed' }],
+            },
+        })
+        expect(folderRequest?.action).toEqual({
+            type: 'folder.patch',
+            workspaceId: 'local',
+            expectedRevision: 4,
+            patches: [{ folderId: 'folder-1', displayName: 'Renamed' }],
+        })
+
+        expect(() => parseAgentEditRequest({
+            schemaVersion: 1,
+            requestId: 'scene-edit-missing-revision',
+            baseRevision: 5,
+            status: 'ready',
+            action: {
+                type: 'scene.patch',
+                presetId: 'preset-1',
+                scenePatches: [{ sceneId: 'scene-1', patches: [{ op: 'inherit-parameter', field: 'steps' }] }],
+            },
+        })).toThrow(/expectedRevision/i)
+        expect(() => parseAgentEditRequest({
+            schemaVersion: 1,
+            requestId: 'folder-edit-unknown-field',
+            baseRevision: 5,
+            status: 'ready',
+            action: {
+                type: 'folder.patch',
+                workspaceId: 'local',
+                expectedRevision: 4,
+                patches: [{ folderId: 'folder-1', physicalMove: true }],
             },
         })).toThrow(/not supported/i)
     })

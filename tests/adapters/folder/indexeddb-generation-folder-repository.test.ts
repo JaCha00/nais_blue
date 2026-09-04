@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import { IndexedDbGenerationFolderRepository } from '@/adapters/folder/indexeddb-generation-folder-repository'
 import {
     DEFAULT_GENERATION_FOLDER_ID,
+    migrateGenerationFolderV1Projection,
     resolveGenerationFolder,
     type GenerationFolder,
 } from '@/domain/generation-folders'
+import { FOLDER_DOCUMENT_STORE_KEY } from '@/lib/indexed-db'
 import { normalizePersistedSettingsState } from '@/stores/settings-store'
 
 const NOW = '2026-09-04T00:00:00.000Z'
@@ -58,14 +60,14 @@ describe('IndexedDbGenerationFolderRepository', () => {
         const persistence = {
             getItem: async (key: string) => {
                 reads.push(key)
-                return preimage
+                return key === 'nai-blue-generation-folder-v1-preimage' ? null : preimage
             },
         }
 
         const projection = await new IndexedDbGenerationFolderRepository(persistence).readLegacyProjection()
         const hydrated = normalizePersistedSettingsState(legacyState)
 
-        expect(reads).toEqual(['nai-blue-settings'])
+        expect(reads).toEqual(['nai-blue-generation-folder-v1-preimage', 'nai-blue-settings'])
         expect(JSON.stringify({ state: legacyState, version: 1 })).toBe(preimage)
         expect(legacyState.generationFolders[0].rootDirectory).toBe('stale-root')
         expect(projection).toEqual({
@@ -105,6 +107,31 @@ describe('IndexedDbGenerationFolderRepository', () => {
         })
     })
 
+    it('matches Settings hydration for mixed valid and invalid V1 folders without mutating the preimage', async () => {
+        const mixedState = {
+            ...legacyState,
+            generationFolders: [
+                ...legacyState.generationFolders,
+                { ...legacyState.generationFolders[1], id: 'invalid', name: '../escape' },
+            ],
+        }
+        const preimage = JSON.stringify({ state: mixedState, version: 1 })
+        const repository = new IndexedDbGenerationFolderRepository({ getItem: async () => preimage })
+
+        const projection = await repository.readLegacyProjection()
+        const hydrated = normalizePersistedSettingsState(mixedState)
+
+        expect(JSON.stringify({ state: mixedState, version: 1 })).toBe(preimage)
+        expect(projection).toEqual({
+            savePath: hydrated.savePath,
+            useAbsolutePath: hydrated.useAbsolutePath,
+            generationFolders: hydrated.generationFolders,
+            activeGenerationFolderId: hydrated.activeGenerationFolderId,
+        })
+        expect(projection?.generationFolders.some(candidate => candidate.id === 'invalid')).toBe(false)
+        expect(projection?.generationFolders.some(candidate => candidate.id === 'child')).toBe(true)
+    })
+
     it('returns null when the legacy settings key is missing', async () => {
         const repository = new IndexedDbGenerationFolderRepository({ getItem: async () => null })
         await expect(repository.readLegacyProjection()).resolves.toBeNull()
@@ -119,5 +146,72 @@ describe('IndexedDbGenerationFolderRepository', () => {
     ])('rejects a malformed or unsupported envelope without repairing it: %s', async serialized => {
         const repository = new IndexedDbGenerationFolderRepository({ getItem: async () => serialized })
         await expect(repository.readLegacyProjection()).rejects.toBeInstanceOf(TypeError)
+    })
+
+    it('creates revision 1, rejects stale commits, and preserves another workspace through a storage race', async () => {
+        const first = migrateGenerationFolderV1Projection('workspace:a', normalizePersistedSettingsState(legacyState))
+        const other = migrateGenerationFolderV1Projection('workspace:b', normalizePersistedSettingsState(legacyState))
+        const values = new Map<string, string>()
+        let races = 0
+        const repository = new IndexedDbGenerationFolderRepository({
+            getItem: async key => values.get(key) ?? null,
+            compareAndSet: async (key, expected, next) => {
+                if ((values.get(key) ?? null) !== expected) return false
+                if (races++ === 1) {
+                    values.set(key, JSON.stringify({ schemaVersion: 1, documents: [first, other] }))
+                    return false
+                }
+                values.set(key, next)
+                return true
+            },
+        })
+
+        await expect(repository.commit(first, 0)).resolves.toMatchObject({ status: 'COMMITTED' })
+        const next = { ...first, revision: 2 }
+        await expect(repository.commit(next, 1)).resolves.toMatchObject({ status: 'COMMITTED' })
+        await expect(repository.commit(next, 1)).resolves.toMatchObject({ status: 'REVISION_CONFLICT' })
+        expect((await repository.listDocuments()).map(item => item.workspaceId)).toEqual(['workspace:a', 'workspace:b'])
+    })
+
+    it('materializes legacy once, preserves its preimage, and reopens from V2', async () => {
+        const legacy = JSON.stringify({ state: legacyState, version: 1 })
+        const values = new Map<string, string>([['nai-blue-settings', legacy]])
+        const writes: string[] = []
+        const port = {
+            getItem: async (key: string) => values.get(key) ?? null,
+            compareAndSet: async (key: string, expected: string | null, next: string) => {
+                if ((values.get(key) ?? null) !== expected) return false
+                writes.push(key)
+                values.set(key, next)
+                return true
+            },
+        }
+        const migrated = await new IndexedDbGenerationFolderRepository(port).materializeLegacy('workspace')
+        expect(migrated).toMatchObject({ workspaceId: 'workspace', revision: 1 })
+        expect(values.get('nai-blue-settings')).toBe(legacy)
+        expect(writes).toEqual([FOLDER_DOCUMENT_STORE_KEY])
+        await expect(new IndexedDbGenerationFolderRepository(port).getDocument('workspace')).resolves.toEqual(migrated)
+        await expect(new IndexedDbGenerationFolderRepository({ getItem: async key => key === 'nai-blue-settings' ? legacy : null }).readLegacyProjection()).resolves.not.toBeNull()
+    })
+
+    it('fails closed on malformed V2 instead of falling back to legacy', async () => {
+        const repository = new IndexedDbGenerationFolderRepository({
+            getItem: async key => key === FOLDER_DOCUMENT_STORE_KEY ? '{' : JSON.stringify({ state: legacyState, version: 1 }),
+        })
+        await expect(repository.materializeLegacy('workspace')).rejects.toBeInstanceOf(TypeError)
+    })
+
+    it('returns STORAGE_CONFLICT after three failed storage races', async () => {
+        let attempts = 0
+        const repository = new IndexedDbGenerationFolderRepository({
+            getItem: async () => null,
+            compareAndSet: async () => {
+                attempts += 1
+                return false
+            },
+        })
+        const document = migrateGenerationFolderV1Projection('workspace', normalizePersistedSettingsState(legacyState))
+        await expect(repository.commit(document, 0)).resolves.toEqual({ status: 'STORAGE_CONFLICT' })
+        expect(attempts).toBe(3)
     })
 })

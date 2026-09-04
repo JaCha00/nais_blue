@@ -37,7 +37,14 @@ export function createZustandSceneResultPresentation(): SceneResultPresentationP
             }
         },
         commitResult: (result: SceneResultProjection) => {
-            useSceneStore.getState().addImageToScene(result.presetId, result.sceneId, result.path)
+            // The path remains an in-memory gallery projection. Scene persistence strips
+            // images, while SceneDocument artifactRefs own the durable result relation.
+            useSceneStore.getState().addImageToScene(
+                result.presetId,
+                result.sceneId,
+                result.path,
+                result.artifactId,
+            )
             useGenerationStore.getState().addToHistory({
                 id: result.historyId,
                 url: result.path,

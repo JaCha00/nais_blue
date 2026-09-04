@@ -19,6 +19,7 @@ import { abortSceneSessionRequests } from '@/lib/scene-generation/request-cancel
 import type { MetadataMode } from '@/lib/generation-metadata'
 import { generateRandomSeed } from '@/lib/utils'
 import { DEFAULT_NAI_IMAGE_MODEL } from '@/services/nai/model-catalog'
+import type { SceneArtifactRef } from '@/application/scene/scene-repository'
 
 export type { SceneCompositionMode, SceneCompositionRef } from '@/lib/composition/scene-adapter'
 
@@ -114,6 +115,8 @@ export interface SceneCard {
     queuedFileNames?: string[]
     excludePinned?: boolean // Rotation-only: skip pinned characters for this scene.
     compositionRef?: SceneCompositionRef
+    /** Durable result links projected from SceneRepository; raw images stay presentation-only. */
+    artifactRefs?: SceneArtifactRef[]
     createdAt: number
 }
 
@@ -232,6 +235,10 @@ export function getScenePresetPathSegments(presets: readonly ScenePreset[], pres
 interface SceneState {
     presets: ScenePreset[]
     activePresetId: string | null
+    /** Distinguishes first V1 bootstrap from an intentionally deleted presentation shell. */
+    sceneAuthorityInitialized: boolean
+    /** ID-only visibility overlay; legacy URLs/base64 remain solely in the preimage. */
+    legacyImagePresentation: Record<string, { deleted?: true; favorite?: boolean }>
 
     // Actions - Presets
     addPreset: (name: string, parentId?: string | null) => string
@@ -274,7 +281,13 @@ interface SceneState {
     getQueuedScenes: (presetId: string) => SceneCard[]
 
     // Actions - Images
-    addImageToScene: (presetId: string, sceneId: string, imageUrl: string) => void
+    addImageToScene: (
+        presetId: string,
+        sceneId: string,
+        imageUrl: string,
+        imageId?: string,
+        isFavorite?: boolean,
+    ) => void
     toggleFavorite: (presetId: string, sceneId: string, imageId: string) => void
     deleteImage: (presetId: string, sceneId: string, imageId: string) => void
     deleteNonFavoriteImages: (presetId: string, sceneId: string) => { count: number; paths: string[] }
@@ -366,6 +379,18 @@ const createDefaultPreset = (): ScenePreset => ({
 })
 
 const createSceneEntityId = (): string => `${Date.now()}-${crypto.randomUUID()}`
+export const sceneImagePresentationKey = (presetId: string, sceneId: string, imageId: string): string => (
+    JSON.stringify([presetId, sceneId, imageId])
+)
+function withoutImagePresentation(
+    presentation: SceneState['legacyImagePresentation'],
+    key: string,
+): SceneState['legacyImagePresentation'] {
+    if (!(key in presentation)) return presentation
+    const next = { ...presentation }
+    delete next[key]
+    return next
+}
 const nextSceneGenerationSessionId = (current: number): number => Math.max(Date.now(), current + 1)
 const MAX_FILENAME_TEMPLATE_LENGTH = 180
 
@@ -447,11 +472,42 @@ function withoutSceneCompositionResults(
     return next
 }
 
+/**
+ * Persists only the Scene navigation shell. Scene authoring and result links are
+ * re-projected from SceneRepository, while queue/images/session data stay in memory.
+ */
+export function projectScenePresentationState(state: SceneState) {
+    return {
+        presets: state.presets.map(preset => ({
+            id: preset.id,
+            name: preset.name,
+            scenes: [],
+            parentId: preset.parentId,
+            defaultTemplate: preset.defaultTemplate
+                ? cloneSceneFolderTemplate(preset.defaultTemplate)
+                : undefined,
+            createdAt: preset.createdAt,
+        })),
+        activePresetId: state.activePresetId,
+        sceneAuthorityInitialized: state.sceneAuthorityInitialized,
+        legacyImagePresentation: { ...state.legacyImagePresentation },
+        isEditMode: state.isEditMode,
+        selectedSceneIds: [...state.selectedSceneIds],
+        lastSelectedSceneId: state.lastSelectedSceneId,
+        gridColumns: state.gridColumns,
+        thumbnailLayout: state.thumbnailLayout,
+        scrollPosition: state.scrollPosition,
+        sceneCompositionMode: state.sceneCompositionMode,
+    }
+}
+
 export const useSceneStore = create<SceneState>()(
     persist(
         (set, get) => ({
             presets: [createDefaultPreset()],
             activePresetId: DEFAULT_PRESET_ID,
+            sceneAuthorityInitialized: false,
+            legacyImagePresentation: {},
             sceneCompositionMode: 'v2',
             sceneCompositionResults: {},
             setSceneCompositionMode: (sceneCompositionMode) => set({
@@ -1109,17 +1165,18 @@ export const useSceneStore = create<SceneState>()(
             },
 
             // Image Actions
-            addImageToScene: (presetId, sceneId, imageUrl) => {
+            addImageToScene: (presetId, sceneId, imageUrl, imageId, isFavorite = false) => {
                 const timestamp = Date.now()
                 const newImage: SceneImage = {
-                    id: createSceneEntityId(),
+                    id: imageId ?? createSceneEntityId(),
                     url: imageUrl,
                     timestamp,
-                    isFavorite: false,
+                    isFavorite,
                 }
                 
                 // MEMORY OPTIMIZATION: Increased limit for heavy users (was 100)
                 const MAX_IMAGES_PER_SCENE = 2000
+                const presentationKey = sceneImagePresentationKey(presetId, sceneId, newImage.id)
                 
                 set(state => ({
                     presets: state.presets.map(p =>
@@ -1130,7 +1187,7 @@ export const useSceneStore = create<SceneState>()(
                                     if (s.id !== sceneId) return s
                                     
                                     // Add new image at the beginning (newest first)
-                                    let updatedImages = [newImage, ...s.images]
+                                    let updatedImages = [newImage, ...s.images.filter(image => image.id !== newImage.id)]
                                     
                                     // If over limit, remove oldest non-favorites
                                     if (updatedImages.length > MAX_IMAGES_PER_SCENE) {
@@ -1155,6 +1212,10 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
+                    legacyImagePresentation: withoutImagePresentation(
+                        state.legacyImagePresentation,
+                        presentationKey,
+                    ),
                 }))
                 // NOTE: Removed triggerHistoryRefresh() here.
                 // HistoryPanel now uses the transient artifact lifecycle store,
@@ -1162,7 +1223,13 @@ export const useSceneStore = create<SceneState>()(
             },
 
             toggleFavorite: (presetId, sceneId, imageId) => {
-                set(state => ({
+                set(state => {
+                    const scene = state.presets.find(preset => preset.id === presetId)
+                        ?.scenes.find(candidate => candidate.id === sceneId)
+                    const image = scene?.images.find(candidate => candidate.id === imageId)
+                    const isArtifact = scene?.artifactRefs?.some(reference => reference.artifactId === imageId) === true
+                    const key = sceneImagePresentationKey(presetId, sceneId, imageId)
+                    return {
                     presets: state.presets.map(p =>
                         p.id === presetId
                             ? {
@@ -1182,11 +1249,26 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
-                }))
+                    ...(!isArtifact && image !== undefined
+                        ? {
+                            legacyImagePresentation: {
+                                ...state.legacyImagePresentation,
+                                [key]: {
+                                    ...state.legacyImagePresentation[key],
+                                    favorite: !image.isFavorite,
+                                },
+                            },
+                        }
+                        : {}),
+                }})
             },
 
             deleteImage: (presetId, sceneId, imageId) => {
-                set(state => ({
+                set(state => {
+                    const scene = state.presets.find(preset => preset.id === presetId)
+                        ?.scenes.find(candidate => candidate.id === sceneId)
+                    const key = sceneImagePresentationKey(presetId, sceneId, imageId)
+                    return {
                     presets: state.presets.map(p =>
                         p.id === presetId
                             ? {
@@ -1199,7 +1281,15 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
-                }))
+                    ...(scene?.images.some(image => image.id === imageId)
+                        ? {
+                            legacyImagePresentation: {
+                                ...state.legacyImagePresentation,
+                                [key]: { deleted: true },
+                            },
+                        }
+                        : {}),
+                }})
             },
 
             deleteNonFavoriteImages: (presetId, sceneId) => {
@@ -1213,6 +1303,8 @@ export const useSceneStore = create<SceneState>()(
                 const filePaths = nonFavorites
                     .map(img => img.url)
                     .filter(url => !url.startsWith('data:'))
+                const legacyTombstones = Object.fromEntries(nonFavorites
+                    .map(image => [sceneImagePresentationKey(presetId, sceneId, image.id), { deleted: true as const }]))
                 
                 set(state => ({
                     presets: state.presets.map(p =>
@@ -1227,6 +1319,10 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
+                    legacyImagePresentation: {
+                        ...state.legacyImagePresentation,
+                        ...legacyTombstones,
+                    },
                 }))
                 
                 return { count: nonFavoriteCount, paths: filePaths }
@@ -1238,6 +1334,10 @@ export const useSceneStore = create<SceneState>()(
                 if (!scene) return 0
                 
                 const favoriteCount = scene.images.filter(img => img.isFavorite).length
+                const artifactIds = new Set(scene.artifactRefs?.map(reference => reference.artifactId) ?? [])
+                const legacyFavorites = Object.fromEntries(scene.images
+                    .filter(image => image.isFavorite && !artifactIds.has(image.id))
+                    .map(image => [sceneImagePresentationKey(presetId, sceneId, image.id), { favorite: false }]))
                 
                 set(state => ({
                     presets: state.presets.map(p =>
@@ -1255,6 +1355,10 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
+                    legacyImagePresentation: {
+                        ...state.legacyImagePresentation,
+                        ...legacyFavorites,
+                    },
                 }))
                 
                 return favoriteCount
@@ -1269,6 +1373,8 @@ export const useSceneStore = create<SceneState>()(
                 const filePaths = scene.images
                     .map(img => img.url)
                     .filter(url => !url.startsWith('data:'))
+                const legacyTombstones = Object.fromEntries(scene.images
+                    .map(image => [sceneImagePresentationKey(presetId, sceneId, image.id), { deleted: true as const }]))
                 
                 set(state => ({
                     presets: state.presets.map(p =>
@@ -1283,6 +1389,10 @@ export const useSceneStore = create<SceneState>()(
                             }
                             : p
                     ),
+                    legacyImagePresentation: {
+                        ...state.legacyImagePresentation,
+                        ...legacyTombstones,
+                    },
                 }))
                 
                 return { count: totalCount, paths: filePaths }
@@ -1772,41 +1882,9 @@ export const useSceneStore = create<SceneState>()(
             setScrollPosition: (position) => set({ scrollPosition: position }),
         }),
         {
-            name: 'nai-blue-scenes',
+            name: 'nai-blue-scene-presentation',
             storage: createJSONStorage(() => indexedDBStorage),
-            partialize: (state) => {
-                // Images are stored as file paths, not base64 - storage is minimal per entry
-                const MAX_IMAGES_PERSIST = 2000
-
-                return {
-                    presets: state.presets.map(p => ({
-                        ...p,
-                        scenes: p.scenes.map(s => {
-                            // Fast path: skip expensive sorting if under limit
-                            if (s.images.length <= MAX_IMAGES_PERSIST) {
-                                return { ...s, queueCount: 0, queuedFileNames: undefined }
-                            }
-                            // Over limit: keep favorites + newest non-favorites
-                            const favorites = s.images.filter(img => img.isFavorite)
-                            const nonFavorites = s.images
-                                .filter(img => !img.isFavorite)
-                                .sort((a, b) => b.timestamp - a.timestamp)
-                            const keepCount = Math.max(0, MAX_IMAGES_PERSIST - favorites.length)
-                            return {
-                                ...s,
-                                queueCount: 0,
-                                queuedFileNames: undefined,
-                                images: [...favorites, ...nonFavorites.slice(0, keepCount)]
-                                    .sort((a, b) => b.timestamp - a.timestamp)
-                            }
-                        })
-                    })),
-                    activePresetId: state.activePresetId,
-                    gridColumns: state.gridColumns,
-                    thumbnailLayout: state.thumbnailLayout,
-                    sceneCompositionMode: state.sceneCompositionMode,
-                }
-            },
+            partialize: projectScenePresentationState,
             onRehydrateStorage: () => (state, error) => {
                 if (error) {
                     console.error('[SceneStore] Hydration failed:', error)

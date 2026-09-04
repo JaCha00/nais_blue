@@ -13,7 +13,9 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
-import { resolveGenerationFolder, type ResolvedGenerationFolder } from '@/domain/generation-folders'
+import type { ResolvedGenerationFolder } from '@/domain/generation-folders'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { useDefaultR2Readiness } from '@/hooks/useDefaultR2Readiness'
 import type { LibraryImageFormatChoice } from '@/services/library/library-image-workflow'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -47,10 +49,10 @@ export function LibraryImageWorkflowDialog({
 }) {
     const { t } = useTranslation()
     const folders = useSettingsStore(state => state.generationFolders)
+    const folderDocument = useSettingsStore(state => state.generationFolderDocument)
     const activeFolderId = useSettingsStore(state => state.activeGenerationFolderId)
     const savePath = useSettingsStore(state => state.savePath)
     const useAbsolutePath = useSettingsStore(state => state.useAbsolutePath)
-    const r2State = useDefaultR2Readiness()
     const [step, setStep] = useState(0)
     const [folderId, setFolderId] = useState(activeFolderId)
     const [format, setFormat] = useState<LibraryImageFormatChoice>('keep')
@@ -59,14 +61,24 @@ export function LibraryImageWorkflowDialog({
     const initializedForOpen = useRef(false)
     const autoUploadTouched = useRef(false)
 
-    const folder = useMemo(() => resolveGenerationFolder(folders, folderId, {
+    const preliminaryFolder = useMemo(() => resolveGenerationFolderAuthority(folderDocument, folders, folderId, {
         directory: savePath,
         useAbsolutePath,
-        r2Bucket: r2State.profile?.bucket,
-        r2Prefix: r2State.profile?.prefix,
-    }), [folderId, folders, r2State.profile, savePath, useAbsolutePath])
+        r2ProfileId: DEFAULT_R2_PROFILE_ID,
+    }), [folderDocument, folderId, folders, savePath, useAbsolutePath])
+    const requestedProfileId = preliminaryFolder?.r2.profileId ?? null
+    const r2State = useDefaultR2Readiness(requestedProfileId, open && requestedProfileId !== null)
+    const readinessMatches = r2State.profile?.id === requestedProfileId
+    const r2Ready = readinessMatches && r2State.status === 'ready'
+    const folder = useMemo(() => resolveGenerationFolderAuthority(folderDocument, folders, folderId, {
+        directory: savePath,
+        useAbsolutePath,
+        r2ProfileId: requestedProfileId,
+        r2Bucket: readinessMatches ? r2State.profile?.bucket : null,
+        r2Prefix: readinessMatches ? r2State.profile?.prefix : null,
+    }), [folderDocument, folderId, folders, readinessMatches, requestedProfileId, r2State.profile, savePath, useAbsolutePath])
     const publicUploadRequiresStrip = autoUpload
-        && r2State.status === 'ready'
+        && r2Ready
         && r2State.profile.publicMode !== 'private'
 
     useEffect(() => {
@@ -77,24 +89,25 @@ export function LibraryImageWorkflowDialog({
         if (initializedForOpen.current) return
         initializedForOpen.current = true
         autoUploadTouched.current = false
-        const selected = resolveGenerationFolder(folders, activeFolderId, {
+        const selected = resolveGenerationFolderAuthority(folderDocument, folders, activeFolderId, {
             directory: savePath,
             useAbsolutePath,
-            r2Bucket: r2State.profile?.bucket,
-            r2Prefix: r2State.profile?.prefix,
+            r2ProfileId: requestedProfileId,
+            r2Bucket: readinessMatches ? r2State.profile?.bucket : null,
+            r2Prefix: readinessMatches ? r2State.profile?.prefix : null,
         })
         setStep(0)
         setFolderId(activeFolderId)
         setFormat('keep')
         setStripMetadata(false)
-        setAutoUpload(r2State.status === 'ready' && selected?.r2.autoUpload === true)
-    }, [activeFolderId, folders, open, r2State, savePath, useAbsolutePath])
+        setAutoUpload(r2Ready && selected?.r2.autoUpload === true)
+    }, [activeFolderId, folderDocument, folders, open, r2Ready, r2State.profile, readinessMatches, requestedProfileId, savePath, useAbsolutePath])
 
     useEffect(() => {
-        if (open && !autoUploadTouched.current && r2State.status === 'ready' && folder?.r2.autoUpload) {
+        if (open && !autoUploadTouched.current && r2Ready && folder?.r2.autoUpload) {
             setAutoUpload(true)
         }
-    }, [folder?.r2.autoUpload, open, r2State.status])
+    }, [folder?.r2.autoUpload, open, r2Ready])
 
     useEffect(() => {
         if (publicUploadRequiresStrip) setStripMetadata(true)
@@ -229,11 +242,11 @@ export function LibraryImageWorkflowDialog({
                                         ? t('library.workflow.willKeep', '유지')
                                         : t('library.workflow.convertMetadata', '같은 형식은 유지 · 변환 시 sidecar 보존')}</span></div>
                             </div>
-                            <div className={cn('rounded-panel border border-border p-4', r2State.status !== 'ready' && 'bg-muted/45 opacity-70')}>
+                            <div className={cn('rounded-panel border border-border p-4', !r2Ready && 'bg-muted/45 opacity-70')}>
                                 <label className="flex min-h-11 items-start gap-3">
                                     <Checkbox
-                                        checked={r2State.status === 'ready' && autoUpload}
-                                        disabled={r2State.status !== 'ready'}
+                                        checked={r2Ready && autoUpload}
+                                        disabled={!r2Ready}
                                         onCheckedChange={checked => {
                                             autoUploadTouched.current = true
                                             setAutoUpload(checked === true)
@@ -246,7 +259,7 @@ export function LibraryImageWorkflowDialog({
                                         </span>
                                     </span>
                                 </label>
-                                {r2State.status !== 'ready' && (
+                                {!r2Ready && requestedProfileId !== null && (
                                     <Button asChild type="button" variant="outline" size="sm" className="mt-3 opacity-100">
                                         <Link to="/guided-preview/task/library/r2"><UploadCloud className="mr-2 h-4 w-4" />{t('library.workflow.setupR2', 'R2 업로드 설정하기')}</Link>
                                     </Button>
@@ -280,7 +293,7 @@ export function LibraryImageWorkflowDialog({
                                 folder,
                                 format,
                                 stripMetadata,
-                                autoUpload: r2State.status === 'ready' && autoUpload,
+                                autoUpload: r2Ready && autoUpload,
                             })}
                         >
                             <Check className="mr-2 h-4 w-4" />{t('library.workflow.createCopies', '새 파일 만들기')}

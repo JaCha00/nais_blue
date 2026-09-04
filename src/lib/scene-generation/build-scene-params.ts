@@ -7,7 +7,8 @@ import type {
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import type { DeepReadonly } from '@/domain/composition/provenance'
 import type { GenerationParams } from '@/services/novelai-api'
-import { resolveGenerationFolder, type ResolvedGenerationFolder } from '@/domain/generation-folders'
+import type { ResolvedGenerationFolder } from '@/domain/generation-folders'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { useAssetModuleStore } from '@/stores/asset-module-store'
 import { useCharacterPromptStore } from '@/stores/character-prompt-store'
 import {
@@ -585,7 +586,8 @@ function applyGenerationFolderPolicy(
     const folder = capturedFolder === undefined
         ? (() => {
             const settings = useSettingsStore.getState()
-            return resolveGenerationFolder(
+            return resolveGenerationFolderAuthority(
+                settings.generationFolderDocument,
                 settings.generationFolders,
                 scene.generationFolderId,
                 { directory: settings.sceneSavePath, useAbsolutePath: settings.useAbsoluteScenePath },

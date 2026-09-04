@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const runtime = vi.hoisted(() => {
-    type SceneImage = { url: string }
+    type SceneImage = { id?: string, url: string }
     type Scene = { id: string, images: SceneImage[] }
     type Preset = { id: string, name: string, scenes: Scene[] }
 
@@ -18,10 +18,10 @@ const runtime = vi.hoisted(() => {
     }
     const scene = {
         presets: [] as Preset[],
-        addImageToScene: vi.fn((presetId: string, sceneId: string, path: string) => {
+        addImageToScene: vi.fn((presetId: string, sceneId: string, path: string, imageId?: string) => {
             const target = scene.presets.find(candidate => candidate.id === presetId)
                 ?.scenes.find(candidate => candidate.id === sceneId)
-            target?.images.push({ url: path })
+            target?.images.push({ id: imageId, url: path })
         }),
     }
     const useGenerationStore = Object.assign(() => undefined, {
@@ -129,6 +129,16 @@ describe('Zustand Scene result presentation adapter', () => {
             sourceJobId: 'job-a',
             sourceSceneId: 'scene-a',
         })
+        expect(runtime.scene.addImageToScene).toHaveBeenCalledWith(
+            'preset-a',
+            'scene-a',
+            'NAI_Blue_Scene/result.png',
+            'artifact-a',
+        )
+        expect(runtime.scene.presets[0].scenes[0].images).toEqual([{
+            id: 'artifact-a',
+            url: 'NAI_Blue_Scene/result.png',
+        }])
 
         presentation.rollbackResult({
             presetId: 'preset-a',

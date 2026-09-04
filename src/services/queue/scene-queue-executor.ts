@@ -1,4 +1,5 @@
 import type { SceneResultPresentationPort } from '@/application/scene/scene-result-presentation-port'
+import { linkSceneArtifact } from '@/application/scene/link-scene-artifact'
 import { sha256Utf8 } from '@/domain/composition/canonical-serialize'
 import type { GenerationJob, QueueArtifactReference } from '@/domain/queue/types'
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
@@ -20,6 +21,8 @@ import {
 } from './queue-resource-materializer'
 import { decodeSceneJobSnapshot } from './scene-job-snapshot-codec'
 import { createSerializedProgressReporter } from './serialized-progress-reporter'
+import { getRuntimeSceneRepository } from '@/lib/scene-migration-startup'
+import { applySceneDocumentProjection } from '@/lib/scene-authority-runtime'
 
 function decodeImageBytes(imageData: string): Uint8Array {
     const encoded = imageData.replace(/^data:image\/[^;]+;base64,/, '')
@@ -140,6 +143,16 @@ export async function executeSceneQueueJob(
                             sourceJobId: job.id,
                             sourceSceneId: job.sceneId,
                         }
+                },
+                linkArtifact: async lineage => {
+                    const linked = await linkSceneArtifact(getRuntimeSceneRepository(), {
+                        presetId: payload.sceneWorkflow.saveContext.activePresetId,
+                        sceneId: payload.sceneWorkflow.scene.id,
+                        artifactId: lineage.artifactId,
+                        createdAt: artifactRegistration?.record.createdAt ?? new Date().toISOString(),
+                        favorite: false,
+                    })
+                    if ('document' in linked) applySceneDocumentProjection(linked.document)
                 },
                 rollbackArtifact: async () => {
                     await rollbackQueueArtifactRegistration(artifactRegistration)

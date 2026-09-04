@@ -1,3 +1,11 @@
+import type {
+    CharacterSlotPatch,
+    Extensions,
+    OutputPolicy,
+    ParamsOverride,
+    PromptContribution,
+} from '@/domain/composition/types'
+
 /** Persisted Scene prompt fields retained by the V1 compatibility reader. */
 export interface SceneV1PromptConfig {
     readonly base?: string
@@ -94,6 +102,23 @@ export interface SceneArtifactRef {
     readonly favorite: boolean
 }
 
+/** Serializable Scene-owned composition state shared by UI and Agent writes. */
+export interface SceneCompositionRef {
+    readonly recipeId: string
+    readonly selectionKind?: 'asset' | 'direct'
+    readonly recipeRevision?: number
+    readonly sceneContributions?: readonly PromptContribution[]
+    readonly paramsOverride?: Readonly<ParamsOverride>
+    readonly characterOverrides?: readonly CharacterSlotPatch[]
+    readonly outputOverride?: Readonly<OutputPolicy>
+    readonly migrationMarker?: {
+        readonly kind: 'legacy-scene-prompt'
+        readonly schemaVersion: 2
+        readonly extensions?: Readonly<Extensions>
+    }
+    readonly extensions?: Readonly<Extensions>
+}
+
 /** V2 authoring state excludes legacy URLs and every queue/presentation field. */
 export interface SceneAuthoringRecord {
     readonly id: string
@@ -109,7 +134,7 @@ export interface SceneAuthoringRecord {
     readonly generationFolderId?: string
     readonly filenameTemplate?: string
     readonly excludePinned?: boolean
-    readonly compositionRef?: unknown
+    readonly compositionRef?: SceneCompositionRef
     readonly artifactRefs: readonly SceneArtifactRef[]
     readonly createdAt: number
 }

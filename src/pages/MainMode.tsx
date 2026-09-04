@@ -82,7 +82,8 @@ import {
     preflightMainGeneration,
     type MainGenerationPreflight,
 } from '@/services/generation/main-generation-preflight'
-import { resolveGenerationFolder, DEFAULT_GENERATION_FOLDER_ID } from '@/domain/generation-folders'
+import { DEFAULT_GENERATION_FOLDER_ID } from '@/domain/generation-folders'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { useShallow } from 'zustand/react/shallow'
 
 function useMediaQuery(query: string): boolean {
@@ -210,6 +211,7 @@ export default function MainMode() {
         metadataMode: state.metadataMode,
         useStreaming: state.useStreaming,
         generationFolders: state.generationFolders,
+        generationFolderDocument: state.generationFolderDocument,
         activeGenerationFolderId: state.activeGenerationFolderId,
     })))
     const characterPromptState = useCharacterPromptStore(useShallow(state => ({
@@ -268,7 +270,8 @@ export default function MainMode() {
             ? t('composition.recipe.direct', 'Direct prompts')
             : effectiveRecipeId ?? t('composition.recipe.noneSelected', 'Select a recipe'))
 
-    const activeGenerationFolder = useMemo(() => resolveGenerationFolder(
+    const activeGenerationFolder = useMemo(() => resolveGenerationFolderAuthority(
+        settings.generationFolderDocument,
         settings.generationFolders,
         settings.activeGenerationFolderId,
         {
@@ -277,6 +280,7 @@ export default function MainMode() {
         },
     ), [
         settings.activeGenerationFolderId,
+        settings.generationFolderDocument,
         settings.generationFolders,
         settings.savePath,
         settings.useAbsolutePath,

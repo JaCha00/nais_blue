@@ -4,6 +4,9 @@ const persistedSceneStorage = vi.hoisted(() => ({ value: '' }))
 
 vi.mock('@/lib/indexed-db', () => ({
     SCENE_DOCUMENT_STORE_KEY: 'nai-blue-scene-documents',
+    FOLDER_DOCUMENT_STORE_KEY: 'nai-blue-generation-folder-documents',
+    FOLDER_V1_PREIMAGE_STORE_KEY: 'nai-blue-generation-folder-v1-preimage',
+    FOLDER_AUTHORITY_MARKER_STORE_KEY: 'nai-blue-generation-folder-authority',
     compareAndSetIndexedDBItem: async () => false,
     getIndexedDBItemStrict: async (key: string) => (
         key === 'nai-blue-scenes' ? persistedSceneStorage.value : null
@@ -15,6 +18,7 @@ vi.mock('@/lib/indexed-db', () => ({
         setItem: async () => undefined,
         removeItem: async () => undefined,
     },
+    setIndexedDBItemStrict: async () => undefined,
 }))
 
 import { IndexedDbSceneRepository } from '@/adapters/scene/indexeddb-scene-repository'
@@ -31,6 +35,7 @@ import {
     type SceneCard,
     type ScenePreset,
 } from '@/stores/scene-store'
+import { applyLegacySceneProjection } from '@/lib/scene-authority-runtime'
 
 const legacyScene = {
     id: 'scene:legacy',
@@ -202,12 +207,12 @@ describe('IndexedDbSceneRepository', () => {
         expect(projection?.presets[0].scenes[0]).not.toHaveProperty('compositionDiagnostics')
     })
 
-    it('matches Zustand hydration and existing prompt, caption, generation, and path resolvers', async () => {
+    it('matches the V1 fallback projection and existing prompt, caption, generation, and path resolvers', async () => {
         persistedSceneStorage.value = JSON.stringify({ state: persistedState, version: 0 })
-        await useSceneStore.persist.rehydrate()
         const projection = await new IndexedDbSceneRepository({
             getItem: async () => persistedSceneStorage.value,
         }).readLegacyProjection()
+        applyLegacySceneProjection(projection!)
         const projectedPresets = projection?.presets as unknown as ScenePreset[]
         const hydrated = useSceneStore.getState()
 

@@ -8,6 +8,11 @@ import {
 import { type GenerationParams } from '@/services/novelai-api'
 import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/output/filename-policy'
 import { getRuntimeOutputWriter, type OutputWriteResult } from '@/services/output/output-writer'
+import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
+import type { ArtifactRecord, OrganizerSourceImageFormat } from '@/domain/organizer/types'
+import type { RemoveOriginalIfUnmodifiedInput } from '@/services/organizer/artifact-repository'
+import type { PortablePathRef } from '@/domain/composition/types'
+import { bindDurableSceneOutputDirectory } from '@/lib/scene-output-portable-locator'
 
 export interface SaveSceneResultScene {
     readonly id: string
@@ -36,6 +41,8 @@ export interface SaveSceneResultOptions {
     commitDurable?: (result: OutputWriteResult) => void | Promise<void>
     /** Queue owners register the same immutable artifact before committing the Job. */
     registerArtifact?: (result: OutputWriteResult) => Promise<SceneOutputArtifactLineage | null>
+    /** Links the registered immutable artifact before transient presentation is published. */
+    linkArtifact?: (lineage: SceneOutputArtifactLineage) => Promise<void>
     /** Reverses only a record created by the current failed output workflow. */
     rollbackArtifact?: () => void | Promise<void>
     /** Post-commit work such as R2 release. Failure never rolls back a verified local output. */
@@ -68,11 +75,118 @@ export interface SceneOutputArtifactLineage {
     readonly sourceSceneId: string | null
 }
 
+export interface DirectSceneArtifactRegistration {
+    readonly record: ArtifactRecord
+    readonly created: boolean
+}
+
+interface DirectSceneArtifactRepository {
+    get(artifactId: string): Promise<ArtifactRecord | null>
+    putOriginal(input: {
+        artifactId: string
+        sourceJobId: string
+        sourceSceneId: string
+        file: { directory: NonNullable<NonNullable<OutputWriteResult['finalImage']>['portableDirectory']>; fileName: string }
+        format: OrganizerSourceImageFormat
+        contentChecksum: string
+        size: number
+    }): Promise<ArtifactRecord>
+    removeOriginalIfUnmodified(input: RemoveOriginalIfUnmodifiedInput): Promise<boolean>
+}
+
+/**
+ * Registers direct Scene output through the same Organizer authority as Queue output.
+ * Callers must supply a portable locator; raw OS paths never enter Artifact authority.
+ */
+export async function registerDirectSceneArtifact(
+    sourceJobId: string,
+    sourceSceneId: string,
+    output: OutputWriteResult,
+    repository: DirectSceneArtifactRepository = getRuntimeArtifactRepository(),
+): Promise<DirectSceneArtifactRegistration | null> {
+    const facts = output.finalImage
+    if (facts?.portableDirectory === undefined) {
+        throw new Error('Direct Scene output is missing a durable portable locator')
+    }
+    const artifactId = `artifact:${sourceJobId}`
+    const existing = await repository.get(artifactId)
+    if (existing !== null) {
+        if (existing.sourceJobId !== sourceJobId
+            || existing.sourceSceneId !== sourceSceneId
+            || existing.original.file.fileName !== output.fileName
+            || JSON.stringify(existing.original.file.directory) !== JSON.stringify(facts.portableDirectory)
+            || existing.contentChecksum !== facts.contentChecksum
+            || existing.original.size !== facts.byteSize) {
+            throw new Error('Direct Scene artifact identity is already bound to different output facts')
+        }
+        return { record: existing, created: false }
+    }
+    const format = output.fileName.toLowerCase().endsWith('.webp') ? 'webp' : 'png'
+    const record = await repository.putOriginal({
+        artifactId,
+        sourceJobId,
+        sourceSceneId,
+        file: { directory: facts.portableDirectory, fileName: output.fileName },
+        format,
+        contentChecksum: facts.contentChecksum,
+        size: facts.byteSize,
+    })
+    return { record, created: true }
+}
+
+export async function rollbackDirectSceneArtifact(
+    registration: DirectSceneArtifactRegistration | null,
+    repository: DirectSceneArtifactRepository = getRuntimeArtifactRepository(),
+): Promise<boolean> {
+    if (registration === null || !registration.created) return false
+    return repository.removeOriginalIfUnmodified({
+        artifactId: registration.record.artifactId,
+        file: registration.record.original.file,
+        contentChecksum: registration.record.contentChecksum,
+        size: registration.record.original.size,
+    })
+}
+
 const toDataUrl = (imageData: string, mimeType: string): string =>
     imageData.startsWith('data:') ? imageData : `data:${mimeType};base64,${imageData}`
 
 const toBase64 = (imageData: string): string =>
     imageData.replace(/^data:image\/[^;]+;base64,/, '')
+
+/** Converts an absolute Scene root into a logical bookmark while the raw path stays platform-local. */
+async function durableSceneOutputDirectory(
+    params: GenerationParams,
+    ctx: SaveSceneResultContext,
+    options: SaveSceneResultOptions,
+    destination: ReturnType<typeof resolveSceneOutputDirectory>,
+    useAbsoluteScenePath: boolean,
+): Promise<PortablePathRef | undefined> {
+    if (useAbsoluteScenePath) {
+        const exactDirectory = options.outputContext?.directory?.trim()
+        const root = exactDirectory || ctx.sceneSavePath.trim()
+        if (!root) return undefined
+        const bookmarkId = await bindDurableSceneOutputDirectory(root)
+        return {
+            kind: 'bookmark',
+            bookmarkId,
+            segments: exactDirectory ? [] : [...destination.nestedSegments],
+        }
+    }
+    if (params.portableOutputDirectory === undefined || options.outputContext?.directory !== undefined) {
+        return undefined
+    }
+    return params.portableOutputDirectory.kind === 'standard'
+        ? {
+            kind: 'standard',
+            root: params.portableOutputDirectory.root,
+            segments: [...params.portableOutputDirectory.segments, ...destination.nestedSegments],
+        }
+        : {
+            kind: 'bookmark',
+            bookmarkId: params.portableOutputDirectory.bookmarkId,
+            segments: [...params.portableOutputDirectory.segments, ...destination.nestedSegments],
+        }
+}
 
 export function resolveSceneOutputDirectory(params: {
     sceneSavePath: string
@@ -207,6 +321,13 @@ export async function saveSceneResult(
     let committedPath: string | null = null
     let workflowCommitted = false
     let artifactLineage: SceneOutputArtifactLineage | null = null
+    const portableOutputDirectory = await durableSceneOutputDirectory(
+        params,
+        ctx,
+        options,
+        destination,
+        useAbsoluteScenePath,
+    )
     try {
         const output = await getRuntimeOutputWriter().write({
             ...(options.outputTransactionId === undefined
@@ -216,27 +337,7 @@ export async function saveSceneResult(
             terminalWorkflowCommit: options.sourceJobId !== undefined,
             includeFinalImageFacts: options.registerArtifact !== undefined || options.afterSave !== undefined,
             destination: {
-                ...(params.portableOutputDirectory === undefined || options.outputContext?.directory !== undefined
-                    ? {}
-                    : {
-                        portableDirectory: params.portableOutputDirectory.kind === 'standard'
-                            ? {
-                                kind: 'standard' as const,
-                                root: params.portableOutputDirectory.root,
-                                segments: [
-                                    ...params.portableOutputDirectory.segments,
-                                    ...destination.nestedSegments,
-                                ],
-                            }
-                            : {
-                                kind: 'bookmark' as const,
-                                bookmarkId: params.portableOutputDirectory.bookmarkId,
-                                segments: [
-                                    ...params.portableOutputDirectory.segments,
-                                    ...destination.nestedSegments,
-                                ],
-                            },
-                    }),
+                ...(portableOutputDirectory === undefined ? {} : { portableDirectory: portableOutputDirectory }),
                 directory: destination.directory,
                 useAbsolutePath: useAbsoluteScenePath,
                 capabilityFallbackDirectory: destination.capabilityFallbackDirectory,
@@ -271,10 +372,26 @@ export async function saveSceneResult(
                 }
 
                 artifactLineage = await options.registerArtifact?.(outputResult) ?? null
+                if (options.registerArtifact !== undefined && artifactLineage === null) {
+                    throw new Error('Scene output requires a durable ArtifactRecord before publication')
+                }
+                // Queue durability must succeed before Scene gets a durable reference.
+                // Direct generation has no Queue commit and proceeds immediately.
+                await options.commitDurable?.(outputResult)
+                if (artifactLineage !== null) {
+                    try {
+                        await options.linkArtifact?.(artifactLineage)
+                    } catch (error) {
+                        // ArtifactRecord remains the replay authority; startup reconciliation
+                        // can retry the Scene link without deleting a verified output.
+                        console.warn('[SceneGeneration] Artifact saved; Scene link remains pending.', error)
+                    }
+                }
                 committedPath = outputResult.path
-                historyId = `scene-history-${crypto.randomUUID()}`
-                presentation.commitResult({
-                    historyId,
+                const nextHistoryId = `scene-history-${crypto.randomUUID()}`
+                historyId = nextHistoryId
+                const publish = () => presentation.commitResult({
+                    historyId: nextHistoryId,
                     presetId: ctx.activePresetId,
                     sceneId: scene.id,
                     path: outputResult.path,
@@ -290,7 +407,12 @@ export async function saveSceneResult(
                             ...(artifactLineage.sourceSceneId === null ? {} : { sourceSceneId: artifactLineage.sourceSceneId }),
                         }),
                 })
-                await options.commitDurable?.(outputResult)
+                if (options.commitDurable === undefined) publish()
+                else {
+                    try { publish() } catch (error) {
+                        console.warn('[SceneGeneration] Durable output committed; presentation update failed.', error)
+                    }
+                }
                 workflowCommitted = true
             },
             rollbackWorkflow: async () => {

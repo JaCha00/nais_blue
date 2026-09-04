@@ -26,8 +26,8 @@ vi.mock('@tauri-apps/api/path', () => ({
     join: async (...parts: string[]) => parts.join('/'),
 }))
 
-describe('Scene store legacy persistence hydration', () => {
-    it('hydrates a pre-composition SceneCard and defaults the missing rollout mode to v2', async () => {
+describe('Scene store legacy fallback projection', () => {
+    it('restores a pre-composition SceneCard without reviving its transient queue', async () => {
         const oldScene = {
             id: 'scene:legacy-hydrated',
             name: 'Legacy hydrated scene',
@@ -61,12 +61,21 @@ describe('Scene store legacy persistence hydration', () => {
 
         vi.resetModules()
         const { useSceneStore } = await import('@/stores/scene-store')
-        await useSceneStore.persist.rehydrate()
+        const { applyLegacySceneProjection } = await import('@/lib/scene-authority-runtime')
+        const { queueCount: _queueCount, ...legacyAuthoring } = oldScene
+        applyLegacySceneProjection({
+            presets: [{
+                id: 'preset:legacy-hydrated',
+                name: 'Legacy hydrated preset',
+                scenes: [legacyAuthoring],
+                createdAt: 1_680_000_000_000,
+            }],
+        })
 
         const state = useSceneStore.getState()
         const hydrated = state.getScene('preset:legacy-hydrated', 'scene:legacy-hydrated')
 
-        expect(hydrated).toEqual(oldScene)
+        expect(hydrated).toEqual({ ...legacyAuthoring, queueCount: 0, artifactRefs: [] })
         expect(hydrated).not.toHaveProperty('compositionRef')
         expect(hydrated?.compositionRef).toBeUndefined()
         expect(state.activePresetId).toBe('preset:legacy-hydrated')

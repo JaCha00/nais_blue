@@ -41,7 +41,8 @@ import {
 } from '@/lib/composition/main-adapter'
 import type { FragmentSequenceCommitProposal } from '@/domain/composition/fragment-resolver'
 import { buildLegacyMainGenerationParameters } from '@/domain/generation/legacy-main-parameters'
-import { DEFAULT_GENERATION_FOLDER_ID, resolveGenerationFolder } from '@/domain/generation-folders'
+import { DEFAULT_GENERATION_FOLDER_ID } from '@/domain/generation-folders'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import type { CompositionEngineIssue, CompositionEnginePlan } from '@/domain/composition/engine'
 import type { DeepReadonly } from '@/domain/composition/provenance'
@@ -1098,7 +1099,8 @@ export const useGenerationStore = create<GenerationState>()(
                 // Capture the output plan once. Neither a folder edit nor an R2
                 // profile edit may redirect later items in this batch.
                 const outputSettingsSnapshot = useSettingsStore.getState()
-                const preliminaryFolder = resolveGenerationFolder(
+                const preliminaryFolder = resolveGenerationFolderAuthority(
+                    outputSettingsSnapshot.generationFolderDocument,
                     outputSettingsSnapshot.generationFolders,
                     outputSettingsSnapshot.activeGenerationFolderId,
                     {
@@ -1107,17 +1109,19 @@ export const useGenerationStore = create<GenerationState>()(
                     },
                 )
                 const r2Readiness = preliminaryFolder?.r2.autoUpload
-                    ? await getDefaultR2Readiness()
+                    ? await getDefaultR2Readiness(preliminaryFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID)
                     : null
                 const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
                 const resolvedFolder = baseR2Profile === null
                     ? preliminaryFolder
-                    : resolveGenerationFolder(
+                    : resolveGenerationFolderAuthority(
+                        outputSettingsSnapshot.generationFolderDocument,
                         outputSettingsSnapshot.generationFolders,
                         outputSettingsSnapshot.activeGenerationFolderId,
                         {
                             directory: outputSettingsSnapshot.savePath,
                             useAbsolutePath: outputSettingsSnapshot.useAbsolutePath,
+                            r2ProfileId: baseR2Profile.id,
                             r2Bucket: baseR2Profile.bucket,
                             r2Prefix: baseR2Profile.prefix,
                         },
@@ -1540,7 +1544,7 @@ export const useGenerationStore = create<GenerationState>()(
                                 generationFolderId: generationFolder?.id ?? null,
                                 generationFolderPath: generationFolder?.path ?? null,
                                 autoR2UploadProfileId: generationFolder?.r2.autoUpload
-                                    ? DEFAULT_R2_PROFILE_ID
+                                    ? generationFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID
                                     : null,
                                 r2Bucket: generationFolder?.r2.bucket ?? null,
                                 r2Prefix: generationFolder?.r2.prefix ?? null,

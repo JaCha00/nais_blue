@@ -10,7 +10,15 @@ import { useCharacterStore } from '@/stores/character-store'
 import { useRotationStore } from '@/stores/character-rotation-store'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
-import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
+import {
+    registerDirectSceneArtifact,
+    rollbackDirectSceneArtifact,
+    saveSceneResult,
+    type DirectSceneArtifactRegistration,
+} from '@/lib/scene-generation/save-scene-result'
+import { linkSceneArtifact } from '@/application/scene/link-scene-artifact'
+import { applySceneDocumentProjection } from '@/lib/scene-authority-runtime'
+import { getRuntimeSceneRepository } from '@/lib/scene-migration-startup'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 import {
@@ -19,7 +27,7 @@ import {
 } from '@/lib/scene-generation/request-cancellation'
 import { useQueueStore } from '@/stores/queue-store'
 import { createZustandSceneResultPresentation } from '@/presentation/scene/zustand-scene-result-presentation'
-import { resolveGenerationFolder } from '@/domain/generation-folders'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import { gateGenerationFolderAutoUpload, getDefaultR2Readiness } from '@/services/r2/readiness'
 import { releaseGeneratedOutputToR2 } from '@/services/r2/generated-release'
@@ -160,7 +168,8 @@ async function processSceneWithSlot(
     try {
         const resolveStartedAt = Date.now()
         const settingsSnapshot = useSettingsStore.getState()
-        const preliminaryFolder = resolveGenerationFolder(
+        const preliminaryFolder = resolveGenerationFolderAuthority(
+            settingsSnapshot.generationFolderDocument,
             settingsSnapshot.generationFolders,
             scene.generationFolderId,
             {
@@ -169,17 +178,19 @@ async function processSceneWithSlot(
             },
         )
         const r2Readiness = preliminaryFolder?.r2.autoUpload
-            ? await getDefaultR2Readiness()
+            ? await getDefaultR2Readiness(preliminaryFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID)
             : null
         const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
         const resolvedFolder = baseR2Profile === null
             ? preliminaryFolder
-            : resolveGenerationFolder(
+            : resolveGenerationFolderAuthority(
+                settingsSnapshot.generationFolderDocument,
                 settingsSnapshot.generationFolders,
                 scene.generationFolderId,
                 {
                     directory: settingsSnapshot.sceneSavePath,
                     useAbsolutePath: settingsSnapshot.useAbsoluteScenePath,
+                    r2ProfileId: baseR2Profile.id,
                     r2Bucket: baseR2Profile.bucket,
                     r2Prefix: baseR2Profile.prefix,
                 },
@@ -286,22 +297,50 @@ async function processSceneWithSlot(
                 generationFolderPath: generationFolder.path,
                 directory: generationFolder.directory,
                 capabilityFallbackDirectory: generationFolder.useAbsolutePath ? 'NAI_Blue_Scene' : generationFolder.directory,
-                autoR2UploadProfileId: generationFolder.r2.autoUpload ? DEFAULT_R2_PROFILE_ID : null,
+                autoR2UploadProfileId: generationFolder.r2.autoUpload
+                    ? generationFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID
+                    : null,
                 r2Bucket: generationFolder.r2.bucket,
                 r2Prefix: generationFolder.r2.prefix,
             }
         const sourceJobId = `scene-direct-${operationId}`
+        let artifactRegistration: DirectSceneArtifactRegistration | null = null
         const saved = await saveSceneResult(scene, ctx, finalPrompt, params, result.imageData, mimeType, result.encodedVibes, {
             presentation: sceneResultPresentation,
             canSave: () => isSessionAlive(ctx.sessionId),
             sentPayloadSummary: result.sentPayloadSummary,
+            sourceJobId,
             outputContext,
+            registerArtifact: async output => {
+                artifactRegistration = await registerDirectSceneArtifact(sourceJobId, scene.id, output)
+                return artifactRegistration === null
+                    ? null
+                    : {
+                        artifactId: artifactRegistration.record.artifactId,
+                        sourceJobId,
+                        sourceSceneId: scene.id,
+                    }
+            },
+            linkArtifact: async lineage => {
+                const linked = await linkSceneArtifact(getRuntimeSceneRepository(), {
+                    presetId: ctx.activePresetId,
+                    sceneId: scene.id,
+                    artifactId: lineage.artifactId,
+                    createdAt: artifactRegistration?.record.createdAt ?? new Date().toISOString(),
+                    favorite: false,
+                })
+                if ('document' in linked) applySceneDocumentProjection(linked.document)
+            },
+            rollbackArtifact: async () => {
+                await rollbackDirectSceneArtifact(artifactRegistration)
+                artifactRegistration = null
+            },
             ...(generationFolder?.r2.autoUpload
                 ? {
                     afterSave: async output => {
                         try {
                             const release = await releaseGeneratedOutputToR2({
-                                profileId: DEFAULT_R2_PROFILE_ID,
+                                profileId: generationFolder.r2.profileId ?? DEFAULT_R2_PROFILE_ID,
                                 sourceJobId,
                                 imageFormat: mimeType === 'image/webp' ? 'webp' : 'png',
                                 output,

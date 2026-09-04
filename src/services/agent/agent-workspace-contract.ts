@@ -1,4 +1,8 @@
 import { normalizeAssetProfile } from '@/services/asset-profile-file'
+import type { GenerationFolderPatch } from '@/application/folder/plan-folder-changes'
+import type { ScenePatchSet } from '@/application/scene/patch-scenes'
+import type { SceneDocument } from '@/application/scene/scene-repository'
+import type { GenerationFolderDocument } from '@/domain/generation-folders'
 import type { Preset } from '@/stores/preset-store'
 import type { AssetProfile } from '@/types/asset-profile'
 
@@ -36,6 +40,8 @@ export interface AgentWorkspaceSnapshot {
         presets: Preset[]
         directories: AgentWorkspaceDirectories
         assetProfile: AssetProfile
+        sceneDocuments: readonly SceneDocument[]
+        generationFolderDocument: GenerationFolderDocument | null
     }
     privacy: {
         credentialsIncluded: false
@@ -65,6 +71,18 @@ export type AgentEditAction =
     | {
         type: 'asset-profile.replace'
         profile: AssetProfile
+    }
+    | {
+        type: 'scene.patch'
+        presetId: string
+        expectedRevision: number
+        scenePatches: readonly ScenePatchSet[]
+    }
+    | {
+        type: 'folder.patch'
+        workspaceId: string
+        expectedRevision: number
+        patches: readonly GenerationFolderPatch[]
     }
 
 export interface AgentEditRequest {
@@ -109,6 +127,12 @@ function finiteNumber(value: unknown, field: string, minimum: number, maximum: n
         throw new TypeError(`${field} is invalid.`)
     }
     return value
+}
+
+function revision(value: unknown, field: string): number {
+    const result = finiteNumber(value, field, 0, Number.MAX_SAFE_INTEGER)
+    if (!Number.isSafeInteger(result)) throw new TypeError(`${field} must be an integer.`)
+    return result
 }
 
 function boolean(value: unknown, field: string): boolean {
@@ -202,10 +226,50 @@ function validatePathsPatch(value: unknown): Partial<AgentWorkspaceDirectories> 
     ))) as Partial<AgentWorkspaceDirectories>
 }
 
+function validatePatchArray<T>(
+    value: unknown,
+    field: string,
+    allowedKeys: readonly string[],
+    idKey: string,
+): readonly T[] {
+    if (!Array.isArray(value) || value.length === 0 || value.length > 100) {
+        throw new TypeError(`${field} must contain between 1 and 100 patches.`)
+    }
+    assertAgentJsonSafe(value, field)
+    value.forEach((entry, index) => {
+        const patch = record(entry, `${field}[${index}]`)
+        exactKeys(patch, allowedKeys, `${field}[${index}]`)
+        boundedString(patch[idKey], `${field}[${index}].${idKey}`, 128)
+    })
+    return structuredClone(value) as readonly T[]
+}
+
+function validateScenePatches(value: unknown): readonly ScenePatchSet[] {
+    const scenePatches = validatePatchArray<ScenePatchSet>(
+        value,
+        'action.scenePatches',
+        ['sceneId', 'patches'],
+        'sceneId',
+    )
+    scenePatches.forEach((patchSet, index) => {
+        if (!Array.isArray(patchSet.patches) || patchSet.patches.length === 0 || patchSet.patches.length > 100) {
+            throw new TypeError(`action.scenePatches[${index}].patches must contain between 1 and 100 patches.`)
+        }
+    })
+    return scenePatches
+}
+
+function validateFolderPatches(value: unknown): readonly GenerationFolderPatch[] {
+    return validatePatchArray<GenerationFolderPatch>(value, 'action.patches', [
+        'folderId', 'displayName', 'pathSegment', 'parentId', 'rootDirectory', 'useAbsolutePath',
+        'commonPrompt', 'autoUpload', 'r2ProfilePolicy', 'r2BucketPolicy', 'r2PrefixPolicy',
+    ], 'folderId')
+}
+
 /** Prevents the local editable profile from becoming an accidental secret or binary store. */
 function assertAgentJsonSafe(value: unknown, path = '$', depth = 0, budget = { nodes: 0 }): void {
     budget.nodes += 1
-    if (budget.nodes > 100_000 || depth > 64) throw new TypeError('Asset Profile is too large or deeply nested.')
+    if (budget.nodes > 100_000 || depth > 64) throw new TypeError('Agent input is too large or deeply nested.')
     if (value === null || typeof value === 'boolean') return
     if (typeof value === 'number') {
         if (!Number.isFinite(value)) throw new TypeError(`${path} contains a non-finite number.`)
@@ -254,6 +318,24 @@ function validateAction(value: unknown): AgentEditAction {
         exactKeys(action, ['type', 'profile'], 'action')
         return { type, profile: validateAgentAssetProfile(action.profile) }
     }
+    if (type === 'scene.patch') {
+        exactKeys(action, ['type', 'presetId', 'expectedRevision', 'scenePatches'], 'action')
+        return {
+            type,
+            presetId: boundedString(action.presetId, 'action.presetId', 128),
+            expectedRevision: revision(action.expectedRevision, 'action.expectedRevision'),
+            scenePatches: validateScenePatches(action.scenePatches),
+        }
+    }
+    if (type === 'folder.patch') {
+        exactKeys(action, ['type', 'workspaceId', 'expectedRevision', 'patches'], 'action')
+        return {
+            type,
+            workspaceId: boundedString(action.workspaceId, 'action.workspaceId', 128),
+            expectedRevision: revision(action.expectedRevision, 'action.expectedRevision'),
+            patches: validateFolderPatches(action.patches),
+        }
+    }
     throw new TypeError(`Unsupported agent action: ${type}`)
 }
 
@@ -291,7 +373,11 @@ export function createAgentWorkspaceSnapshot(input: {
     presets: readonly Preset[]
     directories: AgentWorkspaceDirectories
     assetProfile: AssetProfile
+    sceneDocuments: readonly SceneDocument[]
+    generationFolderDocument: GenerationFolderDocument | null
 }): AgentWorkspaceSnapshot {
+    assertAgentJsonSafe(input.sceneDocuments, '$.editable.sceneDocuments')
+    assertAgentJsonSafe(input.generationFolderDocument, '$.editable.generationFolderDocument')
     return {
         schemaVersion: AGENT_WORKSPACE_SCHEMA_VERSION,
         revision: input.revision,
@@ -302,6 +388,10 @@ export function createAgentWorkspaceSnapshot(input: {
             presets: input.presets.map(preset => ({ ...preset, selectedResolution: { ...preset.selectedResolution } })),
             directories: Object.fromEntries(DIRECTORY_KEYS.map(key => [key, { ...input.directories[key] }])) as AgentWorkspaceDirectories,
             assetProfile: validateAgentAssetProfile(input.assetProfile),
+            sceneDocuments: structuredClone(input.sceneDocuments),
+            generationFolderDocument: input.generationFolderDocument === null
+                ? null
+                : structuredClone(input.generationFolderDocument),
         },
         privacy: {
             credentialsIncluded: false,

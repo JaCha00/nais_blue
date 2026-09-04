@@ -11,6 +11,7 @@ import type {
     SceneV1PromptConfig,
     SceneV1PresetProjection,
 } from '@/application/scene/scene-repository'
+import { isSceneCompositionRef } from '@/application/scene/patch-scenes'
 import {
     SCENE_DOCUMENT_STORE_KEY,
     compareAndSetIndexedDBItem,
@@ -131,7 +132,7 @@ function isSceneAuthoringRecord(value: unknown): value is SceneAuthoringRecord {
         && (value.generationFolderId === undefined || isNonEmptyString(value.generationFolderId))
         && (value.filenameTemplate === undefined || typeof value.filenameTemplate === 'string')
         && (value.excludePinned === undefined || typeof value.excludePinned === 'boolean')
-        && (value.compositionRef === undefined || isRecord(value.compositionRef))
+        && isSceneCompositionRef(value.compositionRef)
         && Array.isArray(value.artifactRefs)
         && value.artifactRefs.every(isArtifactRef)
         && new Set(value.artifactRefs.map(ref => (ref as SceneArtifactRef).artifactId)).size === value.artifactRefs.length
@@ -254,6 +255,21 @@ export function projectSceneV1Compatibility(value: unknown): SceneV1Compatibilit
     return { presets: value.presets.map(projectPreset) }
 }
 
+/** Parses one exact legacy Zustand preimage without consulting the live store key. */
+export function projectSceneV1Preimage(serialized: string): SceneV1CompatibilityProjection {
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(serialized) as unknown
+    } catch {
+        throw new TypeError('Scene Zustand envelope is invalid')
+    }
+    if (!isRecord(parsed)) throw new TypeError('Scene Zustand envelope is invalid')
+    if (parsed.version !== SCENE_PERSIST_VERSION || !isRecord(parsed.state)) {
+        throw new TypeError('Unsupported Scene Zustand envelope')
+    }
+    return projectSceneV1Compatibility(parsed.state)
+}
+
 /** Keeps legacy Zustand reads isolated while V2 documents commit to their own CAS key. */
 export class IndexedDbSceneRepository implements SceneRepositoryPort {
     constructor(private readonly persistence: ScenePersistencePort & Partial<Pick<
@@ -264,18 +280,7 @@ export class IndexedDbSceneRepository implements SceneRepositoryPort {
     async readLegacyProjection(): Promise<SceneV1CompatibilityProjection | null> {
         const serialized = await this.persistence.getItem(SCENE_STORAGE_KEY)
         if (serialized === null) return null
-
-        let parsed: unknown
-        try {
-            parsed = JSON.parse(serialized) as unknown
-        } catch {
-            throw new TypeError('Scene Zustand envelope is invalid')
-        }
-        if (!isRecord(parsed)) throw new TypeError('Scene Zustand envelope is invalid')
-        if (parsed.version !== SCENE_PERSIST_VERSION || !isRecord(parsed.state)) {
-            throw new TypeError('Unsupported Scene Zustand envelope')
-        }
-        return projectSceneV1Compatibility(parsed.state)
+        return projectSceneV1Preimage(serialized)
     }
 
     async getDocument(presetId: string): Promise<SceneDocument | null> {

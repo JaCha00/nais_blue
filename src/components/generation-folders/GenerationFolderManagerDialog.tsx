@@ -15,15 +15,17 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/components/ui/use-toast'
+import { planGenerationFolderChanges } from '@/application/folder/plan-folder-changes'
 import {
     DEFAULT_GENERATION_FOLDER_ID,
     generationFolderDescendantIds,
-    resolveGenerationFolder,
     type GenerationFolder,
 } from '@/domain/generation-folders'
-import type { DefaultR2Readiness } from '@/hooks/useDefaultR2Readiness'
+import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
+import { matchR2Readiness, useDefaultR2Readiness } from '@/hooks/useDefaultR2Readiness'
 import { cn } from '@/lib/utils'
 import { openNativeFileDialog } from '@/platform/native-file-dialog'
+import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { useSettingsStore } from '@/stores/settings-store'
 
 interface FolderRow {
@@ -49,21 +51,19 @@ export function GenerationFolderManagerDialog({
     open,
     onOpenChange,
     onSaved,
-    r2State,
 }: {
     open: boolean
     onOpenChange(open: boolean): void
     onSaved?(folderId: string): void
-    r2State: DefaultR2Readiness
 }) {
     const { t } = useTranslation()
     const folders = useSettingsStore(state => state.generationFolders)
+    const folderDocument = useSettingsStore(state => state.generationFolderDocument)
     const activeId = useSettingsStore(state => state.activeGenerationFolderId)
     const savePath = useSettingsStore(state => state.savePath)
     const useAbsolutePath = useSettingsStore(state => state.useAbsolutePath)
     const addFolder = useSettingsStore(state => state.addGenerationFolder)
-    const updateFolder = useSettingsStore(state => state.updateGenerationFolder)
-    const moveFolders = useSettingsStore(state => state.moveGenerationFolders)
+    const saveFolder = useSettingsStore(state => state.saveGenerationFolder)
     const deleteFolders = useSettingsStore(state => state.deleteGenerationFolders)
     const copyPrompt = useSettingsStore(state => state.copyGenerationFolderPrompt)
     const setActive = useSettingsStore(state => state.setActiveGenerationFolder)
@@ -83,6 +83,14 @@ export function GenerationFolderManagerDialog({
     const [transferTargets, setTransferTargets] = useState<string[]>([])
     const [error, setError] = useState<string | null>(null)
     const [deleteOpen, setDeleteOpen] = useState(false)
+    const selectedPreliminary = resolveGenerationFolderAuthority(folderDocument, folders, selected?.id, {
+        directory: savePath,
+        useAbsolutePath,
+        r2ProfileId: DEFAULT_R2_PROFILE_ID,
+    })
+    const selectedProfileId = selectedPreliminary?.r2.profileId ?? null
+    const r2State = useDefaultR2Readiness(selectedProfileId, open && selectedProfileId !== null)
+    const { profile: selectedR2Profile, ready: r2Ready } = matchR2Readiness(selectedProfileId, r2State)
 
     useEffect(() => {
         if (!open) return
@@ -112,28 +120,47 @@ export function GenerationFolderManagerDialog({
     const descendants = new Set(generationFolderDescendantIds(folders, selected.id))
     const parentOptions = rows.filter(row => row.folder.id !== selected.id && !descendants.has(row.folder.id))
     const transferOptions = rows.filter(row => descendants.has(row.folder.id))
-    const previewFolders = folders.map(folder => folder.id === selected.id
-        ? {
-            ...folder,
-            name: name.trim() || folder.name,
-            parentId,
-            rootDirectory: parentId === null ? rootDirectory.trim() || null : null,
-            useAbsolutePath: parentId === null && absolute,
-            commonPrompt,
-            r2: {
-                autoUpload,
-                bucket: bucket.trim() || null,
-                prefix: prefix.trim() || null,
-            },
-        }
-        : folder)
-    let resolved: ReturnType<typeof resolveGenerationFolder> = null
+    let previewDocument = folderDocument
+    let resolved: ReturnType<typeof resolveGenerationFolderAuthority> = null
     try {
-        resolved = resolveGenerationFolder(previewFolders, selected.id, {
+        if (folderDocument !== null) {
+            const authorityFolder = folderDocument.folders.find(folder => folder.id === selected.id)
+            if (authorityFolder === undefined) throw new TypeError('Generation folder does not exist')
+            const bucketValue = bucket.trim()
+            const prefixValue = prefix.trim()
+            const planned = planGenerationFolderChanges(folderDocument, [{
+                folderId: selected.id,
+                displayName: name.trim() || selected.name,
+                parentId,
+                rootDirectory: parentId === null ? rootDirectory.trim() || selected.pathSegment || selected.name : null,
+                useAbsolutePath: parentId === null && absolute,
+                commonPrompt,
+                autoUpload,
+                r2BucketPolicy: bucketValue
+                    ? { mode: 'set', value: bucketValue }
+                    : authorityFolder.r2BucketPolicy.mode === 'set'
+                        ? { mode: 'inherit' }
+                        : authorityFolder.r2BucketPolicy,
+                r2PrefixPolicy: prefixValue
+                    ? { mode: 'set', value: prefixValue }
+                    : authorityFolder.r2PrefixPolicy.mode === 'set'
+                        ? { mode: 'inherit' }
+                        : authorityFolder.r2PrefixPolicy,
+            }], {
+                directory: savePath,
+                useAbsolutePath,
+                r2ProfileId: selectedProfileId,
+                r2Bucket: selectedR2Profile?.bucket,
+                r2Prefix: selectedR2Profile?.prefix,
+            })
+            previewDocument = planned.status === 'PLANNED' ? planned.document : null
+        }
+        resolved = resolveGenerationFolderAuthority(previewDocument, folders, selected.id, {
             directory: savePath,
             useAbsolutePath,
-            r2Bucket: r2State.profile?.bucket,
-            r2Prefix: r2State.profile?.prefix,
+            r2ProfileId: selectedProfileId,
+            r2Bucket: selectedR2Profile?.bucket,
+            r2Prefix: selectedR2Profile?.prefix,
         })
     } catch {
         resolved = null
@@ -156,14 +183,13 @@ export function GenerationFolderManagerDialog({
 
     const save = () => {
         try {
-            if (parentId !== selected.parentId) moveFolders([selected.id], parentId)
-            updateFolder(selected.id, {
+            saveFolder(selected.id, parentId, {
                 name,
                 rootDirectory,
                 useAbsolutePath: absolute,
                 commonPrompt,
                 r2: {
-                    autoUpload: r2State.status === 'ready' ? autoUpload : false,
+                    autoUpload: r2Ready ? autoUpload : false,
                     bucket,
                     prefix,
                 },
@@ -323,8 +349,7 @@ export function GenerationFolderManagerDialog({
                                                 </div>
                                                 <p className="mt-2 text-xs text-muted-foreground">{t('generationFolders.manager.transferWarning', '선택한 폴더의 기존 공통 프롬프트를 덮어씁니다.')}</p>
                                                 <Button type="button" size="sm" variant="outline" className="mt-3" disabled={transferTargets.length === 0} onClick={() => {
-                                                    updateFolder(selected.id, { commonPrompt })
-                                                    copyPrompt(selected.id, transferTargets)
+                                                    copyPrompt(selected.id, transferTargets, commonPrompt)
                                                 }}>{t('generationFolders.manager.transferAction', '선택한 폴더로 복사')}</Button>
                                             </details>
                                         )}
@@ -337,12 +362,12 @@ export function GenerationFolderManagerDialog({
                                             <h3 className="text-base font-semibold">{t('generationFolders.manager.r2Title', '완료된 이미지를 R2에도 올릴까요?')}</h3>
                                             <p className="mt-1 text-sm text-muted-foreground">{t('generationFolders.manager.r2Help', '폴더마다 켜거나 끌 수 있습니다.')}</p>
                                         </div>
-                                        <div className={cn('rounded-panel border border-border p-4', r2State.status !== 'ready' && 'bg-muted/45 opacity-70')}>
+                                        <div className={cn('rounded-panel border border-border p-4', !r2Ready && 'bg-muted/45 opacity-70')}>
                                             <label className="flex min-h-11 items-start gap-3 text-sm font-medium">
-                                                <Checkbox checked={r2State.status === 'ready' && autoUpload} disabled={r2State.status !== 'ready'} onCheckedChange={checked => setAutoUpload(checked === true)} />
+                                                <Checkbox checked={r2Ready && autoUpload} disabled={!r2Ready} onCheckedChange={checked => setAutoUpload(checked === true)} />
                                                 <span>{t('generationFolders.manager.autoUpload', '이 폴더의 새 이미지를 자동 업로드')}<span className="mt-1 block text-xs font-normal text-muted-foreground">{t('generationFolders.manager.autoUploadHelp', '하위 폴더는 각자 따로 선택합니다.')}</span></span>
                                             </label>
-                                            {r2State.status !== 'ready' && (
+                                            {!r2Ready && selectedProfileId !== null && (
                                                 <Button asChild type="button" variant="outline" size="sm" className="mt-3 opacity-100">
                                                     <Link to="/guided-preview/task/library/r2"><CloudUpload className="mr-2 h-4 w-4" />{t('generationFolders.manager.setupR2', 'R2 업로드 설정하기')}</Link>
                                                 </Button>
@@ -357,8 +382,8 @@ export function GenerationFolderManagerDialog({
                                         <details className="rounded-panel border border-border/60 p-4">
                                             <summary className="cursor-pointer text-sm font-semibold">{t('generationFolders.manager.advancedR2', '버킷 또는 프리픽스 직접 바꾸기 · 고급')}</summary>
                                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                                <label className="grid gap-1 text-xs font-medium"><span>{t('generationFolders.manager.bucketOverride', '버킷')}</span><Input value={bucket} onChange={event => setBucket(event.target.value)} placeholder={r2State.profile?.bucket || t('generationFolders.manager.useDefaultProfile', '기본 프로필 사용')} /></label>
-                                                <label className="grid gap-1 text-xs font-medium"><span>{t('generationFolders.manager.prefixOverride', '프리픽스')}</span><Input value={prefix} onChange={event => setPrefix(event.target.value)} placeholder={r2State.profile?.prefix || t('generationFolders.manager.useDefaultProfile', '기본 프로필 사용')} /></label>
+                                                <label className="grid gap-1 text-xs font-medium"><span>{t('generationFolders.manager.bucketOverride', '버킷')}</span><Input value={bucket} onChange={event => setBucket(event.target.value)} placeholder={selectedR2Profile?.bucket || t('generationFolders.manager.useDefaultProfile', '기본 프로필 사용')} /></label>
+                                                <label className="grid gap-1 text-xs font-medium"><span>{t('generationFolders.manager.prefixOverride', '프리픽스')}</span><Input value={prefix} onChange={event => setPrefix(event.target.value)} placeholder={selectedR2Profile?.prefix || t('generationFolders.manager.useDefaultProfile', '기본 프로필 사용')} /></label>
                                             </div>
                                             <p className="mt-3 text-xs leading-5 text-muted-foreground">{t('generationFolders.manager.prefixRule', '상위 프리픽스가 있으면 폴더 이름이 뒤에 붙습니다. 이 폴더에서 직접 입력한 값이 있으면 그 값이 우선합니다.')}</p>
                                         </details>
