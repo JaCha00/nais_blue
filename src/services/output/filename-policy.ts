@@ -11,6 +11,15 @@ export interface RenderFilenameTemplateParams {
 }
 
 export type OutputCollisionPolicy = 'unique' | 'overwrite' | 'error'
+export type PlannedOutputCollisionPolicy = 'fail' | 'suffix'
+
+export interface PlanExactOutputFileNameInput {
+    readonly requestedFileName: string
+    readonly extension: 'png' | 'webp'
+    readonly collisionPolicy: PlannedOutputCollisionPolicy
+    /** Includes both filesystem entries and already-durable Queue reservations. */
+    readonly exists: (candidate: string) => boolean | Promise<boolean>
+}
 
 export const DEFAULT_FILENAME_MAX_LENGTH = 180
 
@@ -165,4 +174,21 @@ export async function resolveCollisionFileName(
         if (!await exists(candidate)) return candidate
     }
     throw new Error(`Unable to allocate a unique output name for ${requestedFileName}`)
+}
+
+/**
+ * Resolves the final filename before enqueue. OutputWriter receives this exact
+ * name with its strict `error` policy, so execution cannot silently re-suffix a
+ * destination after the user reviewed it.
+ */
+export async function planExactOutputFileName(
+    input: PlanExactOutputFileNameInput,
+): Promise<string> {
+    const requested = ensureImageFileExtension(input.requestedFileName, input.extension)
+    if (requested === null) throw new TypeError('An output filename is required.')
+    return resolveCollisionFileName(
+        requested,
+        input.collisionPolicy === 'suffix' ? 'unique' : 'error',
+        input.exists,
+    )
 }

@@ -2,14 +2,18 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEmptyGenerationBatchSummary } from '@/domain/queue/summary'
-import type { GenerationJobSnapshot } from '@/domain/queue/types'
+import type { GenerationJobSnapshot, OutputReservation } from '@/domain/queue/types'
 import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import {
     IndexedDBQueueRepository,
     QueueRepositoryError,
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
-import { createGenerationJobSnapshot, hashGenerationJobSnapshot } from '@/services/queue/job-snapshot'
+import {
+    bindOutputReservationSnapshot,
+    createGenerationJobSnapshot,
+    hashGenerationJobSnapshot,
+} from '@/services/queue/job-snapshot'
 import { recoverQueueAfterRestart } from '@/services/queue/recovery'
 
 const NOW = '2026-07-14T04:00:00.000Z'
@@ -316,13 +320,49 @@ async function readRawJob(factory: IDBFactory, name: string, version: number): P
     })
 }
 
+function reservation(overrides: Partial<OutputReservation> = {}): OutputReservation {
+    return {
+        reservationId: 'reservation:1',
+        batchId: 'batch:1',
+        jobId: 'job:1',
+        folderBinding: {
+            resourceType: 'generation-folder-document',
+            resourceId: 'folder:1',
+            revision: 3,
+            contentHash: `sha256:${'a'.repeat(64)}`,
+        },
+        relativePath: 'portraits/Image.webp',
+        collisionPolicy: 'fail',
+        expectedExistingDigest: null,
+        state: 'storage-pending',
+        ...overrides,
+    }
+}
+
+function reservedJobInput(
+    value: OutputReservation,
+    overrides: Partial<EnqueueGenerationJobInput> = {},
+): EnqueueGenerationJobInput {
+    const job = jobInput(overrides)
+    const {
+        batchId: _batchId,
+        jobId: _jobId,
+        state: _state,
+        ...snapshotReservation
+    } = value
+    return {
+        ...job,
+        snapshot: bindOutputReservationSnapshot(job.snapshot, snapshotReservation),
+    }
+}
+
 async function updateRawAttempt(
     factory: IDBFactory,
     name: string,
     update: (attempt: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-        const request = factory.open(name, 6)
+        const request = factory.open(name, 7)
         request.onerror = () => reject(request.error)
         request.onsuccess = () => {
             const database = request.result
@@ -353,8 +393,10 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
 
         const schema = await queue.inspectSchema()
-        expect(schema.version).toBe(6)
-        expect(schema.stores).toEqual(['attempts', 'batches', 'jobs', 'leases', 'resources'])
+        expect(schema.version).toBe(7)
+        expect(schema.stores).toEqual([
+            'attempts', 'batches', 'jobs', 'leases', 'output-reservations', 'resources',
+        ])
         expect(schema.indexes.jobs).toEqual([
             'by-batch-order',
             'by-batch-state-order',
@@ -365,7 +407,204 @@ describe('normalized IndexedDB durable queue repository', () => {
         ])
         expect(schema.indexes.leases).toContain('by-expires-at')
         expect(schema.indexes.batches).toContain('by-queue-sequence')
+        expect(schema.indexes['output-reservations']).toEqual(['by-job-id', 'by-normalized-path'])
         queue.close()
+    })
+
+    it('atomically reserves normalized output paths and reuses an identical replay', async () => {
+        const factory = new IDBFactory()
+        const name = databaseName('output-reservations')
+        const queue = repository(factory, name)
+        const input = {
+            batch: {
+                id: 'batch:1', workflow: 'main' as const, createdAt: NOW,
+                failurePolicy: 'continue' as const, origin: 'fresh' as const, idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+            reservations: [reservation()],
+        }
+
+        const created = await queue.createBatchAndEnqueue(input)
+        const replayed = await queue.createBatchAndEnqueue(input)
+
+        expect(created.reservations).toEqual([reservation()])
+        expect(replayed.reservations).toEqual(created.reservations)
+        expect(await queue.getOutputReservation('reservation:1')).toEqual(reservation())
+        expect(await queue.getOutputReservationByPath('portraits/image.webp')).toEqual(reservation())
+        expect(await queue.listOutputReservationsByJob('job:1')).toEqual([reservation()])
+        expect(created.reservations[0]).not.toHaveProperty('normalizedPath')
+
+        queue.close()
+        const restarted = repository(factory, name)
+        expect(await restarted.getOutputReservationByPath('portraits/image.webp')).toEqual(reservation())
+    })
+
+    it('rejects a reservation that is missing from the immutable job snapshot', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-snapshot'))
+
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [jobInput()],
+            reservations: [reservation()],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_RECORD_INVALID' })
+
+        expect(await queue.getBatch('batch:1')).toBeNull()
+        expect(await queue.getJob('job:1')).toBeNull()
+        expect(await queue.getOutputReservation('reservation:1')).toBeNull()
+    })
+
+    it('rejects multiple output reservations for one job', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-job-identity'))
+
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+            reservations: [
+                reservation(),
+                reservation({ reservationId: 'reservation:2', relativePath: 'portraits/other.webp' }),
+            ],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
+
+        expect(await queue.getBatch('batch:1')).toBeNull()
+    })
+
+    it('keeps abandoned reservation history without occupying its normalized path', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-abandoned'))
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+            reservations: [reservation()],
+        })
+        await queue.transitionOutputReservation({
+            reservationId: 'reservation:1', expectedState: 'storage-pending', state: 'abandoned',
+        })
+        const replacement = reservation({
+            reservationId: 'reservation:2', batchId: 'batch:2', jobId: 'job:2', state: 'storage-pending',
+        })
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:2', workflow: 'main', createdAt: LATER,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:2',
+            },
+            jobs: [reservedJobInput(replacement, {
+                id: 'job:2', batchId: 'batch:2', createdAt: LATER, idempotencyKey: 'idempotency:2',
+            })],
+            reservations: [replacement],
+        })
+
+        expect(await queue.getOutputReservation('reservation:1')).toEqual(reservation({ state: 'abandoned' }))
+        expect(await queue.getOutputReservationByPath('portraits/Image.webp')).toEqual(replacement)
+    })
+
+    it('moves reservation ownership through writing and releases only on abandon', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-transitions'))
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+            reservations: [reservation()],
+        })
+
+        await expect(queue.transitionOutputReservation({
+            reservationId: 'reservation:1', expectedState: 'storage-pending', state: 'writing',
+        })).resolves.toMatchObject({ state: 'writing' })
+        await expect(queue.transitionOutputReservation({
+            reservationId: 'reservation:1', expectedState: 'storage-pending', state: 'committed',
+        })).rejects.toMatchObject({ code: 'E_QUEUE_INVALID_TRANSITION' })
+        await expect(queue.transitionOutputReservation({
+            reservationId: 'reservation:1', expectedState: 'writing', state: 'conflict',
+        })).resolves.toMatchObject({ state: 'conflict' })
+        expect(await queue.getOutputReservationByPath('portraits/image.webp')).not.toBeNull()
+        await expect(queue.transitionOutputReservation({
+            reservationId: 'reservation:1', expectedState: 'conflict', state: 'abandoned',
+        })).resolves.toMatchObject({ state: 'abandoned' })
+        expect(await queue.getOutputReservationByPath('portraits/image.webp')).toBeNull()
+        expect(await queue.getOutputReservation('reservation:1')).toMatchObject({ state: 'abandoned' })
+    })
+
+    it('rolls back a whole enqueue when a normalized output path is already reserved', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-collision'))
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+            reservations: [reservation()],
+        })
+
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:2', workflow: 'main', createdAt: LATER,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:2',
+            },
+            jobs: [reservedJobInput(reservation({
+                reservationId: 'reservation:2', batchId: 'batch:2', jobId: 'job:2',
+                relativePath: 'portraits/image.webp',
+                folderBinding: {
+                    resourceType: 'generation-folder-document',
+                    resourceId: 'folder:changed',
+                    revision: 9,
+                    contentHash: `sha256:${'b'.repeat(64)}`,
+                },
+            }), {
+                id: 'job:2', batchId: 'batch:2', createdAt: LATER, idempotencyKey: 'idempotency:2',
+            })],
+            reservations: [reservation({
+                reservationId: 'reservation:2', batchId: 'batch:2', jobId: 'job:2',
+                relativePath: 'portraits/image.webp',
+                folderBinding: {
+                    resourceType: 'generation-folder-document',
+                    resourceId: 'folder:changed',
+                    revision: 9,
+                    contentHash: `sha256:${'b'.repeat(64)}`,
+                },
+            })],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
+
+        expect(await queue.getBatch('batch:2')).toBeNull()
+        expect(await queue.getJob('job:2')).toBeNull()
+        expect(await queue.getOutputReservation('reservation:2')).toBeNull()
+    })
+
+    it('rejects a replay that changes reservation meaning', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-reservation-idempotency'))
+        const base = {
+            batch: {
+                id: 'batch:1', workflow: 'main' as const, createdAt: NOW,
+                failurePolicy: 'continue' as const, origin: 'fresh' as const, idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(reservation())],
+        }
+        await queue.createBatchAndEnqueue({
+            ...base,
+            jobs: [reservedJobInput(reservation())],
+            reservations: [reservation()],
+        })
+
+        await expect(queue.createBatchAndEnqueue({
+            ...base,
+            jobs: [reservedJobInput(reservation({ collisionPolicy: 'suffix' }))],
+            reservations: [reservation({ collisionPolicy: 'suffix' })],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
+        expect(await queue.getOutputReservation('reservation:1')).toEqual(reservation())
     })
 
     it('projects the immutable output folder without exposing the full snapshot', async () => {

@@ -468,14 +468,17 @@ export class OutputWriter {
         const failures: unknown[] = []
         for (const artifact of [...journal.artifacts].reverse()) {
             try {
+                // Capture this before cleanup: a missing temp after commit start
+                // can mean rename succeeded before its journal update, while an
+                // existing temp proves a late final belongs to another writer.
+                const tempExisted = await this.platform.exists(artifact.temp)
                 await this.safeRemove(artifact.temp)
                 if (artifact.backup !== undefined) {
                     if (await this.platform.exists(artifact.backup)) {
                         await this.safeRemove(artifact.final)
                         await this.platform.rename(artifact.backup, artifact.final)
                     }
-                } else if (journal.commitStarted
-                    && (artifact.committed || !await this.platform.exists(artifact.temp))) {
+                } else if (journal.commitStarted && (artifact.committed || !tempExisted)) {
                     await this.safeRemove(artifact.final)
                 }
             } catch (error) {
@@ -759,6 +762,16 @@ export class OutputWriter {
             journal.commitStarted = true
             for (const artifact of artifacts) {
                 if (await this.platform.exists(artifact.final)) {
+                    // A reviewed/reserved destination is fail-only at execution.
+                    // Only the explicit legacy overwrite policy may displace an
+                    // existing final; late external writers otherwise win and
+                    // this transaction rolls its staged files back.
+                    if (collisionPolicy !== 'overwrite') {
+                        throw new OutputWriterError(
+                            'atomic-commit',
+                            `Output destination changed before commit: ${artifact.final.displayPath}`,
+                        )
+                    }
                     artifact.backup = childOutputRef(
                         artifact.kind === 'provider-original' ? privateOriginalDirectory : directory,
                         backupName(artifact.final.path.split(/[\\/]/).pop() ?? fileName, transactionId),

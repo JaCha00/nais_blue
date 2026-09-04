@@ -2,6 +2,7 @@ import { canonicalSerialize, hashCanonicalValue } from '@/domain/composition/can
 import type {
     GenerationJobSnapshot,
     GenerationSnapshotResource,
+    OutputReservationSnapshot,
     SnapshotResumability,
 } from '@/domain/queue/types'
 import type { ProviderExecutionEnvelope } from '@/domain/queue/provider-result'
@@ -133,4 +134,18 @@ export function createGenerationJobSnapshot(input: CreateGenerationJobSnapshotIn
 export function hashGenerationJobSnapshot(snapshot: GenerationJobSnapshot): string {
     assertGenerationJobSnapshotSafe(snapshot)
     return `sha256:${hashCanonicalValue(snapshot)}`
+}
+
+/** Binds the Queue-owned exact destination before snapshot hashing and enqueue. */
+export function bindOutputReservationSnapshot(
+    snapshot: GenerationJobSnapshot,
+    outputReservation: OutputReservationSnapshot,
+): GenerationJobSnapshot {
+    if (snapshot.outputReservation !== undefined
+        && canonicalSerialize(snapshot.outputReservation) !== canonicalSerialize(outputReservation)) {
+        throw new QueueSnapshotError('Snapshot already contains a different output reservation')
+    }
+    const candidate = { ...snapshot, outputReservation }
+    assertGenerationJobSnapshotSafe(candidate)
+    return deepFreeze(JSON.parse(canonicalSerialize(candidate)) as GenerationJobSnapshot)
 }

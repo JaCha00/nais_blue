@@ -31,6 +31,22 @@ export type GenerationWorkflow = 'main' | 'scene' | 'style-lab'
 export type SnapshotResourceRole = 'source' | 'mask' | 'character-reference' | 'vibe-reference' | 'other'
 export type SnapshotResourcePersistence = 'managed-app-data' | 'portable' | 'volatile'
 export type SnapshotResumability = 'resumable' | 'non-resumable'
+
+export interface OutputReservationFolderBinding {
+    readonly resourceType: 'generation-folder-document'
+    readonly resourceId: string
+    readonly revision: number
+    readonly contentHash: `sha256:${string}`
+}
+
+export interface OutputReservationSnapshot {
+    readonly reservationId: string
+    readonly folderBinding: OutputReservationFolderBinding
+    readonly relativePath: string
+    readonly collisionPolicy: 'fail' | 'suffix'
+    /** Phase 6 is create-only; local overwrite has no approved digest contract. */
+    readonly expectedExistingDigest: null
+}
 export type QueueBlockReason =
     | 'missing-resource'
     | 'digest-mismatch'
@@ -76,6 +92,8 @@ export interface GenerationJobSnapshot {
     readonly schemaVersion: 1
     /** Absent only on legacy snapshots that retain the pre-Phase-3 executor contract. */
     readonly providerExecutionEnvelope?: ProviderExecutionEnvelope
+    /** Immutable exact local destination; absent on pre-Phase-6 jobs. */
+    readonly outputReservation?: OutputReservationSnapshot
     readonly prompt: GenerationSnapshotPrompt
     readonly parameters: JsonValue
     readonly outputPolicy: JsonValue
@@ -188,6 +206,15 @@ export interface GenerationAttempt {
     readonly providerEvidence: ProviderAttemptEvidence | null
     readonly providerTransitions: readonly ProviderAttemptTransition[]
     readonly executionEnvelopeHash: `sha256:${string}` | null
+}
+
+export type OutputReservationState = 'storage-pending' | 'writing' | 'committed' | 'conflict' | 'abandoned'
+
+/** Durable enqueue-time ownership of one exact output path. */
+export interface OutputReservation extends OutputReservationSnapshot {
+    readonly batchId: string
+    readonly jobId: string
+    readonly state: OutputReservationState
 }
 
 export interface GenerationJobProjection {

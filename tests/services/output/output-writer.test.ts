@@ -599,6 +599,32 @@ describe('OutputWriter fault containment', () => {
         expectNoOutput(adapter)
     })
 
+    it('preserves a late external collision and fails instead of silently overwriting or suffixing', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const external = new Uint8Array([9, 9, 9])
+
+        await expect(writer(adapter, 'txn-late-collision').write(request({
+            destination: {
+                directory: 'output',
+                useAbsolutePath: false,
+                workflowDefaultDirectory: 'NAI_Blue_Output',
+                extension: 'png',
+                fileName: 'result.png',
+                collisionPolicy: 'error',
+            },
+            onPhase: phase => {
+                if (phase === 'can-commit') adapter.seed('output/result.png', external)
+            },
+        }))).rejects.toMatchObject({
+            name: 'OutputWriterError',
+            phase: 'atomic-commit',
+        })
+
+        expect(bytesEqual(adapter.file('output/result.png'), external)).toBe(true)
+        expect(adapter.paths()).toEqual(['output/result.png'])
+        expectNoTransactionArtifacts(adapter)
+    })
+
     it('removes partially renamed finals after an atomic rename failure', async () => {
         const adapter = new InMemoryOutputAdapter()
         adapter.fault = {

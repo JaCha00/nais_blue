@@ -4,6 +4,7 @@ import {
     ensureImageFileExtension,
     renderFilenameTemplate,
     resolveCollisionFileName,
+    planExactOutputFileName,
     toDiagnosticSidecarPath,
     toSidecarFileName,
     withDuplicateSuffix,
@@ -55,5 +56,22 @@ describe('filename policy', () => {
         await expect(resolveCollisionFileName('portrait.png', 'error', () => true))
             .rejects.toThrow('Output already exists')
         expect(withDuplicateSuffix('portrait.png', 1)).toBe('portrait-2.png')
+    })
+
+    it('plans one exact reviewed filename for fail and deterministic suffix policies', async () => {
+        const occupied = new Set(['portrait.png', 'portrait-2.png'])
+
+        await expect(planExactOutputFileName({
+            requestedFileName: 'portrait.webp',
+            extension: 'png',
+            collisionPolicy: 'suffix',
+            exists: candidate => occupied.has(candidate),
+        })).resolves.toBe('portrait-3.png')
+        await expect(planExactOutputFileName({
+            requestedFileName: 'portrait.png',
+            extension: 'png',
+            collisionPolicy: 'fail',
+            exists: candidate => occupied.has(candidate),
+        })).rejects.toThrow('Output already exists')
     })
 })

@@ -41,6 +41,8 @@ import type {
     QueueFailurePolicy,
     QueuePauseReason,
     QueueResourceRecord,
+    OutputReservation,
+    OutputReservationSnapshot,
 } from '@/domain/queue/types'
 import {
     assertGenerationJobSnapshotSafe,
@@ -50,9 +52,9 @@ import {
 
 // Physical database names stay stable so generation jobs survive the rename.
 export const QUEUE_DATABASE_NAME = 'nai-blue-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 6
+export const QUEUE_DATABASE_VERSION = 7
 
-const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const
+const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'output-reservations', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
 
 export type QueueRepositoryErrorCode =
@@ -222,11 +224,13 @@ export interface CreateBatchAndEnqueueInput {
     batch: DurableGenerationBatchInput
     jobs: readonly EnqueueGenerationJobInput[]
     resources?: readonly QueueResourceRecord[]
+    reservations?: readonly OutputReservation[]
 }
 
 export interface CreateBatchAndEnqueueResult {
     batch: GenerationBatch
     jobs: GenerationJob[]
+    reservations: OutputReservation[]
 }
 
 export interface QueueRepositorySchemaInspection {
@@ -751,6 +755,113 @@ function selectResourceRecord(
         : { ...existing, availability: 'available', updatedAt: candidate.updatedAt }
 }
 
+interface StoredOutputReservation extends OutputReservation {
+    /** The resolved physical path is the collision authority; bindings only detect stale plans. */
+    normalizedPath: string
+    /** Missing for abandoned history so IndexedDB's unique index releases the physical path. */
+    activePath?: string
+}
+
+function parseOutputReservationSnapshot(value: unknown): OutputReservationSnapshot {
+    if (!isRecord(value)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation snapshot is invalid')
+    }
+    assertIdentifier(value.reservationId, 'reservation id')
+    const binding = value.folderBinding
+    if (!isRecord(binding)
+        || binding.resourceType !== 'generation-folder-document'
+        || !Number.isSafeInteger(binding.revision)
+        || (binding.revision as number) < 0
+        || typeof binding.contentHash !== 'string'
+        || !/^sha256:[0-9a-f]{64}$/.test(binding.contentHash)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation folder binding is invalid')
+    }
+    assertIdentifier(binding.resourceId, 'reservation folder resource id')
+    if (value.collisionPolicy !== 'fail' && value.collisionPolicy !== 'suffix') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation collision policy is invalid')
+    }
+    if (value.expectedExistingDigest !== null) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation existing digest is invalid')
+    }
+    const relativePath = typeof value.relativePath === 'string' ? value.relativePath : ''
+    normalizeReservationRelativePath(relativePath)
+    return {
+        reservationId: value.reservationId,
+        folderBinding: {
+            resourceType: binding.resourceType,
+            resourceId: binding.resourceId,
+            revision: binding.revision as number,
+            contentHash: binding.contentHash as `sha256:${string}`,
+        },
+        relativePath,
+        collisionPolicy: value.collisionPolicy,
+        expectedExistingDigest: null,
+    }
+}
+
+function normalizeReservationRelativePath(relativePath: string): string {
+    if (typeof relativePath !== 'string'
+        || relativePath.length === 0
+        || relativePath.length > 1_024
+        || relativePath.includes('\\')
+        || relativePath.startsWith('/')
+        || /^[A-Za-z]:/.test(relativePath)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation relative path is invalid')
+    }
+    const segments = relativePath.split('/')
+    if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation relative path is invalid')
+    }
+    return relativePath.normalize('NFC').replace(/[A-Z]/g, character => character.toLowerCase())
+}
+
+function storedReservation(value: OutputReservation): StoredOutputReservation {
+    assertIdentifier(value.batchId, 'reservation batch id')
+    assertIdentifier(value.jobId, 'reservation job id')
+    const snapshot = parseOutputReservationSnapshot(value)
+    const normalizedPath = normalizeReservationRelativePath(snapshot.relativePath)
+    if (value.state !== 'storage-pending'
+        && value.state !== 'writing'
+        && value.state !== 'committed'
+        && value.state !== 'conflict'
+        && value.state !== 'abandoned') {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation state is invalid')
+    }
+    return {
+        ...snapshot,
+        batchId: value.batchId,
+        jobId: value.jobId,
+        state: value.state,
+        normalizedPath,
+        ...(value.state === 'abandoned' ? {} : { activePath: normalizedPath }),
+    }
+}
+
+function parseOutputReservation(value: unknown): OutputReservation {
+    if (!isRecord(value)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation record is invalid')
+    }
+    const parsed = storedReservation(value as unknown as OutputReservation)
+    if (canonicalSerialize(value.normalizedPath) !== canonicalSerialize(parsed.normalizedPath)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation normalized path is invalid')
+    }
+    if (value.activePath !== parsed.activePath) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'reservation active path is invalid')
+    }
+    const { normalizedPath: _normalizedPath, activePath: _activePath, ...reservation } = parsed
+    return reservation
+}
+
+function hasSameReservationIdentity(left: OutputReservation, right: OutputReservation): boolean {
+    return left.reservationId === right.reservationId
+        && left.batchId === right.batchId
+        && left.jobId === right.jobId
+        && canonicalSerialize(left.folderBinding) === canonicalSerialize(right.folderBinding)
+        && left.relativePath === right.relativePath
+        && left.collisionPolicy === right.collisionPolicy
+        && left.expectedExistingDigest === right.expectedExistingDigest
+}
+
 function assertProgress(value: unknown): asserts value is GenerationJobProgress {
     if (!isRecord(value)
         || typeof value.stage !== 'string'
@@ -788,7 +899,7 @@ function snapshotFromRecord(value: unknown, expectedHash: unknown): GenerationJo
             ? {}
             : { nonResumableReason: value.nonResumableReason as 'volatile-resource' | 'runtime-only-capability' }),
     })
-    const snapshot: GenerationJobSnapshot = value.providerExecutionEnvelope === undefined
+    const providerSnapshot: GenerationJobSnapshot = value.providerExecutionEnvelope === undefined
         ? legacySnapshot
         : (() => {
             assertProviderExecutionEnvelope(
@@ -800,6 +911,12 @@ function snapshotFromRecord(value: unknown, expectedHash: unknown): GenerationJo
                 providerExecutionEnvelope: structuredClone(value.providerExecutionEnvelope),
             }
         })()
+    const snapshot: GenerationJobSnapshot = value.outputReservation === undefined
+        ? providerSnapshot
+        : {
+            ...providerSnapshot,
+            outputReservation: parseOutputReservationSnapshot(value.outputReservation),
+        }
     assertGenerationJobSnapshotSafe(snapshot)
     if (typeof expectedHash !== 'string' || hashGenerationJobSnapshot(snapshot) !== expectedHash) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job snapshot hash mismatch')
@@ -1081,6 +1198,9 @@ function ensureCurrentIndexes(transaction: IDBTransaction): void {
     ensureIndex(leases, 'by-expires-at', 'expiresAt')
     const resources = transaction.objectStore('resources')
     ensureIndex(resources, 'by-digest', 'digest')
+    const reservations = transaction.objectStore('output-reservations')
+    ensureIndex(reservations, 'by-normalized-path', 'activePath', { unique: true })
+    ensureIndex(reservations, 'by-job-id', 'jobId')
     const batches = transaction.objectStore('batches')
     ensureIndex(batches, 'by-created-at', 'createdAt')
     ensureIndex(batches, 'by-idempotency-key', 'idempotencyKey', { unique: true })
@@ -1100,6 +1220,9 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
         if (!database.objectStoreNames.contains('resources')) {
             database.createObjectStore('resources', { keyPath: 'id' })
         }
+    }
+    if (oldVersion < 7 && !database.objectStoreNames.contains('output-reservations')) {
+        database.createObjectStore('output-reservations', { keyPath: 'reservationId' })
     }
     ensureCurrentIndexes(transaction)
 
@@ -1521,6 +1644,7 @@ export class IndexedDBQueueRepository {
         const batchIdentity = batchFromInput(input.batch, 1)
         const validatedCandidates = input.jobs.map(job => storedJobFromInput(job, 1))
         const resources = [...(input.resources ?? [])]
+        const reservations = (input.reservations ?? []).map(storedReservation)
         if (validatedCandidates.length === 0) {
             throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'A durable batch must contain at least one job')
         }
@@ -1530,6 +1654,16 @@ export class IndexedDBQueueRepository {
         }
         if (new Set(resources.map(resource => resource.id)).size !== resources.length) {
             throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate resources')
+        }
+        if (new Set(reservations.map(reservation => reservation.reservationId)).size !== reservations.length
+            || new Set(reservations.map(reservation => reservation.jobId)).size !== reservations.length
+            || new Set(reservations.flatMap(reservation => (
+                reservation.activePath === undefined ? [] : [reservation.activePath]
+            ))).size !== reservations.filter(reservation => reservation.activePath !== undefined).length) {
+            throw new QueueRepositoryError('E_QUEUE_IDEMPOTENCY_CONFLICT', 'Enqueue batch contains duplicate reservations')
+        }
+        if (reservations.some(reservation => reservation.state !== 'storage-pending')) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'New reservations must be storage-pending')
         }
         for (const candidate of validatedCandidates) {
             if (candidate.batchId !== batchIdentity.id || candidate.workflow !== batchIdentity.workflow) {
@@ -1542,13 +1676,41 @@ export class IndexedDBQueueRepository {
             assertTimestamp(resource.updatedAt, 'resource updatedAt')
             assertGenerationJobSnapshotSafe({ reference: resource.reference })
         }
+        if (reservations.some(reservation => reservation.batchId !== batchIdentity.id)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Reservation does not match its atomic batch')
+        }
+        const reservationByJob = new Map(reservations.map(reservation => [reservation.jobId, reservation]))
+        for (const candidate of validatedCandidates) {
+            const reservation = reservationByJob.get(candidate.id)
+            const snapshotReservation = candidate.snapshot.outputReservation
+            if (reservation === undefined || snapshotReservation === undefined) {
+                if (reservation === undefined && snapshotReservation === undefined) continue
+                throw new QueueRepositoryError(
+                    'E_QUEUE_RECORD_INVALID',
+                    'Reservation does not match the immutable job snapshot',
+                )
+            }
+            if (canonicalSerialize(snapshotReservation) !== canonicalSerialize({
+                reservationId: reservation.reservationId,
+                folderBinding: reservation.folderBinding,
+                relativePath: reservation.relativePath,
+                collisionPolicy: reservation.collisionPolicy,
+                expectedExistingDigest: reservation.expectedExistingDigest,
+            })) {
+                throw new QueueRepositoryError(
+                    'E_QUEUE_RECORD_INVALID',
+                    'Reservation does not match the immutable job snapshot',
+                )
+            }
+        }
 
         const selected = await this.runTransaction(
-            ['batches', 'jobs', 'resources'],
+            ['batches', 'jobs', 'output-reservations', 'resources'],
             'readwrite',
             async transaction => {
                 const batches = transaction.objectStore('batches')
                 const jobs = transaction.objectStore('jobs')
+                const reservationStore = transaction.objectStore('output-reservations')
                 const resourceStore = transaction.objectStore('resources')
                 const existingBatchValue = await requestResult(batches.get(batchIdentity.id))
                 const existingByBatchKey = await requestResult(
@@ -1630,6 +1792,41 @@ export class IndexedDBQueueRepository {
                     }
                     result.push(existing)
                 }
+                const selectedJobIds = new Set(result.map(job => job.id))
+                const selectedReservations: StoredOutputReservation[] = []
+                const reservationAdditions: StoredOutputReservation[] = []
+                for (const reservation of reservations) {
+                    if (!selectedJobIds.has(reservation.jobId)) {
+                        throw new QueueRepositoryError(
+                            'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                            'Reservation job identity does not match its atomic enqueue',
+                        )
+                    }
+                    const [existingById, existingByPath] = await Promise.all([
+                        requestResult(reservationStore.get(reservation.reservationId)),
+                        reservation.activePath === undefined
+                            ? Promise.resolve(undefined)
+                            : requestResult(reservationStore.index('by-normalized-path').get(reservation.activePath)),
+                    ])
+                    if (existingById !== undefined) {
+                        if (!hasSameReservationIdentity(parseOutputReservation(existingById), reservation)) {
+                            throw new QueueRepositoryError(
+                                'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                                'Reservation identity already represents different output work',
+                            )
+                        }
+                        selectedReservations.push(existingById as StoredOutputReservation)
+                        continue
+                    }
+                    if (existingByPath !== undefined) {
+                        throw new QueueRepositoryError(
+                            'E_QUEUE_IDEMPOTENCY_CONFLICT',
+                            'Output path is already reserved by different work',
+                        )
+                    }
+                    reservationAdditions.push(reservation)
+                    selectedReservations.push(reservation)
+                }
                 for (const resource of resources) {
                     const existing = await requestResult(resourceStore.get(resource.id)) as QueueResourceRecord | undefined
                     if (existing === undefined) {
@@ -1642,6 +1839,7 @@ export class IndexedDBQueueRepository {
                     }
                 }
                 await Promise.all(additions.map(candidate => requestResult(jobs.add(candidate))))
+                await Promise.all(reservationAdditions.map(reservation => requestResult(reservationStore.add(reservation))))
                 if (additions.length > 0) {
                     const projected = withBatchProjectionAdditions(selectedBatch, additions)
                     if (existingBatch === undefined) await requestResult(batches.add(projected))
@@ -1652,17 +1850,90 @@ export class IndexedDBQueueRepository {
                     // immutable batch identity valid if all candidates dedupe.
                     await requestResult(batches.add(selectedBatch))
                 }
-                return result
+                return { jobs: result, reservations: selectedReservations }
             },
         )
-        const [readbackBatch, readbackJobs] = await Promise.all([
+        const [readbackBatch, readbackJobs, readbackReservations] = await Promise.all([
             this.getBatch(batchIdentity.id),
-            this.getJobsByIds(selected.map(job => job.id)),
+            this.getJobsByIds(selected.jobs.map(job => job.id)),
+            Promise.all(selected.reservations.map(reservation => this.getOutputReservation(reservation.reservationId))),
         ])
-        if (readbackBatch === null || readbackJobs.some(job => job === null)) {
+        if (readbackBatch === null
+            || readbackJobs.some(job => job === null)
+            || readbackReservations.some(reservation => reservation === null)) {
             throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Atomic enqueue readback mismatch')
         }
-        return { batch: readbackBatch, jobs: readbackJobs as GenerationJob[] }
+        return {
+            batch: readbackBatch,
+            jobs: readbackJobs as GenerationJob[],
+            reservations: readbackReservations as OutputReservation[],
+        }
+    }
+
+    async getOutputReservation(reservationId: string): Promise<OutputReservation | null> {
+        assertIdentifier(reservationId, 'reservation id')
+        const value = await this.runTransaction(['output-reservations'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('output-reservations').get(reservationId))
+        ))
+        return value === undefined ? null : structuredClone(parseOutputReservation(value))
+    }
+
+    async getOutputReservationByPath(relativePath: string): Promise<OutputReservation | null> {
+        const normalizedPath = normalizeReservationRelativePath(relativePath)
+        const value = await this.runTransaction(['output-reservations'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('output-reservations').index('by-normalized-path').get(normalizedPath))
+        ))
+        return value === undefined ? null : structuredClone(parseOutputReservation(value))
+    }
+
+    async listOutputReservationsByJob(jobId: string): Promise<OutputReservation[]> {
+        assertIdentifier(jobId, 'reservation job id')
+        const values = await this.runTransaction(['output-reservations'], 'readonly', transaction => (
+            requestResult(transaction.objectStore('output-reservations').index('by-job-id').getAll(jobId))
+        )) as unknown[]
+        return values.map(value => structuredClone(parseOutputReservation(value)))
+    }
+
+    async transitionOutputReservation(input: {
+        reservationId: string
+        expectedState: OutputReservation['state']
+        state: OutputReservation['state']
+    }): Promise<OutputReservation> {
+        assertIdentifier(input.reservationId, 'reservation id')
+        const allowed: Readonly<Record<OutputReservation['state'], readonly OutputReservation['state'][]>> = {
+            'storage-pending': ['writing', 'conflict', 'abandoned'],
+            writing: ['storage-pending', 'committed', 'conflict', 'abandoned'],
+            committed: [],
+            conflict: ['abandoned'],
+            abandoned: [],
+        }
+        const selected = await this.runTransaction(
+            ['output-reservations'],
+            'readwrite',
+            async transaction => {
+                const store = transaction.objectStore('output-reservations')
+                const value = await requestResult(store.get(input.reservationId))
+                if (value === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Output reservation does not exist')
+                }
+                const current = parseOutputReservation(value)
+                if (current.state === input.state) return current
+                if (current.state !== input.expectedState || !allowed[current.state].includes(input.state)) {
+                    throw new QueueRepositoryError(
+                        'E_QUEUE_INVALID_TRANSITION',
+                        `Output reservation cannot transition from ${current.state} to ${input.state}`,
+                    )
+                }
+                const next: OutputReservation = { ...current, state: input.state }
+                await requestResult(store.put(storedReservation(next)))
+                return next
+            },
+        )
+        const readback = await this.getOutputReservation(input.reservationId)
+        if (readback === null || readback.state !== selected.state) {
+            throw new QueueRepositoryError('E_QUEUE_WRITE_VERIFY', 'Output reservation readback mismatch')
+        }
+        return readback
     }
 
     enqueue(input: EnqueueGenerationJobInput): Promise<GenerationJob> {
@@ -2445,7 +2716,7 @@ export class IndexedDBQueueRepository {
             if (existing === null) {
                 throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'There are no failed jobs to retry')
             }
-            return { batch: existing, jobs: [] }
+            return { batch: existing, jobs: [], reservations: [] }
         }
         const jobs = sourceJobs.map((source, index): EnqueueGenerationJobInput => {
             const retryDigest = hashCanonicalValue({ targetBatchId: input.targetBatch.id, sourceJobId: source.id })
