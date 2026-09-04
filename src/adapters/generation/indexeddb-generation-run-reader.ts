@@ -20,12 +20,16 @@ import type { IndexedDBArtifactRepository } from '@/services/organizer/artifact-
 import type { OutputWriter } from '@/services/output/output-writer'
 import type { IndexedDBR2UploadRepository } from '@/services/r2/indexeddb-r2-upload-repository'
 import { getRuntimeR2UploadRepository } from '@/services/r2/runtime'
+import type { SceneDocument, SceneRepositoryPort } from '@/application/scene/scene-repository'
+import { getRuntimeSceneRepository } from '@/lib/scene-migration-startup'
 
 export interface GenerationRunAuthorityReaders {
     readonly queue: Pick<IndexedDBQueueRepository, 'getBatch' | 'listJobs'>
     readonly output: Pick<OutputWriter, 'inspectPendingQueueTransactions'>
     readonly artifacts: Pick<IndexedDBArtifactRepository, 'get'>
     readonly r2: Pick<IndexedDBR2UploadRepository, 'listJobs' | 'getProfile' | 'getManifest'>
+    /** Optional in injected readers; runtime supplies it to project Scene-link issues. */
+    readonly scenes?: Pick<SceneRepositoryPort, 'getDocument'>
 }
 
 function runtimeAuthorities(): GenerationRunAuthorityReaders {
@@ -34,6 +38,7 @@ function runtimeAuthorities(): GenerationRunAuthorityReaders {
         output: getRuntimeOutputWriter(),
         artifacts: getRuntimeArtifactRepository(),
         r2: getRuntimeR2UploadRepository(),
+        scenes: getRuntimeSceneRepository(),
     }
 }
 
@@ -54,6 +59,16 @@ function releaseProfileId(job: GenerationJob): string | null {
     const output = job.workflow === 'main' ? workflow.output : workflow.outputContext
     if (!isRecord(output) || typeof output.autoR2UploadProfileId !== 'string') return null
     return output.autoR2UploadProfileId.trim() || null
+}
+
+function scenePresetId(job: GenerationJob): string | null {
+    if (job.workflow !== 'scene') return null
+    const parameters = job.snapshot.parameters
+    if (!isRecord(parameters) || !isRecord(parameters.sceneWorkflow)) return null
+    const saveContext = parameters.sceneWorkflow.saveContext
+    return isRecord(saveContext) && typeof saveContext.activePresetId === 'string'
+        ? saveContext.activePresetId.trim() || null
+        : null
 }
 
 function directFact(
@@ -181,6 +196,13 @@ export class IndexedDbGenerationRunReader implements GenerationRunReadPort {
                 ? Promise.resolve(null)
                 : this.authorities.artifacts.get(job.artifactReference.artifactId).catch(() => null)
         )))
+        const scenePresetIds = [...new Set(jobs.map(scenePresetId).filter((id): id is string => id !== null))]
+        const sceneDocuments = new Map<string, SceneDocument | null>(this.authorities.scenes === undefined
+            ? []
+            : await Promise.all(scenePresetIds.map(async presetId => [
+                    presetId,
+                    await this.authorities.scenes!.getDocument(presetId).catch(() => null),
+                ] as const)))
 
         const facts = await Promise.all(jobs.map(async (job, index): Promise<GenerationFulfillmentJobFacts> => {
             const artifact = artifacts[index]
@@ -196,6 +218,14 @@ export class IndexedDbGenerationRunReader implements GenerationRunReadPort {
             const provider = job.attemptCount > 0 && storage === undefined
                 ? derivedFact('uncertain', 'queue-attempt', `${job.id}:provider`, job.updatedAt)
                 : undefined
+            const presetId = scenePresetId(job)
+            const sceneDocument = presetId === null ? undefined : sceneDocuments.get(presetId)
+            const scene = sceneDocument?.scenes.find(candidate => candidate.id === job.sceneId)
+            const sceneLinkPending = this.authorities.scenes !== undefined
+                && artifact?.sourceJobId === job.id
+                && presetId !== null
+                && (scene === undefined
+                    || !scene.artifactRefs.some(reference => reference.artifactId === artifact.artifactId))
 
             return {
                 jobId: job.id,
@@ -212,6 +242,16 @@ export class IndexedDbGenerationRunReader implements GenerationRunReadPort {
                         ...(r2JobsByArtifactId.get(`${job.id}:release-sidecar`) ?? []),
                     ], this.authorities.r2),
                 acceptance: { required: false },
+                ...(sceneLinkPending
+                    ? {
+                            issues: [{
+                                code: 'SCENE_LINK_PENDING' as const,
+                                jobId: job.id,
+                                severity: 'warning' as const,
+                                action: { kind: 'retry-scene-link' as const, requiresHuman: false },
+                            }],
+                        }
+                    : {}),
             }
         }))
 

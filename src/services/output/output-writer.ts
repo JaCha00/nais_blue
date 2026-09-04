@@ -9,9 +9,13 @@ import {
     toArtifactSidecarPath,
     toDiagnosticSidecarPath,
     toSidecarFileName,
+    PRIVATE_ORIGINAL_DIRECTORY,
     type OutputCollisionPolicy,
     type PlannedOutputCollisionPolicy,
 } from './filename-policy'
+import type { OutputCommitSet, OutputPathClaimKind } from '@/domain/queue/types'
+import { hashOutputCommitSet, parseOutputCommitSet } from '@/domain/output-commit-set'
+import { generationOutputRelativePath } from './generation-output-commit-set'
 import {
     childOutputRef,
     serializeOutputFileRef,
@@ -58,6 +62,9 @@ export interface ExactOutputReservationIdentity {
     readonly reservationId: string
     readonly directoryIdentity: `sha256:${string}`
     readonly relativePath: string
+    /** Present on every current reservation; absent only for legacy snapshots. */
+    readonly commitSet?: OutputCommitSet
+    readonly commitSetHash?: `sha256:${string}`
 }
 
 export interface ExactOutputPreflightRequest {
@@ -65,6 +72,8 @@ export interface ExactOutputPreflightRequest {
     readonly fileName: string
     readonly reservation?: ExactOutputReservationIdentity
     readonly collisionPolicy?: PlannedOutputCollisionPolicy
+    /** Exact permanent artifact kinds used while allocating a not-yet-bound commit set. */
+    readonly claimKinds?: readonly OutputPathClaimKind[]
     /** Already planned siblings in the same batch; never persisted as path authority. */
     readonly additionalOccupiedFileNames?: readonly string[]
     /** Execution uses a reversible write/read/remove probe before Provider dispatch. */
@@ -243,15 +252,22 @@ function randomTransactionId(): string {
     return (uuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9-]/g, '')
 }
 
-function tempName(fileName: string, transactionId: string, kind: JournalArtifact['kind']): string {
+function tempName(
+    fileName: string,
+    transactionId: string,
+    kind: JournalArtifact['kind'],
+    compact: boolean,
+): string {
+    if (compact) {
+        const shortHash = hashCanonicalValue({ transactionId, kind }).slice(0, 16)
+        return `.nai-blue-txn-${shortHash}-${kind}.tmp`
+    }
     return `.${fileName}.nai-blue-txn-${transactionId}.${kind}.tmp`
 }
 
 function backupName(fileName: string, transactionId: string): string {
     return `.${fileName}.nai-blue-txn-${transactionId}.backup`
 }
-
-const PRIVATE_ORIGINAL_DIRECTORY = '._nai-blue-private'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -336,6 +352,77 @@ function portableDirectoryForFinalImage(
     }
 }
 
+function parseReservationIdentity(value: unknown): ExactOutputReservationIdentity {
+    if (!isRecord(value)
+        || typeof value.reservationId !== 'string'
+        || value.reservationId.length === 0
+        || value.reservationId.length > 256
+        || typeof value.directoryIdentity !== 'string'
+        || !/^sha256:[a-f0-9]{64}$/.test(value.directoryIdentity)
+        || typeof value.relativePath !== 'string'
+        || value.relativePath.length === 0
+        || value.relativePath.length > 1_024
+        || ((value.commitSet === undefined) !== (value.commitSetHash === undefined))) {
+        throw new Error('Invalid output recovery reservation identity')
+    }
+    if (value.commitSet === undefined) {
+        return {
+            reservationId: value.reservationId,
+            directoryIdentity: value.directoryIdentity as `sha256:${string}`,
+            relativePath: value.relativePath,
+        }
+    }
+    const commitSet = parseOutputCommitSet(value.commitSet)
+    if (value.commitSetHash !== hashOutputCommitSet(commitSet)
+        || commitSet.directoryAuthorityFingerprint !== value.directoryIdentity
+        || !commitSet.claims.some(claim => claim.kind === 'image' && claim.relativePath === value.relativePath)) {
+        throw new Error('Invalid output recovery reservation commit set')
+    }
+    return {
+        reservationId: value.reservationId,
+        directoryIdentity: value.directoryIdentity as `sha256:${string}`,
+        relativePath: value.relativePath,
+        commitSet,
+        commitSetHash: value.commitSetHash as `sha256:${string}`,
+    }
+}
+
+function artifactClaimKind(kind: JournalArtifact['kind']): OutputPathClaimKind {
+    if (kind === 'sidecar') return 'metadata-sidecar'
+    if (kind === 'diagnostic') return 'diagnostic-sidecar'
+    return kind
+}
+
+function assertArtifactsMatchCommitSet(
+    identity: ExactOutputReservationIdentity,
+    artifacts: readonly JournalArtifact[],
+    fileName: string,
+): void {
+    if (identity.commitSet === undefined) return
+    const expected = identity.commitSet.claims
+        .map(claim => `${claim.kind}\u0000${claim.relativePath}`)
+        .sort()
+    const actual = artifacts
+        .map(artifact => {
+            const kind = artifactClaimKind(artifact.kind)
+            return `${kind}\u0000${generationOutputRelativePath(kind, fileName)}`
+        })
+        .sort()
+    if (expected.length !== actual.length || expected.some((claim, index) => claim !== actual[index])) {
+        throw new OutputWriterError('resolve-destination', 'Output transaction artifacts do not match the reserved commit set')
+    }
+}
+
+function sameReservationIdentity(
+    left: ExactOutputReservationIdentity,
+    right: ExactOutputReservationIdentity,
+): boolean {
+    return left.reservationId === right.reservationId
+        && left.directoryIdentity === right.directoryIdentity
+        && left.relativePath === right.relativePath
+        && left.commitSetHash === right.commitSetHash
+}
+
 /** Hashes adapter-owned path authority so Queue can compare destinations without persisting local paths. */
 export function directoryIdentityForResolvedOutputDirectory(
     directory: ResolvedOutputDirectory,
@@ -393,19 +480,9 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         || !isRecord(value.directory)) {
         throw new Error('Invalid output recovery journal')
     }
-    const outputReservation = value.outputReservation
-    if (outputReservation !== undefined
-        && (!isRecord(outputReservation)
-            || typeof outputReservation.reservationId !== 'string'
-            || outputReservation.reservationId.length === 0
-            || outputReservation.reservationId.length > 256
-            || typeof outputReservation.directoryIdentity !== 'string'
-            || !/^sha256:[a-f0-9]{64}$/.test(outputReservation.directoryIdentity)
-            || typeof outputReservation.relativePath !== 'string'
-            || outputReservation.relativePath.length === 0
-            || outputReservation.relativePath.length > 1_024)) {
-        throw new Error('Invalid output recovery reservation identity')
-    }
+    const outputReservation = value.outputReservation === undefined
+        ? undefined
+        : parseReservationIdentity(value.outputReservation)
     const allowedPhases: RecoveryJournalPhase[] = [
         'staged', 'image-written', 'metadata-written', 'thumbnail-staged',
         'commit-pending', 'files-committed', 'workflow-committed', 'rollback-required',
@@ -448,7 +525,7 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         ...(typeof value.sourceJobId === 'string' ? { sourceJobId: value.sourceJobId } : {}),
         ...(outputReservation === undefined
             ? {}
-            : { outputReservation: outputReservation as unknown as ExactOutputReservationIdentity }),
+            : { outputReservation }),
         createdAt: value.createdAt,
         updatedAt: value.updatedAt,
         phase: value.phase as RecoveryJournalPhase,
@@ -585,14 +662,16 @@ export class OutputWriter {
             throw new OutputWriterError('resolve-destination', 'Reserved output filename is not canonical')
         }
         const directoryIdentity = directoryIdentityForResolvedOutputDirectory(directory)
+        const reservation = request.reservation === undefined
+            ? undefined
+            : parseReservationIdentity(request.reservation)
         if (request.reservation !== undefined && request.collisionPolicy === 'suffix') {
             throw new OutputWriterError('resolve-destination', 'A durable reservation cannot be re-suffixed')
         }
-        if (request.reservation !== undefined && request.reservation.directoryIdentity !== directoryIdentity) {
+        if (reservation !== undefined && reservation.directoryIdentity !== directoryIdentity) {
             throw new OutputWriterError('resolve-destination', 'Reserved output destination no longer matches')
         }
 
-        const privateOriginalDirectory = childOutputRef(directory, PRIVATE_ORIGINAL_DIRECTORY)
         const journalIds = await this.platform.listJournalIds()
         const journals = (await Promise.all(journalIds.map(async journalId => {
             const bytes = await this.platform.readJournal(journalId)
@@ -602,20 +681,20 @@ export class OutputWriter {
             if (request.additionalOccupiedFileNames?.some(name => (
                 name.normalize('NFC').toLowerCase() === candidate.normalize('NFC').toLowerCase()
             ))) return true
-            const finals = [
-                childOutputRef(directory, candidate),
-                childOutputRef(directory, toSidecarFileName(candidate)),
-                childOutputRef(directory, toDiagnosticSidecarPath(candidate)),
-                childOutputRef(directory, toArtifactSidecarPath(candidate)),
-                childOutputRef(privateOriginalDirectory, candidate),
-            ]
+            const kinds = reservation?.commitSet?.claims.map(claim => claim.kind)
+                ?? request.claimKinds
+                ?? ['image', 'metadata-sidecar', 'diagnostic-sidecar', 'artifact-sidecar', 'provider-original']
+            const finals = kinds.map(kind => childOutputRef(
+                directory,
+                generationOutputRelativePath(kind, candidate),
+            ))
             for (const final of finals) {
                 if (await this.platform.exists(final)) return true
             }
-            const normalizedCandidate = candidate.normalize('NFC').toLowerCase()
+            const finalPaths = new Set(finals.map(final => final.path.normalize('NFC').toLowerCase()))
             return journals.some(journal => (
                 directoryIdentityForResolvedOutputDirectory(journal.directory) === directoryIdentity
-                && journal.fileName.normalize('NFC').toLowerCase() === normalizedCandidate
+                && journal.artifacts.some(artifact => finalPaths.has(artifact.final.path.normalize('NFC').toLowerCase()))
             ))
         }
         let fileName: string
@@ -629,7 +708,7 @@ export class OutputWriter {
         } catch (error) {
             throw new OutputWriterError('resolve-destination', 'Output destination is already occupied', { cause: error })
         }
-        if (request.reservation !== undefined && request.reservation.relativePath !== fileName) {
+        if (reservation !== undefined && reservation.relativePath !== fileName) {
             throw new OutputWriterError('resolve-destination', 'Reserved output destination no longer matches')
         }
 
@@ -670,6 +749,7 @@ export class OutputWriter {
 
     async write(request: OutputWriterRequest): Promise<OutputWriterOutcome> {
         if (!request.canCommit()) return { status: 'cancelled' }
+        if (request.outputReservation !== undefined) parseReservationIdentity(request.outputReservation)
 
         let phase: OutputWriterPhase = 'resolve-destination'
         let journal: OutputRecoveryJournal | null = null
@@ -818,9 +898,10 @@ export class OutputWriter {
                         }),
                 } satisfies OutputFinalImageFacts
             const imageFinal = childOutputRef(directory, fileName)
+            const compactTempNames = request.outputReservation !== undefined
             const artifacts: JournalArtifact[] = [{
                 kind: 'image',
-                temp: childOutputRef(directory, tempName(fileName, transactionId, 'image')),
+                temp: childOutputRef(directory, tempName(fileName, transactionId, 'image', compactTempNames)),
                 final: imageFinal,
                 committed: false,
             }]
@@ -828,7 +909,7 @@ export class OutputWriter {
                 const sidecarName = toSidecarFileName(fileName)
                 artifacts.push({
                     kind: 'sidecar',
-                    temp: childOutputRef(directory, tempName(sidecarName, transactionId, 'sidecar')),
+                    temp: childOutputRef(directory, tempName(sidecarName, transactionId, 'sidecar', compactTempNames)),
                     final: childOutputRef(directory, sidecarName),
                     committed: false,
                 })
@@ -837,7 +918,7 @@ export class OutputWriter {
                 const diagnosticName = toDiagnosticSidecarPath(fileName)
                 artifacts.push({
                     kind: 'diagnostic',
-                    temp: childOutputRef(directory, tempName(diagnosticName, transactionId, 'diagnostic')),
+                    temp: childOutputRef(directory, tempName(diagnosticName, transactionId, 'diagnostic', compactTempNames)),
                     final: childOutputRef(directory, diagnosticName),
                     committed: false,
                 })
@@ -846,7 +927,7 @@ export class OutputWriter {
                 const artifactSidecarName = toArtifactSidecarPath(fileName)
                 artifacts.push({
                     kind: 'artifact-sidecar',
-                    temp: childOutputRef(directory, tempName(artifactSidecarName, transactionId, 'artifact-sidecar')),
+                    temp: childOutputRef(directory, tempName(artifactSidecarName, transactionId, 'artifact-sidecar', compactTempNames)),
                     final: childOutputRef(directory, artifactSidecarName),
                     committed: false,
                 })
@@ -854,10 +935,13 @@ export class OutputWriter {
             if (preserveProviderOriginal) {
                 artifacts.push({
                     kind: 'provider-original',
-                    temp: childOutputRef(privateOriginalDirectory, tempName(fileName, transactionId, 'provider-original')),
+                    temp: childOutputRef(privateOriginalDirectory, tempName(fileName, transactionId, 'provider-original', compactTempNames)),
                     final: childOutputRef(privateOriginalDirectory, fileName),
                     committed: false,
                 })
+            }
+            if (request.outputReservation !== undefined) {
+                assertArtifactsMatchCommitSet(request.outputReservation, artifacts, fileName)
             }
 
             mark('stage-temp-output')
@@ -965,7 +1049,17 @@ export class OutputWriter {
                 ...artifacts.filter(artifact => artifact.kind === 'image'),
             ]
             for (const artifact of orderedArtifacts) {
-                await this.platform.rename(artifact.temp, artifact.final)
+                if (request.outputReservation !== undefined) {
+                    const committed = await this.platform.commitSiblingIfAbsent(artifact.temp, artifact.final)
+                    if (committed.status === 'destination-exists') {
+                        throw new OutputWriterError(
+                            'atomic-commit',
+                            `Output destination changed before commit: ${artifact.final.displayPath}`,
+                        )
+                    }
+                } else {
+                    await this.platform.rename(artifact.temp, artifact.final)
+                }
                 artifact.committed = true
                 await this.persistJournal(journal)
             }
@@ -1132,11 +1226,11 @@ export class OutputWriter {
             if (journal.sourceJobId !== expectedSourceJobId) {
                 return { transactionId, action: 'ineligible', ineligibility: 'source-job-mismatch' }
             }
+            if (expectedReservation !== undefined) parseReservationIdentity(expectedReservation)
             if ((expectedReservation === undefined) !== (journal.outputReservation === undefined)
                 || (expectedReservation !== undefined
-                    && (journal.outputReservation?.reservationId !== expectedReservation.reservationId
-                        || journal.outputReservation.directoryIdentity !== expectedReservation.directoryIdentity
-                        || journal.outputReservation.relativePath !== expectedReservation.relativePath))) {
+                    && (journal.outputReservation === undefined
+                        || !sameReservationIdentity(journal.outputReservation, expectedReservation)))) {
                 return { transactionId, action: 'ineligible', ineligibility: 'reservation-mismatch' }
             }
             if (journal.phase !== 'files-committed') {

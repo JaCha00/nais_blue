@@ -194,6 +194,18 @@ describe('DesktopProviderResultSpool', () => {
         await expect(spool.verify('spool-1')).rejects.toBeInstanceOf(ProviderResultSpoolError)
     })
 
+    it('explicitly discards only the exact verified receipt without a grace delay', async () => {
+        const storage = new MemoryStorage()
+        const spool = new DesktopProviderResultSpool(storage)
+        const receipt = await spool.commit(input())
+
+        await expect(spool.discard({ ...receipt, attemptId: 'job-2:1' }))
+            .rejects.toMatchObject({ code: 'conflict' })
+        await expect(spool.verify(receipt.spoolId)).resolves.toEqual(receipt)
+        await spool.discard(receipt)
+        await expect(spool.verify(receipt.spoolId)).rejects.toMatchObject({ code: 'missing' })
+    })
+
     it('is idempotent only for the same receipt and rejects spool ID reuse', async () => {
         const storage = new MemoryStorage()
         const spool = new DesktopProviderResultSpool(storage)

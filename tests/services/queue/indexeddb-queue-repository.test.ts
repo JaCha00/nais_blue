@@ -2,7 +2,8 @@ import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEmptyGenerationBatchSummary } from '@/domain/queue/summary'
-import type { GenerationJobSnapshot, OutputReservation } from '@/domain/queue/types'
+import { createOutputCommitSet } from '@/domain/output-commit-set'
+import type { GenerationJobSnapshot, OutputCommitSetReservation, OutputReservation } from '@/domain/queue/types'
 import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import {
     IndexedDBQueueRepository,
@@ -392,17 +393,46 @@ function reservation(overrides: Partial<OutputReservation> = {}): OutputReservat
     }
 }
 
+function commitSetReservation(overrides: Partial<OutputCommitSetReservation> = {}): OutputCommitSetReservation {
+    const directoryIdentity = `sha256:${'d'.repeat(64)}` as const
+    const { commitSet, commitSetHash } = createOutputCommitSet({
+        directoryAuthorityId: 'folder:1',
+        directoryAuthorityFingerprint: directoryIdentity,
+        filesystemSemantics: 'windows',
+        filenamePolicyRevision: 'filename-v1',
+        pathNormalizationRevision: 'path-v1',
+        claims: [
+            { claimId: 'image', kind: 'image', relativePath: 'portraits/Image.webp' },
+            { claimId: 'metadata', kind: 'metadata-sidecar', relativePath: 'portraits/Image.webp.json' },
+        ],
+    })
+    return {
+        reservationId: 'reservation:current:1',
+        batchId: 'batch:1',
+        jobId: 'job:1',
+        folderBinding: reservation().folderBinding,
+        directoryIdentity,
+        relativePath: 'portraits/Image.webp',
+        collisionPolicy: 'fail',
+        expectedExistingDigest: null,
+        reservationSchemaVersion: 1,
+        commitSet,
+        commitSetHash,
+        state: 'reserved',
+        version: 1,
+        updatedAt: NOW,
+        ...overrides,
+    }
+}
+
 function reservedJobInput(
     value: OutputReservation,
     overrides: Partial<EnqueueGenerationJobInput> = {},
 ): EnqueueGenerationJobInput {
     const job = jobInput(overrides)
-    const {
-        batchId: _batchId,
-        jobId: _jobId,
-        state: _state,
-        ...snapshotReservation
-    } = value
+    const snapshotReservation = value.reservationSchemaVersion === 1
+        ? (({ batchId: _batchId, jobId: _jobId, state: _state, version: _version, updatedAt: _updatedAt, ...item }) => item)(value)
+        : (({ batchId: _batchId, jobId: _jobId, state: _state, ...item }) => item)(value)
     return {
         ...job,
         snapshot: bindOutputReservationSnapshot(job.snapshot, snapshotReservation),
@@ -415,7 +445,7 @@ async function updateRawAttempt(
     update: (attempt: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-        const request = factory.open(name, 8)
+        const request = factory.open(name, 9)
         request.onerror = () => reject(request.error)
         request.onsuccess = () => {
             const database = request.result
@@ -446,9 +476,9 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
 
         const schema = await queue.inspectSchema()
-        expect(schema.version).toBe(8)
+        expect(schema.version).toBe(9)
         expect(schema.stores).toEqual([
-            'attempts', 'batches', 'jobs', 'leases', 'output-reservations', 'resources',
+            'attempts', 'batches', 'jobs', 'leases', 'output-reservation-claims', 'output-reservations', 'resources',
         ])
         expect(schema.indexes.jobs).toEqual([
             'by-batch-order',
@@ -461,6 +491,9 @@ describe('normalized IndexedDB durable queue repository', () => {
         expect(schema.indexes.leases).toContain('by-expires-at')
         expect(schema.indexes.batches).toContain('by-queue-sequence')
         expect(schema.indexes['output-reservations']).toEqual(['by-job-id', 'by-normalized-path'])
+        expect(schema.indexes['output-reservation-claims']).toEqual([
+            'by-active-collision-key', 'by-reservation-id',
+        ])
         queue.close()
     })
 
@@ -474,7 +507,9 @@ describe('normalized IndexedDB durable queue repository', () => {
         const migratedJob = await queue.getJob('job:1')
 
         expect(migrated?.directoryIdentity).toMatch(/^sha256:[a-f0-9]{64}$/)
+        expect(migrated?.reservationSchemaVersion).toBe(0)
         expect(migratedJob?.snapshot.outputReservation?.directoryIdentity).toBe(migrated?.directoryIdentity)
+        expect(await queue.listOutputReservationClaims('reservation:1')).toEqual([])
         expect(migratedJob?.snapshotHash).toBe(hashGenerationJobSnapshot(migratedJob!.snapshot))
         expect(await queue.getOutputReservationByPath(
             migrated!.directoryIdentity,
@@ -514,6 +549,358 @@ describe('normalized IndexedDB durable queue repository', () => {
             reservation().directoryIdentity,
             'portraits/image.webp',
         )).toEqual(reservation())
+    })
+
+    it('atomically reserves every commit-set claim and replays the same hash', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-commit-set-replay'))
+        const current = commitSetReservation()
+        const input = {
+            batch: {
+                id: 'batch:1', workflow: 'main' as const, createdAt: NOW,
+                failurePolicy: 'continue' as const, origin: 'fresh' as const, idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current)],
+            reservations: [current],
+        }
+
+        const created = await queue.createBatchAndEnqueue(input)
+        const replayed = await queue.createBatchAndEnqueue(input)
+
+        expect(replayed.reservations).toEqual(created.reservations)
+        expect(await queue.listOutputReservationClaims(current.reservationId)).toEqual([
+            expect.objectContaining({ claimId: 'image', activeCollisionKey: expect.stringMatching(/^collision:sha256:/) }),
+            expect.objectContaining({ claimId: 'metadata', activeCollisionKey: expect.stringMatching(/^collision:sha256:/) }),
+        ])
+        const changedSet = createOutputCommitSet({
+            ...current.commitSet,
+            claims: [
+                { claimId: 'image', kind: 'image', relativePath: current.relativePath },
+                { claimId: 'metadata', kind: 'metadata-sidecar', relativePath: 'portraits/changed.json' },
+            ],
+        })
+        const changed = commitSetReservation({
+            commitSet: changedSet.commitSet,
+            commitSetHash: changedSet.commitSetHash,
+        })
+        await expect(queue.createBatchAndEnqueue({
+            ...input,
+            jobs: [reservedJobInput(changed)],
+            reservations: [changed],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
+    })
+
+    it('rejects a commit set bound to a different directory authority', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-commit-set-authority'))
+        const current = commitSetReservation()
+        const changed = createOutputCommitSet({
+            ...current.commitSet,
+            directoryAuthorityId: 'folder:other',
+            claims: current.commitSet.claims,
+        })
+        const mismatched = commitSetReservation({
+            commitSet: changed.commitSet,
+            commitSetHash: changed.commitSetHash,
+        })
+
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(mismatched)],
+            reservations: [mismatched],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_RECORD_INVALID' })
+    })
+
+    it('rolls back batch, jobs, header, and claims when only a sidecar claim collides', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-commit-set-sidecar-collision'))
+        const first = commitSetReservation()
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(first)],
+            reservations: [first],
+        })
+        const changed = createOutputCommitSet({
+            directoryAuthorityId: first.commitSet.directoryAuthorityId,
+            directoryAuthorityFingerprint: first.commitSet.directoryAuthorityFingerprint,
+            filesystemSemantics: 'windows',
+            filenamePolicyRevision: 'filename-v1',
+            pathNormalizationRevision: 'path-v1',
+            claims: [
+                { claimId: 'image', kind: 'image', relativePath: 'portraits/Other.webp' },
+                { claimId: 'metadata', kind: 'metadata-sidecar', relativePath: 'portraits/Image.webp.json' },
+            ],
+        })
+        const second = commitSetReservation({
+            reservationId: 'reservation:current:2', batchId: 'batch:2', jobId: 'job:2',
+            relativePath: 'portraits/Other.webp', updatedAt: LATER,
+            commitSet: changed.commitSet, commitSetHash: changed.commitSetHash,
+        })
+
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:2', workflow: 'main', createdAt: LATER,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:2',
+            },
+            jobs: [reservedJobInput(second, {
+                id: 'job:2', batchId: 'batch:2', createdAt: LATER, idempotencyKey: 'idempotency:2',
+            })],
+            reservations: [second],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
+        expect(await queue.getBatch('batch:2')).toBeNull()
+        expect(await queue.getJob('job:2')).toBeNull()
+        expect(await queue.getOutputReservation(second.reservationId)).toBeNull()
+        expect(await queue.listOutputReservationClaims(second.reservationId)).toEqual([])
+    })
+
+    it('uses version CAS and releases all active claim keys on commit', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('output-commit-set-cas'))
+        const current = commitSetReservation()
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current)],
+            reservations: [current],
+        })
+        await expect(queue.transitionOutputReservation({
+            reservationId: current.reservationId, owner: current,
+            expectedState: 'reserved', expectedVersion: 2, state: 'writing',
+        })).rejects.toMatchObject({ code: 'E_QUEUE_INVALID_TRANSITION' })
+        const writing = await queue.transitionOutputReservation({
+            reservationId: current.reservationId, owner: current,
+            expectedState: 'reserved', expectedVersion: 1, state: 'writing',
+        })
+        expect(writing).toMatchObject({ state: 'writing', version: 2 })
+        await expect(queue.transitionOutputReservation({
+            reservationId: current.reservationId, owner: current,
+            expectedState: 'writing', expectedVersion: 1, state: 'committed',
+        })).rejects.toMatchObject({ code: 'E_QUEUE_INVALID_TRANSITION' })
+        const committed = await queue.transitionOutputReservation({
+            reservationId: current.reservationId, owner: current,
+            expectedState: 'writing', expectedVersion: 2, state: 'committed',
+        })
+        expect(committed).toMatchObject({ state: 'committed', version: 3 })
+        expect(await queue.listOutputReservationClaims(current.reservationId)).toEqual([
+            expect.objectContaining({ claimId: 'image', activeCollisionKey: null }),
+            expect.objectContaining({ claimId: 'metadata', activeCollisionKey: null }),
+        ])
+    })
+
+    it('retains current claims when an unknown Provider attempt is cancelled until explicit abandon', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('unknown-cancel-retains-reservation'))
+        const current = commitSetReservation()
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current, { snapshot: providerSnapshot() })],
+            reservations: [current],
+        })
+        await queue.transitionOutputReservation({
+            reservationId: current.reservationId,
+            owner: current,
+            expectedState: 'reserved',
+            expectedVersion: 1,
+            state: 'writing',
+        })
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 10_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+        })
+        const prepared: ProviderAttemptEvidence = {
+            dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
+            responseDigest: null, spoolReceipt: null,
+        }
+        const possibly: ProviderAttemptEvidence = {
+            dispatchState: 'possibly-dispatched', providerOutcome: 'running', billingRisk: 'possible',
+            responseDigest: null, spoolReceipt: null,
+        }
+        await queue.recordProviderAttemptTransition({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', now: LATER,
+            expectedEvidence: prepared, nextEvidence: possibly,
+        })
+        await queue.recordProviderAttemptTransition({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', now: '2026-07-14T04:00:03.000Z',
+            expectedEvidence: possibly,
+            nextEvidence: { ...possibly, providerOutcome: 'unknown' },
+            blockReason: 'provider-outcome-unknown',
+        })
+
+        await queue.requestCancel({ jobId: 'job:1', now: '2026-07-14T04:00:04.000Z' })
+        await expect(queue.requestCancel({ jobId: 'job:1', now: '2026-07-14T04:00:04.000Z' }))
+            .resolves.toMatchObject({ state: 'cancelled' })
+        expect(await queue.getOutputReservation(current.reservationId)).toMatchObject({ state: 'writing', version: 2 })
+        expect(await queue.listOutputReservationClaims(current.reservationId)).toEqual([
+            expect.objectContaining({ activeCollisionKey: expect.stringMatching(/^collision:sha256:/) }),
+            expect.objectContaining({ activeCollisionKey: expect.stringMatching(/^collision:sha256:/) }),
+        ])
+
+        await expect(queue.transitionOutputReservation({
+            reservationId: current.reservationId,
+            owner: current,
+            expectedState: 'writing',
+            expectedVersion: 2,
+            state: 'abandoned',
+        })).rejects.toMatchObject({ code: 'E_QUEUE_INVALID_TRANSITION' })
+        await queue.abandonOutputReservation({
+            reservationId: current.reservationId,
+            owner: current,
+            expectedVersion: 2,
+            now: '2026-07-14T04:00:05.000Z',
+        })
+        expect(await queue.listOutputReservationClaims(current.reservationId)).toEqual([
+            expect.objectContaining({ activeCollisionKey: null }),
+            expect.objectContaining({ activeCollisionKey: null }),
+        ])
+    })
+
+    it('keeps a spooled result reservation and requires matching discard proof before abandon', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('spooled-cancel-retains-reservation'))
+        const current = commitSetReservation()
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current, { snapshot: providerSnapshot() })],
+            reservations: [current],
+        })
+        await queue.transitionOutputReservation({
+            reservationId: current.reservationId, owner: current,
+            expectedState: 'reserved', expectedVersion: 1, state: 'writing',
+        })
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 10_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+        })
+        const digest = `sha256:${'f'.repeat(64)}` as const
+        const receipt = {
+            schemaVersion: 1 as const,
+            spoolId: 'provider-spool-reservation',
+            attemptId: 'job:1:1',
+            contentType: 'image/png',
+            byteLength: 4,
+            sha256: digest,
+            committedAt: LATER,
+        }
+        const evidence: ProviderAttemptEvidence[] = [
+            {
+                dispatchState: 'prepared', providerOutcome: 'running', billingRisk: 'none',
+                responseDigest: null, spoolReceipt: null,
+            },
+            {
+                dispatchState: 'possibly-dispatched', providerOutcome: 'running', billingRisk: 'possible',
+                responseDigest: null, spoolReceipt: null,
+            },
+            {
+                dispatchState: 'response-started', providerOutcome: 'running', billingRisk: 'possible',
+                responseDigest: null, spoolReceipt: null,
+            },
+            {
+                dispatchState: 'response-complete', providerOutcome: 'succeeded', billingRisk: 'confirmed',
+                responseDigest: digest, spoolReceipt: null,
+            },
+            {
+                dispatchState: 'result-spooled', providerOutcome: 'succeeded', billingRisk: 'confirmed',
+                responseDigest: digest, spoolReceipt: receipt,
+            },
+        ]
+        for (let index = 1; index < evidence.length; index += 1) {
+            await queue.recordProviderAttemptTransition({
+                jobId: 'job:1', attemptNumber: 1,
+                leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', now: LATER,
+                expectedEvidence: evidence[index - 1], nextEvidence: evidence[index],
+            })
+        }
+        await queue.requeueSpooledResult({
+            jobId: 'job:1', attemptNumber: 1,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+            now: '2026-07-14T04:00:03.000Z', readyAt: '2026-07-14T04:00:03.000Z',
+        })
+        await queue.requestCancel({ jobId: 'job:1', now: '2026-07-14T04:00:04.000Z' })
+        expect(await queue.getOutputReservation(current.reservationId)).toMatchObject({ state: 'writing' })
+        await expect(queue.abandonOutputReservation({
+            reservationId: current.reservationId, owner: current, expectedVersion: 2,
+            now: '2026-07-14T04:00:05.000Z',
+        })).rejects.toMatchObject({ code: 'E_QUEUE_INVALID_TRANSITION' })
+        await expect(queue.abandonOutputReservation({
+            reservationId: current.reservationId, owner: current, expectedVersion: 2,
+            now: '2026-07-14T04:00:05.000Z', discardedSpoolReceipt: receipt,
+        })).resolves.toMatchObject({ state: 'abandoned', version: 3 })
+    })
+
+    it('CAS-transfers a pre-dispatch failed reservation to one retry successor', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('retry-reservation-transfer'))
+        const current = commitSetReservation()
+        await queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current, { snapshot: providerSnapshot(), maxAttempts: 1 })],
+            reservations: [current],
+        })
+        await queue.transitionOutputReservation({
+            reservationId: current.reservationId,
+            owner: current,
+            expectedState: 'reserved',
+            expectedVersion: 1,
+            state: 'writing',
+        })
+        const lease = await queue.acquireLease({ jobId: 'job:1', owner: 'worker:1', now: NOW, ttlMs: 10_000 })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'running', now: NOW,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '',
+        })
+        await queue.transitionJob({
+            jobId: 'job:1', to: 'failed', now: LATER,
+            leaseOwner: 'worker:1', leaseToken: lease?.leaseToken ?? '', failureKind: 'transient',
+        })
+        const targetBatch = {
+            id: 'batch:retry', workflow: 'main' as const, createdAt: '2026-07-14T04:00:03.000Z',
+            failurePolicy: 'continue' as const, origin: 'retry' as const, idempotencyKey: 'batch:retry',
+        }
+        const retried = await queue.retryFailedJobs({ sourceBatchId: 'batch:1', targetBatch })
+        const replayed = await queue.retryFailedJobs({ sourceBatchId: 'batch:1', targetBatch })
+
+        expect(retried.jobs).toHaveLength(1)
+        expect(replayed.jobs).toEqual(retried.jobs)
+        expect(retried.reservations).toEqual([
+            expect.objectContaining({
+                reservationId: current.reservationId,
+                batchId: 'batch:retry',
+                jobId: retried.jobs[0].id,
+                state: 'reserved',
+                version: 3,
+            }),
+        ])
+        expect(retried.jobs[0].snapshot.outputReservation?.reservationId).toBe(current.reservationId)
+        expect(await queue.getJob('job:1')).toMatchObject({ state: 'failed' })
+        await expect(queue.createBatchAndEnqueue({
+            batch: {
+                id: 'batch:1', workflow: 'main', createdAt: NOW,
+                failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch:1',
+            },
+            jobs: [reservedJobInput(current, { snapshot: providerSnapshot(), maxAttempts: 1 })],
+            reservations: [current],
+        })).rejects.toMatchObject({ code: 'E_QUEUE_IDEMPOTENCY_CONFLICT' })
     })
 
     it('rejects a reservation that is missing from the immutable job snapshot', async () => {

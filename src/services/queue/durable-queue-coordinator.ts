@@ -16,6 +16,8 @@ import type { ProviderAttemptEvidence } from '@/domain/queue/provider-result'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 
 export interface QueueExecutorContext {
+    /** Storage-only resumes consume a verified spool and must never dispatch Provider transport. */
+    readonly executionMode: 'provider' | 'storage-only'
     readonly tokenSlotId: string
     readonly token: string
     /** Present on current runtime leases; absent only in legacy test/provider adapters. */
@@ -31,6 +33,7 @@ export interface QueueExecutorContext {
         reservationId: string
         owner: Pick<OutputReservation, 'batchId' | 'jobId' | 'directoryIdentity' | 'relativePath'>
         expectedState: OutputReservation['state']
+        expectedVersion?: number
         state: OutputReservation['state']
     }): Promise<OutputReservation>
     recordProviderTransition(
@@ -146,6 +149,11 @@ function executionLimit(workflow: GenerationWorkflow): number {
     // existing single-worker presentation contract.
     if (workflow === 'main') return CURRENT_MAIN_QUEUE_POLICY.maxConcurrency
     return workflow === 'style-lab' ? 1 : 2
+}
+
+interface ScheduledExecutionSlot {
+    readonly slot: QueueTokenSlot
+    readonly executionMode: QueueExecutorContext['executionMode']
 }
 
 function classifyFailure(error: unknown): QueueExecutionError {
@@ -303,7 +311,7 @@ export class DurableQueueCoordinator {
     private async scheduleAvailable(): Promise<void> {
         const occupiedSlots = new Set([...this.active.values()].map(active => active.slotId))
         const uniqueTokens = new Set<string>()
-        const slots = this.tokenProvider().filter(slot => {
+        const providerSlots = this.tokenProvider().filter(slot => {
             const token = slot.token.trim()
             if (token.length === 0 || uniqueTokens.has(token)) return false
             uniqueTokens.add(token)
@@ -311,7 +319,7 @@ export class DurableQueueCoordinator {
         })
 
         let cursor: string | null = null
-        let slotIndex = 0
+        let providerSlotIndex = 0
         const batchJobsById = new Map<string, GenerationJob[]>()
         do {
             const page = await this.repository.listJobs({ states: ['queued'], cursor, limit: 250 })
@@ -339,7 +347,20 @@ export class DurableQueueCoordinator {
                     }
                 }
                 if (Date.parse(candidate.readyAt) > Date.parse(this.now())) continue
-                if (slotIndex >= slots.length) continue
+                const attempts = await this.repository.listAttempts(candidate.id)
+                const resumableAttempt = attempts.length === 0 ? undefined : attempts[attempts.length - 1]
+                const isStorageOnly = resumableAttempt?.outcome === 'running'
+                    && resumableAttempt.providerEvidence?.dispatchState === 'result-spooled'
+                    && resumableAttempt.providerEvidence.spoolReceipt !== null
+                const scheduled: ScheduledExecutionSlot | null = isStorageOnly
+                    ? {
+                        slot: { slotId: `storage-only:${candidate.id}`, token: '' },
+                        executionMode: 'storage-only',
+                    }
+                    : providerSlotIndex < providerSlots.length
+                        ? { slot: providerSlots[providerSlotIndex], executionMode: 'provider' }
+                        : null
+                if (scheduled === null) continue
                 const activeExecutions = [...this.active.values()]
                 const previewStreamActive = activeExecutions.some(execution => execution.holdsPreviewStreamLock)
                 const needsPreviewStreamLock = requiresPreviewStreamLock(candidate)
@@ -355,7 +376,7 @@ export class DurableQueueCoordinator {
                 if (sequenceDependent && activeMainSequence) continue
                 if (activeForWorkflow >= executionLimit(candidate.workflow)) continue
 
-                const slot = slots[slotIndex]
+                const { slot, executionMode } = scheduled
                 const owner = `${this.ownerPrefix}:${slot.slotId}`
                 const leased = await this.repository.acquireLease({
                     jobId: candidate.id,
@@ -364,8 +385,8 @@ export class DurableQueueCoordinator {
                     ttlMs: this.leaseTtlMs,
                 })
                 if (leased === null) continue
-                slotIndex += 1
-                this.launch(leased, slot, owner, needsPreviewStreamLock)
+                if (executionMode === 'provider') providerSlotIndex += 1
+                this.launch(leased, slot, owner, needsPreviewStreamLock, executionMode)
             }
             cursor = page.nextCursor
         } while (cursor !== null)
@@ -384,7 +405,13 @@ export class DurableQueueCoordinator {
         return jobs
     }
 
-    private launch(job: GenerationJob, slot: QueueTokenSlot, owner: string, holdsPreviewStreamLock: boolean): void {
+    private launch(
+        job: GenerationJob,
+        slot: QueueTokenSlot,
+        owner: string,
+        holdsPreviewStreamLock: boolean,
+        executionMode: QueueExecutorContext['executionMode'],
+    ): void {
         const controller = new AbortController()
         const active: ActiveExecution = {
             job,
@@ -395,7 +422,7 @@ export class DurableQueueCoordinator {
             promise: Promise.resolve(),
         }
         this.active.set(job.id, active)
-        active.promise = this.executeClaimed(job, slot, owner, controller)
+        active.promise = this.executeClaimed(job, slot, owner, controller, executionMode)
             .catch(() => undefined)
             .finally(() => {
                 this.active.delete(job.id)
@@ -407,6 +434,7 @@ export class DurableQueueCoordinator {
         slot: QueueTokenSlot,
         owner: string,
         controller: AbortController,
+        executionMode: QueueExecutorContext['executionMode'],
     ): Promise<void> {
         const token = leased.leaseToken
         if (token === null) return
@@ -450,6 +478,7 @@ export class DurableQueueCoordinator {
         }, heartbeatMs)
 
         const context: QueueExecutorContext = {
+            executionMode,
             tokenSlotId: slot.slotId,
             token: slot.token,
             ...(slot.activeCredentialsAreOpus === undefined

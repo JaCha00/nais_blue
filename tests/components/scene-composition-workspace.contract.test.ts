@@ -99,6 +99,8 @@ describe('Scene composition workspace information architecture', () => {
         expect(sceneMode).toContain('startNewGenerationSession()')
         expect(sceneMode).toContain('cancelSceneGeneration()')
         expect(sceneMode).toContain('enqueueCurrentSceneQueue()')
+        expect(sceneMode).toContain('selectDurableBatch(result.batch.id)')
+        expect(sceneMode).not.toContain('.drain()')
         expect(sceneMode).toContain("queueExecutionAuthority === 'legacy'")
         expect(generationHook).toContain('async function workerLoop')
         expect(generationHook).toContain("executionAuthority !== 'legacy' && !rotationActive")
@@ -128,7 +130,8 @@ describe('Scene composition workspace information architecture', () => {
 
         expect(detail).toContain("queueExecutionAuthority === 'legacy'")
         expect(detail).toContain('enqueueCurrentSceneQueue()')
-        expect(detail).toContain('coordinator.drain()')
+        expect(detail).toContain('selectDurableBatch(result.batch.id)')
+        expect(detail).not.toContain('coordinator.drain()')
         expect(detail).toContain("coordinator.cancelWorkflow('scene')")
         expect(detail).toContain('coordinator.cancelBatch(result.batch.id)')
         expect(detail).toContain('durableCancelRequestedRef.current')

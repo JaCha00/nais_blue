@@ -39,7 +39,32 @@ export interface OutputReservationFolderBinding {
     readonly contentHash: `sha256:${string}`
 }
 
-export interface OutputReservationSnapshot {
+export type OutputPathClaimKind =
+    | 'image'
+    | 'metadata-sidecar'
+    | 'artifact-sidecar'
+    | 'diagnostic-sidecar'
+    | 'provider-original'
+
+export interface OutputPathClaim {
+    readonly claimId: string
+    readonly kind: OutputPathClaimKind
+    readonly relativePath: string
+    /** Secret-free digest of directory authority, filesystem semantics, and normalized path. */
+    readonly collisionKey: string
+}
+
+export interface OutputCommitSet {
+    readonly schemaVersion: 1
+    readonly directoryAuthorityId: string
+    readonly directoryAuthorityFingerprint: `sha256:${string}`
+    readonly filesystemSemantics: 'windows' | 'macos' | 'linux' | 'android'
+    readonly filenamePolicyRevision: string
+    readonly pathNormalizationRevision: string
+    readonly claims: readonly OutputPathClaim[]
+}
+
+interface OutputReservationSnapshotBase {
     readonly reservationId: string
     readonly folderBinding: OutputReservationFolderBinding
     /** Secret-free identity of the resolved physical output directory. */
@@ -49,6 +74,20 @@ export interface OutputReservationSnapshot {
     /** Phase 6 is create-only; local overwrite has no approved digest contract. */
     readonly expectedExistingDigest: null
 }
+
+/** Compatibility-only single-path snapshot. Missing revision identifies pre-v9 persisted data. */
+export interface LegacyOutputReservationSnapshot extends OutputReservationSnapshotBase {
+    readonly reservationSchemaVersion?: 0
+}
+
+/** Current reservation snapshot. Legacy path fields remain as a narrow executor compatibility projection. */
+export interface OutputCommitSetReservationSnapshot extends OutputReservationSnapshotBase {
+    readonly reservationSchemaVersion: 1
+    readonly commitSet: OutputCommitSet
+    readonly commitSetHash: `sha256:${string}`
+}
+
+export type OutputReservationSnapshot = LegacyOutputReservationSnapshot | OutputCommitSetReservationSnapshot
 export type QueueBlockReason =
     | 'missing-resource'
     | 'digest-mismatch'
@@ -210,13 +249,32 @@ export interface GenerationAttempt {
     readonly executionEnvelopeHash: `sha256:${string}` | null
 }
 
-export type OutputReservationState = 'storage-pending' | 'writing' | 'committed' | 'conflict' | 'abandoned'
+export type OutputReservationState = 'reserved' | 'storage-pending' | 'writing' | 'committed' | 'conflict' | 'abandoned'
 
-/** Durable enqueue-time ownership of one exact output path. */
-export interface OutputReservation extends OutputReservationSnapshot {
+interface OutputReservationOwner {
     readonly batchId: string
     readonly jobId: string
     readonly state: OutputReservationState
+}
+
+/** Explicit compatibility row; it never advertises a synthesized full commit set. */
+export type LegacyOutputReservation = LegacyOutputReservationSnapshot & OutputReservationOwner
+
+/** Durable enqueue-time ownership of every permanent path in one output transaction. */
+export type OutputCommitSetReservation = OutputCommitSetReservationSnapshot & OutputReservationOwner & {
+    readonly version: number
+    readonly updatedAt: string
+}
+
+export type OutputReservation = LegacyOutputReservation | OutputCommitSetReservation
+
+export interface OutputReservationClaim {
+    readonly claimId: string
+    readonly reservationId: string
+    readonly originalCollisionKey: string
+    readonly activeCollisionKey: string | null
+    readonly kind: OutputPathClaimKind
+    readonly relativePath: string
 }
 
 export interface GenerationJobProjection {

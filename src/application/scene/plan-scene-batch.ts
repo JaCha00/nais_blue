@@ -1,6 +1,6 @@
 import { hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import type { ActorRef } from '@/application/generation/generation-command-contract'
-import type { SceneAuthoringRecord, SceneDocument } from './scene-repository'
+import type { SceneAuthoringRecord, SceneDocument, SceneRepositoryPort } from './scene-repository'
 import type { OutputReservationFolderBinding } from '@/domain/queue/types'
 
 export type SceneSeedPolicy =
@@ -50,6 +50,45 @@ export interface PlanSceneBatchInput<TPrepared> {
     readonly folderBinding: OutputReservationFolderBinding
     readonly request: SceneBatchRequest
     readonly jobs: readonly Omit<PlannedSceneBatchJob<TPrepared>, 'ordinal'>[]
+}
+
+export interface RepositorySceneBatchTarget {
+    readonly presetId: string
+    readonly sceneId: string
+    readonly expectedRevision?: number
+}
+
+export interface RepositorySceneBatchSource {
+    readonly target: RepositorySceneBatchTarget
+    readonly document: SceneDocument
+    readonly scene: SceneAuthoringRecord
+}
+
+/** Resolves every requested Scene from durable authority or rejects the request without a partial result. */
+export async function resolveRepositorySceneBatchTargets(
+    repository: SceneRepositoryPort,
+    targets: readonly RepositorySceneBatchTarget[],
+): Promise<readonly RepositorySceneBatchSource[]> {
+    if (targets.length === 0) throw new TypeError('A Scene batch must contain at least one target')
+    const documents = new Map<string, SceneDocument>()
+    for (const target of targets) {
+        if (!isBoundedText(target.presetId, 200) || !isBoundedText(target.sceneId, 200)) {
+            throw new TypeError('Scene batch target identity is invalid')
+        }
+        if (documents.has(target.presetId)) continue
+        const document = await repository.getDocument(target.presetId)
+        if (document === null) throw new TypeError(`Scene preset is missing: ${target.presetId}`)
+        documents.set(target.presetId, document)
+    }
+    return targets.map(target => {
+        const document = documents.get(target.presetId)!
+        if (target.expectedRevision !== undefined && target.expectedRevision !== document.revision) {
+            throw new TypeError(`Scene preset revision changed: ${target.presetId}`)
+        }
+        const scene = document.scenes.find(candidate => candidate.id === target.sceneId)
+        if (scene === undefined) throw new TypeError(`Scene is missing: ${target.presetId}:${target.sceneId}`)
+        return Object.freeze({ target, document, scene })
+    })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

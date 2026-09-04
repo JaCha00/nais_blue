@@ -10,11 +10,14 @@ const fileSystem = vi.hoisted(() => ({
     writeFile: vi.fn(),
     writeTextFile: vi.fn(),
 }))
+const invoke = vi.hoisted(() => vi.fn())
 
 vi.mock('@tauri-apps/plugin-fs', () => fileSystem)
+vi.mock('@tauri-apps/api/core', () => ({ invoke }))
 
 import {
     createNativeDirectory,
+    commitNativeSiblingIfAbsent,
     nativePathExists,
     readNativeBinaryFile,
     readNativeDirectory,
@@ -83,5 +86,16 @@ describe('native file-system adapter', () => {
 
         await expect(renameNativePath('C:\\NAI Blue\\old', 'C:\\NAI Blue\\new')).resolves.toBeUndefined()
         expect(fileSystem.rename).toHaveBeenCalledWith('C:\\NAI Blue\\old', 'C:\\NAI Blue\\new')
+    })
+
+    it('delegates atomic sibling publication to the scoped native command', async () => {
+        invoke.mockResolvedValue('destination-exists')
+
+        await expect(commitNativeSiblingIfAbsent('C:\\Output\\.nai-blue-txn-a-image.tmp', 'C:\\Output\\image.png'))
+            .resolves.toBe('destination-exists')
+        expect(invoke).toHaveBeenCalledWith('commit_native_sibling_if_absent', {
+            temporaryPath: 'C:\\Output\\.nai-blue-txn-a-image.tmp',
+            finalPath: 'C:\\Output\\image.png',
+        })
     })
 })

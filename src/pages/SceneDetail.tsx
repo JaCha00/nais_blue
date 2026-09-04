@@ -162,6 +162,7 @@ export default function SceneDetail() {
     const assetConflictMessage = useAssetModuleStore(state => state.conflictMessage)
     const generatingMode = useGenerationStore(state => state.generatingMode)
     const queueExecutionAuthority = useQueueStore(state => state.executionAuthority)
+    const selectDurableBatch = useQueueStore(state => state.setSelectedBatchId)
     const addToTrash = useTrashStore(state => state.add)
 
     // Scene dimensions are shared by the request builder and gallery frames so
@@ -434,6 +435,7 @@ export default function SceneDetail() {
             if (result === null) return
 
             durableBatchIdRef.current = result.batch.id
+            selectDurableBatch(result.batch.id)
             toast({
                 title: t('queue.enqueued', 'Added to durable queue'),
                 description: t('queue.enqueuedCount', '{{count}} jobs are ready in Queue Center.', {
@@ -448,8 +450,6 @@ export default function SceneDetail() {
                 await coordinator.cancelBatch(result.batch.id)
                 return
             }
-
-            await coordinator.drain()
         } catch (error) {
             if (!durableCancelRequestedRef.current) {
                 toast({

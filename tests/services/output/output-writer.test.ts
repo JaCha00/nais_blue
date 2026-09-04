@@ -14,6 +14,7 @@ import type {
     OutputPlatformAdapter,
     ResolvedOutputDirectory,
 } from '@/services/output/platform-adapter'
+import { createGenerationOutputCommitSet } from '@/services/output/generation-output-commit-set'
 
 const FIXED_NOW = new Date('2026-07-13T00:00:00.000Z')
 const IMAGE_BYTES = new Uint8Array([1, 2, 3, 4])
@@ -26,6 +27,7 @@ type AdapterOperation =
     | 'write-file'
     | 'read-file'
     | 'rename'
+    | 'commit-if-absent'
     | 'remove'
     | 'write-journal'
     | 'read-journal'
@@ -54,6 +56,7 @@ class InMemoryOutputAdapter implements OutputPlatformAdapter {
     readonly capabilities = {
         absolutePaths: false,
         atomicSiblingRename: true,
+        outputReservationGuarantee: 'atomic-no-replace' as const,
         runtime: 'app-scoped' as const,
     }
 
@@ -122,6 +125,18 @@ class InMemoryOutputAdapter implements OutputPlatformAdapter {
         if (bytes === undefined) throw new Error(`Missing rename source: ${fromKey}`)
         this.files.set(toKey, bytes)
         this.files.delete(fromKey)
+    }
+
+    async commitSiblingIfAbsent(from: OutputFileRef, to: OutputFileRef) {
+        const fromKey = this.key(from)
+        const toKey = this.key(to)
+        this.record({ operation: 'commit-if-absent', from: fromKey, to: toKey })
+        if (this.files.has(toKey)) return { status: 'destination-exists' as const }
+        const bytes = this.files.get(fromKey)
+        if (bytes === undefined) throw new Error(`Missing commit source: ${fromKey}`)
+        this.files.set(toKey, bytes)
+        this.files.delete(fromKey)
+        return { status: 'committed' as const }
     }
 
     async remove(file: OutputFileRef): Promise<void> {
@@ -279,6 +294,80 @@ describe('OutputWriter fault containment', () => {
         expect(outcome).toMatchObject({ status: 'committed', result: { fileName: 'result.png' } })
         expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
         expect(adapter.file('output/result-2.png')).toBeUndefined()
+    })
+
+    it('publishes exactly the image, metadata, and provider-original paths in its commit set', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = new OutputWriter(
+            adapter,
+            new DeterministicMetadataWriter(),
+            () => 'txn-full-commit-set',
+            () => new Date(FIXED_NOW),
+            async () => ({ bytes: new Uint8Array([9]), dataUrl: 'data:image/png;base64,CQ==' }),
+        )
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })
+        const { commitSet, commitSetHash } = createGenerationOutputCommitSet({
+            directoryAuthorityId: 'folder:1',
+            directoryAuthorityFingerprint: preflight.directoryIdentity,
+            filesystemSemantics: 'windows',
+            fileName: 'result.png',
+            imageFormat: 'png',
+            metadataMode: 'strip-and-sidecar',
+            preserveProviderOriginal: true,
+        })
+
+        await outputWriter.write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:full',
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: 'result.png',
+                commitSet,
+                commitSetHash,
+            },
+            metadata: { ...metadataRequest(), metadataMode: 'strip-and-sidecar' },
+            preserveProviderOriginal: true,
+        }))
+
+        expect(adapter.paths()).toEqual([
+            'output/._nai-blue-private/result.png',
+            'output/result.nai-blue.json',
+            'output/result.png',
+        ])
+    })
+
+    it('fails before staging when actual permanent artifacts differ from the commit set', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-commit-set-mismatch')
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })
+        const { commitSet, commitSetHash } = createGenerationOutputCommitSet({
+            directoryAuthorityId: 'folder:1',
+            directoryAuthorityFingerprint: preflight.directoryIdentity,
+            filesystemSemantics: 'windows',
+            fileName: 'result.png',
+            imageFormat: 'png',
+            metadataMode: 'strip-only',
+            preserveProviderOriginal: false,
+        })
+
+        await expect(outputWriter.write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:mismatch',
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: 'result.png',
+                commitSet,
+                commitSetHash,
+            },
+            metadata: metadataRequest(),
+        }))).rejects.toMatchObject({ phase: 'resolve-destination' })
+        expectNoOutput(adapter)
     })
 
     it('rejects a reserved write when the resolved directory identity changed', async () => {
@@ -700,6 +789,105 @@ describe('OutputWriter fault containment', () => {
         expect(bytesEqual(adapter.file('output/result.png'), external)).toBe(true)
         expect(adapter.paths()).toEqual(['output/result.png'])
         expectNoTransactionArtifacts(adapter)
+    })
+
+    it('preserves an external file created at the reserved no-replace commit port', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-port-race')
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })
+        const external = new Uint8Array([7, 7, 7])
+        adapter.fault = {
+            operation: 'commit-if-absent',
+            when: call => {
+                if (call.to?.endsWith(':output/result.png')) adapter.seed('output/result.png', external)
+                return false
+            },
+        }
+
+        await expect(outputWriter.write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:race',
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: 'result.png',
+            },
+        }))).rejects.toMatchObject({ name: 'OutputWriterError', phase: 'atomic-commit' })
+
+        expect(adapter.file('output/result.png')).toEqual(external)
+        expect(adapter.calls.some(call => call.operation === 'rename')).toBe(false)
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('preserves an external sidecar collision and publishes no partial commit set', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-sidecar-race')
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName: 'result.png',
+        })
+        const { commitSet, commitSetHash } = createGenerationOutputCommitSet({
+            directoryAuthorityId: 'folder:1',
+            directoryAuthorityFingerprint: preflight.directoryIdentity,
+            filesystemSemantics: 'windows',
+            fileName: 'result.png',
+            imageFormat: 'png',
+            metadataMode: 'sidecar-only',
+            preserveProviderOriginal: false,
+        })
+        const external = new Uint8Array([8, 8, 8])
+        adapter.fault = {
+            operation: 'commit-if-absent',
+            when: call => {
+                if (call.to?.endsWith(':output/result.nai-blue.json')) {
+                    adapter.seed('output/result.nai-blue.json', external)
+                }
+                return false
+            },
+        }
+
+        await expect(outputWriter.write(request({
+            destination: { ...request().destination, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:sidecar-race',
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: 'result.png',
+                commitSet,
+                commitSetHash,
+            },
+            metadata: metadataRequest(),
+        }))).rejects.toMatchObject({ name: 'OutputWriterError', phase: 'atomic-commit' })
+
+        expect(adapter.file('output/result.nai-blue.json')).toEqual(external)
+        expect(adapter.file('output/result.png')).toBeUndefined()
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('uses bounded digest temp names for long reserved filenames', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-bounded-temp')
+        const fileName = `${'a'.repeat(180)}.png`
+        const preflight = await outputWriter.preflightExactDestination({
+            destination: request().destination,
+            fileName,
+        })
+
+        await outputWriter.write(request({
+            destination: { ...request().destination, fileName, collisionPolicy: 'error' },
+            outputReservation: {
+                reservationId: 'reservation:long-path',
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: fileName,
+            },
+        }))
+
+        const stagedNames = adapter.calls
+            .filter(call => call.operation === 'write-file' && call.to?.includes('.nai-blue-txn-'))
+            .map(call => call.to?.split('/').at(-1) ?? '')
+        expect(stagedNames.length).toBeGreaterThan(0)
+        expect(stagedNames.every(name => name.length < 80 && !name.includes('a'.repeat(40)))).toBe(true)
     })
 
     it('treats a legacy pending journal as an occupied exact destination', async () => {

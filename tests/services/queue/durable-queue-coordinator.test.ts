@@ -593,6 +593,59 @@ describe('durable queue coordinator', () => {
         ])
     })
 
+    it('leases a verified spool without Provider credentials and preserves its attempt', async () => {
+        const queue = repository('credential-free-spool-resume')
+        await enqueue(queue, [providerWorkflowJob()])
+        const prepare = coordinator(queue, async context => {
+            const prepared = context.providerAttempt.providerEvidence
+            if (prepared === null) throw new Error('provider evidence fixture missing')
+            const possiblyDispatched: ProviderAttemptEvidence = {
+                ...prepared, dispatchState: 'possibly-dispatched', billingRisk: 'possible',
+            }
+            const responseStarted: ProviderAttemptEvidence = {
+                ...possiblyDispatched, dispatchState: 'response-started',
+            }
+            const responseComplete: ProviderAttemptEvidence = {
+                ...responseStarted, dispatchState: 'response-complete', providerOutcome: 'succeeded',
+                billingRisk: 'confirmed', responseDigest: `sha256:${'c'.repeat(64)}`,
+            }
+            await context.recordProviderTransition(possiblyDispatched)
+            await context.recordProviderTransition(responseStarted)
+            await context.recordProviderTransition(responseComplete)
+            await context.recordProviderTransition({
+                ...responseComplete,
+                dispatchState: 'result-spooled',
+                spoolReceipt: {
+                    schemaVersion: 1,
+                    spoolId: 'credential-free-spool',
+                    attemptId: context.providerAttempt.id,
+                    contentType: 'image/png',
+                    byteLength: 3,
+                    sha256: responseComplete.responseDigest!,
+                    committedAt: NOW,
+                },
+            })
+            await context.requeueSpooledResult({ pauseReason: 'local-io' })
+        })
+        await prepare.drain()
+        await queue.setBatchControl({ batchId: 'batch:1', state: 'active', now: NOW })
+
+        const execute = vi.fn(async (context: QueueExecutorContext, jobId: string) => {
+            expect(context.executionMode).toBe('storage-only')
+            expect(context.token).toBe('')
+            expect(context.providerAttempt.attemptNumber).toBe(1)
+            await commit(context, jobId)
+        })
+        const resume = coordinator(queue, execute, () => NOW, [])
+        await resume.drain()
+
+        expect(execute).toHaveBeenCalledOnce()
+        expect(await queue.getJob('job:provider')).toMatchObject({ state: 'succeeded', attemptCount: 1 })
+        expect(await queue.listAttempts('job:provider')).toEqual([
+            expect.objectContaining({ attemptNumber: 1, outcome: 'succeeded' }),
+        ])
+    })
+
     it('persists 429 backoff and does not turn it into a global pause', async () => {
         const queue = repository('rate-limit')
         await enqueue(queue, jobs(1))

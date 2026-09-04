@@ -228,6 +228,19 @@ export class DesktopProviderResultSpool implements ProviderResultSpool {
         return (await this.verifiedContent(spoolId)).bytes
     }
 
+    async discard(receipt: SpoolReceipt): Promise<void> {
+        const verified = await this.verify(receipt.spoolId)
+        if (!sameReceipt(verified, receipt)) {
+            throw new ProviderResultSpoolError('conflict', 'Discard receipt does not match the Provider spool')
+        }
+        // Receipt first makes an interrupted discard fail closed as orphan data,
+        // which startup reconciliation can remove without treating it as a result.
+        await removeIfPresent(this.storage, receiptPath(receipt.spoolId))
+        await removeIfPresent(this.storage, dataPath(receipt.spoolId))
+        await removeIfPresent(this.storage, receiptTempPath(receipt.spoolId))
+        await removeIfPresent(this.storage, dataTempPath(receipt.spoolId))
+    }
+
     async removeIfEligible(input: SpoolRemovalEligibility): Promise<boolean> {
         assertSpoolId(input.spoolId)
         const now = assertTimestamp(input.now, 'now')

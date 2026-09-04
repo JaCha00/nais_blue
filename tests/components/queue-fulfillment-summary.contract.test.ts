@@ -17,5 +17,7 @@ describe('Queue fulfillment summary contract', () => {
         expect(source).toContain('data-testid="queue-fulfillment-summary"')
         expect(source).toContain('onToggle={event =>')
         expect(source).toContain("t('queue.fulfillment.refresh', 'Refresh stages')")
+        expect(source).toContain('fulfillment.issues.length > 0')
+        expect(source).toContain("'retry-scene-link'")
     })
 })

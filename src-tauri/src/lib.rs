@@ -731,6 +731,111 @@ fn authorize_native_directory(_app: AppHandle, _path: String) -> Result<(), Stri
     Err("Absolute output directories are unavailable on mobile.".to_string())
 }
 
+fn commit_sibling_if_absent_paths(
+    temporary: &std::path::Path,
+    final_path: &std::path::Path,
+) -> Result<&'static str, String> {
+    let temporary = temporary
+        .canonicalize()
+        .map_err(|error| format!("Unable to resolve staged output: {error}"))?;
+    let temporary_parent = temporary
+        .parent()
+        .ok_or_else(|| "Staged output has no parent directory.".to_string())?;
+    let final_parent = final_path
+        .parent()
+        .ok_or_else(|| "Final output has no parent directory.".to_string())?
+        .canonicalize()
+        .map_err(|error| format!("Unable to resolve final output directory: {error}"))?;
+    let temporary_name = temporary
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| "Staged output filename is invalid.".to_string())?;
+    if temporary_parent != final_parent
+        || !temporary_name.starts_with(".nai-blue-txn-")
+        || !temporary_name.ends_with(".tmp")
+    {
+        return Err("No-replace publication requires a safe sibling transaction file.".to_string());
+    }
+    let final_name = final_path
+        .file_name()
+        .ok_or_else(|| "Final output filename is invalid.".to_string())?;
+    let resolved_final = final_parent.join(final_name);
+    match std::fs::hard_link(&temporary, &resolved_final) {
+        Ok(()) => {
+            // The link is the atomic publication point. A leftover temp is safe
+            // and remains journal-owned if cleanup is interrupted.
+            let _ = std::fs::remove_file(&temporary);
+            Ok("committed")
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok("destination-exists"),
+        Err(error) => Err(format!(
+            "Unable to publish output without replacement: {error}"
+        )),
+    }
+}
+
+#[tauri::command]
+fn commit_native_sibling_if_absent(
+    app: AppHandle,
+    temporary_path: String,
+    final_path: String,
+) -> Result<&'static str, String> {
+    use tauri_plugin_fs::FsExt;
+
+    let temporary = PathBuf::from(temporary_path);
+    let final_path = PathBuf::from(final_path);
+    if !temporary.is_absolute() || !final_path.is_absolute() {
+        return Err("No-replace publication requires absolute scoped paths.".to_string());
+    }
+    let scoped_temporary = temporary
+        .canonicalize()
+        .map_err(|error| format!("Unable to resolve staged output: {error}"))?;
+    let scoped_final_parent = final_path
+        .parent()
+        .ok_or_else(|| "Final output has no parent directory.".to_string())?
+        .canonicalize()
+        .map_err(|error| format!("Unable to resolve final output directory: {error}"))?;
+    let scoped_final = scoped_final_parent.join(
+        final_path
+            .file_name()
+            .ok_or_else(|| "Final output filename is invalid.".to_string())?,
+    );
+    let scope = app.fs_scope();
+    if !scope.is_allowed(&scoped_temporary) || !scope.is_allowed(&scoped_final) {
+        return Err("No-replace publication path is outside the filesystem scope.".to_string());
+    }
+    commit_sibling_if_absent_paths(&scoped_temporary, &scoped_final)
+}
+
+#[cfg(test)]
+mod no_replace_output_tests {
+    use super::commit_sibling_if_absent_paths;
+
+    #[test]
+    fn commits_once_and_preserves_external_destination_bytes() {
+        let root = std::env::temp_dir().join(format!("nai-blue-no-replace-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("test directory");
+        let temporary = root.join(".nai-blue-txn-1234567890ab-image.tmp");
+        let final_path = root.join("result.png");
+        std::fs::write(&temporary, b"first").expect("staged bytes");
+        assert_eq!(
+            commit_sibling_if_absent_paths(&temporary, &final_path).unwrap(),
+            "committed"
+        );
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"first");
+
+        std::fs::write(&temporary, b"second").expect("second staged bytes");
+        assert_eq!(
+            commit_sibling_if_absent_paths(&temporary, &final_path).unwrap(),
+            "destination-exists"
+        );
+        assert_eq!(std::fs::read(&final_path).unwrap(), b"first");
+        assert_eq!(std::fs::read(&temporary).unwrap(), b"second");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
 #[cfg(not(mobile))]
 #[tauri::command]
 async fn check_tagger_binary() -> bool {
@@ -917,6 +1022,7 @@ pub fn run() {
             zoom_embedded_browser,
             exit_app,
             authorize_native_directory,
+            commit_native_sibling_if_absent,
             record_diagnostic_event,
             nai_transport::nai_generate_request,
             nai_transport::cancel_nai_request,

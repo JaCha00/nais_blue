@@ -52,6 +52,10 @@ export function SceneQueueSelectionDialog({
         () => Object.values(selected).map(({ key: _key, ...target }) => target),
         [selected],
     )
+    const totalImages = useMemo(
+        () => selectedTargets.reduce((total, target) => total + target.count, 0),
+        [selectedTargets],
+    )
 
     const toggleScene = (presetId: string, sceneId: string, checked: boolean) => {
         const key = selectionKey(presetId, sceneId)
@@ -185,12 +189,35 @@ export function SceneQueueSelectionDialog({
                     })}
                 </div>
 
+                {selectedTargets.length > 0 && (
+                    <div className="space-y-1 rounded-panel border border-border bg-muted/30 px-3 py-2 text-sm" aria-live="polite">
+                        <p className="font-medium">
+                            {t('queue.selectionSummary', '{{scenes}} scenes · {{images}} images', {
+                                scenes: selectedTargets.length,
+                                images: totalImages,
+                            })}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                'queue.reservationSummary',
+                                'The complete output file set is reserved before work starts. Existing files are never overwritten.',
+                            )}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                'queue.appOpenProcessing',
+                                'Jobs run while NAI Blue is open. Interrupted work resumes after the app reopens.',
+                            )}
+                        </p>
+                    </div>
+                )}
+
                 <DialogFooter>
                     <Button type="button" variant="outline" disabled={submitting} onClick={() => onOpenChange(false)}>
                         {t('common.cancel', 'Cancel')}
                     </Button>
                     <Button type="button" disabled={selectedTargets.length === 0 || busy || submitting} onClick={() => void submit()}>
-                        {t('queue.enqueueSelectedScenes', 'Add {{count}} scenes to queue', { count: selectedTargets.length })}
+                        {t('queue.enqueueSelectedImages', 'Add {{count}} images to queue', { count: totalImages })}
                     </Button>
                 </DialogFooter>
             </DialogContent>

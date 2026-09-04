@@ -1,4 +1,4 @@
-import { appDataDir, join } from '@tauri-apps/api/path'
+import { join } from '@tauri-apps/api/path'
 import {
     BaseDirectory,
     exists,
@@ -21,17 +21,19 @@ import {
     type PortableResourceIssue,
 } from '@/platform/portable-resources'
 import type { PortablePathRef } from '@/domain/composition/types'
-import { getPortableStorageBaseDirectory } from '@/platform/storage'
 import {
     getMediaStorageRoot,
+    getPortableStorageBaseDirectory,
     MEDIA_STORAGE_BASE_DIRECTORY,
+    resolveStorageBaseDirectoryRoot,
 } from '@/platform/storage'
-import { authorizeNativeDirectory } from '@/platform/native-file-system'
+import { authorizeNativeDirectory, commitNativeSiblingIfAbsent } from '@/platform/native-file-system'
 import type {
     OutputDestinationRequest,
     OutputFileRef,
     OutputPlatformAdapter,
     OutputPlatformCapabilities,
+    OutputCommitIfAbsentResult,
     ResolvedOutputDirectory,
 } from './platform-adapter'
 
@@ -67,6 +69,12 @@ function optionsFor(file: OutputFileRef): { baseDir?: BaseDirectory } | undefine
     return file.baseDir === undefined ? undefined : { baseDir: file.baseDir }
 }
 
+async function absoluteOutputPath(file: OutputFileRef): Promise<string> {
+    if (file.baseDir === undefined) return file.path
+    const root = await resolveStorageBaseDirectoryRoot(file.baseDir)
+    return join(root, ...file.path.split(/[\\/]+/).filter(Boolean))
+}
+
 async function resolvePortableOutputDirectory(
     path: PortablePathRef,
     capabilities: RuntimeCapabilities,
@@ -92,7 +100,7 @@ async function resolvePortableOutputDirectory(
     const materialized = assessment.materialized
     if (materialized.kind === 'standard' && materialized.root !== undefined) {
         const displayRoot = materialized.root === 'app-data'
-            ? await appDataDir()
+            ? await resolveStorageBaseDirectoryRoot(BaseDirectory.AppData)
             : materialized.root === 'pictures'
                 ? await getMediaStorageRoot()
                 : null
@@ -148,6 +156,17 @@ abstract class TauriOutputPlatformAdapter implements OutputPlatformAdapter {
             ...(from.baseDir === undefined ? {} : { oldPathBaseDir: from.baseDir }),
             ...(to.baseDir === undefined ? {} : { newPathBaseDir: to.baseDir }),
         })
+    }
+
+    async commitSiblingIfAbsent(
+        from: OutputFileRef,
+        to: OutputFileRef,
+    ): Promise<OutputCommitIfAbsentResult> {
+        const status = await commitNativeSiblingIfAbsent(
+            await absoluteOutputPath(from),
+            await absoluteOutputPath(to),
+        )
+        return { status }
     }
 
     remove(file: OutputFileRef): Promise<void> {
@@ -225,6 +244,7 @@ export class DesktopOutputPlatformAdapter extends TauriOutputPlatformAdapter {
         this.capabilities = {
             absolutePaths: runtime.absoluteOutputPath.supported,
             atomicSiblingRename: true,
+            outputReservationGuarantee: 'atomic-no-replace',
             runtime: 'desktop',
         }
     }
@@ -266,6 +286,7 @@ export class AppScopedOutputPlatformAdapter extends TauriOutputPlatformAdapter {
         this.capabilities = {
             absolutePaths: runtime.absoluteOutputPath.supported,
             atomicSiblingRename: true,
+            outputReservationGuarantee: 'single-app-reservation-external-writer-best-effort',
             runtime: 'app-scoped',
         }
     }
@@ -286,7 +307,10 @@ export class AppScopedOutputPlatformAdapter extends TauriOutputPlatformAdapter {
         const relative = sanitizeRelativeOutputDirectory(selected, request.workflowDefaultDirectory)
         return {
             path: relative,
-            displayPath: await join(await appDataDir(), ...relative.split('/')),
+            displayPath: await join(
+                await resolveStorageBaseDirectoryRoot(BaseDirectory.AppData),
+                ...relative.split('/'),
+            ),
             baseDir: BaseDirectory.AppData,
             capabilityFallbackUsed: mustFallback,
             ...(mustFallback

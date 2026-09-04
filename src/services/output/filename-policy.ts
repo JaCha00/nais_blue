@@ -13,6 +13,11 @@ export interface RenderFilenameTemplateParams {
 export type OutputCollisionPolicy = 'unique' | 'overwrite' | 'error'
 export type PlannedOutputCollisionPolicy = 'fail' | 'suffix'
 
+/** Versioned inputs to durable OutputCommitSet hashing. */
+export const OUTPUT_FILENAME_POLICY_REVISION = 'output-filename-policy-v1' as const
+export const OUTPUT_PATH_NORMALIZATION_REVISION = 'output-path-normalization-v1' as const
+export const PRIVATE_ORIGINAL_DIRECTORY = '._nai-blue-private' as const
+
 export interface PlanExactOutputFileNameInput {
     readonly requestedFileName: string
     readonly extension: 'png' | 'webp'

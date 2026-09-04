@@ -10,7 +10,7 @@ import { QueueExecutionError, type QueueExecutorContext } from './durable-queue-
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
 
 function reservationSnapshot(value: OutputReservation) {
-    return {
+    const base = {
         reservationId: value.reservationId,
         folderBinding: value.folderBinding,
         directoryIdentity: value.directoryIdentity,
@@ -18,17 +18,30 @@ function reservationSnapshot(value: OutputReservation) {
         collisionPolicy: value.collisionPolicy,
         expectedExistingDigest: value.expectedExistingDigest,
     }
+    return value.reservationSchemaVersion === 1
+        ? {
+                ...base,
+                reservationSchemaVersion: 1 as const,
+                commitSet: value.commitSet,
+                commitSetHash: value.commitSetHash,
+            }
+        : value.reservationSchemaVersion === 0
+            ? { ...base, reservationSchemaVersion: 0 as const }
+            : base
 }
 
 async function markConflict(
     context: QueueExecutorContext,
     reservation: OutputReservation,
 ): Promise<void> {
-    if (reservation.state !== 'storage-pending' && reservation.state !== 'writing') return
+    if (reservation.state !== 'reserved'
+        && reservation.state !== 'storage-pending'
+        && reservation.state !== 'writing') return
     await context.transitionOutputReservation?.({
         reservationId: reservation.reservationId,
         owner: reservation,
         expectedState: reservation.state,
+        ...(reservation.reservationSchemaVersion === 1 ? { expectedVersion: reservation.version } : {}),
         state: 'conflict',
     })
 }
@@ -61,7 +74,8 @@ export async function preflightReservedQueueOutput(
         || canonicalSerialize(snapshot) !== canonicalSerialize(reservationSnapshot(reservation))) {
         throw new QueueExecutionError('fatal', 'Queue output reservation ownership changed')
     }
-    if (reservation.state !== 'storage-pending' && reservation.state !== 'writing') {
+    const readyState = reservation.reservationSchemaVersion === 1 ? 'reserved' : 'storage-pending'
+    if (reservation.state !== readyState && reservation.state !== 'writing') {
         throw new QueueExecutionError('fatal', `Queue output reservation is ${reservation.state}`)
     }
     const currentFolderBinding = getRuntimeMainQueueDependencies()
@@ -76,6 +90,9 @@ export async function preflightReservedQueueOutput(
         reservationId: snapshot.reservationId,
         directoryIdentity: snapshot.directoryIdentity,
         relativePath: snapshot.relativePath,
+        ...(snapshot.reservationSchemaVersion === 1
+            ? { commitSet: snapshot.commitSet, commitSetHash: snapshot.commitSetHash }
+            : {}),
     }
     try {
         await getRuntimeOutputWriter().preflightExactDestination({
@@ -96,11 +113,12 @@ export async function preflightReservedQueueOutput(
         }
         throw new QueueExecutionError('local-io', 'Output directory preflight failed')
     }
-    if (reservation.state === 'storage-pending') {
+    if (reservation.state === readyState) {
         await context.transitionOutputReservation({
             reservationId: reservation.reservationId,
             owner: reservation,
-            expectedState: 'storage-pending',
+            expectedState: readyState,
+            ...(reservation.reservationSchemaVersion === 1 ? { expectedVersion: reservation.version } : {}),
             state: 'writing',
         })
     }

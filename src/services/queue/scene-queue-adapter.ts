@@ -1,26 +1,28 @@
 import type {
-    OutputReservation,
+    OutputCommitSetReservation,
     QueueBatchOrigin,
     QueueResourceRecord,
 } from '@/domain/queue/types'
-import { canonicalSerialize } from '@/domain/composition/canonical-serialize'
+import { canonicalSerialize, hashCanonicalValue } from '@/domain/composition/canonical-serialize'
 import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calculator'
 import { createAnlasCostConsentSnapshot } from '@/domain/queue/anlas-cost-consent'
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { createGenerationFolderDocumentBinding } from '@/application/folder/generation-folder-binding'
-import type { SceneDocument } from '@/application/scene/scene-repository'
+import type { SceneAuthoringRecord, SceneDocument } from '@/application/scene/scene-repository'
 import {
     createSceneGenerationBinding,
     planSceneBatch,
+    resolveRepositorySceneBatchTargets,
     sceneGenerationBindingMatches,
     type SceneBatchRequest,
     type PlannedSceneBatchJob,
 } from '@/application/scene/plan-scene-batch'
 import { getRuntimeSceneRepository } from '@/lib/scene-migration-startup'
+import { IndexedDbGenerationFolderRepository } from '@/adapters/folder/indexeddb-generation-folder-repository'
+import { DEFAULT_GENERATION_FOLDER_WORKSPACE_ID } from '@/lib/generation-folder-authority-runtime'
 import { resolveGenerationFolderAuthority } from '@/lib/generation-folder-authority-runtime'
 import { DEFAULT_R2_PROFILE_ID } from '@/domain/r2/types'
 import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-params'
-import { selectSceneGenerationSeed } from '@/lib/scene-generation/legacy-build-scene-params'
 import type { SaveSceneResultContext } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
 import { useCharacterStore } from '@/stores/character-store'
@@ -31,6 +33,7 @@ import {
     resolveSceneGeneration,
     useSceneStore,
     type SceneCard,
+    type SceneCompositionRuntimeRecord,
     type ScenePreset,
 } from '@/stores/scene-store'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -55,8 +58,10 @@ import { ensureImageFileExtension, renderFilenameTemplate } from '@/services/out
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
 import { bindOutputReservationSnapshot } from './job-snapshot'
 import type { OutputWriterDestination } from '@/services/output/output-writer'
-
-let sceneEnqueueInFlight: Promise<CreateBatchAndEnqueueResult | null> | null = null
+import {
+    createGenerationOutputCommitSet,
+    generationOutputClaimKinds,
+} from '@/services/output/generation-output-commit-set'
 
 // Queue Center passes explicit folder/scene/count tuples; this boundary keeps
 // selection UI concerns out of snapshot creation and makes each job retain the
@@ -65,6 +70,8 @@ export interface SceneQueueTarget {
     readonly presetId: string
     readonly sceneId: string
     readonly count: number
+    /** Optional caller-observed repository revision; stale callers fail the whole request. */
+    readonly expectedRevision?: number
     readonly fileNames?: readonly string[]
 }
 
@@ -72,6 +79,19 @@ interface ResolvedSceneQueueTarget {
     readonly target: SceneQueueTarget
     readonly preset: ScenePreset
     readonly scene: SceneCard
+    readonly document: SceneDocument
+}
+
+function projectRepositoryScene(scene: SceneAuthoringRecord): SceneCard {
+    const generation = scene.generation === undefined
+        ? undefined
+        : { ...scene.generation, smea: false as const, smeaDyn: false as const } as SceneCard['generation']
+    return {
+        ...structuredClone(scene) as unknown as SceneCard,
+        ...(generation === undefined ? {} : { generation: { ...generation } }),
+        queueCount: 0,
+        images: [],
+    }
 }
 
 interface PreparedSceneQueueJob {
@@ -88,6 +108,7 @@ interface PreparedSceneQueueJob {
     readonly dehydrated: Pick<DehydratedGenerationResult, 'parameters' | 'resources'>
     readonly imageFormat: 'png' | 'webp'
     readonly destination: OutputWriterDestination
+    readonly compositionResult: SceneCompositionRuntimeRecord
 }
 
 function exactSceneFileName(value: string, extension: 'png' | 'webp'): string {
@@ -132,10 +153,17 @@ function planSceneFileName(input: {
 function normalizeSceneQueueTargets(targets: readonly SceneQueueTarget[]): SceneQueueTarget[] {
     const normalized = new Map<string, SceneQueueTarget>()
     for (const target of targets) {
-        if (!Number.isFinite(target.count) || target.count <= 0) continue
-        const count = Math.max(1, Math.floor(target.count))
+        if (!Number.isSafeInteger(target.count) || target.count < 1 || target.count > 999) {
+            throw new QueueExecutionError('fatal', 'Scene queue count must be an integer from 1 to 999')
+        }
+        const count = target.count
         const key = `${target.presetId}:${target.sceneId}`
         const previous = normalized.get(key)
+        if (previous?.expectedRevision !== undefined
+            && target.expectedRevision !== undefined
+            && previous.expectedRevision !== target.expectedRevision) {
+            throw new QueueExecutionError('fatal', `Scene target revisions conflict for ${key}`)
+        }
         const fileNames = [
             ...(previous?.fileNames ?? []),
             ...Array.from({ length: count }, (_, index) => target.fileNames?.[index]?.trim() ?? ''),
@@ -143,9 +171,15 @@ function normalizeSceneQueueTargets(targets: readonly SceneQueueTarget[]): Scene
         normalized.set(key, {
             presetId: target.presetId,
             sceneId: target.sceneId,
-            count: Math.min(999, (previous?.count ?? 0) + count),
+            count: (previous?.count ?? 0) + count,
+            ...((target.expectedRevision ?? previous?.expectedRevision) === undefined
+                ? {}
+                : { expectedRevision: target.expectedRevision ?? previous?.expectedRevision }),
             ...(fileNames.some(Boolean) ? { fileNames: fileNames.slice(0, 999) } : {}),
         })
+        if ((previous?.count ?? 0) + count > 999) {
+            throw new QueueExecutionError('fatal', `Scene queue count exceeds 999 for ${key}`)
+        }
     }
     return [...normalized.values()]
 }
@@ -175,14 +209,11 @@ export function enqueueSceneQueueTargets(
 ): Promise<CreateBatchAndEnqueueResult | null> {
     const normalizedTargets = normalizeSceneQueueTargets(targets)
     if (normalizedTargets.length === 0) return Promise.resolve(null)
-    sceneEnqueueInFlight ??= enqueueSceneQueueTargetsOnce(
+    return enqueueSceneQueueTargetsOnce(
         normalizedTargets,
         options.origin ?? 'fresh',
         options.consumePendingEntries === true,
-    ).finally(() => {
-        sceneEnqueueInFlight = null
-    })
-    return sceneEnqueueInFlight
+    )
 }
 
 async function enqueueSceneQueueTargetsOnce(
@@ -190,30 +221,52 @@ async function enqueueSceneQueueTargetsOnce(
     origin: QueueBatchOrigin,
     consumePendingEntries: boolean,
 ): Promise<CreateBatchAndEnqueueResult | null> {
-    const sceneState = useSceneStore.getState()
-    const selected: ResolvedSceneQueueTarget[] = targets.flatMap(target => {
-        const preset = sceneState.presets.find(candidate => candidate.id === target.presetId)
-        const scene = preset?.scenes.find(candidate => candidate.id === target.sceneId)
-        return preset === undefined || scene === undefined ? [] : [{ target, preset, scene }]
-    })
-    if (selected.length === 0) return null
     const operationId = useQueueStore.getState().beginEnqueueOperation('scene')
     try {
+        const sceneState = useSceneStore.getState()
         const settings = useSettingsStore.getState()
-        if (settings.generationFolderDocument === null) {
+        const folderRepository = new IndexedDbGenerationFolderRepository()
+        const folderDocument = await folderRepository.getDocument(DEFAULT_GENERATION_FOLDER_WORKSPACE_ID)
+        if (folderDocument === null) {
             throw new QueueExecutionError('fatal', 'Generation folder authority is not ready')
         }
-        const folderBinding = createGenerationFolderDocumentBinding(settings.generationFolderDocument)
+        const folderBinding = createGenerationFolderDocumentBinding(folderDocument)
         const sceneRepository = getRuntimeSceneRepository()
-        const authorityByPreset = new Map<string, SceneDocument>()
-        for (const { preset } of selected) {
-            if (authorityByPreset.has(preset.id)) continue
-            const document = await sceneRepository.getDocument(preset.id)
-            if (document === null) {
-                throw new QueueExecutionError('fatal', `Scene authority is unavailable for preset ${preset.id}`)
+        const repositorySources = await resolveRepositorySceneBatchTargets(sceneRepository, targets)
+            .catch(error => {
+                throw new QueueExecutionError('fatal', error instanceof Error ? error.message : 'Scene authority is unavailable')
+            })
+        const authorityByPreset = new Map(repositorySources.map(source => [source.document.presetId, source.document]))
+        const selected: ResolvedSceneQueueTarget[] = repositorySources.map(({ document, scene: source }, index) => {
+            const target = targets[index]
+            const projectedPreset = sceneState.presets.find(candidate => candidate.id === target.presetId)
+            const preset: ScenePreset = projectedPreset ?? {
+                id: target.presetId,
+                name: target.presetId,
+                scenes: [],
+                createdAt: 0,
             }
-            authorityByPreset.set(preset.id, document)
-        }
+            return { target, preset, scene: projectRepositoryScene(source), document }
+        })
+        const requestedDay = new Date().toISOString().slice(0, 10)
+        const canonicalRequestHash = `sha256:${hashCanonicalValue({
+            schemaVersion: 1,
+            // The persisted operation id is the idempotency nonce: concurrent
+            // or crash-replayed submissions share it, while a later user action
+            // must be allowed to enqueue the same Scene again.
+            enqueueOperationId: operationId,
+            requestedDay,
+            folderBinding,
+            targets: selected.map(({ target, document }) => ({
+                presetId: target.presetId,
+                sceneId: target.sceneId,
+                count: target.count,
+                fileNames: target.fileNames ?? [],
+                repositoryRevision: document.revision,
+            })),
+        })}`
+        const planningNow = new Date(`${requestedDay}T00:00:00.000Z`)
+        planningNow.setUTCMilliseconds(Number.parseInt(canonicalRequestHash.slice(7, 15), 16) % 86_400_000)
         const r2ReadinessByProfile = new Map<string, ReturnType<typeof getDefaultR2Readiness>>()
         const readR2Profile = (profileId: string) => {
             let pending = r2ReadinessByProfile.get(profileId)
@@ -244,7 +297,7 @@ async function enqueueSceneQueueTargetsOnce(
                 throw new QueueExecutionError('fatal', `Scene authority is missing ${preset.id}:${scene.id}`)
             }
             const preliminaryFolder = resolveGenerationFolderAuthority(
-                settings.generationFolderDocument,
+                folderDocument,
                 settings.generationFolders,
                 scene.generationFolderId,
                 {
@@ -258,7 +311,7 @@ async function enqueueSceneQueueTargetsOnce(
                 : null
             const baseR2Profile = r2Readiness?.status === 'ready' ? r2Readiness.profile : null
             const resolvedFolder = resolveGenerationFolderAuthority(
-                settings.generationFolderDocument,
+                folderDocument,
                 settings.generationFolders,
                 scene.generationFolderId,
                 {
@@ -315,23 +368,19 @@ async function enqueueSceneQueueTargetsOnce(
             }
             for (let count = 0; count < target.count; count += 1) {
                 const ordinal = prepared.length
-                const now = new Date()
+                const now = planningNow
                 const generation = resolveSceneGeneration(scene)
                 // Seed selection is pure here; the Zustand seed is consumed only after
                 // the repository commits the complete batch and its reservations.
-                const seed = selectSceneGenerationSeed(generation.seedLocked, generation.seed)
+                const seed = generation.seedLocked
+                    ? generation.seed
+                    : Number.parseInt(hashCanonicalValue({ canonicalRequestHash, presetId: preset.id, sceneId: scene.id, count }).slice(0, 8), 16) >>> 0
                 const built = await buildSceneGenerationParams(scene, {
-                    requestId: `durable-enqueue:${operationId}:${preset.id}:${scene.id}:${count}`,
+                    requestId: `durable-enqueue:${canonicalRequestHash.slice(7, 39)}:${preset.id}:${scene.id}:${count}`,
                     now,
                     presetId: preset.id,
                     generationFolder,
                     seed,
-                })
-                sceneState.recordSceneCompositionResult(scene.id, {
-                    mode: built.mode,
-                    ...(built.planHash === null ? {} : { planHash: built.planHash }),
-                    warnings: built.warnings,
-                    errors: built.errors,
                 })
                 if (!built.success) {
                     throw new QueueExecutionError('fatal', 'Scene composition plan is invalid')
@@ -398,6 +447,12 @@ async function enqueueSceneQueueTargetsOnce(
                             fileName,
                             collisionPolicy: 'error',
                         },
+                        compositionResult: {
+                            mode: built.mode,
+                            ...(built.planHash === null ? {} : { planHash: built.planHash }),
+                            warnings: built.warnings,
+                            errors: built.errors,
+                        },
                     },
                 })
             }
@@ -430,7 +485,7 @@ async function enqueueSceneQueueTargetsOnce(
                 items: selected
                     .filter(item => item.preset.id === presetId)
                     .map(({ target }) => ({ sceneId: target.sceneId, count: target.count })),
-                seedPolicy: { kind: 'replay', traceId: `scene-seeds:${operationId}:${presetId}` },
+                seedPolicy: { kind: 'replay', traceId: `scene-seeds:${canonicalRequestHash.slice(7, 39)}:${presetId}` },
                 execution: { failurePolicy: 'continue' },
                 budget: {
                     maxImages: presetPrepared.length,
@@ -439,19 +494,21 @@ async function enqueueSceneQueueTargetsOnce(
             }
             plans.set(presetId, planSceneBatch({ folderBinding, request, jobs: presetPrepared }))
         }
-        const batchId = `scene-batch-${operationId}`
-        const createdAt = new Date().toISOString()
+        const requestIdentity = canonicalRequestHash.slice('sha256:'.length)
+        const batchId = `scene-batch-${requestIdentity}`
+        const createdAt = planningNow.toISOString()
         const jobs: EnqueueGenerationJobInput[] = []
-        const reservations: OutputReservation[] = []
-        const destinations = new Set<string>()
+        const reservations: OutputCommitSetReservation[] = []
+        const collisionKeys = new Set<string>()
         const dependencies = getRuntimeMainQueueDependencies()
-        const assertCurrentFolderBinding = (): void => {
-            const current = dependencies.outputReservations.getCurrentFolderBinding()
+        const assertCurrentFolderBinding = async (): Promise<void> => {
+            const currentDocument = await folderRepository.getDocument(DEFAULT_GENERATION_FOLDER_WORKSPACE_ID)
+            const current = currentDocument === null ? null : createGenerationFolderDocumentBinding(currentDocument)
             if (current === null || canonicalSerialize(current) !== canonicalSerialize(folderBinding)) {
                 throw new QueueExecutionError('fatal', 'Generation folder changed before Queue reservation')
             }
         }
-        assertCurrentFolderBinding()
+        await assertCurrentFolderBinding()
         let queueOrdinal = 0
         // Keep the caller's target order while attaching each job to its
         // preset-local durable sub-plan.
@@ -463,7 +520,70 @@ async function enqueueSceneQueueTargetsOnce(
             // Sub-plan ordinals are local to each preset; Queue IDs and ordering
             // must remain unique across the one atomic batch.
             const ordinal = queueOrdinal++
-            const jobId = `scene-job-${operationId}-${ordinal}`
+            const jobId = `scene-job-${requestIdentity}-${ordinal}`
+            const preflight = await dependencies.outputReservations.preflight({
+                destination: item.prepared.destination,
+                fileName: item.fileName,
+                collisionPolicy: 'fail',
+                claimKinds: generationOutputClaimKinds({
+                    fileName: item.fileName,
+                    imageFormat: item.prepared.imageFormat,
+                    metadataMode: item.prepared.outputContext.metadataMode,
+                    preserveProviderOriginal: item.prepared.outputContext.autoR2UploadProfileId != null
+                        && item.prepared.outputContext.metadataMode === 'strip-and-sidecar',
+                }),
+                probeWrite: true,
+            })
+            if (preflight.fileName !== item.fileName) {
+                throw new QueueExecutionError('fatal', 'Scene output preflight changed the exact filename')
+            }
+            const claimPlan = {
+                fileName: item.fileName,
+                imageFormat: item.prepared.imageFormat,
+                metadataMode: item.prepared.outputContext.metadataMode,
+                preserveProviderOriginal: item.prepared.outputContext.autoR2UploadProfileId != null
+                    && item.prepared.outputContext.metadataMode === 'strip-and-sidecar',
+            } as const
+            const { commitSet, commitSetHash } = createGenerationOutputCommitSet({
+                ...claimPlan,
+                directoryAuthorityId: folderBinding.resourceId,
+                directoryAuthorityFingerprint: preflight.directoryIdentity,
+            })
+            for (const claim of commitSet.claims) {
+                if (collisionKeys.has(claim.collisionKey)) {
+                    throw new QueueExecutionError('fatal', `Scene batch output is duplicated: ${claim.relativePath}`)
+                }
+                collisionKeys.add(claim.collisionKey)
+            }
+            const reservationId = `output-reservation:${jobId}`
+            const reservation: OutputCommitSetReservation = {
+                reservationSchemaVersion: 1,
+                reservationId,
+                batchId,
+                jobId,
+                folderBinding: plan.folderBinding,
+                directoryIdentity: preflight.directoryIdentity,
+                relativePath: item.fileName,
+                collisionPolicy: 'fail',
+                expectedExistingDigest: null,
+                commitSet,
+                commitSetHash,
+                state: 'reserved',
+                version: 1,
+                updatedAt: createdAt,
+            }
+            const {
+                batchId: _batchId,
+                jobId: _jobId,
+                state: _state,
+                version: _version,
+                updatedAt: _updatedAt,
+                ...reservationSnapshot
+            } = reservation
+            const destinationBoundPlanHash: `sha256:${string}` = `sha256:${hashCanonicalValue({
+                scenePlanHash: plan.planHash,
+                outputCommitSetHash: commitSetHash,
+            })}`
             const encoded = encodeSceneJobSnapshot({
                 scene: item.prepared.scene,
                 params: item.prepared.params,
@@ -479,37 +599,10 @@ async function enqueueSceneQueueTargetsOnce(
                     request: plan.request,
                     count: plan.count,
                     estimatedAnlas: plan.estimatedAnlas,
-                    planHash: plan.planHash,
+                    planHash: destinationBoundPlanHash,
                 },
                 costConsent: item.prepared.costConsent,
             }, item.prepared.dehydrated)
-            const preflight = await dependencies.outputReservations.preflight({
-                destination: item.prepared.destination,
-                fileName: item.fileName,
-                collisionPolicy: 'fail',
-                probeWrite: true,
-            })
-            if (preflight.fileName !== item.fileName) {
-                throw new QueueExecutionError('fatal', 'Scene output preflight changed the exact filename')
-            }
-            const destinationKey = `${preflight.directoryIdentity}/${item.fileName.normalize('NFC').toLowerCase()}`
-            if (destinations.has(destinationKey)) {
-                throw new QueueExecutionError('fatal', `Scene batch output is duplicated: ${item.fileName}`)
-            }
-            destinations.add(destinationKey)
-            const reservationId = `output-reservation:${jobId}`
-            const reservation: OutputReservation = {
-                reservationId,
-                batchId,
-                jobId,
-                folderBinding: plan.folderBinding,
-                directoryIdentity: preflight.directoryIdentity,
-                relativePath: item.fileName,
-                collisionPolicy: 'fail',
-                expectedExistingDigest: null,
-                state: 'storage-pending',
-            }
-            const { batchId: _batchId, jobId: _jobId, state: _state, ...reservationSnapshot } = reservation
             const snapshot = bindOutputReservationSnapshot(encoded.snapshot, reservationSnapshot)
             jobs.push({
                 id: jobId,
@@ -520,13 +613,13 @@ async function enqueueSceneQueueTargetsOnce(
                 priority: 0,
                 ordinal,
                 snapshot,
-                compositionPlanHash: encoded.compositionPlanHash,
+                compositionPlanHash: destinationBoundPlanHash,
                 maxAttempts: 3,
-                idempotencyKey: `scene-enqueue-${operationId}-${ordinal}`,
+                idempotencyKey: `scene-enqueue-${requestIdentity}-${ordinal}`,
             })
             reservations.push(reservation)
         }
-        assertCurrentFolderBinding()
+        await assertCurrentFolderBinding()
         const finalAuthorityByPreset = new Map<string, SceneDocument>()
         for (const presetId of authorityByPreset.keys()) {
             const document = await sceneRepository.getDocument(presetId)
@@ -549,7 +642,7 @@ async function enqueueSceneQueueTargetsOnce(
                 createdAt,
                 failurePolicy: 'continue',
                 origin,
-                idempotencyKey: `scene-enqueue-${operationId}`,
+                idempotencyKey: `scene-enqueue-${requestIdentity}`,
             },
             jobs,
             resources: [...resources.values()],
@@ -561,6 +654,9 @@ async function enqueueSceneQueueTargetsOnce(
             for (const { target } of selected) {
                 useSceneStore.getState().consumeSceneQueueEntries(target.presetId, target.sceneId, target.count)
             }
+        }
+        for (const item of prepared) {
+            useSceneStore.getState().recordSceneCompositionResult(item.sceneId, item.prepared.compositionResult)
         }
         for (const { preset, scene } of selected) {
             for (let count = 0; count < (targets.find(target => target.presetId === preset.id && target.sceneId === scene.id)?.count ?? 0); count += 1) {

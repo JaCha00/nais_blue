@@ -9,11 +9,23 @@ const fsCapture = vi.hoisted(() => ({
     entries: [] as Array<{ name: string; isFile: boolean; isDirectory: boolean; isSymlink: boolean }>,
 }))
 
-const nativeScopeCapture = vi.hoisted(() => ({ paths: [] as string[] }))
+const nativeScopeCapture = vi.hoisted(() => ({
+    paths: [] as string[],
+    commits: [] as Array<{ temporaryPath: string; finalPath: string }>,
+}))
 
 vi.mock('@tauri-apps/api/core', () => ({
-    invoke: async (command: string, args?: { path?: string }) => {
+    invoke: async (command: string, args?: { path?: string; temporaryPath?: string; finalPath?: string }) => {
         if (command === 'authorize_native_directory' && args?.path) nativeScopeCapture.paths.push(args.path)
+        if (command === 'commit_native_sibling_if_absent'
+            && args?.temporaryPath !== undefined
+            && args.finalPath !== undefined) {
+            nativeScopeCapture.commits.push({
+                temporaryPath: args.temporaryPath,
+                finalPath: args.finalPath,
+            })
+            return 'committed'
+        }
     },
 }))
 
@@ -79,6 +91,7 @@ beforeEach(() => {
     fsCapture.files.clear()
     fsCapture.entries.length = 0
     nativeScopeCapture.paths.length = 0
+    nativeScopeCapture.commits.length = 0
 })
 
 describe('Tauri output platform adapters', () => {
@@ -195,6 +208,21 @@ describe('Tauri output platform adapters', () => {
         )
         await expect(new AppScopedOutputPlatformAdapter().listJournalIds())
             .resolves.toEqual(['txn-a', 'txn-one', 'txn-z'])
+    })
+
+    it('materializes scoped sibling paths for native no-replace publication', async () => {
+        const adapter = new DesktopOutputPlatformAdapter()
+
+        await expect(adapter.commitSiblingIfAbsent(
+            { path: 'output/.nai-blue-txn-a-image.tmp', displayPath: 'temp', baseDir: 1 },
+            { path: 'output/result.png', displayPath: 'final', baseDir: 1 },
+        )).resolves.toEqual({ status: 'committed' })
+
+        expect(adapter.capabilities.outputReservationGuarantee).toBe('atomic-no-replace')
+        expect(nativeScopeCapture.commits).toEqual([{
+            temporaryPath: 'C:/Synthetic/AppData/output/.nai-blue-txn-a-image.tmp',
+            finalPath: 'C:/Synthetic/AppData/output/result.png',
+        }])
     })
 
     it('blocks an unresolved desktop portable destination on Android instead of falling back', async () => {

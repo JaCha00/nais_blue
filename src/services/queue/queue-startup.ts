@@ -7,6 +7,13 @@ import type { ProviderResultSpool, SpoolReconcileResult } from '@/application/ge
 import type { GenerationAttempt } from '@/domain/queue/types'
 import type { ProviderAttemptEvidence, SpoolReceipt } from '@/domain/queue/provider-result'
 import { getRuntimeMainQueueDependencies } from './main-queue-runtime-dependencies'
+import {
+    reconcileSceneArtifactLinks,
+    type LinkSceneArtifactResult,
+} from '@/application/scene/link-scene-artifact'
+import { getRuntimeSceneRepository } from '@/lib/scene-migration-startup'
+import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 
 export interface QueueStartupRecoveryResult {
     linkedOutputs: OutputRecoveryResult[]
@@ -14,6 +21,7 @@ export interface QueueStartupRecoveryResult {
     leases: QueueRecoveryResult
     providerSpool: SpoolReconcileResult
     styleLabReservations: { spent: number; released: number }
+    sceneLinks: readonly LinkSceneArtifactResult[]
 }
 
 let startupPromise: Promise<QueueStartupRecoveryResult> | null = null
@@ -103,6 +111,13 @@ export function initializeQueueAfterRestart(options: {
             now: new Date().toISOString(),
         })
         const orphanOutputs = await writer.recoverPending()
+        const sceneLinks = await reconcileSceneArtifactLinks(
+            getRuntimeSceneRepository(),
+            getRuntimeArtifactRepository(),
+        ).catch(error => {
+            reportDiagnostic(error, { operation: 'queue.startup', stage: 'scene-artifact-reconcile' })
+            return []
+        })
         const leases = await recoverQueueAfterRestart(repository, {
             now: new Date().toISOString(),
             // This gate runs once before the process-local coordinator starts.
@@ -113,7 +128,7 @@ export function initializeQueueAfterRestart(options: {
         // Lease recovery determines terminal Queue truth before render costs are
         // reconciled; this releases failed/cancelled work after desktop restarts.
         const styleLabReservations = await reconcileStyleLabRenderReservations({ queueRepository: repository })
-        return { linkedOutputs, orphanOutputs, leases, providerSpool, styleLabReservations }
+        return { linkedOutputs, orphanOutputs, leases, providerSpool, styleLabReservations, sceneLinks }
     })()
     return startupPromise
 }

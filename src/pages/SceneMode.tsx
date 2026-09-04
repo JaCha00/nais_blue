@@ -125,7 +125,6 @@ import { calculateAnlasCost, resolveAnlasPricingBasis } from '@/lib/anlas-calcul
 import { selectActiveCredentialsAreOpus, useAuthStore } from '@/stores/auth-store'
 import { useQueueStore } from '@/stores/queue-store'
 import { enqueueCurrentSceneQueue } from '@/services/queue/scene-queue-adapter'
-import { getRuntimeDurableQueueCoordinator } from '@/services/queue/runtime'
 import type {
     CompositionConflictSummary,
     CompositionOverrideDiffItem,
@@ -286,6 +285,7 @@ export default function SceneMode() {
     const isCancelling = useSceneStore(s => s.isCancelling)
     const startNewGenerationSession = useSceneStore(s => s.startNewGenerationSession)
     const queueExecutionAuthority = useQueueStore(s => s.executionAuthority)
+    const selectDurableBatch = useQueueStore(s => s.setSelectedBatchId)
     const cancelSceneGeneration = useSceneStore(s => s.cancelSceneGeneration)
     const importPreset = useSceneStore(s => s.importPreset)
     const rotationActive = useRotationStore(s => s.active)
@@ -590,13 +590,13 @@ export default function SceneMode() {
         }
         void enqueueCurrentSceneQueue().then(result => {
             if (result === null) return
+            selectDurableBatch(result.batch.id)
             toast({
                 title: t('queue.enqueued', 'Added to durable queue'),
                 description: t('queue.enqueuedCount', '{{count}} jobs are ready in Queue Center.', {
                     count: result.jobs.length,
                 }),
             })
-            return getRuntimeDurableQueueCoordinator().drain()
         }).catch(error => {
             toast({
                 title: t('common.error', 'Error'),

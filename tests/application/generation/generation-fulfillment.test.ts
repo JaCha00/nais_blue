@@ -107,6 +107,21 @@ describe('deriveGenerationFulfillment matrix', () => {
         expect(result.overall).toBe('partial')
     })
 
+    it('keeps local storage successful while surfacing a pending Scene link', () => {
+        const issue = {
+            code: 'SCENE_LINK_PENDING' as const,
+            jobId: 'job-1',
+            severity: 'warning' as const,
+            action: { kind: 'retry-scene-link' as const, requiresHuman: false },
+        }
+        const result = run(job({ issues: [issue] }))
+
+        expect(result.storage.state).toBe('succeeded')
+        expect(result.issues).toEqual([issue])
+        expect(result.jobs[0].issues).toEqual([issue])
+        expect(result.overall).toBe('partial')
+    })
+
     it('reports required R2 failure as needing attention', () => {
         const result = run(job({
             release: { policy: 'required', fact: fact('failed', 'r2-upload-job') },

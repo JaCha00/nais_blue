@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     recoverPending: vi.fn(),
     recoverLeases: vi.fn(),
     reconcileStyleLab: vi.fn(),
+    reconcileSceneLinks: vi.fn(),
 }))
 
 vi.mock('@/services/queue/indexeddb-queue-repository', () => ({
@@ -29,6 +30,12 @@ vi.mock('@/services/queue/recovery', () => ({ recoverQueueAfterRestart: mocks.re
 vi.mock('@/services/style-lab/style-lab-queue-adapter', () => ({
     reconcileStyleLabRenderReservations: mocks.reconcileStyleLab,
 }))
+vi.mock('@/application/scene/link-scene-artifact', () => ({
+    reconcileSceneArtifactLinks: mocks.reconcileSceneLinks,
+}))
+vi.mock('@/lib/scene-migration-startup', () => ({ getRuntimeSceneRepository: () => ({}) }))
+vi.mock('@/services/organizer/runtime', () => ({ getRuntimeArtifactRepository: () => ({}) }))
+vi.mock('@/services/diagnostics/error-registry', () => ({ reportDiagnostic: vi.fn() }))
 
 import {
     initializeQueueAfterRestart,
@@ -79,6 +86,7 @@ describe('Queue startup Provider reconciliation', () => {
         mocks.recoverPending.mockResolvedValue([])
         mocks.recoverLeases.mockResolvedValue({ recovering: 0, queued: 0, blocked: 0, failed: 0 })
         mocks.reconcileStyleLab.mockResolvedValue({ spent: 0, released: 0 })
+        mocks.reconcileSceneLinks.mockResolvedValue([])
     })
 
     it('promotes response-complete plus a committed receipt to the same queued attempt', async () => {
@@ -99,6 +107,8 @@ describe('Queue startup Provider reconciliation', () => {
             .toBeGreaterThan(mocks.reconcileAttempt.mock.invocationCallOrder[0])
         expect(mocks.recoverLeases.mock.invocationCallOrder[0])
             .toBeGreaterThan(mocks.recoverLinked.mock.invocationCallOrder[0])
+        expect(mocks.reconcileSceneLinks.mock.invocationCallOrder[0])
+            .toBeLessThan(mocks.recoverLeases.mock.invocationCallOrder[0])
     })
 
     it('blocks response-complete as result-lost when no committed receipt exists', async () => {

@@ -19,6 +19,7 @@ import {
     type WorkflowDraft,
 } from '@/domain/workflow/single-image-draft'
 import type { PreparedMainGeneration } from '@/services/generation/main-generation-plan'
+import type { ExactOutputPreflightRequest } from '@/services/output/output-writer'
 
 const runtime = vi.hoisted(() => ({
     QueueRepositoryError: class QueueRepositoryError extends Error {
@@ -47,6 +48,8 @@ const runtime = vi.hoisted(() => ({
         compositionPlanHash: null,
     })),
     compatibility: vi.fn(() => ({ status: 'supported' })),
+    currentFolderBinding: vi.fn(),
+    preflight: vi.fn(),
 }))
 
 vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
@@ -55,6 +58,10 @@ vi.mock('@/services/queue/main-queue-runtime-dependencies', () => ({
         presentation: {
             beginEnqueueOperation: runtime.begin,
             completeEnqueueOperation: runtime.complete,
+        },
+        outputReservations: {
+            getCurrentFolderBinding: runtime.currentFolderBinding,
+            preflight: runtime.preflight,
         },
     }),
 }))
@@ -82,6 +89,12 @@ import { QueueRepositoryError } from '@/services/queue/indexeddb-queue-repositor
 import { enqueueReviewedMainPlan } from '@/services/queue/main-queue-adapter'
 
 const source = { kind: 'workflow-draft', draftId: 'draft-reviewed', expectedRevision: 1 } as const
+const folderBinding = {
+    resourceType: 'generation-folder-document' as const,
+    resourceId: 'folder:reviewed',
+    revision: 1,
+    contentHash: `sha256:${'c'.repeat(64)}` as const,
+}
 
 function workflowDraft(credentialPolicy: WorkflowDraft['payload']['credentialPolicy'] = { kind: 'auto' }) {
     const created = createSingleImageDraft({
@@ -119,8 +132,30 @@ function dependencies(
                         steps: 28,
                         seed,
                     },
+                    finalPrompt: prompt,
+                    imageFormat: 'png',
+                    metadataMode: 'embedded',
                     streaming: false,
-                } as PreparedMainGeneration
+                    sourceEdit: false,
+                    sequenceCommitProposal: null,
+                    output: {
+                        autoSave: true,
+                        directory: 'NAI_Blue_Output',
+                        useAbsolutePath: false,
+                        capabilityFallbackDirectory: 'NAI_Blue_Output',
+                        fileName: 'image.png',
+                        collisionPolicy: 'unique',
+                        generationFolderId: null,
+                        generationFolderPath: null,
+                        autoR2UploadProfileId: null,
+                        r2Bucket: null,
+                        r2Prefix: null,
+                        deleteOriginalAfterRelease: false,
+                        rightsXmpEnabled: false,
+                        rightsOwner: 'Bluehair',
+                        rightsEffectiveDate: null,
+                    },
+                } satisfies PreparedMainGeneration
                 return {
                     semantic: {
                         prompt,
@@ -213,6 +248,16 @@ describe('reviewed Main plan Queue bridge', () => {
         vi.clearAllMocks()
         runtime.repository.mockReturnValue({ createBatchAndEnqueue: runtime.createBatchAndEnqueue })
         runtime.createBatchAndEnqueue.mockResolvedValue({ batch: {}, jobs: [] })
+        runtime.currentFolderBinding.mockReturnValue(folderBinding)
+        runtime.preflight.mockImplementation(async (request: ExactOutputPreflightRequest) => ({
+            fileName: request.additionalOccupiedFileNames?.length
+                ? `image-${request.additionalOccupiedFileNames.length}.png`
+                : request.fileName,
+            directoryIdentity: `sha256:${'d'.repeat(64)}`,
+            availableSpaceCheck: 'unavailable',
+            foregroundSingleWriterOnly: true,
+            crossProcessReservation: false,
+        }))
     })
 
     it('replays saved seeds and enqueues the replayed jobs under the stable plan identity', async () => {

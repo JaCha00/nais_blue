@@ -93,6 +93,7 @@ function authorities(
         readonly r2Jobs?: readonly UploadJob[]
         readonly manifestMatches?: boolean
         readonly publicMode?: R2ProfileV2['publicMode']
+        readonly sceneLinked?: boolean
     } = {},
 ): GenerationRunAuthorityReaders {
     return {
@@ -133,6 +134,22 @@ function authorities(
                     : [],
             })),
         },
+        ...(options.sceneLinked === undefined
+            ? {}
+            : {
+                    scenes: {
+                        getDocument: vi.fn(async () => ({
+                            presetId: 'preset-1',
+                            revision: 1,
+                            scenes: [{
+                                id: 'scene-1',
+                                artifactRefs: options.sceneLinked
+                                    ? [{ artifactId: 'artifact:job-1', createdAt: observedAt, favorite: false }]
+                                    : [],
+                            }],
+                        }) as never),
+                    },
+                }),
     }
 }
 
@@ -190,6 +207,31 @@ describe('IndexedDbGenerationRunReader', () => {
         )
 
         expect(result?.release.state).toBe('failed')
+        expect(result?.overall).toBe('partial')
+    })
+
+    it('projects a Scene-link issue without changing successful local storage', async () => {
+        const sceneJob = job({
+            workflow: 'scene',
+            sceneId: 'scene-1',
+            snapshot: {
+                ...job().snapshot,
+                parameters: {
+                    sceneWorkflow: { saveContext: { activePresetId: 'preset-1' } },
+                },
+            },
+        })
+        const result = await getGenerationRun(
+            new IndexedDbGenerationRunReader(authorities(sceneJob, { sceneLinked: false })),
+            'batch-1',
+        )
+
+        expect(result?.storage.state).toBe('succeeded')
+        expect(result?.issues).toEqual([expect.objectContaining({
+            code: 'SCENE_LINK_PENDING',
+            jobId: 'job-1',
+            action: { kind: 'retry-scene-link', requiresHuman: false },
+        })])
         expect(result?.overall).toBe('partial')
     })
 

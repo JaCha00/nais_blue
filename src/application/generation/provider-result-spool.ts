@@ -29,6 +29,8 @@ export interface ProviderResultSpool {
     commit(input: SpoolCommitInput): Promise<SpoolReceipt>
     verify(spoolId: string): Promise<SpoolReceipt>
     read(spoolId: string): Promise<Uint8Array>
+    /** Explicit user-authorized discard; verifies the exact receipt before removal. */
+    discard(receipt: SpoolReceipt): Promise<void>
     removeIfEligible(input: SpoolRemovalEligibility): Promise<boolean>
     list(): Promise<readonly SpoolReceipt[]>
     reconcile(): Promise<SpoolReconcileResult>

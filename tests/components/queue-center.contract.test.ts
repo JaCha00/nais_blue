@@ -76,7 +76,7 @@ describe('Queue Center 10,000-job UI contract', () => {
         expect(page).toContain('enqueueCurrentSceneQueue()')
         expect(page).toContain('keeps existing item counts available for rollback')
         expect(page).toContain("t('queue.executionMode', 'Execution method')")
-        expect(page).toContain("t('queue.executionCurrent', 'Background queue')")
+        expect(page).toContain("t('queue.executionCurrent', 'Durable queue')")
         expect(page).toContain("t('queue.executionPrevious', 'Existing Scene queue')")
     })
 
@@ -122,7 +122,7 @@ describe('Queue Center 10,000-job UI contract', () => {
                 },
             })
         }
-        expect(en.queue.executionCurrent).toBe('Background queue')
+        expect(en.queue.executionCurrent).toBe('Durable queue')
         expect(en.queue.executionPrevious).toBe('Existing Scene queue')
         expect(en.queue.legacyPending).not.toMatch(/legacy|durable/i)
     })

@@ -126,7 +126,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         }
         throw error
     }
-    if (job.snapshot.outputReservation !== undefined) {
+    if (job.snapshot.outputReservation !== undefined && context.executionMode === 'provider') {
         try {
             if (context.activeCredentialsAreOpus === undefined) {
                 throw new Error('Queue credential pricing authority is unavailable')
@@ -200,6 +200,9 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
             if (currentEvidence?.dispatchState === 'result-spooled' && currentEvidence.spoolReceipt !== null) {
                 spooled = { receipt: currentEvidence.spoolReceipt }
             } else {
+                if (context.executionMode === 'storage-only') {
+                    throw new QueueExecutionError('fatal', 'Storage-only Main execution has no verified spool receipt')
+                }
                 spooled = await dispatchAndSpool(
                     context,
                     params,
@@ -425,8 +428,10 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         if (encodedVibes && encodedVibes.length > 0) {
             presentation.updateEncodedVibes(encodedVibes)
         }
-        const slot = context.tokenSlotId === 'slot-2' ? 2 : 1
-        presentation.refreshAnlas(slot)
+        if (context.executionMode === 'provider') {
+            const slot = context.tokenSlotId === 'slot-2' ? 2 : 1
+            presentation.refreshAnlas(slot)
+        }
     } finally {
         sequenceLease.release()
         presentation.finishExecution()

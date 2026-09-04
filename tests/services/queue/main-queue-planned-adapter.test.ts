@@ -166,9 +166,13 @@ describe('planned Main queue adapter', () => {
                 }),
             })],
             reservations: [expect.objectContaining({
-                state: 'storage-pending',
+                reservationSchemaVersion: 1,
+                state: 'reserved',
                 relativePath: 'planned.png',
                 folderBinding,
+                commitSet: expect.objectContaining({
+                    claims: [expect.objectContaining({ kind: 'image', relativePath: 'planned.png' })],
+                }),
             })],
         }))
     })
@@ -197,7 +201,17 @@ describe('planned Main queue adapter', () => {
             submissionPolicy: { kind: 'guided', costConsent },
         })
 
-        expect(runtime.encode).toHaveBeenCalledWith(prepared, expect.anything(), costConsent)
+        expect(runtime.encode).toHaveBeenCalledWith(
+            expect.objectContaining({
+                output: expect.objectContaining({
+                    fileName: 'planned.png',
+                    collisionPolicy: 'error',
+                    reservationCollisionPolicy: 'fail',
+                }),
+            }),
+            expect.anything(),
+            costConsent,
+        )
         expect(runtime.createBatchAndEnqueue).toHaveBeenCalledOnce()
     })
 
@@ -216,15 +230,31 @@ describe('planned Main queue adapter', () => {
         })
 
         expect(runtime.dehydrate).toHaveBeenCalledOnce()
-        expect(runtime.encode).toHaveBeenCalledWith(prepared, expect.anything(), costConsent)
+        expect(runtime.encode).toHaveBeenCalledWith(
+            expect.objectContaining({ output: expect.objectContaining({ fileName: 'planned.png' }) }),
+            expect.anything(),
+            costConsent,
+        )
         expect(runtime.createBatchAndEnqueue).toHaveBeenCalledOnce()
     })
 
     it('prices queued jobs as separate one-sample NovelAI requests', async () => {
         const twoRequests: MainBatchPlannerPort<PreparedMainGeneration> = {
             getRequestedCount: () => 2,
-            prepareBatch: async () => [prepared, prepared],
+            prepareBatch: async () => [
+                prepared,
+                { ...prepared, output: { ...prepared.output, fileName: 'planned-2.png' } },
+            ],
         }
+        runtime.preflight
+            .mockResolvedValueOnce({
+                fileName: 'planned.png', directoryIdentity: `sha256:${'b'.repeat(64)}`,
+                availableSpaceCheck: 'unavailable', foregroundSingleWriterOnly: true, crossProcessReservation: false,
+            })
+            .mockResolvedValueOnce({
+                fileName: 'planned-2.png', directoryIdentity: `sha256:${'b'.repeat(64)}`,
+                availableSpaceCheck: 'unavailable', foregroundSingleWriterOnly: true, crossProcessReservation: false,
+            })
 
         await enqueuePlannedMainBatch({
             planner: twoRequests,

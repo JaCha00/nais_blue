@@ -51,6 +51,10 @@ async function verifyRecoveryReservation(
         || reservation.relativePath !== snapshot.relativePath
         || reservation.collisionPolicy !== snapshot.collisionPolicy
         || reservation.expectedExistingDigest !== snapshot.expectedExistingDigest
+        || reservation.reservationSchemaVersion !== snapshot.reservationSchemaVersion
+        || (reservation.reservationSchemaVersion === 1
+            && (snapshot.reservationSchemaVersion !== 1
+                || reservation.commitSetHash !== snapshot.commitSetHash))
         || reservation.state !== expectedState) {
         throw new Error('Queue output reservation owner, destination, or state changed')
     }
@@ -58,12 +62,16 @@ async function verifyRecoveryReservation(
         reservationId: snapshot.reservationId,
         directoryIdentity: snapshot.directoryIdentity,
         relativePath: snapshot.relativePath,
+        ...(snapshot.reservationSchemaVersion === 1
+            ? { commitSet: snapshot.commitSet, commitSetHash: snapshot.commitSetHash }
+            : {}),
     } satisfies ExactOutputReservationIdentity
     if (journal?.inspected === true
         && (journal.reservation === undefined
             || journal.reservation.reservationId !== expected.reservationId
             || journal.reservation.directoryIdentity !== expected.directoryIdentity
-            || journal.reservation.relativePath !== expected.relativePath)) {
+            || journal.reservation.relativePath !== expected.relativePath
+            || journal.reservation.commitSetHash !== expected.commitSetHash)) {
         throw new Error('Output journal reservation does not match Queue authority')
     }
     return expected

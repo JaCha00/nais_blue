@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     verify: vi.fn(),
     read: vi.fn(),
     hash: vi.fn(),
+    refreshAnlas: vi.fn(),
 }))
 
 vi.mock('@/services/generation/novelai-image-transport', () => ({
@@ -101,7 +102,7 @@ vi.mock('@/services/queue/main-queue-runtime-dependencies', () => {
     const presentation = {
         beginExecution: vi.fn(), finishExecution: vi.fn(), reportStreamProgress: vi.fn(),
         commitHistory: vi.fn(), rollbackHistory: vi.fn(), publishArtifact: vi.fn(),
-        updateEncodedVibes: vi.fn(), refreshAnlas: vi.fn(),
+        updateEncodedVibes: vi.fn(), refreshAnlas: mocks.refreshAnlas,
     }
     return {
         getRuntimeMainQueueDependencies: () => ({
@@ -183,6 +184,7 @@ function job(options: {
 function context(initial: ProviderAttemptEvidence, options: {
     executionEnvelopeHash?: string
     activeCredentialsAreOpus?: boolean
+    executionMode?: QueueExecutorContext['executionMode']
 } = {}): {
     value: QueueExecutorContext
     transitions: Array<{ evidence: ProviderAttemptEvidence; blockReason?: string }>
@@ -197,6 +199,7 @@ function context(initial: ProviderAttemptEvidence, options: {
     return {
         transitions,
         value: {
+            executionMode: options.executionMode ?? 'provider',
             tokenSlotId: 'slot-1', token: 'token', signal: new AbortController().signal,
             activeCredentialsAreOpus: options.activeCredentialsAreOpus ?? true,
             get providerAttempt() { return attempt }, canCommit: () => true, updateProgress: vi.fn(), bindOutput: vi.fn(),
@@ -251,11 +254,12 @@ describe('Main Queue Provider result safety', () => {
         const current = context({
             dispatchState: 'result-spooled', providerOutcome: 'succeeded', billingRisk: 'confirmed',
             responseDigest: receipt.sha256, spoolReceipt: receipt,
-        })
+        }, { activeCredentialsAreOpus: false, executionMode: 'storage-only' })
         await executeMainQueueJob(job(), current.value)
         expect(mocks.transport).toHaveBeenCalledTimes(0)
         expect(mocks.read).toHaveBeenCalledTimes(1)
         expect(mocks.write).toHaveBeenCalledTimes(1)
+        expect(mocks.refreshAnlas).not.toHaveBeenCalled()
     })
 
     it('blocks a verify/read checksum race before OutputWriter receives changed bytes', async () => {

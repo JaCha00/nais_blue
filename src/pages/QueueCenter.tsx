@@ -16,7 +16,10 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { SceneQueueSelectionDialog } from '@/components/queue/SceneQueueSelectionDialog'
-import type { GenerationFulfillmentProjection } from '@/application/generation/generation-fulfillment'
+import type {
+    FulfillmentIssue,
+    GenerationFulfillmentProjection,
+} from '@/application/generation/generation-fulfillment'
 import { getRuntimeGenerationRun } from '@/adapters/generation/indexeddb-generation-run-reader'
 import {
     DropdownMenu,
@@ -373,7 +376,6 @@ export default function QueueCenter() {
             const result = await enqueueSceneQueueTargets(targets)
             if (result === null) return
             setSelectedBatchId(result.batch.id)
-            await coordinator.drain()
             enqueued = true
         })
         return enqueued
@@ -465,6 +467,27 @@ export default function QueueCenter() {
         }
         return labels[state] ?? t('queue.status.unknown', 'Status unavailable')
     }
+    const fulfillmentIssueLabel = (issue: FulfillmentIssue): string => {
+        if (issue.code === 'SCENE_LINK_PENDING') {
+            return t('queue.fulfillment.issue.sceneLinkPending', 'Saved on this device · Scene link needs retry')
+        }
+        if (issue.code === 'OUTPUT_RESERVATION_CONFLICT') {
+            return t('queue.fulfillment.issue.outputReservationConflict', 'Output reservation conflict · Replan required')
+        }
+        return t('queue.fulfillment.issue.directoryAuthorizationRequired', 'Output folder access is required')
+    }
+    const fulfillmentActionLabel = (issue: FulfillmentIssue): string => {
+        const labels: Record<FulfillmentIssue['action']['kind'], string> = {
+            replan: t('queue.fulfillment.action.replan', 'Replan'),
+            'grant-directory-access': t('queue.fulfillment.action.grantDirectoryAccess', 'Grant folder access'),
+            'retry-storage': t('queue.fulfillment.action.retryStorage', 'Retry storage only'),
+            'retry-scene-link': t('queue.fulfillment.action.retrySceneLink', 'Retry Scene link'),
+            'abandon-reservation': t('queue.fulfillment.action.abandonReservation', 'Release reservation'),
+            'discard-result-and-abandon-reservation': t('queue.fulfillment.action.discardResult', 'Discard result and release reservation'),
+            'review-provider-unknown': t('queue.fulfillment.action.reviewProviderUnknown', 'Review Provider status'),
+        }
+        return labels[issue.action.kind]
+    }
 
     return (
         <main
@@ -478,7 +501,7 @@ export default function QueueCenter() {
                         <h1 className="text-xl font-semibold">{t('queue.title', 'Queue Center')}</h1>
                         <p className="text-xs text-muted-foreground">
                             {executionAuthority === 'durable'
-                                ? t('queue.executionCurrent', 'Background queue')
+                                ? t('queue.executionCurrent', 'Durable queue')
                                 : t('queue.executionPrevious', 'Existing Scene queue')}
                         </p>
                     </div>
@@ -499,7 +522,7 @@ export default function QueueCenter() {
                                 className="min-h-11 rounded-control border border-input bg-canvas px-3 text-sm text-foreground"
                                 aria-label={t('queue.executionMode', 'Execution method')}
                             >
-                                <option value="durable">{t('queue.executionCurrent', 'Background queue')}</option>
+                                <option value="durable">{t('queue.executionCurrent', 'Durable queue')}</option>
                                 <option value="legacy">{t('queue.executionPrevious', 'Existing Scene queue')}</option>
                             </select>
                         </label>
@@ -585,7 +608,7 @@ export default function QueueCenter() {
                         onClick={() => setConversionOpen(true)}
                         className="min-h-11"
                     >
-                        {t('queue.convertLegacy', 'Move to background queue')}
+                        {t('queue.convertLegacy', 'Move to durable queue')}
                     </Button>
                 </section>
             )}
@@ -676,20 +699,34 @@ export default function QueueCenter() {
                                 {t('queue.fulfillment.unavailable', 'Fulfillment evidence is unavailable.')}
                             </p>
                         ) : (
-                            <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
-                                {([
-                                    ['interpretation', t('queue.fulfillment.interpretation', 'Interpretation'), fulfillment.interpretation.state],
-                                    ['provider', t('queue.fulfillment.provider', 'Provider'), fulfillment.provider.state],
-                                    ['storage', t('queue.fulfillment.storage', 'Storage'), fulfillment.storage.state],
-                                    ['release', t('queue.fulfillment.release', 'Release'), fulfillment.release.state],
-                                    ['acceptance', t('queue.fulfillment.acceptance', 'Acceptance'), fulfillment.acceptance.state],
-                                ] as const).map(([key, label, state]) => (
-                                    <div key={key} className="rounded-control border border-border bg-card px-2 py-2">
-                                        <dt className="text-muted-foreground">{label}</dt>
-                                        <dd className="mt-1 font-medium">{fulfillmentStateLabel(state)}</dd>
+                            <div className="space-y-2">
+                                <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+                                    {([
+                                        ['interpretation', t('queue.fulfillment.interpretation', 'Interpretation'), fulfillment.interpretation.state],
+                                        ['provider', t('queue.fulfillment.provider', 'Provider'), fulfillment.provider.state],
+                                        ['storage', t('queue.fulfillment.storage', 'Storage'), fulfillment.storage.state],
+                                        ['release', t('queue.fulfillment.release', 'Release'), fulfillment.release.state],
+                                        ['acceptance', t('queue.fulfillment.acceptance', 'Acceptance'), fulfillment.acceptance.state],
+                                    ] as const).map(([key, label, state]) => (
+                                        <div key={key} className="rounded-control border border-border bg-card px-2 py-2">
+                                            <dt className="text-muted-foreground">{label}</dt>
+                                            <dd className="mt-1 font-medium">{fulfillmentStateLabel(state)}</dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                                {fulfillment.issues.length > 0 && (
+                                    <div className="rounded-control border border-warning/30 bg-warning/10 px-3 py-2 text-xs" role="status">
+                                        <p className="font-medium">{t('queue.fulfillment.issue.title', 'Recovery actions')}</p>
+                                        <ul className="mt-1 space-y-1 text-muted-foreground">
+                                            {fulfillment.issues.map(issue => (
+                                                <li key={`${issue.jobId}:${issue.code}`}>
+                                                    {fulfillmentIssueLabel(issue)} · {fulfillmentActionLabel(issue)}
+                                                </li>
+                                            ))}
+                                        </ul>
                                     </div>
-                                ))}
-                            </dl>
+                                )}
+                            </div>
                         )}
                         <Button
                             type="button"
@@ -826,7 +863,7 @@ export default function QueueCenter() {
                 title={t('queue.convertLegacyTitle', 'Move existing Scene queue?')}
                 description={t(
                     'queue.convertLegacyDescription',
-                    'Current parameters and required resources will be captured for background jobs. Existing item counts remain available for rollback.',
+                    'Current parameters and required resources will be captured for durable jobs. Existing item counts remain available for rollback.',
                 )}
                 confirmText={t('queue.convertLegacyConfirm', 'Move jobs')}
                 cancelText={t('common.cancel', 'Cancel')}

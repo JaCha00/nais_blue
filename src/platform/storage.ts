@@ -1,4 +1,13 @@
-import { appDataDir, join, pictureDir } from '@tauri-apps/api/path'
+import {
+    appCacheDir,
+    appDataDir,
+    cacheDir,
+    documentDir,
+    downloadDir,
+    join,
+    pictureDir,
+    videoDir,
+} from '@tauri-apps/api/path'
 import { BaseDirectory } from '@tauri-apps/plugin-fs'
 import { isMobileRuntime } from './runtime'
 import type { PortablePathRef, PortablePathRoot } from '@/domain/composition/types'
@@ -19,6 +28,20 @@ export function shouldUseAbsoluteMediaPath(requested: boolean): boolean {
 
 export async function resolveMediaStoragePath(...segments: string[]): Promise<string> {
     return join(await getMediaStorageRoot(), ...segments)
+}
+
+/** Materializes only the storage roots OutputWriter is allowed to publish into. */
+export function resolveStorageBaseDirectoryRoot(baseDir: BaseDirectory): Promise<string> {
+    switch (baseDir) {
+        case BaseDirectory.AppData: return appDataDir()
+        case BaseDirectory.AppCache: return appCacheDir()
+        case BaseDirectory.Cache: return cacheDir()
+        case BaseDirectory.Document: return documentDir()
+        case BaseDirectory.Download: return downloadDir()
+        case BaseDirectory.Picture: return pictureDir()
+        case BaseDirectory.Video: return videoDir()
+        default: return Promise.reject(new Error('Output base directory cannot be materialized'))
+    }
 }
 
 /** Base directory mapping owned by the platform layer, shared by output/read adapters. */

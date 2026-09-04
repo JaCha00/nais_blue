@@ -117,3 +117,14 @@ export async function readNativeDirectory(
 export async function renameNativePath(oldPath: string, newPath: string): Promise<void> {
     return rename(oldPath, newPath)
 }
+
+/** Atomically publishes one already-written sibling without replacing an external file. */
+export async function commitNativeSiblingIfAbsent(
+    temporaryPath: string,
+    finalPath: string,
+): Promise<'committed' | 'destination-exists'> {
+    return invoke<'committed' | 'destination-exists'>('commit_native_sibling_if_absent', {
+        temporaryPath,
+        finalPath,
+    })
+}

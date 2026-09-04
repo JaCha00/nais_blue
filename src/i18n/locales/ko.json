@@ -1673,7 +1673,7 @@
     },
     "queue": {
         "title": "큐 센터",
-        "enqueued": "백그라운드 대기열에 추가됨",
+        "enqueued": "내구성 대기열에 추가됨",
         "selectScenes": "폴더별 씬 선택",
         "selectScenesTitle": "여러 폴더에서 씬 선택",
         "selectScenesDescription": "원하는 폴더의 씬을 선택하고 씬별 생성 수량을 지정하세요.",
@@ -1684,6 +1684,10 @@
         "emptySceneFolder": "이 폴더에는 씬이 없습니다.",
         "sceneJobCount": "{{scene}} 생성 수량",
         "enqueueSelectedScenes": "{{count}}개 씬을 대기열에 추가",
+        "enqueueSelectedImages": "이미지 {{count}}개를 대기열에 추가",
+        "selectionSummary": "{{scenes}}개 씬 · 이미지 {{images}}개",
+        "reservationSummary": "작업 시작 전에 전체 출력 파일 세트를 예약합니다. 기존 파일은 절대 덮어쓰지 않습니다.",
+        "appOpenProcessing": "NAI Blue가 열려 있을 때 처리하며, 중단된 작업은 앱을 다시 열면 이어서 진행합니다.",
         "activity": {
             "open": "큐 센터 열기 · {{summary}}",
             "summary": "진행 중 {{processing}}개 · 대기 {{waiting}}개 · 확인 필요 {{attention}}개",
@@ -1700,13 +1704,13 @@
     "enqueueFailed": "대기열 추가에 실패했어요. 잠시 후 다시 시도해 주세요.",
     "legacyPending": "기존 Scene 항목 {{count}}개가 대기 중입니다.",
     "legacyRetained": "옮기면 현재 매개변수를 기록하며, 되돌릴 수 있도록 기존 항목 수를 유지합니다.",
-    "convertLegacy": "백그라운드 대기열로 옮기기",
+    "convertLegacy": "내구성 대기열로 옮기기",
     "convertLegacyTitle": "기존 Scene 대기열을 옮길까요?",
-    "convertLegacyDescription": "현재 매개변수와 필요한 리소스를 백그라운드 작업으로 기록합니다. 되돌릴 수 있도록 기존 항목 수는 유지합니다.",
+    "convertLegacyDescription": "현재 매개변수와 필요한 리소스를 내구성 작업으로 기록합니다. 되돌릴 수 있도록 기존 항목 수는 유지합니다.",
     "convertLegacyConfirm": "작업 옮기기",
     "existingQueueTransfer": "기존 Scene 대기열 옮기기",
     "failureSummary": "실패 또는 차단 {{count}}개 · 진단 열기",
-    "executionCurrent": "백그라운드 대기열",
+    "executionCurrent": "내구성 대기열",
     "executionPrevious": "기존 Scene 대기열",
     "executionMode": "실행 방식",
     "batch": "작업 묶음",
@@ -1751,6 +1755,21 @@
         "storage": "저장",
         "release": "배포",
         "acceptance": "검수",
+        "issue": {
+            "title": "복구 작업",
+            "sceneLinkPending": "내 기기 저장 성공 · Scene 연결 재시도 필요",
+            "outputReservationConflict": "출력 예약 충돌 · 다시 계획 필요",
+            "directoryAuthorizationRequired": "출력 폴더 권한이 필요합니다"
+        },
+        "action": {
+            "replan": "다시 계획",
+            "grantDirectoryAccess": "폴더 권한 부여",
+            "retryStorage": "저장만 다시 시도",
+            "retrySceneLink": "Scene에 다시 연결",
+            "abandonReservation": "예약 해제",
+            "discardResult": "결과 폐기 및 예약 해제",
+            "reviewProviderUnknown": "Provider 상태 확인"
+        },
         "state": {
             "notRequired": "필요 없음",
             "notEvaluated": "미검수",

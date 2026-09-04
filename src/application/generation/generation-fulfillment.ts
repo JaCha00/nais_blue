@@ -32,6 +32,28 @@ export interface AcceptanceProjection {
     readonly requiredAcceptedCount: number | null
 }
 
+export interface RecoveryAction {
+    readonly kind:
+        | 'replan'
+        | 'grant-directory-access'
+        | 'retry-storage'
+        | 'retry-scene-link'
+        | 'abandon-reservation'
+        | 'discard-result-and-abandon-reservation'
+        | 'review-provider-unknown'
+    readonly requiresHuman: boolean
+}
+
+export interface FulfillmentIssue {
+    readonly code:
+        | 'SCENE_LINK_PENDING'
+        | 'OUTPUT_RESERVATION_CONFLICT'
+        | 'DIRECTORY_AUTHORIZATION_REQUIRED'
+    readonly jobId: string
+    readonly severity: 'warning' | 'blocking'
+    readonly action: RecoveryAction
+}
+
 export interface GenerationJobFulfillmentProjection {
     readonly jobId: string
     readonly queue: { readonly state: string }
@@ -40,6 +62,7 @@ export interface GenerationJobFulfillmentProjection {
     readonly storage: StageProjection
     readonly release: StageProjection
     readonly acceptance: AcceptanceProjection
+    readonly issues: readonly FulfillmentIssue[]
 }
 
 export interface GenerationFulfillmentProjection {
@@ -51,6 +74,7 @@ export interface GenerationFulfillmentProjection {
     readonly release: StageProjection
     readonly acceptance: AcceptanceProjection
     readonly jobs: readonly GenerationJobFulfillmentProjection[]
+    readonly issues: readonly FulfillmentIssue[]
     readonly overall:
         | 'planned'
         | 'running'
@@ -88,6 +112,7 @@ export interface GenerationFulfillmentJobFacts {
         /** Phase 8 assessments can be supplied here without adding another repository. */
         readonly assessment?: GenerationAcceptanceFact
     }
+    readonly issues?: readonly FulfillmentIssue[]
 }
 
 export interface GenerationFulfillmentFacts {
@@ -192,6 +217,7 @@ function deriveOverall(
     if (jobs.length === 0) return 'planned'
     const explicitAttention = jobs.some((job, index) => (
         FAILED_QUEUE_STATES.has(job.queue.state)
+        || job.issues.some(issue => issue.severity === 'blocking')
         || [job.interpretation, job.provider, job.storage].some(stage => (
             stage.state === 'failed' || stage.state === 'uncertain'
         ))
@@ -211,6 +237,8 @@ function deriveOverall(
         || [job.interpretation, job.provider, job.storage, job.release].some(stage => stage.state === 'pending')
     ))
     if (pending) return 'running'
+
+    if (jobs.some(job => job.issues.some(issue => issue.severity === 'warning'))) return 'partial'
 
     const missingCoreEvidence = jobs.some(job => (
         [job.interpretation, job.provider, job.storage].some(stage => stage.state === 'unavailable')
@@ -234,8 +262,10 @@ export function deriveGenerationFulfillment(facts: GenerationFulfillmentFacts): 
         storage: projectFact(job.storage),
         release: projectRelease(job),
         acceptance: projectAcceptance(job.acceptance.required, job.acceptance.assessment, requiredAcceptedCount),
+        issues: [...(job.issues ?? [])],
     }))
     const acceptance = aggregateAcceptance(jobs, requiredAcceptedCount)
+    const issues = jobs.flatMap(job => job.issues)
 
     return {
         runId: facts.batchId,
@@ -246,6 +276,7 @@ export function deriveGenerationFulfillment(facts: GenerationFulfillmentFacts): 
         release: aggregateStage(jobs.map(job => job.release)),
         acceptance,
         jobs,
+        issues,
         overall: deriveOverall(facts, jobs, acceptance),
     }
 }

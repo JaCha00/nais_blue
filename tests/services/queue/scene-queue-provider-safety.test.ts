@@ -140,7 +140,7 @@ const payload = {
     },
 }
 
-function context(initial: ProviderAttemptEvidence | null): {
+function context(initial: ProviderAttemptEvidence | null, executionMode: QueueExecutorContext['executionMode'] = 'provider'): {
     value: QueueExecutorContext
     transitions: ProviderAttemptEvidence[]
 } {
@@ -163,6 +163,7 @@ function context(initial: ProviderAttemptEvidence | null): {
     return {
         transitions,
         value: {
+            executionMode,
             tokenSlotId: 'slot-1',
             token: 'token',
             signal: new AbortController().signal,
@@ -246,7 +247,7 @@ describe('Scene Queue Provider safety', () => {
             billingRisk: 'confirmed',
             responseDigest: digest,
             spoolReceipt: receipt,
-        })
+        }, 'storage-only')
 
         await executeSceneQueueJob(job(), current.value, { presentation: {} as never })
 

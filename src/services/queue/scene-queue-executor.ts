@@ -154,7 +154,7 @@ export async function executeSceneQueueJob(
         await markReservedQueueOutputConflict(job, context)
         throw new QueueExecutionError('fatal', 'Scene snapshot filename does not match its reservation')
     }
-    if (reservedSnapshot !== undefined) {
+    if (reservedSnapshot !== undefined && context.executionMode === 'provider') {
         try {
             if (context.activeCredentialsAreOpus === undefined) {
                 throw new Error('Queue credential pricing authority is unavailable')
@@ -211,6 +211,9 @@ export async function executeSceneQueueJob(
             if (currentEvidence?.dispatchState === 'result-spooled' && currentEvidence.spoolReceipt !== null) {
                 spooled = { receipt: currentEvidence.spoolReceipt }
             } else {
+                if (context.executionMode === 'storage-only') {
+                    throw new QueueExecutionError('fatal', 'Storage-only Scene execution has no verified spool receipt')
+                }
                 spooled = await dispatchAndSpool(
                     context,
                     params,
@@ -343,7 +346,11 @@ export async function executeSceneQueueJob(
                             createdAt: artifactRegistration?.record.createdAt ?? new Date().toISOString(),
                             favorite: false,
                         })
-                        if ('document' in linked) applySceneDocumentProjection(linked.document)
+                        if ('document' in linked) {
+                            applySceneDocumentProjection(linked.document)
+                            return
+                        }
+                        throw new Error(`Scene artifact link remains pending: ${linked.status}`)
                     },
                     rollbackArtifact: async () => {
                         await rollbackQueueArtifactRegistration(artifactRegistration)

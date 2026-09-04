@@ -1665,7 +1665,7 @@
     },
     "queue": {
         "title": "Queue Center",
-        "enqueued": "Added to background queue",
+        "enqueued": "Added to durable queue",
         "selectScenes": "Select scenes from folders",
         "selectScenesTitle": "Select scenes from multiple folders",
         "selectScenesDescription": "Choose scenes from any folder and set the generation count for each scene.",
@@ -1676,6 +1676,10 @@
         "emptySceneFolder": "This folder has no scenes.",
         "sceneJobCount": "{{scene}} job count",
         "enqueueSelectedScenes": "Add {{count}} scenes to queue",
+        "enqueueSelectedImages": "Add {{count}} images to queue",
+        "selectionSummary": "{{scenes}} scenes · {{images}} images",
+        "reservationSummary": "The complete output file set is reserved before work starts. Existing files are never overwritten.",
+        "appOpenProcessing": "Jobs run while NAI Blue is open. Interrupted work resumes after the app reopens.",
         "activity": {
             "open": "Open Queue Center · {{summary}}",
             "summary": "{{processing}} in progress · {{waiting}} waiting · {{attention}} need attention",
@@ -1692,13 +1696,13 @@
     "enqueueFailed": "Couldn't add this to the queue. Please try again shortly.",
     "legacyPending": "{{count}} existing Scene items are waiting.",
     "legacyRetained": "Transfer records current parameters and keeps existing item counts available for rollback.",
-    "convertLegacy": "Move to background queue",
+    "convertLegacy": "Move to durable queue",
     "convertLegacyTitle": "Move existing Scene queue?",
-    "convertLegacyDescription": "Current parameters and required resources will be captured for background jobs. Existing item counts remain available for rollback.",
+    "convertLegacyDescription": "Current parameters and required resources will be captured for durable jobs. Existing item counts remain available for rollback.",
     "convertLegacyConfirm": "Move jobs",
     "existingQueueTransfer": "Existing Scene queue transfer",
     "failureSummary": "{{count}} failed or blocked · Open diagnostics",
-    "executionCurrent": "Background queue",
+    "executionCurrent": "Durable queue",
     "executionPrevious": "Existing Scene queue",
     "executionMode": "Execution method",
     "batch": "Job group",
@@ -1743,6 +1747,21 @@
         "storage": "Storage",
         "release": "Release",
         "acceptance": "Acceptance",
+        "issue": {
+            "title": "Recovery actions",
+            "sceneLinkPending": "Saved on this device · Scene link needs retry",
+            "outputReservationConflict": "Output reservation conflict · Replan required",
+            "directoryAuthorizationRequired": "Output folder access is required"
+        },
+        "action": {
+            "replan": "Replan",
+            "grantDirectoryAccess": "Grant folder access",
+            "retryStorage": "Retry storage only",
+            "retrySceneLink": "Retry Scene link",
+            "abandonReservation": "Release reservation",
+            "discardResult": "Discard result and release reservation",
+            "reviewProviderUnknown": "Review Provider status"
+        },
         "state": {
             "notRequired": "Not required",
             "notEvaluated": "Not evaluated",

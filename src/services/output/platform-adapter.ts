@@ -27,8 +27,13 @@ export interface ResolvedOutputDirectory extends OutputFileRef {
 export interface OutputPlatformCapabilities {
     absolutePaths: boolean
     atomicSiblingRename: boolean
+    outputReservationGuarantee: 'atomic-no-replace' | 'single-app-reservation-external-writer-best-effort'
     runtime: OutputRuntimeKind
 }
+
+export type OutputCommitIfAbsentResult =
+    | { readonly status: 'committed' }
+    | { readonly status: 'destination-exists' }
 
 export interface OutputPlatformAdapter {
     readonly capabilities: OutputPlatformCapabilities
@@ -38,6 +43,7 @@ export interface OutputPlatformAdapter {
     writeFile(file: OutputFileRef, bytes: Uint8Array): Promise<void>
     readFile(file: OutputFileRef): Promise<Uint8Array>
     rename(from: OutputFileRef, to: OutputFileRef): Promise<void>
+    commitSiblingIfAbsent(from: OutputFileRef, to: OutputFileRef): Promise<OutputCommitIfAbsentResult>
     remove(file: OutputFileRef): Promise<void>
     writeJournal(transactionId: string, bytes: Uint8Array): Promise<void>
     readJournal(transactionId: string): Promise<Uint8Array | null>

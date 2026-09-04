@@ -4,6 +4,7 @@ import {
     createSceneGenerationBinding,
     isSceneBatchRequest,
     planSceneBatch,
+    resolveRepositorySceneBatchTargets,
     sceneGenerationBindingMatches,
 } from '@/application/scene/plan-scene-batch'
 
@@ -32,6 +33,22 @@ function document(seed: number, revision = 7) {
 }
 
 describe('Scene batch planning authority', () => {
+    it('resolves every source from the repository and rejects missing or stale targets atomically', async () => {
+        const repository = {
+            getDocument: async (presetId: string) => presetId === 'preset-a' ? document(12) : null,
+        } as never
+        await expect(resolveRepositorySceneBatchTargets(repository, [
+            { presetId: 'preset-a', sceneId: 'scene-a', expectedRevision: 7 },
+        ])).resolves.toMatchObject([{ document: { revision: 7 }, scene: { scenePrompt: 'A room' } }])
+        await expect(resolveRepositorySceneBatchTargets(repository, [
+            { presetId: 'preset-a', sceneId: 'scene-a', expectedRevision: 7 },
+            { presetId: 'preset-a', sceneId: 'missing', expectedRevision: 7 },
+        ])).rejects.toThrow('Scene is missing')
+        await expect(resolveRepositorySceneBatchTargets(repository, [
+            { presetId: 'preset-a', sceneId: 'scene-a', expectedRevision: 8 },
+        ])).rejects.toThrow('revision changed')
+    })
+
     it('hashes semantic authoring state without undefined placeholders', () => {
         const binding = createSceneGenerationBinding(document(12), 'scene-a')
         expect(binding).not.toBeNull()
